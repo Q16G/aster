@@ -1,0 +1,459 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"aster/internal/ai"
+	"aster/internal/mcp"
+	tuiui "aster/internal/tui/ui"
+)
+
+var slashCommands = []tuiui.CommandEntry{
+	{Name: "/agent", Description: "Switch agent profile"},
+	{Name: "/provider", Description: "List or switch AI provider"},
+	{Name: "/model", Description: "Switch model"},
+	{Name: "/skill", Description: "Toggle skill"},
+	{Name: "/mcp", Description: "Toggle MCP connection"},
+	{Name: "/session", Description: "Session management"},
+	{Name: "/new", Description: "New session"},
+	{Name: "/clear", Description: "Clear chat history"},
+	{Name: "/verbose", Description: "Toggle tool call detail"},
+	{Name: "/theme", Description: "Switch theme"},
+	{Name: "/help", Description: "Show help"},
+	{Name: "/exit", Description: "Quit application"},
+}
+
+const helpText = `Available commands:
+  /agent [name]          — Switch agent profile (or open selector)
+  /provider [name]       — List or switch AI provider
+  /model [name]          — Open selector or switch model
+  /skill [enable|disable] <name> — Toggle skill for current session
+  /mcp [connect|disconnect] <name> — Toggle MCP for current session
+  /session [new|list|switch|delete] — Session management / selector
+  /clear                 — Clear chat history
+  /verbose               — Toggle tool call detail level
+  /theme                 — Toggle dark/light theme
+  /help                  — Show this help
+
+Shortcuts:
+  Tab            — Cycle focus: Input → Sidebar → Chat
+  Escape         — Return focus to Input
+  Ctrl+N         — New session
+  Ctrl+O         — Open session selector
+  Ctrl+K         — Open agent selector
+  Ctrl+M         — Open model selector
+  Ctrl+L         — Clear chat
+  Ctrl+C         — Cancel agent (running) / Quit (idle, double-press)`
+
+func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return m, nil
+	}
+
+	switch parts[0] {
+	case "/agent", "/agents":
+		return m.cmdAgent(parts[1:])
+	case "/provider", "/connect":
+		return m.cmdProvider(parts[1:])
+	case "/model", "/models":
+		return m.cmdModel(parts[1:])
+	case "/skill":
+		return m.cmdSkill(parts[1:])
+	case "/mcp", "/mcps":
+		return m.cmdMCP(parts[1:])
+	case "/new":
+		return m.cmdSession([]string{"new"})
+	case "/exit":
+		return m, tea.Quit
+	case "/session":
+		return m.cmdSession(parts[1:])
+	case "/clear":
+		m.chat = NewChatModel()
+		m.restoreToolVerbose()
+		m.updateLayout()
+		return m, nil
+	case "/verbose":
+		m.localProvider.ToggleToolVerbose()
+		m.chat.SetToolVerbose(m.localProvider.Get().ToolVerbose)
+		state := "compact"
+		if m.localProvider.Get().ToolVerbose {
+			state = "verbose"
+		}
+		m.statusText = fmt.Sprintf("tool display: %s", state)
+		return m, nil
+	case "/theme":
+		if len(parts) > 1 {
+			if parts[1] == "toggle" {
+				m.themeProvider.Toggle()
+			} else {
+				m.themeProvider.SetByName(parts[1])
+			}
+			m.sessionMeta.Theme = m.themeProvider.Get().Name
+			m.persistSessionMeta()
+			m.statusText = fmt.Sprintf("theme: %s", m.themeProvider.Get().Name)
+			return m, nil
+		}
+		return m.openThemeSelector()
+	case "/help":
+		helpDialog := tuiui.NewHelpDialog(tuiui.DefaultHelpSections())
+		m.dialogStack.Push(helpDialog, nil)
+		m.dialogStack.SetSize(m.width, m.height)
+		return m, nil
+	default:
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown command: " + parts[0]})
+		return m, nil
+	}
+}
+
+func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {
+	if len(args) > 0 {
+		if m.profileRegistry != nil {
+			if def, ok := m.profileRegistry.Get(args[0]); ok {
+				m.agentCtx.Definition = def
+				m.updateSessionAgent(def.Name)
+				m.statusText = fmt.Sprintf("switched to %s", def.Name)
+				return m, m.input.Focus()
+			}
+		}
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown agent: " + args[0]})
+	} else {
+		if m.profileRegistry != nil {
+			m.showAgentSelector()
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
+	if m.appCfg == nil || m.providerCfg == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		return m, nil
+	}
+
+	if len(args) == 0 {
+		var sb strings.Builder
+		sb.WriteString("Providers:\n")
+		for name, p := range m.appCfg.Providers {
+			marker := "  "
+			if m.providerCfg.BaseURL == p.BaseURL {
+				marker = "* "
+			}
+			sb.WriteString(fmt.Sprintf("%s%s  (model: %s)\n", marker, name, p.DefaultModel))
+		}
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+		return m, nil
+	}
+
+	name := args[0]
+	p, ok := m.appCfg.Providers[name]
+	if !ok {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown provider: " + name})
+		return m, nil
+	}
+
+	m.providerCfg.BaseURL = p.BaseURL
+	m.providerCfg.APIKey = p.APIKey
+	m.providerCfg.ModelID = p.DefaultModel
+	if m.agentCtx != nil {
+		m.agentCtx.Definition.ModelID = p.DefaultModel
+	}
+	m.rememberRecentModel(p.DefaultModel)
+	m.persistSessionMeta()
+	m.statusText = fmt.Sprintf("provider: %s (model: %s)", name, p.DefaultModel)
+	return m, nil
+}
+
+func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
+	if m.providerCfg == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		return m, nil
+	}
+
+	if len(args) == 0 {
+		m.statusText = "loading models..."
+		return m, fetchModelsCmd(m.providerCfg.BaseURL, m.providerCfg.APIKey)
+	}
+
+	m.providerCfg.ModelID = args[0]
+	if m.agentCtx != nil {
+		m.agentCtx.Definition.ModelID = args[0]
+	}
+	m.rememberRecentModel(args[0])
+	m.persistSessionMeta()
+	m.statusText = fmt.Sprintf("model: %s", args[0])
+	return m, nil
+}
+
+func fetchModelsCmd(baseURL, apiKey string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		models, err := ai.ListModels(ctx, baseURL, apiKey)
+		if err != nil {
+			return ModelPickerFailedMsg{Err: err}
+		}
+		return ModelPickerLoadedMsg{Models: modelOptionsFromDescriptors(models)}
+	}
+}
+
+func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
+	if len(args) == 0 {
+		return m.skillList()
+	}
+
+	switch args[0] {
+	case "list":
+		return m.skillList()
+	case "enable":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill enable <name>"})
+			return m, nil
+		}
+		m.toggleSessionSkill(args[1], true)
+		m.statusText = fmt.Sprintf("skill enabled: %s", args[1])
+		return m, m.toastManager.Push(fmt.Sprintf("skill enabled: %s", args[1]), tuiui.ToastSuccess, 3*time.Second)
+	case "disable":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill disable <name>"})
+			return m, nil
+		}
+		m.toggleSessionSkill(args[1], false)
+		m.statusText = fmt.Sprintf("skill disabled: %s", args[1])
+		return m, m.toastManager.Push(fmt.Sprintf("skill disabled: %s", args[1]), tuiui.ToastWarning, 3*time.Second)
+	default:
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill [list|enable|disable] [name]"})
+	}
+	return m, nil
+}
+
+func (m *Model) skillList() (tea.Model, tea.Cmd) {
+	if m.skillService == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "skill service not available"})
+		return m, nil
+	}
+	skills, _ := m.skillService.ListSkills(context.Background(), nil)
+	if len(skills) == 0 {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no skills)"})
+		return m, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Skills:\n")
+	for _, s := range skills {
+		icon := "○"
+		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
+			icon = "●"
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s", icon, s.Name))
+		if s.Description != "" {
+			sb.WriteString(fmt.Sprintf("  — %s", s.Description))
+		}
+		sb.WriteString("\n")
+	}
+	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	return m, nil
+}
+
+func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
+	if m.mcpManager == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "MCP manager not available"})
+		return m, nil
+	}
+
+	if len(args) == 0 {
+		return m.mcpList()
+	}
+
+	switch args[0] {
+	case "list":
+		return m.mcpList()
+	case "connect":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp connect <name>"})
+			return m, nil
+		}
+		m.toggleSessionMCP(args[1], true)
+		m.statusText = fmt.Sprintf("MCP connecting: %s", args[1])
+	case "disconnect":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp disconnect <name>"})
+			return m, nil
+		}
+		m.toggleSessionMCP(args[1], false)
+		m.statusText = fmt.Sprintf("MCP disconnected: %s", args[1])
+	default:
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp [list|connect|disconnect] [name]"})
+	}
+	return m, nil
+}
+
+func (m *Model) mcpList() (tea.Model, tea.Cmd) {
+	entries := m.mcpManager.ServerEntries()
+	if len(entries) == 0 {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no MCP servers)"})
+		return m, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("MCP Servers:\n")
+	for _, e := range entries {
+		active := stringsContains(m.sessionMeta.ActiveMCPServers, e.Name)
+		icon := "○"
+		if active && e.Status == mcp.MCPStatusConnected {
+			icon = "●"
+		} else if e.Status == mcp.MCPStatusError {
+			icon = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s  [%s]", icon, e.Name, e.Status))
+		if e.ToolCount > 0 {
+			sb.WriteString(fmt.Sprintf("  (%d tools)", e.ToolCount))
+		}
+		sb.WriteString("\n")
+	}
+	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	return m, nil
+}
+
+func (m *Model) cmdSession(args []string) (tea.Model, tea.Cmd) {
+	if len(args) == 0 {
+		return m.openSessionSelector()
+	}
+
+	switch args[0] {
+	case "new":
+		if !m.newSession() {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "failed to create session"})
+			return m, nil
+		}
+		m.statusText = fmt.Sprintf("new session: %s", shortSessionID(m.currentSessionID))
+		return m, tea.Batch(m.input.Focus(), m.refreshSidebarCmd())
+	case "list":
+		return m.openSessionSelector()
+	case "switch":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session switch <id>"})
+			return m, nil
+		}
+		m.switchSession(args[1])
+		return m, m.input.Focus()
+	case "delete":
+		if len(args) < 2 {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session delete <id>"})
+			return m, nil
+		}
+		return m.sessionDelete(args[1])
+	default:
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session [new|list|switch|delete]"})
+		return m, nil
+	}
+}
+
+func (m *Model) sessionList() (tea.Model, tea.Cmd) {
+	if m.store == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "session store not available"})
+		return m, nil
+	}
+	sessions, err := m.store.List()
+	if err != nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("list sessions error: %v", err)})
+		return m, nil
+	}
+	if len(sessions) == 0 {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no sessions)"})
+		return m, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Sessions:\n")
+	for _, s := range sessions {
+		marker := "  "
+		if s.ID == m.currentSessionID {
+			marker = "* "
+		}
+		title := s.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		sb.WriteString(fmt.Sprintf("%s%s  %s  [%s]  msgs:%d\n",
+			marker, s.ID[:8], title, s.AgentName, s.MessageCount))
+	}
+	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	return m, nil
+}
+
+func (m *Model) openSessionSelector() (tea.Model, tea.Cmd) {
+	if m.store == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "session store not available"})
+		return m, nil
+	}
+	sessions, err := m.store.List()
+	if err != nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("list sessions error: %v", err)})
+		return m, nil
+	}
+	options := buildSessionSelectOptions(sessions, m.currentSessionID)
+	dialog := tuiui.NewSelectDialog("session-select", "Switch Session", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	m.statusText = "select session"
+	return m, nil
+}
+
+func (m *Model) showAgentSelector() {
+	profiles := m.profileRegistry.List()
+	options := make([]tuiui.SelectOption, len(profiles))
+	for i, p := range profiles {
+		options[i] = tuiui.SelectOption{Label: p.Name, Value: p.Name, Description: p.Role}
+	}
+	dialog := tuiui.NewSelectDialog("agent-select", "Select Agent", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+}
+
+func (m *Model) sessionDelete(idPrefix string) (tea.Model, tea.Cmd) {
+	if m.store == nil {
+		return m, nil
+	}
+	sessions, _ := m.store.List()
+	for _, s := range sessions {
+		if strings.HasPrefix(s.ID, idPrefix) {
+			if s.ID == m.currentSessionID {
+				m.chat.AddMessage(ChatMessage{Role: "system", Content: "cannot delete current session"})
+				return m, nil
+			}
+			if err := m.store.Delete(s.ID); err != nil {
+				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("delete error: %v", err)})
+			} else {
+				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("deleted session %s", s.ID[:8])})
+				m.refreshSidebarData()
+			}
+			return m, nil
+		}
+	}
+	m.chat.AddMessage(ChatMessage{Role: "system", Content: "session not found: " + idPrefix})
+	return m, nil
+}
+
+func (m *Model) openThemeSelector() (tea.Model, tea.Cmd) {
+	names := m.themeProvider.List()
+	current := m.themeProvider.Get().Name
+	options := make([]tuiui.SelectOption, len(names))
+	for i, name := range names {
+		desc := ""
+		if name == current {
+			desc = "(current)"
+		}
+		options[i] = tuiui.SelectOption{Label: name, Value: name, Description: desc}
+	}
+	dialog := tuiui.NewSelectDialog("theme-select", "Select Theme", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	m.statusText = "select theme"
+	return m, nil
+}

@@ -1,0 +1,91 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-04T20:00:02.89679+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "step-1",
+        "step": "第一步",
+        "status": "completed"
+      },
+      {
+        "id": "step-2",
+        "step": "第二步",
+        "status": "completed",
+        "depends_on": [
+          "step-1"
+        ]
+      }
+    ],
+    "plan_version": 3,
+    "runtime_id": "rt-20260404-120002-e66666",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "step-1",
+        "status": "completed",
+        "updated_at": "2026-04-04T20:00:02.897632+08:00",
+        "summary": "ok1",
+        "display_result": "step1 ok",
+        "result": "step1 ok",
+        "references": [
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1",
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/summary.md",
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/result.json"
+        ],
+        "status_summary": "完成",
+        "short_summary": "完成一步",
+        "long_summary": "完成该 step。",
+        "key_facts": [
+          "f1"
+        ],
+        "timeline_diff_summary": "New Facts:\n- summary: ok1\n- display_result: step1 ok\n- result: step1 ok\n\nArtifact Changes:\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/summary.md\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/summary.md\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/result.json",
+        "artifact_dir": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1",
+        "summary_file": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/summary.md",
+        "result_file": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-1/result.json"
+      },
+      {
+        "step_id": "step-2",
+        "status": "completed",
+        "updated_at": "2026-04-04T20:00:02.898156+08:00",
+        "summary": "ok2",
+        "display_result": "step2 ok",
+        "result": "step2 ok",
+        "references": [
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2",
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/summary.md",
+          "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/result.json"
+        ],
+        "status_summary": "完成",
+        "short_summary": "完成一步",
+        "long_summary": "完成该 step。",
+        "key_facts": [
+          "f1"
+        ],
+        "timeline_diff_summary": "New Facts:\n- summary: ok2\n- display_result: step2 ok\n- result: step2 ok\n\nArtifact Changes:\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/summary.md\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/summary.md\n- artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/result.json",
+        "artifact_dir": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2",
+        "summary_file": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/summary.md",
+        "result_file": "artifacts/runtime/rt-20260404-120002-e66666/steps/step-2/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "completed",
+    "reason": "done",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "done"
+  },
+  "plan_version": 3,
+  "runtime_id": "rt-20260404-120002-e66666"
+}

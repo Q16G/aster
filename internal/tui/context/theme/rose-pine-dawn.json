@@ -1,0 +1,18 @@
+{
+  "name": "rose-pine-dawn",
+  "background": "#faf4ed",
+  "backgroundPanel": "#fffaf3",
+  "backgroundElement": "#f2e9e1",
+  "text": "#575279",
+  "textMuted": "#9893a5",
+  "border": "#dfdad9",
+  "borderFocus": "#907aa9",
+  "userAccent": "#907aa9",
+  "assistantAccent": "#286983",
+  "toolAccent": "#ea9d34",
+  "success": "#56949f",
+  "warning": "#ea9d34",
+  "error": "#b4637a",
+  "diffAdded": "#56949f",
+  "diffRemoved": "#b4637a"
+}

@@ -1,0 +1,30 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "first-input",
+        "created_at": "2026-04-03T16:22:41.30788+08:00"
+      }
+    ],
+    "plan": null,
+    "plan_version": 0,
+    "runtime_id": "rt-20260403-082241-qqqqqq",
+    "state_error": "task planner returned invalid json: ok",
+    "status": "failed",
+    "step_outcomes": null,
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "completed",
+    "reason": "模型输出未包含 assessment JSON，已回退为直接交付文本。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": null,
+    "warnings": null,
+    "user_message": "ok"
+  },
+  "plan_version": 0,
+  "runtime_id": "rt-20260403-082241-qqqqqq"
+}

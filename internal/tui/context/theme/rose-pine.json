@@ -1,0 +1,18 @@
+{
+  "name": "rose-pine",
+  "background": "#191724",
+  "backgroundPanel": "#1f1d2e",
+  "backgroundElement": "#26233a",
+  "text": "#e0def4",
+  "textMuted": "#6e6a86",
+  "border": "#26233a",
+  "borderFocus": "#c4a7e7",
+  "userAccent": "#c4a7e7",
+  "assistantAccent": "#31748f",
+  "toolAccent": "#f6c177",
+  "success": "#9ccfd8",
+  "warning": "#f6c177",
+  "error": "#eb6f92",
+  "diffAdded": "#9ccfd8",
+  "diffRemoved": "#eb6f92"
+}

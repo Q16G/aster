@@ -1,0 +1,35 @@
+{
+  "raw": {
+    "artifact_dir": "artifacts/runtime/rt-20260406-025818-666666/steps/step-2",
+    "display_result": "step2 ok",
+    "error": "",
+    "key_facts": [
+      "f2"
+    ],
+    "long_summary": "完成第二个 step。",
+    "open_questions": null,
+    "references": [
+      "artifacts/runtime/rt-20260406-025818-666666/steps/step-2",
+      "artifacts/runtime/rt-20260406-025818-666666/steps/step-2/summary.md",
+      "artifacts/runtime/rt-20260406-025818-666666/steps/step-2/result.json"
+    ],
+    "result": "step2 ok",
+    "result_file": "artifacts/runtime/rt-20260406-025818-666666/steps/step-2/result.json",
+    "short_summary": "完成第二步",
+    "status_summary": "完成",
+    "summary": "ok2",
+    "summary_file": "artifacts/runtime/rt-20260406-025818-666666/steps/step-2/summary.md",
+    "timeline_diff": "New Facts:\n- summary: ok2\n- display_result: step2 ok\n- result: step2 ok\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2/summary.md\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2/summary.md\n- artifacts/runtime/rt-20260406-025818-666666/steps/step-2/result.json"
+  },
+  "status": "completed",
+  "step": "第二步",
+  "step_id": "step-2",
+  "step_window": {
+    "step_id": "step-2",
+    "raw_timeline_diff": "diff --git a/timeline_memory b/timeline_memory\n--- a/timeline_memory\t2026-04-06T02:58:18Z\n+++ b/timeline_memory\t2026-04-06T02:58:18Z\n@@\n---[2026-04-06T02:58:18.989292Z] key: aaaaaaaa type: tool_call\n-  Tool Call: update_current_step (ID: call-step-1-done)\n+--[2026-04-06T02:58:18.98994Z] key: aaaaaaaa type: tool_call\n+  Tool Call: update_current_step (ID: call-step-2-done)\n-  Arguments: {\"display_result\":\"step1 ok\",\"result\":\"step1 ok\",\"status\":\"completed\",\"summary\":\"ok1\"}\n-  Result: \"{\\\"artifact_dir\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-1\\\",\\\"current_step_id\\\":\\\"step-1\\\",\\\"ok\\\":true,\\\"result_file\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-1/result.json\\\",\\\"status\\\":\\\"completed\\\",\\\"step_id\\\":\\\"step-1\\\",\\\"summary_file\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-1/summary.md\\\"}\"\n+  Arguments: {\"display_result\":\"step2 ok\",\"result\":\"step2 ok\",\"status\":\"completed\",\"summary\":\"ok2\"}\n+  Result: \"{\\\"artifact_dir\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-2\\\",\\\"current_step_id\\\":\\\"step-2\\\",\\\"ok\\\":true,\\\"result_file\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-2/result.json\\\",\\\"status\\\":\\\"completed\\\",\\\"step_id\\\":\\\"step-2\\\",\\\"summary_file\\\":\\\"artifacts/runtime/rt-20260406-025818-666666/steps/step-2/summary.md\\\"}\"",
+    "raw_approx_tokens": 325,
+    "budget_tokens": 9600,
+    "excerpt_tokens": 9600
+  },
+  "updated_at": "2026-04-06T10:58:18.990112+08:00"
+}

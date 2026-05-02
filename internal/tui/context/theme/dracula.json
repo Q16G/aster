@@ -1,0 +1,18 @@
+{
+  "name": "dracula",
+  "background": "#282a36",
+  "backgroundPanel": "#44475a",
+  "backgroundElement": "#6272a4",
+  "text": "#f8f8f2",
+  "textMuted": "#6272a4",
+  "border": "#44475a",
+  "borderFocus": "#bd93f9",
+  "userAccent": "#bd93f9",
+  "assistantAccent": "#50fa7b",
+  "toolAccent": "#f1fa8c",
+  "success": "#50fa7b",
+  "warning": "#f1fa8c",
+  "error": "#ff5555",
+  "diffAdded": "#50fa7b",
+  "diffRemoved": "#ff5555"
+}

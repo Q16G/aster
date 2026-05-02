@@ -1,0 +1,33 @@
+{
+  "raw": {
+    "artifact_dir": "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1",
+    "display_result": "{\"is_complete\":true,\"status\":\"completed\",\"reason\":\"已完成并可交付。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"two-steps-done\"}",
+    "error": "",
+    "key_facts": null,
+    "long_summary": "",
+    "open_questions": null,
+    "references": [
+      "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1",
+      "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/summary.md",
+      "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/result.json"
+    ],
+    "result": "",
+    "result_file": "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/result.json",
+    "short_summary": "",
+    "status_summary": "",
+    "summary": "{\"is_complete\":true,\"status\":\"completed\",\"reason\":\"已完成并可交付。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"two-steps-done\"}",
+    "summary_file": "artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/summary.md",
+    "timeline_diff": "New Facts:\n- summary: {\"is_complete\":true,\"status\":\"completed\",\"reason\":\"已完成并可交付。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"two-steps-done\"}\n- display_result: {\"is_complete\":true,\"status\":\"completed\",\"reason\":\"已完成并可交付。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"two-steps-done\"}\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-084601-mmmmmm/steps/step-1/result.json"
+  },
+  "status": "completed",
+  "step": "第一步",
+  "step_id": "step-1",
+  "step_window": {
+    "step_id": "step-1",
+    "raw_timeline_diff": "diff --git a/timeline_memory b/timeline_memory\n--- a/timeline_memory\t2026-04-06T08:46:01Z\n+++ b/timeline_memory\t2026-04-06T08:46:01Z\n@@\n+--[2026-04-06T08:46:01.234495Z] key: qqqqqqqq type: assistant_output\n+  AI Output: {\"is_complete\":true,\"status\":\"completed\",\"reason\":\"已完成并可交付。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"two-steps-done\"}",
+    "raw_approx_tokens": 100,
+    "budget_tokens": 9600,
+    "excerpt_tokens": 9600
+  },
+  "updated_at": "2026-04-06T16:46:01.234746+08:00"
+}

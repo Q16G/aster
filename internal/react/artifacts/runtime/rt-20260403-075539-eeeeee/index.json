@@ -1,0 +1,21 @@
+{
+  "runtime_id": "rt-20260403-075539-eeeeee",
+  "updated_at": "2026-04-03T15:55:39.036736+08:00",
+  "plan_version": 2,
+  "plan": [
+    {
+      "id": "auto-1",
+      "step": "hello",
+      "status": "completed"
+    }
+  ],
+  "steps": {
+    "auto-1": {
+      "step_id": "auto-1",
+      "artifact_dir": "artifacts/runtime/rt-20260403-075539-eeeeee/steps/auto-1",
+      "summary_file": "artifacts/runtime/rt-20260403-075539-eeeeee/steps/auto-1/summary.md",
+      "result_file": "artifacts/runtime/rt-20260403-075539-eeeeee/steps/auto-1/result.json"
+    }
+  },
+  "final_answer_file": "artifacts/runtime/rt-20260403-075539-eeeeee/final/final_answer.md"
+}

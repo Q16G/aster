@@ -1,0 +1,18 @@
+{
+  "name": "gruvbox-light",
+  "background": "#fbf1c7",
+  "backgroundPanel": "#ebdbb2",
+  "backgroundElement": "#d5c4a1",
+  "text": "#3c3836",
+  "textMuted": "#928374",
+  "border": "#d5c4a1",
+  "borderFocus": "#d79921",
+  "userAccent": "#076678",
+  "assistantAccent": "#79740e",
+  "toolAccent": "#b57614",
+  "success": "#79740e",
+  "warning": "#b57614",
+  "error": "#9d0006",
+  "diffAdded": "#79740e",
+  "diffRemoved": "#9d0006"
+}

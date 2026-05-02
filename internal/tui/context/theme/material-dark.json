@@ -1,0 +1,18 @@
+{
+  "name": "material-dark",
+  "background": "#212121",
+  "backgroundPanel": "#263238",
+  "backgroundElement": "#37474f",
+  "text": "#eeffff",
+  "textMuted": "#546e7a",
+  "border": "#37474f",
+  "borderFocus": "#82aaff",
+  "userAccent": "#82aaff",
+  "assistantAccent": "#c3e88d",
+  "toolAccent": "#ffcb6b",
+  "success": "#c3e88d",
+  "warning": "#ffcb6b",
+  "error": "#f07178",
+  "diffAdded": "#c3e88d",
+  "diffRemoved": "#f07178"
+}

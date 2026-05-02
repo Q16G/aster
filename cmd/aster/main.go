@@ -1,0 +1,181 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
+
+	"aster/internal/ai"
+	"aster/internal/ai/openai"
+	"aster/internal/builtin_tools"
+	"aster/internal/mcp"
+	"aster/internal/react"
+	"aster/internal/service"
+	"aster/internal/tui"
+	tuicontext "aster/internal/tui/context"
+)
+
+var (
+	flagProvider string
+	flagModel    string
+	flagBaseURL  string
+	flagAPIKey   string
+)
+
+func main() {
+	rootCmd := &cobra.Command{
+		Use:   tui.AppCLIName,
+		Short: "ASTER - General-purpose agent TUI",
+		RunE:  runTUI,
+	}
+
+	f := rootCmd.Flags()
+	f.StringVar(&flagProvider, "provider", "", "AI provider name (overrides config/env)")
+	f.StringVar(&flagModel, "model", "", "model ID (overrides config/env)")
+	f.StringVar(&flagBaseURL, "base-url", "", "API base URL (overrides config/env)")
+	f.StringVar(&flagAPIKey, "api-key", "", "API key (overrides config/env)")
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func runTUI(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	appCfg, err := tui.LoadConfig(tui.DefaultConfigPath())
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	appDir := tui.DefaultAppDir()
+	store, err := tui.NewSessionStore(
+		filepath.Join(appDir, "data.db"),
+		filepath.Join(appDir, "sessions"),
+	)
+	if err != nil {
+		return fmt.Errorf("init store: %w", err)
+	}
+	defer store.Close()
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get home dir: %w", err)
+	}
+
+	bridge := tui.NewEventBridge()
+	humanBridge := tui.NewHumanInputBridge()
+	syncStore := tuicontext.NewSyncStore()
+	defer syncStore.Close()
+	bridge.BindSyncStore(syncStore)
+	bootstrapEmitter := react.NewEmitter("bootstrap", "bootstrap", bridge.EmitterFunc())
+
+	providerCfg := &tui.ProviderState{}
+	providerCfg.BaseURL, providerCfg.APIKey, providerCfg.ModelID = appCfg.ResolveProvider(flagProvider, flagModel, flagBaseURL, flagAPIKey)
+
+	aiClient := openai.NewClient(
+		openai.WithURL(providerCfg.BaseURL),
+		openai.WithURLAutoComplete(true),
+		openai.WithAPIKey(providerCfg.APIKey),
+		openai.WithModel(providerCfg.ModelID),
+		openai.WithStream(true),
+	)
+
+	clientFactory := ai.NewSimpleClientFactory(aiClient, func(mid string) ai.ChatClient {
+		if mid == "" {
+			mid = providerCfg.ModelID
+		}
+		return openai.NewClient(
+			openai.WithURL(providerCfg.BaseURL),
+			openai.WithURLAutoComplete(true),
+			openai.WithAPIKey(providerCfg.APIKey),
+			openai.WithModel(mid),
+			openai.WithStream(true),
+		)
+	})
+
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current working directory: %w", err)
+	}
+	projectRoot, err = filepath.Abs(projectRoot)
+	if err != nil {
+		return fmt.Errorf("resolve current working directory: %w", err)
+	}
+	skillService := service.NewSkillServiceWithMemory()
+	if _, err := skillService.ImportSkillsFromMultipleSources(ctx, projectRoot, homeDir); err != nil {
+		return fmt.Errorf("import skills: %w", err)
+	}
+
+	mcpManager := mcp.NewManager()
+	if mcpCfg := appCfg.ToMCPConfig(); mcpCfg != nil {
+		mcpManager.LoadFromConfigWithProbe(ctx, mcpCfg, bootstrapEmitter)
+	}
+	defer mcpManager.CloseAll()
+
+	registry := react.NewDefaultToolRegistry()
+	registry.Register(builtin_tools.ListSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
+		return builtin_tools.NewListSkillsTool(skillService)
+	})
+	registry.Register(builtin_tools.LoadSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
+		return builtin_tools.NewLoadSkillsTool(skillService)
+	})
+
+	factory := react.NewAgentFactory(
+		react.WithFactoryDefaultAIClient(aiClient),
+		react.WithFactoryAIClientFactory(clientFactory),
+		react.WithFactoryToolRegistry(registry),
+		react.WithFactorySkillsCatalog(skillService),
+		react.WithFactoryEmitterFunc(bridge.EmitterFunc()),
+		react.WithFactoryOnHumanInput(humanBridge.OnHumanInput),
+		react.WithFactoryMCPManager(mcpManager),
+	)
+
+	profileRegistry := tui.NewProfileRegistry()
+	for _, def := range tui.DefaultProfiles() {
+		profileRegistry.Register(def)
+	}
+	agentsDir := filepath.Join(appDir, "agents")
+	if yamlProfiles, err := tui.LoadProfilesFromDir(agentsDir); err == nil {
+		for _, yp := range yamlProfiles {
+			profileRegistry.MergeYAML(yp)
+		}
+	}
+
+	defaultDef := profileRegistry.List()[0]
+
+	agentCtx := &tui.AgentExecContext{
+		Factory:     factory,
+		Definition:  defaultDef,
+		MCPManager:  mcpManager,
+		ProjectRoot: projectRoot,
+	}
+
+	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, appCfg, providerCfg, syncStore)
+
+	p := tea.NewProgram(&appModel, tea.WithAltScreen())
+
+	syncStore.SetFlushCallback(func(events []any) {
+		tuiEvents := make([]tui.TuiEvent, 0, len(events))
+		for _, e := range events {
+			if te, ok := e.(tui.TuiEvent); ok {
+				tuiEvents = append(tuiEvents, te)
+			}
+		}
+		if len(tuiEvents) > 0 {
+			p.Send(tui.BatchedEventsMsg{Events: tuiEvents})
+		}
+	})
+
+	bridge.Bind(p)
+	humanBridge.Bind(p)
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("tui: %w", err)
+	}
+	return nil
+}

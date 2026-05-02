@@ -1,0 +1,44 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "first-input",
+        "created_at": "2026-04-06T17:40:02.980129+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "auto-1",
+        "step": "first-input",
+        "status": "completed"
+      }
+    ],
+    "plan_version": 2,
+    "runtime_id": "rt-20260406-094002-aaaa22",
+    "state_error": "reach max iterations: 1",
+    "status": "failed",
+    "step_outcomes": [
+      {
+        "step_id": "auto-1",
+        "status": "completed",
+        "updated_at": "2026-04-06T17:40:02.980215+08:00",
+        "summary": "{\"is_complete\":true,\"status\":\"completed\",\"reason\":\"仅用于测试回路。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"ok\"}",
+        "display_result": "{\"is_complete\":true,\"status\":\"completed\",\"reason\":\"仅用于测试回路。\",\"should_replan\":false,\"next_goal\":\"\",\"missing_items\":[],\"warnings\":[],\"user_message\":\"ok\"}"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "completed",
+    "reason": "仅用于测试回路。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "ok"
+  },
+  "plan_version": 2,
+  "runtime_id": "rt-20260406-094002-aaaa22"
+}

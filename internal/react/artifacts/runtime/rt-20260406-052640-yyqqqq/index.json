@@ -1,0 +1,36 @@
+{
+  "runtime_id": "rt-20260406-052640-yyqqqq",
+  "updated_at": "2026-04-06T13:26:40.970676+08:00",
+  "plan_version": 3,
+  "plan": [
+    {
+      "id": "step-1",
+      "step": "第一步",
+      "status": "completed"
+    },
+    {
+      "id": "step-2",
+      "step": "第二步",
+      "status": "completed",
+      "depends_on": [
+        "step-1"
+      ]
+    }
+  ],
+  "steps": {
+    "step-1": {
+      "step_id": "step-1",
+      "artifact_dir": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-1",
+      "summary_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-1/summary.md",
+      "result_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-1/result.json"
+    },
+    "step-2": {
+      "step_id": "step-2",
+      "artifact_dir": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-2",
+      "summary_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-2/summary.md",
+      "result_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/steps/step-2/result.json"
+    }
+  },
+  "final_answer_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/final/final_answer.md",
+  "final_assessment_file": "artifacts/runtime/rt-20260406-052640-yyqqqq/final/final_assessment.json"
+}

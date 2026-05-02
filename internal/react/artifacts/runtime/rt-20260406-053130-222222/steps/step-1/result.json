@@ -1,0 +1,35 @@
+{
+  "raw": {
+    "artifact_dir": "artifacts/runtime/rt-20260406-053130-222222/steps/step-1",
+    "display_result": "step1 ok",
+    "error": "",
+    "key_facts": [
+      "f1"
+    ],
+    "long_summary": "完成该 step。",
+    "open_questions": null,
+    "references": [
+      "artifacts/runtime/rt-20260406-053130-222222/steps/step-1",
+      "artifacts/runtime/rt-20260406-053130-222222/steps/step-1/summary.md",
+      "artifacts/runtime/rt-20260406-053130-222222/steps/step-1/result.json"
+    ],
+    "result": "step1 ok",
+    "result_file": "artifacts/runtime/rt-20260406-053130-222222/steps/step-1/result.json",
+    "short_summary": "完成一步",
+    "status_summary": "完成",
+    "summary": "ok1",
+    "summary_file": "artifacts/runtime/rt-20260406-053130-222222/steps/step-1/summary.md",
+    "timeline_diff": "New Facts:\n- summary: ok1\n- display_result: step1 ok\n- result: step1 ok\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-053130-222222/steps/step-1/result.json"
+  },
+  "status": "completed",
+  "step": "第一步",
+  "step_id": "step-1",
+  "step_window": {
+    "step_id": "step-1",
+    "raw_timeline_diff": "diff --git a/timeline_memory b/timeline_memory\n--- a/timeline_memory\t2026-04-06T05:31:30Z\n+++ b/timeline_memory\t2026-04-06T05:31:30Z\n@@\n+timeline_memory_items:\n+--[2026-04-06T05:31:30.562731Z] key: yyyyyyyy type: tool_call\n+  Tool Call: echo_tool (ID: call-echo)\n+  Description: test tool: returns a stable echo output\n+  Arguments: {\"msg\":\"step-1\"}\n+  Result: \"echo:step-1\"\n+--[2026-04-06T05:31:30.56282Z] key: eeeeeeee type: tool_call\n+  Tool Call: update_current_step (ID: call-step-1)\n+  Description: 写入当前 step 的终态与结果；不会自动把下一步改成 in_progress。\n+  Arguments: {\"display_result\":\"step1 ok\",\"result\":\"step1 ok\",\"status\":\"completed\",\"summary\":\"ok1\"}\n+  Result: \"{\\\"artifact_dir\\\":\\\"artifacts/runtime/rt-20260406-053130-222222/steps/step-1\\\",\\\"current_step_id\\\":\\\"step-1\\\",\\\"ok\\\":true,\\\"result_file\\\":\\\"artifacts/runtime/rt-20260406-053130-222222/steps/step-1/result.json\\\",\\\"status\\\":\\\"completed\\\",\\\"step_id\\\":\\\"step-1\\\",\\\"summary_file\\\":\\\"artifacts/runtime/rt-20260406-053130-222222/steps/step-1/summary.md\\\"}\"",
+    "raw_approx_tokens": 263,
+    "budget_tokens": 9600,
+    "excerpt_tokens": 9600
+  },
+  "updated_at": "2026-04-06T13:31:30.563022+08:00"
+}

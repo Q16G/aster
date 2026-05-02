@@ -1,0 +1,18 @@
+{
+  "name": "nord",
+  "background": "#2e3440",
+  "backgroundPanel": "#3b4252",
+  "backgroundElement": "#434c5e",
+  "text": "#eceff4",
+  "textMuted": "#4c566a",
+  "border": "#4c566a",
+  "borderFocus": "#88c0d0",
+  "userAccent": "#88c0d0",
+  "assistantAccent": "#a3be8c",
+  "toolAccent": "#ebcb8b",
+  "success": "#a3be8c",
+  "warning": "#ebcb8b",
+  "error": "#bf616a",
+  "diffAdded": "#a3be8c",
+  "diffRemoved": "#bf616a"
+}

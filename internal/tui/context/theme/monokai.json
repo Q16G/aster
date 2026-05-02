@@ -1,0 +1,18 @@
+{
+  "name": "monokai",
+  "background": "#272822",
+  "backgroundPanel": "#3e3d32",
+  "backgroundElement": "#49483e",
+  "text": "#f8f8f2",
+  "textMuted": "#75715e",
+  "border": "#49483e",
+  "borderFocus": "#a6e22e",
+  "userAccent": "#66d9ef",
+  "assistantAccent": "#a6e22e",
+  "toolAccent": "#e6db74",
+  "success": "#a6e22e",
+  "warning": "#e6db74",
+  "error": "#f92672",
+  "diffAdded": "#a6e22e",
+  "diffRemoved": "#f92672"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "catppuccin-macchiato",
+  "background": "#24273a",
+  "backgroundPanel": "#363a4f",
+  "backgroundElement": "#494d64",
+  "text": "#cad3f5",
+  "textMuted": "#6e738d",
+  "border": "#5b6078",
+  "borderFocus": "#8aadf4",
+  "userAccent": "#8aadf4",
+  "assistantAccent": "#a6da95",
+  "toolAccent": "#eed49f",
+  "success": "#a6da95",
+  "warning": "#eed49f",
+  "error": "#ed8796",
+  "diffAdded": "#a6da95",
+  "diffRemoved": "#ed8796"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "gruvbox-dark",
+  "background": "#282828",
+  "backgroundPanel": "#3c3836",
+  "backgroundElement": "#504945",
+  "text": "#ebdbb2",
+  "textMuted": "#928374",
+  "border": "#504945",
+  "borderFocus": "#d79921",
+  "userAccent": "#458588",
+  "assistantAccent": "#b8bb26",
+  "toolAccent": "#d79921",
+  "success": "#b8bb26",
+  "warning": "#d79921",
+  "error": "#fb4934",
+  "diffAdded": "#b8bb26",
+  "diffRemoved": "#fb4934"
+}

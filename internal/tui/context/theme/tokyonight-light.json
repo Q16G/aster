@@ -1,0 +1,18 @@
+{
+  "name": "tokyonight-light",
+  "background": "#d5d6db",
+  "backgroundPanel": "#e1e2e7",
+  "backgroundElement": "#c4c8da",
+  "text": "#3760bf",
+  "textMuted": "#6172b0",
+  "border": "#c4c8da",
+  "borderFocus": "#2e7de9",
+  "userAccent": "#2e7de9",
+  "assistantAccent": "#587539",
+  "toolAccent": "#8c6c3e",
+  "success": "#587539",
+  "warning": "#8c6c3e",
+  "error": "#f52a65",
+  "diffAdded": "#587539",
+  "diffRemoved": "#f52a65"
+}

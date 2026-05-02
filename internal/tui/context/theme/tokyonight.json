@@ -1,0 +1,18 @@
+{
+  "name": "tokyonight",
+  "background": "#1a1b26",
+  "backgroundPanel": "#24283b",
+  "backgroundElement": "#414868",
+  "text": "#c0caf5",
+  "textMuted": "#565f89",
+  "border": "#3b4261",
+  "borderFocus": "#7aa2f7",
+  "userAccent": "#7aa2f7",
+  "assistantAccent": "#9ece6a",
+  "toolAccent": "#e0af68",
+  "success": "#9ece6a",
+  "warning": "#e0af68",
+  "error": "#f7768e",
+  "diffAdded": "#9ece6a",
+  "diffRemoved": "#f7768e"
+}

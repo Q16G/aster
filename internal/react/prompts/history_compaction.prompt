@@ -1,0 +1,45 @@
+You are compacting a long-running coding conversation so another agent can continue seamlessly.
+
+Original agent instruction:
+{{if .INSTRUCTION}}{{.INSTRUCTION}}{{else}}(none){{end}}
+
+Existing compaction summary (merge it forward, do not keep stale or duplicated details):
+{{if .PREV_SUMMARY}}{{.PREV_SUMMARY}}{{else}}(none){{end}}
+
+Provide a detailed prompt for continuing the work represented by the messages above.
+Focus on information that will help another agent continue effectively, including what was done, what is in progress, what constraints apply, and which files or symbols matter.
+The summary that you construct will be used so that another agent can read it and continue the work.
+
+When constructing the summary, try to stick to this template:
+---
+## Goal
+
+[What goal(s) is the user trying to accomplish?]
+
+## Instructions
+
+- [What important instructions or constraints still apply]
+- [What architectural or workflow constraints must continue to be followed]
+
+## Discoveries
+
+[What notable facts, debugging findings, design decisions, or caveats were learned]
+
+## Accomplished
+
+[What work has already been completed, what is still in progress, and what remains]
+
+## Relevant files / directories
+
+[A structured list of files, directories, functions, structs, commands, or IDs that matter]
+---
+
+Requirements:
+- Merge the existing compaction summary with the new conversation excerpt into one coherent continuation summary.
+- Preserve concrete technical details: file paths, directory paths, function names, struct names, type names, commands, IDs, versions, thresholds, errors, and API field names.
+- If an old tool result was cleared, mention only that the tool ran and its detailed output is no longer available.
+- Remove duplication, stale progress notes, and low-signal chatter.
+- Do not mention token limits or compaction mechanics unless they are directly relevant to the task itself.
+- Output only the summary text. No code fences. No JSON.
+
+nonce={{.NONCE}}

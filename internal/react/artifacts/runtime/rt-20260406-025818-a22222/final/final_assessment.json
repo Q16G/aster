@@ -1,0 +1,60 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-06T10:58:18.97854+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "step-1",
+        "step": "执行用户请求",
+        "status": "completed"
+      }
+    ],
+    "plan_version": 2,
+    "runtime_id": "rt-20260406-025818-a22222",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "step-1",
+        "status": "completed",
+        "updated_at": "2026-04-06T10:58:18.979824+08:00",
+        "summary": "ok",
+        "display_result": "step ok",
+        "result": "step ok",
+        "references": [
+          "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1",
+          "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/summary.md",
+          "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/result.json"
+        ],
+        "status_summary": "完成",
+        "short_summary": "完成一步",
+        "long_summary": "完成该 step。",
+        "key_facts": [
+          "f1"
+        ],
+        "timeline_diff_summary": "New Facts:\n- summary: ok\n- display_result: step ok\n- result: step ok\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/summary.md\n- artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/result.json",
+        "artifact_dir": "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1",
+        "summary_file": "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/summary.md",
+        "result_file": "artifacts/runtime/rt-20260406-025818-a22222/steps/step-1/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "completed",
+    "reason": "所有步骤已完成并可交付。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "primary-final-answer"
+  },
+  "plan_version": 2,
+  "runtime_id": "rt-20260406-025818-a22222"
+}

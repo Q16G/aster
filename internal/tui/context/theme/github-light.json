@@ -1,0 +1,18 @@
+{
+  "name": "github-light",
+  "background": "#ffffff",
+  "backgroundPanel": "#f6f8fa",
+  "backgroundElement": "#eaeef2",
+  "text": "#24292f",
+  "textMuted": "#57606a",
+  "border": "#d0d7de",
+  "borderFocus": "#0969da",
+  "userAccent": "#0969da",
+  "assistantAccent": "#1a7f37",
+  "toolAccent": "#9a6700",
+  "success": "#1a7f37",
+  "warning": "#9a6700",
+  "error": "#cf222e",
+  "diffAdded": "#1a7f37",
+  "diffRemoved": "#cf222e"
+}

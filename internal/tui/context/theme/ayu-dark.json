@@ -1,0 +1,18 @@
+{
+  "name": "ayu-dark",
+  "background": "#0b0e14",
+  "backgroundPanel": "#11151c",
+  "backgroundElement": "#1c212b",
+  "text": "#bfbdb6",
+  "textMuted": "#636a76",
+  "border": "#1c212b",
+  "borderFocus": "#e6b450",
+  "userAccent": "#39bae6",
+  "assistantAccent": "#7fd962",
+  "toolAccent": "#e6b450",
+  "success": "#7fd962",
+  "warning": "#e6b450",
+  "error": "#d95757",
+  "diffAdded": "#7fd962",
+  "diffRemoved": "#d95757"
+}
