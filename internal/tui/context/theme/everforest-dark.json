@@ -1,0 +1,18 @@
+{
+  "name": "everforest-dark",
+  "background": "#2d353b",
+  "backgroundPanel": "#343f44",
+  "backgroundElement": "#3d484d",
+  "text": "#d3c6aa",
+  "textMuted": "#859289",
+  "border": "#475258",
+  "borderFocus": "#a7c080",
+  "userAccent": "#7fbbb3",
+  "assistantAccent": "#a7c080",
+  "toolAccent": "#dbbc7f",
+  "success": "#a7c080",
+  "warning": "#dbbc7f",
+  "error": "#e67e80",
+  "diffAdded": "#a7c080",
+  "diffRemoved": "#e67e80"
+}

@@ -1,0 +1,32 @@
+你正在为"父 Agent -> 子 Agent"的交接生成一段给子 Agent 看的上下文（extra）。
+
+handoff_to（子 Agent 工具名）：
+{{.HANDOFF_TO}}
+
+父 Agent 原始指令（仅供理解背景）：
+{{.AGENT_INSTRUCTION}}
+
+当前交接上下文（可能为空，可能已过时）：
+{{.PREV_SUMMARY}}
+
+增量变更（timeline_memory_diff，git patch/unified diff）：
+{{.DIFF}}
+
+任务：基于以上信息，输出一段**面向子 Agent 的交接说明**，让子 Agent 清楚"需要完成什么"。
+
+输出要求（必须遵守）：
+- 只输出纯文本；不要 JSON；不要 Markdown 代码块。
+- 重点只写：子 Agent 需要完成的目标/验收标准（必要时补充关键约束与必须知道的上下文信息）。
+- 不要写"下一步/步骤/行动清单/计划"，不要列 numbered steps。
+- 合并并去重：将 PREV_SUMMARY 与 DIFF 的信息融合为一致的交接目标描述。
+- **关键信息必须保留，不能省略**：
+  - 文件路径、目录路径（如 /path/to/file.go）
+  - 参数名、变量名、函数名、类名
+  - URL、端口、IP地址
+  - 具体的数值、ID、版本号
+  - 请求/响应的关键字段
+  - 错误信息、状态码
+- "精简"指的是去除冗余描述和重复内容，而非删除具体的技术细节。
+- 字数建议 <= 800 字（如有大量关键信息可适当超出）。
+
+nonce={{.NONCE}}

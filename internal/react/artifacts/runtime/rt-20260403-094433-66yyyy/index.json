@@ -1,0 +1,13 @@
+{
+  "runtime_id": "rt-20260403-094433-66yyyy",
+  "updated_at": "2026-04-03T17:44:33.312468+08:00",
+  "plan_version": 1,
+  "plan": [
+    {
+      "id": "step-1",
+      "step": "执行用户请求",
+      "status": "pending"
+    }
+  ],
+  "final_assessment_file": "artifacts/runtime/rt-20260403-094433-66yyyy/final/final_assessment.json"
+}

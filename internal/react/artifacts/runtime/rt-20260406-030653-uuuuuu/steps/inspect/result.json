@@ -1,0 +1,35 @@
+{
+  "raw": {
+    "artifact_dir": "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect",
+    "display_result": "",
+    "error": "step failed",
+    "key_facts": [
+      "step failed"
+    ],
+    "long_summary": "该 step 失败。",
+    "open_questions": null,
+    "references": [
+      "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect",
+      "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/summary.md",
+      "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/result.json"
+    ],
+    "result": "",
+    "result_file": "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/result.json",
+    "short_summary": "该 step 失败",
+    "status_summary": "失败",
+    "summary": "",
+    "summary_file": "artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/summary.md",
+    "timeline_diff": "New Facts:\n- error: step failed\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/summary.md\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/summary.md\n- artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/result.json"
+  },
+  "status": "failed",
+  "step": "梳理链路",
+  "step_id": "inspect",
+  "step_window": {
+    "step_id": "inspect",
+    "raw_timeline_diff": "diff --git a/timeline_memory b/timeline_memory\n--- a/timeline_memory\t2026-04-06T03:06:53Z\n+++ b/timeline_memory\t2026-04-06T03:06:53Z\n@@\n+timeline_memory_items:\n+--[2026-04-06T03:06:53.689152Z] key: uuuummmm type: tool_call\n+  Tool Call: update_current_step (ID: call-step-failed)\n+  Description: 写入当前 step 的终态与结果；不会自动把下一步改成 in_progress。\n+  Arguments: {\"error\":\"step failed\",\"status\":\"failed\"}\n+  Result: \"{\\\"artifact_dir\\\":\\\"artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect\\\",\\\"current_step_id\\\":\\\"inspect\\\",\\\"ok\\\":true,\\\"result_file\\\":\\\"artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/result.json\\\",\\\"status\\\":\\\"failed\\\",\\\"step_id\\\":\\\"inspect\\\",\\\"summary_file\\\":\\\"artifacts/runtime/rt-20260406-030653-uuuuuu/steps/inspect/summary.md\\\"}\"",
+    "raw_approx_tokens": 200,
+    "budget_tokens": 9600,
+    "excerpt_tokens": 9600
+  },
+  "updated_at": "2026-04-06T11:06:53.689292+08:00"
+}

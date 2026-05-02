@@ -1,0 +1,58 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-06T15:10:26.701419+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "inspect",
+        "step": "梳理链路",
+        "status": "failed"
+      }
+    ],
+    "plan_version": 2,
+    "runtime_id": "rt-20260406-071026-aaaaaa",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "inspect",
+        "status": "failed",
+        "updated_at": "2026-04-06T15:10:26.702129+08:00",
+        "error": "step failed",
+        "references": [
+          "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect",
+          "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/summary.md",
+          "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/result.json"
+        ],
+        "status_summary": "失败",
+        "short_summary": "该 step 失败",
+        "long_summary": "该 step 失败。",
+        "key_facts": [
+          "step failed"
+        ],
+        "timeline_diff_summary": "New Facts:\n- error: step failed\n\nArtifact Changes:\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/summary.md\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/result.json\n\nReference Changes:\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/summary.md\n- artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/result.json",
+        "artifact_dir": "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect",
+        "summary_file": "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/summary.md",
+        "result_file": "artifacts/runtime/rt-20260406-071026-aaaaaa/steps/inspect/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "failed",
+    "reason": "关键步骤失败且无需重规划。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "final answer for failure"
+  },
+  "plan_version": 2,
+  "runtime_id": "rt-20260406-071026-aaaaaa"
+}

@@ -1,0 +1,55 @@
+# Step Summary
+
+- Step ID: {{.StepID}}
+- Step: {{.Step}}
+- Status: {{.Status}}
+- Updated At: {{.UpdatedAt}}
+
+## Status Summary
+{{.StatusSummary}}
+
+## Short Summary
+{{.ShortSummary}}
+
+## Long Summary
+{{.LongSummary}}
+
+## Key Facts
+{{- if .KeyFacts}}
+{{- range .KeyFacts}}
+- {{.}}
+{{- end}}
+{{- else}}
+- (none)
+{{- end}}
+
+## Open Questions
+{{- if .OpenQuestions}}
+{{- range .OpenQuestions}}
+- {{.}}
+{{- end}}
+{{- else}}
+- (none)
+{{- end}}
+
+## References
+{{- if .References}}
+{{- range .References}}
+- {{.}}
+{{- end}}
+{{- else}}
+- (none)
+{{- end}}
+
+## Tool Calls Digest
+{{- if .ToolCallsDigest}}
+{{- range .ToolCallsDigest}}
+- {{.}}
+{{- end}}
+{{- else}}
+- (none)
+{{- end}}
+
+## Timeline Diff Summary
+{{.TimelineDiffSummary}}
+

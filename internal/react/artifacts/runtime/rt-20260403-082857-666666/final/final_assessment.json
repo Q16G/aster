@@ -1,0 +1,58 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-03T16:28:57.738581+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "inspect",
+        "step": "梳理链路",
+        "status": "failed"
+      }
+    ],
+    "plan_version": 2,
+    "runtime_id": "rt-20260403-082857-666666",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "inspect",
+        "status": "failed",
+        "updated_at": "2026-04-03T16:28:57.73909+08:00",
+        "error": "step failed",
+        "references": [
+          "artifacts/runtime/rt-20260403-082857-666666/steps/inspect/summary.md",
+          "artifacts/runtime/rt-20260403-082857-666666/steps/inspect/result.json",
+          "tool:update_current_step"
+        ],
+        "status_summary": "失败",
+        "short_summary": "该 step 失败",
+        "long_summary": "该 step 失败。",
+        "key_facts": [
+          "step failed"
+        ],
+        "timeline_diff_summary": "New Facts:\n- error: step failed\n\nTool Result Highlights:\n- update_current_step: {\"artifact_dir\":\"artifacts/runtime/rt-20260403-082857-666666/steps/inspect\",\"current_step_id\":\"inspect\",\"need_replan\":false,\"ok\":true,\"result_file\":\"artifacts/runtime/rt-20260403-082857-666666/steps/inspect/result.json\",\"status\":\"failed\",\"...\n\nArtifact Changes:\n- artifacts/runtime/rt-20260403-082857-666666/steps/inspect\n- artifacts/runtime/rt-20260403-082857-666666/steps/inspect/summary.md\n- artifacts/runtime/rt-20260403-082857-666666/steps/inspect/result.json\n\nReference Changes:\n- (none)",
+        "artifact_dir": "artifacts/runtime/rt-20260403-082857-666666/steps/inspect",
+        "summary_file": "artifacts/runtime/rt-20260403-082857-666666/steps/inspect/summary.md",
+        "result_file": "artifacts/runtime/rt-20260403-082857-666666/steps/inspect/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "failed",
+    "reason": "关键步骤失败且无需重规划。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "final answer for failure"
+  },
+  "plan_version": 2,
+  "runtime_id": "rt-20260403-082857-666666"
+}

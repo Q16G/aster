@@ -1,0 +1,60 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-07T17:16:29.367209+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "inspect",
+        "step": "梳理链路",
+        "status": "failed"
+      }
+    ],
+    "plan_version": 2,
+    "runtime_id": "rt-20260407-091629-iiiiii",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "inspect",
+        "status": "failed",
+        "updated_at": "2026-04-07T17:16:29.36946+08:00",
+        "error": "step failed",
+        "references": [
+          "artifacts/steps/2/inspect/outcomes/2",
+          "artifacts/steps/2/inspect/outcomes/2/summary.md",
+          "artifacts/steps/2/inspect/outcomes/2/result.json"
+        ],
+        "status_summary": "失败",
+        "short_summary": "该 step 失败",
+        "long_summary": "该 step 失败。",
+        "key_facts": [
+          "step failed"
+        ],
+        "timeline_diff_summary": "New Facts:\n- error: step failed\n\nArtifact Changes:\n- artifacts/steps/2/inspect/outcomes/2\n- artifacts/steps/2/inspect/outcomes/2/summary.md\n- artifacts/steps/2/inspect/outcomes/2/result.json\n\nReference Changes:\n- artifacts/steps/2/inspect/outcomes/2\n- artifacts/steps/2/inspect/outcomes/2/summary.md\n- artifacts/steps/2/inspect/outcomes/2/result.json",
+        "artifact_dir": "artifacts/steps/2/inspect/outcomes/2",
+        "summary_file": "artifacts/steps/2/inspect/outcomes/2/summary.md",
+        "result_file": "artifacts/steps/2/inspect/outcomes/2/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "failed",
+    "reason": "关键步骤失败且无需重规划。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "final answer for failure"
+  },
+  "message_id": "",
+  "plan_version": 2,
+  "runtime_id": "rt-20260407-091629-iiiiii",
+  "session_id": ""
+}

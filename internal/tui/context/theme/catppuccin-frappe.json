@@ -1,0 +1,18 @@
+{
+  "name": "catppuccin-frappe",
+  "background": "#303446",
+  "backgroundPanel": "#414559",
+  "backgroundElement": "#51576d",
+  "text": "#c6d0f5",
+  "textMuted": "#737994",
+  "border": "#626880",
+  "borderFocus": "#8caaee",
+  "userAccent": "#8caaee",
+  "assistantAccent": "#a6d189",
+  "toolAccent": "#e5c890",
+  "success": "#a6d189",
+  "warning": "#e5c890",
+  "error": "#e78284",
+  "diffAdded": "#a6d189",
+  "diffRemoved": "#e78284"
+}

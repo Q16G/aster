@@ -1,0 +1,22 @@
+{
+  "runtime_id": "rt-20260403-092658-yyyqqq",
+  "updated_at": "2026-04-03T17:26:58.123904+08:00",
+  "plan_version": 2,
+  "plan": [
+    {
+      "id": "inspect",
+      "step": "梳理链路",
+      "status": "failed"
+    }
+  ],
+  "steps": {
+    "inspect": {
+      "step_id": "inspect",
+      "artifact_dir": "artifacts/runtime/rt-20260403-092658-yyyqqq/steps/inspect",
+      "summary_file": "artifacts/runtime/rt-20260403-092658-yyyqqq/steps/inspect/summary.md",
+      "result_file": "artifacts/runtime/rt-20260403-092658-yyyqqq/steps/inspect/result.json"
+    }
+  },
+  "final_answer_file": "artifacts/runtime/rt-20260403-092658-yyyqqq/final/final_answer.md",
+  "final_assessment_file": "artifacts/runtime/rt-20260403-092658-yyyqqq/final/final_assessment.json"
+}

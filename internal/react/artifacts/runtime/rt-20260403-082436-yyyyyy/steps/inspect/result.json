@@ -1,0 +1,35 @@
+{
+  "raw": {
+    "artifact_dir": "artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect",
+    "display_result": "",
+    "error": "step failed",
+    "key_facts": [
+      "step failed"
+    ],
+    "long_summary": "该 step 失败。",
+    "need_replan": false,
+    "open_questions": null,
+    "references": [
+      "artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/summary.md",
+      "artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/result.json",
+      "tool:update_current_step"
+    ],
+    "result": "",
+    "result_file": "artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/result.json",
+    "short_summary": "该 step 失败",
+    "status_summary": "失败",
+    "summary": "",
+    "summary_file": "artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/summary.md",
+    "timeline_diff": "New Facts:\n- error: step failed\n\nTool Result Highlights:\n- update_current_step: {\"artifact_dir\":\"artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect\",\"current_step_id\":\"inspect\",\"need_replan\":false,\"ok\":true,\"result_file\":\"artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/result.json\",\"status\":\"failed\",\"...\n\nArtifact Changes:\n- artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect\n- artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/summary.md\n- artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/result.json\n\nReference Changes:\n- (none)"
+  },
+  "status": "failed",
+  "step": "梳理链路",
+  "step_id": "inspect",
+  "step_window": {
+    "step_id": "inspect",
+    "raw_timeline_diff": "diff --git a/timeline_memory b/timeline_memory\n--- a/timeline_memory\t2026-04-03T08:24:36Z\n+++ b/timeline_memory\t2026-04-03T08:24:36Z\n@@\n+timeline_memory_items:\n+--[2026-04-03T08:24:36.93462Z] key: 66666yyy type: tool_call\n+  Tool Call: update_current_step (ID: call-step-failed)\n+  Description: 写入当前 step 的终态与结果；不会自动把下一步改成 in_progress。\n+  Arguments: {\"error\":\"step failed\",\"need_replan\":false,\"status\":\"failed\"}\n+  Result: \"{\\\"artifact_dir\\\":\\\"artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect\\\",\\\"current_step_id\\\":\\\"inspect\\\",\\\"need_replan\\\":false,\\\"ok\\\":true,\\\"result_file\\\":\\\"artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/result.json\\\",\\\"status\\\":\\\"failed\\\",\\\"step_id\\\":\\\"inspect\\\",\\\"summary_file\\\":\\\"artifacts/runtime/rt-20260403-082436-yyyyyy/steps/inspect/summary.md\\\"}\"",
+    "raw_bytes": 841,
+    "budget_bytes": 16384
+  },
+  "updated_at": "2026-04-03T16:24:36.934713+08:00"
+}

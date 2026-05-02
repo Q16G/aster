@@ -1,0 +1,68 @@
+{
+  "agent_profile": "model-agent",
+  "message_id": "",
+  "outcome_seq": 4,
+  "plan_version": 2,
+  "raw": {
+    "artifact_dir": "artifacts/steps/2/step-1/outcomes/4",
+    "display_result": "large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-",
+    "error": "",
+    "key_facts": [
+      "f1"
+    ],
+    "long_summary": "完成该 step。",
+    "open_questions": null,
+    "references": [
+      "artifacts/steps/2/step-1/outcomes/4",
+      "artifacts/steps/2/step-1/outcomes/4/summary.md",
+      "artifacts/steps/2/step-1/outcomes/4/result.json"
+    ],
+    "result": "large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-",
+    "result_file": "artifacts/steps/2/step-1/outcomes/4/result.json",
+    "short_summary": "完成一步",
+    "status_summary": "完成",
+    "summary": "large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-large-step-result-",
+    "summary_file": "artifacts/steps/2/step-1/outcomes/4/summary.md",
+    "timeline_diff": "窗口已压缩"
+  },
+  "references": [
+    "artifacts/steps/2/step-1/outcomes/4",
+    "artifacts/steps/2/step-1/outcomes/4/summary.md",
+    "artifacts/steps/2/step-1/outcomes/4/result.json"
+  ],
+  "session_id": "",
+  "status": "completed",
+  "step": "执行用户请求",
+  "step_id": "step-1",
+  "step_key": "step-1",
+  "step_window": {
+    "step_id": "step-1",
+    "raw_timeline_diff": "diff --git a\n...(truncated)\n",
+    "raw_approx_tokens": 2866,
+    "budget_tokens": 3,
+    "excerpt_tokens": 3,
+    "reduced": true,
+    "reducer": {
+      "status_summary": "压缩完成",
+      "window_summary": "窗口已压缩",
+      "new_facts": [
+        "f1",
+        "f2"
+      ],
+      "important_changes": [
+        "c1"
+      ],
+      "references": [
+        "artifacts/runtime/r/steps/s/result.json"
+      ],
+      "artifact_changes": [
+        "summary.md"
+      ],
+      "open_questions": null,
+      "noise_removed": [
+        "n1"
+      ]
+    }
+  },
+  "updated_at": "2026-04-07T17:13:50.89696+08:00"
+}

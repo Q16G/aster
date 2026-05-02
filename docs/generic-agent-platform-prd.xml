@@ -1,0 +1,449 @@
+<title>PRD｜通用 Agent 平台</title>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+  <p><b>核心结论：</b>当前项目的目标不是继续堆叠多个定制 Agent，而是建设一个<b>通用 Agent 平台</b>。不同 Agent 应通过声明<b>角色（Role）</b>、<b>背景（Background）</b>、<b>工具挂载（Tools）</b>、<b>技能挂载（Skills）</b>、<b>运行策略（Policies）</b>来组合出不同效果，而不是复制多套运行时。</p>
+  <p><b>MVP 目标：</b>在同一套 ReAct Runtime 上，支持多 Agent 的定义、装配、执行、状态追踪和可扩展治理。</p>
+</callout>
+
+<h1>1. 背景与机会</h1>
+
+<grid>
+  <column width-ratio="0.5">
+    <h2>当前问题</h2>
+    <ul>
+      <li>不同 Agent 的差异主要体现在 prompt、工具和 skills 上，但实现层容易演变成多套平行代码。</li>
+      <li>一旦新增一个 Agent，通常需要复制既有配置和组装逻辑，维护成本快速上升。</li>
+      <li>工具、skills、workspace、状态管理和可观测能力容易散落在各业务 Agent 中，难以统一治理。</li>
+    </ul>
+  </column>
+  <column width-ratio="0.5">
+    <h2>机会判断</h2>
+    <ul>
+      <li>ReAct Runtime、workspace、history compaction、step/summary/final_answer 等能力天然适合平台化。</li>
+      <li>Agent 的差异本质上可收敛为“定义数据 + 装配策略”，而不是不同 runtime。</li>
+      <li>如果平台抽象清晰，后续扩展安全 Agent、研发 Agent、分析 Agent、文档 Agent 的成本会显著下降。</li>
+    </ul>
+  </column>
+</grid>
+
+<hr/>
+
+<h1>2. 产品愿景</h1>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b>愿景：</b>让团队可以像配置产品一样定义 Agent，而不是像开发独立系统一样重新写 Agent。</p>
+</callout>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">维度</th>
+      <th background-color="light-gray">目标描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>统一运行时</td>
+      <td>所有 Agent 共享同一套 ReAct Runtime、状态机、workspace、事件与恢复机制。</td>
+    </tr>
+    <tr>
+      <td>声明式装配</td>
+      <td>Agent 主要通过角色、背景、工具、skills、模型与策略声明完成组装。</td>
+    </tr>
+    <tr>
+      <td>可扩展治理</td>
+      <td>工具、skills、权限、观察日志、版本管理、运行限制等能力统一纳管。</td>
+    </tr>
+    <tr>
+      <td>低成本复制</td>
+      <td>新增 Agent 不再复制 runtime 代码，只新增一份定义和少量域能力。</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>3. 目标用户与核心场景</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">用户角色</th>
+      <th background-color="light-gray">诉求</th>
+      <th background-color="light-gray">典型场景</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>平台开发者</td>
+      <td>维护统一 runtime、工具注册、skills 注册、状态与治理能力。</td>
+      <td>实现 Agent Factory、策略配置、观测与版本升级。</td>
+    </tr>
+    <tr>
+      <td>业务 Agent 开发者</td>
+      <td>快速定义一个新 Agent，不希望重复写底层 runtime。</td>
+      <td>新增安全分析 Agent、项目分析 Agent、文档 Agent、测试 Agent。</td>
+    </tr>
+    <tr>
+      <td>调用方 / 上层编排者</td>
+      <td>按任务动态选择或切换 Agent，并获得统一的输入输出与运行状态。</td>
+      <td>多 Agent 串行/并行编排、handoff、agent-as-tool。</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>4. 产品原则</h1>
+
+<checkbox done="false">Agent 差异优先通过定义表达，不通过复制 runtime 表达。</checkbox>
+<checkbox done="false">工具与 skills 是可插拔资源，不与具体 Agent 强耦合。</checkbox>
+<checkbox done="false">同一套状态机、workspace、恢复和可观测能力适用于所有 Agent。</checkbox>
+<checkbox done="false">平台层只解决通用问题，业务知识尽量下沉到角色定义或 skills。</checkbox>
+<checkbox done="false">新增 Agent 的最小工作量应收敛到“新增定义 + 绑定少量专属能力”。</checkbox>
+
+<hr/>
+
+<h1>5. 核心概念模型</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">概念</th>
+      <th background-color="light-gray">定义</th>
+      <th background-color="light-gray">备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Agent Definition</td>
+      <td>一个 Agent 的声明式定义，包括角色、背景、模型、工具、skills、策略。</td>
+      <td>平台的最小装配单元。</td>
+    </tr>
+    <tr>
+      <td>Role</td>
+      <td>Agent 对外扮演的身份与职责说明。</td>
+      <td>影响指令风格、目标边界与决策口径。</td>
+    </tr>
+    <tr>
+      <td>Background</td>
+      <td>该 Agent 所需要的任务背景、领域知识、上下文提示。</td>
+      <td>可来自静态描述、环境注入或上层任务。</td>
+    </tr>
+    <tr>
+      <td>Tools</td>
+      <td>当前 Agent 可调用的工具集合。</td>
+      <td>支持通用工具与专属工具混挂。</td>
+    </tr>
+    <tr>
+      <td>Skills</td>
+      <td>运行时可注入 prompt 或加载使用的方法论/知识模块。</td>
+      <td>支持内嵌、文件系统、目录、未来远程源。</td>
+    </tr>
+    <tr>
+      <td>Policies</td>
+      <td>运行策略，如最大步数、模型选择、是否允许 bash、输出发布规则。</td>
+      <td>决定 Agent 的行为边界。</td>
+    </tr>
+    <tr>
+      <td>Agent Factory</td>
+      <td>根据定义组装出最终 Agent 实例的工厂。</td>
+      <td>统一完成 runtime 装配。</td>
+    </tr>
+  </tbody>
+</table>
+
+<whiteboard type="mermaid">flowchart LR
+  A[Agent Definition] -- role / background / policies --&gt; B[Agent Factory]
+  C[Tool Registry] -- resolve tools --&gt; B
+  D[Skill Registry] -- resolve skills --&gt; B
+  B -- build --&gt; E[Generic ReAct Runtime]
+  E -- execute --&gt; F[Workspace &amp; State]
+  E -- emit --&gt; G[Events / Logs / Final Answer]
+</whiteboard>
+
+<hr/>
+
+<h1>6. 功能需求</h1>
+
+<h2>6.1 Agent 定义模型</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">字段</th>
+      <th background-color="light-gray">说明</th>
+      <th background-color="light-gray">MVP 要求</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>name</td>
+      <td>Agent 唯一名称</td>
+      <td>必填</td>
+    </tr>
+    <tr>
+      <td>role</td>
+      <td>角色与职责描述</td>
+      <td>必填</td>
+    </tr>
+    <tr>
+      <td>background</td>
+      <td>领域背景与任务上下文</td>
+      <td>必填，可为空字符串但必须有入口</td>
+    </tr>
+    <tr>
+      <td>instruction</td>
+      <td>系统级行为指令</td>
+      <td>必填</td>
+    </tr>
+    <tr>
+      <td>model_id</td>
+      <td>默认模型选择</td>
+      <td>可选</td>
+    </tr>
+    <tr>
+      <td>tool_names</td>
+      <td>需要挂载的工具名列表</td>
+      <td>必填，支持通用工具 + 业务工具</td>
+    </tr>
+    <tr>
+      <td>skill_names</td>
+      <td>默认可用或可注入的 skill 列表</td>
+      <td>可选</td>
+    </tr>
+    <tr>
+      <td>policies</td>
+      <td>最大迭代、权限、是否允许 bash、输出约束等</td>
+      <td>必填</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6.2 Agent Factory 与运行时装配</h2>
+
+<checkbox done="false">根据 Agent Definition 统一创建 `react.Agent`。</checkbox>
+<checkbox done="false">自动挂载通用工具（如状态工具、文件工具、skills 工具）。</checkbox>
+<checkbox done="false">按定义补充业务专属工具。</checkbox>
+<checkbox done="false">按定义构建 SkillsTable 与 InjectedSkillsBuilder。</checkbox>
+<checkbox done="false">支持从外部注入 `WorkspacePath`、`CurrentSharedPath`、session 信息。</checkbox>
+<checkbox done="false">保留后续支持 `agent-as-tool`、handoff、sub-agent 的扩展位。</checkbox>
+
+<h2>6.3 工具与 Skills 管理</h2>
+
+<grid>
+  <column width-ratio="0.5">
+    <h3>Tools</h3>
+    <ul>
+      <li>工具统一通过注册表发现和装配。</li>
+      <li>Agent Definition 只声明工具名，不直接持有工具实现。</li>
+      <li>需要支持全局通用工具与领域工具共存。</li>
+    </ul>
+  </column>
+  <column width-ratio="0.5">
+    <h3>Skills</h3>
+    <ul>
+      <li>Skills 统一通过 SkillService / Skill Registry 管理。</li>
+      <li>支持 embedded skills、目录导入、本地文件系统导入。</li>
+      <li>运行时支持 list/load/delete 等统一能力。</li>
+    </ul>
+  </column>
+</grid>
+
+<h2>6.4 状态、Workspace 与执行闭环</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">能力</th>
+      <th background-color="light-gray">说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>统一状态机</td>
+      <td>所有 Agent 都走 `plan -&gt; step -&gt; step_summary -&gt; final_answer` 的统一闭环。</td>
+    </tr>
+    <tr>
+      <td>Workspace 管理</td>
+      <td>支持 session 级 workspace、artifact 写入、恢复与外部注入路径。</td>
+    </tr>
+    <tr>
+      <td>Resume / Checkpoint</td>
+      <td>支持 durable resume、checkpoint、workspace state 恢复。</td>
+    </tr>
+    <tr>
+      <td>Execution History</td>
+      <td>统一维护输入时间线、step history、依赖 step 摘要和 skills 状态。</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6.5 观测与治理</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">治理能力</th>
+      <th background-color="light-gray">MVP 期望</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>事件发射</td>
+      <td>统一输出状态变化、运行日志、工具调用事件。</td>
+    </tr>
+    <tr>
+      <td>权限控制</td>
+      <td>按 Agent Definition 控制工具可用性与高风险能力暴露。</td>
+    </tr>
+    <tr>
+      <td>版本管理</td>
+      <td>Agent Definition 需要支持版本标识，便于回溯与灰度。</td>
+    </tr>
+    <tr>
+      <td>审计能力</td>
+      <td>保留后续接入运行审计、行为统计、失败分类的空间。</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>7. 推荐定义形态（MVP）</h1>
+
+<pre lang="yaml" caption="示意：一个通用 Agent 定义">
+<code>name: project-analysis
+role: ProjectAnalysisAgent
+background: |
+  你负责理解项目结构、定位入口与给出实现建议。
+instruction: |
+  你是一个严谨的项目分析 Agent，优先使用现有上下文和工具完成定位。
+model_id: gpt-5.2
+tool_names:
+  - list_files
+  - read_file
+  - rg
+  - update_current_step
+  - load_skills
+skill_names:
+  - spring-boot-entry-points
+  - data-flow
+policies:
+  max_iterations: 12
+  allow_bash: false
+  result_source: final_answer
+  enable_history_compaction: true</code>
+</pre>
+
+<callout emoji="📝" background-color="light-yellow" border-color="yellow">
+  <p><b>设计原则：</b>定义文件应尽量表达“差异”，而不是重复平台默认值。平台需要有清晰的默认装配策略，避免每个 Agent 重复写样板字段。</p>
+</callout>
+
+<hr/>
+
+<h1>8. MVP 范围与非目标</h1>
+
+<grid>
+  <column width-ratio="0.5">
+    <h2>MVP 范围</h2>
+    <checkbox done="false">基于统一 runtime 创建多个不同角色的 Agent。</checkbox>
+    <checkbox done="false">支持 Agent Definition 的声明式装配。</checkbox>
+    <checkbox done="false">支持工具注册表与 skills 注册表。</checkbox>
+    <checkbox done="false">支持 workspace、resume、event emitter、skills 注入。</checkbox>
+    <checkbox done="false">至少有 2 到 3 个真实 Agent 通过该机制创建成功。</checkbox>
+  </column>
+  <column width-ratio="0.5">
+    <h2>非目标</h2>
+    <checkbox done="false">不在 MVP 内解决可视化配置后台。</checkbox>
+    <checkbox done="false">不在 MVP 内做数据库化 Agent Marketplace。</checkbox>
+    <checkbox done="false">不在 MVP 内实现完整权限中心或多租户隔离。</checkbox>
+    <checkbox done="false">不要求第一阶段覆盖所有历史 Agent 行为差异。</checkbox>
+  </column>
+</grid>
+
+<hr/>
+
+<h1>9. 里程碑建议</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">阶段</th>
+      <th background-color="light-gray">目标</th>
+      <th background-color="light-gray">交付物</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Phase 1</td>
+      <td>定义统一 Agent Definition 与 Agent Factory</td>
+      <td>定义结构、默认装配逻辑、最小 demo</td>
+    </tr>
+    <tr>
+      <td>Phase 2</td>
+      <td>接通工具注册表、skills 注册表和 runtime 主链</td>
+      <td>至少两个不同 Agent 可运行</td>
+    </tr>
+    <tr>
+      <td>Phase 3</td>
+      <td>补充治理与观测能力</td>
+      <td>事件、日志、权限与版本能力</td>
+    </tr>
+    <tr>
+      <td>Phase 4</td>
+      <td>迁移历史业务 Agent</td>
+      <td>历史 Agent 通过新平台重建并对齐行为</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>10. 验收标准</h1>
+
+<checkbox done="false">新增一个 Agent 时，无需复制 runtime 主流程代码。</checkbox>
+<checkbox done="false">同一套 runtime 能装配出至少“分析型 Agent”和“执行型 Agent”两种不同效果。</checkbox>
+<checkbox done="false">Agent 的角色、背景、工具、skills 和策略均可通过定义层表达。</checkbox>
+<checkbox done="false">workspace、step、summary、final_answer、resume 等能力对所有 Agent 一致可用。</checkbox>
+<checkbox done="false">工具和 skills 的新增不要求修改每个 Agent 的内部实现，只需注册和声明挂载。</checkbox>
+
+<hr/>
+
+<h1>11. 风险与待确认项</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">问题</th>
+      <th background-color="light-gray">风险</th>
+      <th background-color="light-gray">建议</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>定义层过重</td>
+      <td>配置文件写满平台细节，导致“声明式”名存实亡。</td>
+      <td>明确平台默认值，只让定义层描述差异。</td>
+    </tr>
+    <tr>
+      <td>业务 Agent 差异太大</td>
+      <td>部分 Agent 可能仍然需要专属调度逻辑。</td>
+      <td>允许有限扩展点，但禁止直接分叉 runtime 主链。</td>
+    </tr>
+    <tr>
+      <td>工具权限不可控</td>
+      <td>高风险工具误挂到不该使用的 Agent 上。</td>
+      <td>在定义层加入工具白名单和策略控制。</td>
+    </tr>
+    <tr>
+      <td>skills 质量不一致</td>
+      <td>不同 skills 注入后效果不稳定。</td>
+      <td>补充技能元数据规范、验证和版本治理。</td>
+    </tr>
+  </tbody>
+</table>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+  <p><b>建议下一步：</b>在 PRD 确认后，立即补一份“Agent Definition Schema + Agent Factory 技术设计”，把产品目标直接翻译成可实现的数据结构和装配接口。</p>
+</callout>

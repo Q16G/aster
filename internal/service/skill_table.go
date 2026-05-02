@@ -1,0 +1,195 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+type SkillIndexRow struct {
+	Name        string
+	Description string
+	WhenToUse   string
+	Context     string
+	Status      string
+}
+
+func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName string, activeSkillNames []string) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("skill service is nil")
+	}
+	agentName = strings.TrimSpace(agentName)
+	if agentName == "" {
+		return "", fmt.Errorf("agent name is required")
+	}
+	activeSet := make(map[string]struct{}, len(activeSkillNames))
+	for _, raw := range activeSkillNames {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		activeSet[name] = struct{}{}
+	}
+
+	enabled := true
+	skills, err := s.ListSkills(ctx, &SkillFilter{Enabled: &enabled})
+	if err != nil {
+		return "", err
+	}
+
+	rows := make([]SkillIndexRow, 0, len(skills))
+	for _, item := range skills {
+		if item == nil {
+			continue
+		}
+		skillAgent := firstNonEmpty(strings.TrimSpace(item.Agent), "all")
+		if !skillVisibleToAgent(skillAgent, agentName) {
+			continue
+		}
+
+		rows = append(rows, SkillIndexRow{
+			Name:        strings.TrimSpace(item.Name),
+			Description: strings.TrimSpace(item.Description),
+			WhenToUse:   strings.TrimSpace(item.WhenToUse),
+			Context:     firstNonEmpty(strings.TrimSpace(item.Context), "inline"),
+			Status:      skillStatus(strings.TrimSpace(item.Name), activeSet),
+		})
+	}
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].Name < rows[j].Name
+	})
+
+	return formatSkillsTable(rows), nil
+}
+
+func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, names []string) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("skill service is nil")
+	}
+	normalized := normalizeSkillNamesForTable(names)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	skills, err := s.LoadSkills(ctx, normalized)
+	if err != nil {
+		return "", err
+	}
+	sections := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		if skill == nil {
+			continue
+		}
+		name := strings.TrimSpace(skill.Name)
+		if name == "" {
+			continue
+		}
+		desc := strings.TrimSpace(skill.Description)
+		if desc == "" {
+			desc = "-"
+		}
+		version := strings.TrimSpace(skill.Version)
+		if version == "" {
+			version = "-"
+		}
+		sections = append(sections, strings.TrimSpace(fmt.Sprintf(
+			"#### %s\n- description: %s\n- version: %s\n\n%s",
+			name,
+			desc,
+			version,
+			strings.TrimSpace(skill.Instructions),
+		)))
+	}
+	return strings.TrimSpace(strings.Join(sections, "\n\n")), nil
+}
+
+func skillVisibleToAgent(skillAgent string, agentName string) bool {
+	skillAgent = strings.TrimSpace(skillAgent)
+	agentName = strings.TrimSpace(agentName)
+	if agentName == "" {
+		return false
+	}
+	switch strings.ToLower(agentName) {
+	case "all", "*":
+		return true
+	}
+	switch strings.ToLower(skillAgent) {
+	case "all", "*":
+		return true
+	default:
+		return strings.EqualFold(skillAgent, agentName)
+	}
+}
+
+func formatSkillsTable(rows []SkillIndexRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(rows)+2)
+	lines = append(lines, "| name | description | when-to-use | context | status |")
+	lines = append(lines, "| --- | --- | --- | --- | --- |")
+	for _, row := range rows {
+		name := sanitizeTableCell(row.Name)
+		desc := sanitizeTableCell(row.Description)
+		if desc == "" {
+			desc = "-"
+		}
+		whenToUse := sanitizeTableCell(row.WhenToUse)
+		if whenToUse == "" {
+			whenToUse = "-"
+		}
+		ctx := sanitizeTableCell(row.Context)
+		if ctx == "" {
+			ctx = "inline"
+		}
+		status := sanitizeTableCell(row.Status)
+		if status == "" {
+			status = "available"
+		}
+		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s |", name, desc, whenToUse, ctx, status))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func skillStatus(name string, activeSet map[string]struct{}) string {
+	if _, exists := activeSet[name]; exists {
+		return "loaded"
+	}
+	return "available"
+}
+
+func normalizeSkillNamesForTable(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(names))
+	out := make([]string, 0, len(names))
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sanitizeTableCell(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "|", "\\|")
+	s = strings.Join(strings.Fields(s), " ")
+	return s
+}

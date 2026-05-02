@@ -1,0 +1,35 @@
+{
+  "current_goal": "hello",
+  "current_step_id": "step-1",
+  "explanation": "",
+  "input_timeline": [
+    {
+      "content": "hello",
+      "created_at": "2026-04-07T17:16:29.384582+08:00"
+    }
+  ],
+  "latest_final_seq": 0,
+  "message_id": "",
+  "plan": [
+    {
+      "id": "step-1",
+      "step": "第一步",
+      "status": "pending"
+    },
+    {
+      "id": "step-2",
+      "step": "第二步",
+      "status": "pending",
+      "depends_on": [
+        "step-1"
+      ]
+    }
+  ],
+  "plan_version": 1,
+  "session_id": "",
+  "status": "running",
+  "status_summary": "",
+  "unresolved": null,
+  "updated_at": "2026-04-07T17:16:29.384686+08:00",
+  "warnings": null
+}

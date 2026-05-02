@@ -1,0 +1,14 @@
+{
+  "runtime_id": "rt-20260405-081356-uuuuuu",
+  "updated_at": "2026-04-05T16:13:56.69476+08:00",
+  "plan_version": 1,
+  "plan": [
+    {
+      "id": "auto-1",
+      "step": "first-input",
+      "status": "pending"
+    }
+  ],
+  "final_answer_file": "artifacts/runtime/rt-20260405-081356-uuuuuu/final/final_answer.md",
+  "final_assessment_file": "artifacts/runtime/rt-20260405-081356-uuuuuu/final/final_assessment.json"
+}

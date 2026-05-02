@@ -1,0 +1,4 @@
+.idea/
+*.md
+!README.md
+.ace-tool/

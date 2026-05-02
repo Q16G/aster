@@ -1,0 +1,93 @@
+{
+  "assessed_state": {
+    "input_timeline": [
+      {
+        "content": "hello",
+        "created_at": "2026-04-07T17:13:50.902864+08:00"
+      }
+    ],
+    "plan": [
+      {
+        "id": "step-1",
+        "step": "第一步",
+        "status": "completed"
+      },
+      {
+        "id": "step-2",
+        "step": "第二步",
+        "status": "completed",
+        "depends_on": [
+          "step-1"
+        ]
+      }
+    ],
+    "plan_version": 3,
+    "runtime_id": "rt-20260407-091350-mmeeee",
+    "state_error": "",
+    "status": "running",
+    "step_outcomes": [
+      {
+        "step_id": "step-1",
+        "status": "completed",
+        "updated_at": "2026-04-07T17:13:50.903757+08:00",
+        "summary": "ok1",
+        "display_result": "step1 ok",
+        "result": "step1 ok",
+        "references": [
+          "artifacts/steps/2/step-1/outcomes/6",
+          "artifacts/steps/2/step-1/outcomes/6/summary.md",
+          "artifacts/steps/2/step-1/outcomes/6/result.json"
+        ],
+        "status_summary": "完成",
+        "short_summary": "完成一步",
+        "long_summary": "完成该 step。",
+        "key_facts": [
+          "f1"
+        ],
+        "timeline_diff_summary": "New Facts:\n- summary: ok1\n- display_result: step1 ok\n- result: step1 ok\n\nArtifact Changes:\n- artifacts/steps/2/step-1/outcomes/6\n- artifacts/steps/2/step-1/outcomes/6/summary.md\n- artifacts/steps/2/step-1/outcomes/6/result.json\n\nReference Changes:\n- artifacts/steps/2/step-1/outcomes/6\n- artifacts/steps/2/step-1/outcomes/6/summary.md\n- artifacts/steps/2/step-1/outcomes/6/result.json",
+        "artifact_dir": "artifacts/steps/2/step-1/outcomes/6",
+        "summary_file": "artifacts/steps/2/step-1/outcomes/6/summary.md",
+        "result_file": "artifacts/steps/2/step-1/outcomes/6/result.json"
+      },
+      {
+        "step_id": "step-2",
+        "status": "completed",
+        "updated_at": "2026-04-07T17:13:50.90495+08:00",
+        "summary": "ok2",
+        "display_result": "step2 ok",
+        "result": "step2 ok",
+        "references": [
+          "artifacts/steps/3/step-2/outcomes/1",
+          "artifacts/steps/3/step-2/outcomes/1/summary.md",
+          "artifacts/steps/3/step-2/outcomes/1/result.json"
+        ],
+        "status_summary": "完成",
+        "short_summary": "完成第二步",
+        "long_summary": "完成第二个 step。",
+        "key_facts": [
+          "f2"
+        ],
+        "timeline_diff_summary": "New Facts:\n- summary: ok2\n- display_result: step2 ok\n- result: step2 ok\n\nArtifact Changes:\n- artifacts/steps/3/step-2/outcomes/1\n- artifacts/steps/3/step-2/outcomes/1/summary.md\n- artifacts/steps/3/step-2/outcomes/1/result.json\n\nReference Changes:\n- artifacts/steps/3/step-2/outcomes/1\n- artifacts/steps/3/step-2/outcomes/1/summary.md\n- artifacts/steps/3/step-2/outcomes/1/result.json",
+        "artifact_dir": "artifacts/steps/3/step-2/outcomes/1",
+        "summary_file": "artifacts/steps/3/step-2/outcomes/1/summary.md",
+        "result_file": "artifacts/steps/3/step-2/outcomes/1/result.json"
+      }
+    ],
+    "unresolved": null,
+    "warnings": null
+  },
+  "assessment": {
+    "is_complete": true,
+    "status": "completed",
+    "reason": "已完成并可交付。",
+    "should_replan": false,
+    "next_goal": "",
+    "missing_items": [],
+    "warnings": [],
+    "user_message": "two-steps-done"
+  },
+  "message_id": "",
+  "plan_version": 3,
+  "runtime_id": "rt-20260407-091350-mmeeee",
+  "session_id": ""
+}

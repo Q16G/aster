@@ -1,0 +1,18 @@
+{
+  "name": "github-dark",
+  "background": "#0d1117",
+  "backgroundPanel": "#161b22",
+  "backgroundElement": "#21262d",
+  "text": "#c9d1d9",
+  "textMuted": "#8b949e",
+  "border": "#30363d",
+  "borderFocus": "#58a6ff",
+  "userAccent": "#58a6ff",
+  "assistantAccent": "#3fb950",
+  "toolAccent": "#d29922",
+  "success": "#3fb950",
+  "warning": "#d29922",
+  "error": "#f85149",
+  "diffAdded": "#3fb950",
+  "diffRemoved": "#f85149"
+}
