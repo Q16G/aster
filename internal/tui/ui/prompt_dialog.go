@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -16,13 +17,15 @@ type PromptResultMsg struct {
 }
 
 type PromptDialog struct {
-	id          string
-	title       string
-	question    string
-	options     []string
-	input       textarea.Model
-	width       int
-	height      int
+	id             string
+	title          string
+	question       string
+	options        []string
+	input          textarea.Model
+	singleLine     textinput.Model
+	masked         bool
+	width          int
+	height         int
 }
 
 func NewPromptDialog(id, title, question string) *PromptDialog {
@@ -44,13 +47,36 @@ func (p *PromptDialog) WithOptions(opts []string) *PromptDialog {
 	return p
 }
 
+func (p *PromptDialog) WithMasked() *PromptDialog {
+	ti := textinput.New()
+	ti.EchoMode = textinput.EchoPassword
+	ti.Focus()
+	p.singleLine = ti
+	p.masked = true
+	return p
+}
+
+func (p *PromptDialog) WithPlaceholder(s string) *PromptDialog {
+	if p.masked {
+		p.singleLine.Placeholder = s
+	} else {
+		p.input.Placeholder = s
+	}
+	return p
+}
+
 func (p *PromptDialog) ID() string { return p.id }
 
 func (p *PromptDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
-			value := strings.TrimSpace(p.input.Value())
+			var value string
+			if p.masked {
+				value = strings.TrimSpace(p.singleLine.Value())
+			} else {
+				value = strings.TrimSpace(p.input.Value())
+			}
 			if value == "" {
 				return p, nil
 			}
@@ -65,7 +91,11 @@ func (p *PromptDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	p.input, cmd = p.input.Update(msg)
+	if p.masked {
+		p.singleLine, cmd = p.singleLine.Update(msg)
+	} else {
+		p.input, cmd = p.input.Update(msg)
+	}
 	return p, cmd
 }
 
@@ -92,7 +122,11 @@ func (p *PromptDialog) View() string {
 	}
 
 	sb.WriteString("\n\n")
-	sb.WriteString(p.input.View())
+	if p.masked {
+		sb.WriteString(p.singleLine.View())
+	} else {
+		sb.WriteString(p.input.View())
+	}
 	sb.WriteString("\n\n")
 	sb.WriteString(hintStyle.Render("Enter to submit • Esc to cancel"))
 
@@ -109,5 +143,10 @@ func (p *PromptDialog) View() string {
 func (p *PromptDialog) SetSize(w, h int) {
 	p.width = w
 	p.height = h
-	p.input.SetWidth(min(w-10, 54))
+	inputWidth := min(w-10, 54)
+	if p.masked {
+		p.singleLine.Width = inputWidth
+	} else {
+		p.input.SetWidth(inputWidth)
+	}
 }

@@ -52,16 +52,8 @@ func (m Model) renderHomeView(width, height int) string {
 }
 
 func (m Model) currentProviderName() string {
-	if m.appCfg == nil || m.providerCfg == nil {
+	if m.providerCfg == nil {
 		return ""
 	}
-	for name, provider := range m.appCfg.Providers {
-		if provider == nil {
-			continue
-		}
-		if strings.TrimSpace(provider.BaseURL) == strings.TrimSpace(m.providerCfg.BaseURL) {
-			return name
-		}
-	}
-	return ""
+	return m.providerCfg.Name
 }

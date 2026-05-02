@@ -24,6 +24,7 @@ type AppConfig struct {
 }
 
 type ProviderState struct {
+	Name    string
 	BaseURL string
 	APIKey  string
 	ModelID string
@@ -47,6 +48,120 @@ func DefaultConfigPath() string {
 	return filepath.Join(DefaultAppDir(), "config.yaml")
 }
 
+func EnsureAppDefaults() error {
+	appDir := DefaultAppDir()
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		return fmt.Errorf("create app dir: %w", err)
+	}
+
+	configPath := filepath.Join(appDir, "config.yaml")
+	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(configPath, []byte(defaultConfigYAML), 0o644); err != nil {
+			return fmt.Errorf("write default config: %w", err)
+		}
+	}
+
+	agentsDir := filepath.Join(appDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		return fmt.Errorf("create agents dir: %w", err)
+	}
+	for name, content := range defaultAgentFiles {
+		agentPath := filepath.Join(agentsDir, name)
+		if _, err := os.Stat(agentPath); errors.Is(err, os.ErrNotExist) {
+			if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
+				return fmt.Errorf("write agent %s: %w", name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+var defaultConfigYAML = `# ASTER Configuration
+# https://github.com/... (项目文档)
+
+# 默认 AI provider
+default_provider: openai
+
+# Provider 配置
+# API Key 支持直接填写或引用环境变量: ${ENV_VAR}
+# 也可以在 TUI 中通过 /provider 命令在线配置
+providers:
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    default_model: gpt-4o
+
+  # anthropic:
+  #   base_url: https://api.anthropic.com/v1
+  #   api_key: ${ANTHROPIC_API_KEY}
+  #   default_model: claude-sonnet-4-20250514
+
+  # deepseek:
+  #   base_url: https://api.deepseek.com/v1
+  #   api_key: ${DEEPSEEK_API_KEY}
+  #   default_model: deepseek-chat
+
+  # ollama:
+  #   base_url: http://localhost:11434/v1
+  #   default_model: qwen2.5:latest
+
+# MCP 服务器配置
+# mcp_servers:
+#   example-server:
+#     type: stdio
+#     command: my-mcp-server
+#     args: ["--mode", "production"]
+#     resident: false
+#
+#   remote-server:
+#     type: streamable-http
+#     url: https://mcp.example.com/api
+#     headers:
+#       Authorization: "Bearer ${MCP_TOKEN}"
+`
+
+var defaultAgentFiles = map[string]string{
+	"example.yaml": `# 自定义 Agent 示例
+# 将此文件放在 ~/.aster/agents/ 目录下，启动时自动加载
+# 文件名（不含扩展名）即为 agent 名称，也可用 name 字段覆盖
+
+name: example
+role: 通用 AI 助手
+background: |
+  你是一个通用的 AI 编程助手，能够帮助用户完成代码编写、
+  调试、重构和技术问题解答等任务。
+instruction: |
+  请用中文回答用户问题。优先给出简洁的解决方案，
+  必要时提供详细解释。
+
+# 可选：指定模型（覆盖 provider 默认模型）
+# model_id: gpt-4o
+
+# 可选：指定可用工具
+# tool_names:
+#   - list_files
+#   - read_file
+#   - rg
+
+# 可选：指定可用技能
+# skill_names:
+#   - semgrep-scan
+
+# 可选：运行策略
+# policies:
+#   max_iterations: 1000
+#   allow_bash: true
+#   enable_history_compaction: true
+
+# 可选：为此 agent 专属的 MCP 服务器
+# mcp_servers:
+#   - name: my-tool
+#     type: stdio
+#     command: my-tool-server
+`,
+}
+
 func LoadConfig(path string) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -66,20 +181,60 @@ func LoadConfig(path string) (*AppConfig, error) {
 	return &cfg, nil
 }
 
-func (c *AppConfig) ResolveProvider(cliProvider, cliModel, cliBaseURL, cliAPIKey string) (baseURL, apiKey, model string) {
-	providerName := firstNonEmpty(cliProvider, os.Getenv("ASTER_PROVIDER"), c.DefaultProvider, "openai")
+func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		return fmt.Errorf("load existing config: %w", err)
+	}
+	if cfg == nil {
+		cfg = &AppConfig{}
+	}
+	updateFn(cfg)
+
+	cleanCfg := *cfg
+	if len(cfg.Providers) > 0 {
+		cleanCfg.Providers = make(map[string]*ProviderConfig, len(cfg.Providers))
+		for k, v := range cfg.Providers {
+			cp := *v
+			cleanCfg.Providers[k] = &cp
+		}
+	}
+
+	data, err := yaml.Marshal(&cleanCfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func (c *AppConfig) ResolveProvider(cliProvider, cliModel, cliBaseURL, cliAPIKey string) (providerName, baseURL, apiKey, model string) {
+	providerName = firstNonEmpty(cliProvider, os.Getenv("ASTER_PROVIDER"), c.DefaultProvider, "openai")
 
 	var p *ProviderConfig
 	if c.Providers != nil {
 		p = c.Providers[providerName]
 	}
+
+	var bpBaseURL, bpAPIKey, bpDefaultModel string
+	if bp, ok := GetBuiltinProvider(providerName); ok {
+		bpBaseURL = bp.BaseURL
+		bpDefaultModel = bp.DefaultModel
+		bpAPIKey = resolveAPIKey(bp, "")
+		if p != nil {
+			bpAPIKey = resolveAPIKey(bp, p.APIKey)
+		}
+	}
+
 	if p == nil {
 		p = &ProviderConfig{}
 	}
 
-	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), p.BaseURL, "https://api.openai.com/v1")
-	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), p.APIKey)
-	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, "gpt-4o")
+	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), p.BaseURL, bpBaseURL, "https://api.openai.com/v1")
+	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, p.APIKey)
+	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, bpDefaultModel, "gpt-4o")
 	return
 }
 

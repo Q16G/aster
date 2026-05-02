@@ -30,6 +30,10 @@ const (
 	FocusChat
 )
 
+type pendingProviderSetup struct {
+	ProviderID string
+}
+
 type Model struct {
 	width  int
 	height int
@@ -44,10 +48,11 @@ type Model struct {
 	statusText      string
 	profileRegistry *ProfileRegistry
 
-	skillService *service.SkillService
-	mcpManager   *mcp.Manager
-	appCfg       *AppConfig
-	providerCfg  *ProviderState
+	skillService    *service.SkillService
+	mcpManager      *mcp.Manager
+	appCfg          *AppConfig
+	providerCfg     *ProviderState
+	pendingProvider *pendingProviderSetup
 
 	currentSessionID string
 	sessionMeta      SessionMeta
@@ -346,6 +351,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tuiui.PromptResultMsg:
 		m.dialogStack.Pop()
+		if strings.HasPrefix(msg.DialogID, "provider-") {
+			return m.handleProviderPromptResult(msg)
+		}
 		if m.humanBridge != nil {
 			if msg.Cancelled {
 				m.humanBridge.Cancel(msg.DialogID)
@@ -390,6 +398,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessionMeta.Theme = m.themeProvider.Get().Name
 				m.persistSessionMeta()
 				m.statusText = fmt.Sprintf("theme: %s", m.themeProvider.Get().Name)
+			}
+		case "skill-select":
+			if msg.Value != "" {
+				active := stringsContains(m.sessionMeta.ActiveSkillNames, msg.Value)
+				m.toggleSessionSkill(msg.Value, !active)
+				return m.openSkillSelector()
+			}
+		case "mcp-select":
+			if msg.Value != "" {
+				active := stringsContains(m.sessionMeta.ActiveMCPServers, msg.Value)
+				m.toggleSessionMCP(msg.Value, !active)
+				return m.openMCPSelector()
+			}
+		case "provider-select":
+			if msg.Value != "" {
+				if bp, ok := GetBuiltinProvider(msg.Value); ok {
+					cfgP := m.appCfg.Providers[msg.Value]
+					apiKey := resolveAPIKey(bp, "")
+					if cfgP != nil {
+						apiKey = resolveAPIKey(bp, cfgP.APIKey)
+					}
+					if apiKey == "" && bp.APIKeyEnvVar != "" {
+						m.pendingProvider = &pendingProviderSetup{ProviderID: msg.Value}
+						prompt := tuiui.NewPromptDialog(
+							"provider-apikey:"+msg.Value,
+							fmt.Sprintf("Configure %s", bp.Name),
+							fmt.Sprintf("Enter your %s API key:", bp.Name),
+						).WithMasked().WithPlaceholder("sk-...")
+						m.dialogStack.Push(prompt, nil)
+						m.dialogStack.SetSize(m.width, m.height)
+						return m, nil
+					}
+				}
+				return m, func() tea.Msg { return ProviderSwitchMsg{Name: msg.Value} }
 			}
 		}
 		return m, nil
@@ -436,6 +478,88 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateSessionAgent(msg.Definition.Name)
 		}
 		return m, m.input.Focus()
+
+	case ProviderSwitchMsg:
+		if m.appCfg == nil || m.providerCfg == nil {
+			return m, nil
+		}
+
+		var baseURL, apiKey, model string
+
+		if bp, ok := GetBuiltinProvider(msg.Name); ok {
+			cfgP := m.appCfg.Providers[msg.Name]
+			apiKey = resolveAPIKey(bp, "")
+			if cfgP != nil {
+				apiKey = resolveAPIKey(bp, cfgP.APIKey)
+			}
+			if apiKey == "" && bp.APIKeyEnvVar != "" {
+				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)})
+				return m, nil
+			}
+			baseURL = bp.BaseURL
+			model = bp.DefaultModel
+			if cfgP != nil {
+				if cfgP.BaseURL != "" {
+					baseURL = cfgP.BaseURL
+				}
+				if cfgP.DefaultModel != "" {
+					model = cfgP.DefaultModel
+				}
+			}
+		} else if p, ok := m.appCfg.Providers[msg.Name]; ok {
+			baseURL = p.BaseURL
+			apiKey = p.APIKey
+			model = p.DefaultModel
+		} else {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown provider: " + msg.Name})
+			return m, nil
+		}
+
+		m.providerCfg.Name = msg.Name
+		m.providerCfg.BaseURL = baseURL
+		m.providerCfg.APIKey = apiKey
+		m.providerCfg.ModelID = model
+
+		if m.agentCtx != nil {
+			m.agentCtx.Definition.ModelID = model
+			if m.agentCtx.RebuildClient != nil {
+				m.agentCtx.RebuildClient(baseURL, apiKey, model)
+			}
+		}
+
+		m.appCfg.DefaultProvider = msg.Name
+		if err := SaveConfig(DefaultConfigPath(), func(cfg *AppConfig) {
+			cfg.DefaultProvider = msg.Name
+			if cfg.Providers == nil {
+				cfg.Providers = make(map[string]*ProviderConfig)
+			}
+			if _, exists := cfg.Providers[msg.Name]; !exists {
+				if bp, ok := GetBuiltinProvider(msg.Name); ok {
+					cfg.Providers[msg.Name] = &ProviderConfig{
+						BaseURL:      bp.BaseURL,
+						APIKey:       fmt.Sprintf("${%s}", bp.APIKeyEnvVar),
+						DefaultModel: bp.DefaultModel,
+					}
+				}
+			}
+		}); err != nil {
+			m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("provider switched but config save failed: %v", err)})
+		}
+
+		if m.appCfg.Providers == nil {
+			m.appCfg.Providers = make(map[string]*ProviderConfig)
+		}
+		if _, exists := m.appCfg.Providers[msg.Name]; !exists {
+			m.appCfg.Providers[msg.Name] = &ProviderConfig{
+				BaseURL:      baseURL,
+				DefaultModel: model,
+			}
+		}
+
+		m.rememberRecentModel(model)
+		m.persistSessionMeta()
+		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, model)
+		return m, nil
 
 	case StatusTextMsg:
 		m.statusText = msg.Text

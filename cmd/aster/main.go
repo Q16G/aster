@@ -47,6 +47,10 @@ func main() {
 func runTUI(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
+	if err := tui.EnsureAppDefaults(); err != nil {
+		return fmt.Errorf("init defaults: %w", err)
+	}
+
 	appCfg, err := tui.LoadConfig(tui.DefaultConfigPath())
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -75,7 +79,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	bootstrapEmitter := react.NewEmitter("bootstrap", "bootstrap", bridge.EmitterFunc())
 
 	providerCfg := &tui.ProviderState{}
-	providerCfg.BaseURL, providerCfg.APIKey, providerCfg.ModelID = appCfg.ResolveProvider(flagProvider, flagModel, flagBaseURL, flagAPIKey)
+	providerCfg.Name, providerCfg.BaseURL, providerCfg.APIKey, providerCfg.ModelID = appCfg.ResolveProvider(flagProvider, flagModel, flagBaseURL, flagAPIKey)
 
 	aiClient := openai.NewClient(
 		openai.WithURL(providerCfg.BaseURL),
@@ -153,6 +157,29 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Definition:  defaultDef,
 		MCPManager:  mcpManager,
 		ProjectRoot: projectRoot,
+		RebuildClient: func(baseURL, apiKey, model string) {
+			newClient := openai.NewClient(
+				openai.WithURL(baseURL),
+				openai.WithURLAutoComplete(true),
+				openai.WithAPIKey(apiKey),
+				openai.WithModel(model),
+				openai.WithStream(true),
+			)
+			newFactory := ai.NewSimpleClientFactory(newClient, func(mid string) ai.ChatClient {
+				if mid == "" {
+					mid = model
+				}
+				return openai.NewClient(
+					openai.WithURL(baseURL),
+					openai.WithURLAutoComplete(true),
+					openai.WithAPIKey(apiKey),
+					openai.WithModel(mid),
+					openai.WithStream(true),
+				)
+			})
+			factory.UpdateDefaultClient(newClient)
+			factory.UpdateClientFactory(newFactory)
+		},
 	}
 
 	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, appCfg, providerCfg, syncStore)
