@@ -137,35 +137,156 @@ func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
 	}
 
 	if len(args) == 0 {
-		var sb strings.Builder
-		sb.WriteString("Providers:\n")
-		for name, p := range m.appCfg.Providers {
-			marker := "  "
-			if m.providerCfg.BaseURL == p.BaseURL {
-				marker = "* "
-			}
-			sb.WriteString(fmt.Sprintf("%s%s  (model: %s)\n", marker, name, p.DefaultModel))
-		}
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
-		return m, nil
+		return m.openProviderSelector()
 	}
 
 	name := args[0]
-	p, ok := m.appCfg.Providers[name]
-	if !ok {
+	_, isBuiltin := GetBuiltinProvider(name)
+	_, inConfig := m.appCfg.Providers[name]
+	if !isBuiltin && !inConfig {
 		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown provider: " + name})
 		return m, nil
 	}
+	return m, func() tea.Msg { return ProviderSwitchMsg{Name: name} }
+}
 
-	m.providerCfg.BaseURL = p.BaseURL
-	m.providerCfg.APIKey = p.APIKey
-	m.providerCfg.ModelID = p.DefaultModel
-	if m.agentCtx != nil {
-		m.agentCtx.Definition.ModelID = p.DefaultModel
+func (m *Model) openProviderSelector() (tea.Model, tea.Cmd) {
+	if m.providerCfg == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		return m, nil
 	}
-	m.rememberRecentModel(p.DefaultModel)
-	m.persistSessionMeta()
-	m.statusText = fmt.Sprintf("provider: %s (model: %s)", name, p.DefaultModel)
+
+	isCurrent := func(id string) bool {
+		return m.providerCfg.Name == id
+	}
+
+	seen := make(map[string]bool)
+	options := make([]tuiui.SelectOption, 0, len(builtinProviders)+4)
+
+	for _, bp := range builtinProviders {
+		seen[bp.ID] = true
+		cfgProvider := m.appCfg.Providers[bp.ID]
+		apiKey := resolveAPIKey(bp, "")
+		if cfgProvider != nil {
+			apiKey = resolveAPIKey(bp, cfgProvider.APIKey)
+		}
+
+		configured := apiKey != "" || bp.APIKeyEnvVar == ""
+		icon := "○"
+		if configured {
+			icon = "✓"
+		}
+
+		desc := bp.DefaultModel
+		if cfgProvider != nil && cfgProvider.DefaultModel != "" {
+			desc = cfgProvider.DefaultModel
+		}
+		if isCurrent(bp.ID) {
+			desc += " (current)"
+		}
+		if !configured && bp.APIKeyEnvVar != "" {
+			desc += fmt.Sprintf("  [set %s]", bp.APIKeyEnvVar)
+		}
+
+		options = append(options, tuiui.SelectOption{
+			Label:       icon + " " + bp.Name,
+			Value:       bp.ID,
+			Description: desc,
+		})
+	}
+
+	if m.appCfg != nil {
+		for name, p := range m.appCfg.Providers {
+			if seen[name] {
+				continue
+			}
+			icon := "✓"
+			if p.APIKey == "" && p.BaseURL == "" {
+				icon = "○"
+			}
+			desc := p.DefaultModel
+			if isCurrent(name) {
+				desc += " (current)"
+			}
+			options = append(options, tuiui.SelectOption{
+				Label:       icon + " " + name,
+				Value:       name,
+				Description: desc,
+			})
+		}
+	}
+
+	dialog := tuiui.NewSelectDialog("provider-select", "Select Provider", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	return m, nil
+}
+
+func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model, tea.Cmd) {
+	if msg.Cancelled {
+		m.pendingProvider = nil
+		return m, nil
+	}
+
+	switch {
+	case strings.HasPrefix(msg.DialogID, "provider-apikey:"):
+		providerID := strings.TrimPrefix(msg.DialogID, "provider-apikey:")
+		apiKey := strings.TrimSpace(msg.Value)
+		if apiKey == "" {
+			m.pendingProvider = nil
+			return m, nil
+		}
+
+		if err := SaveConfig(DefaultConfigPath(), func(cfg *AppConfig) {
+			if cfg.Providers == nil {
+				cfg.Providers = make(map[string]*ProviderConfig)
+			}
+			p := cfg.Providers[providerID]
+			if p == nil {
+				p = &ProviderConfig{}
+				cfg.Providers[providerID] = p
+			}
+			p.APIKey = apiKey
+			if bp, ok := GetBuiltinProvider(providerID); ok {
+				if p.BaseURL == "" {
+					p.BaseURL = bp.BaseURL
+				}
+				if p.DefaultModel == "" {
+					p.DefaultModel = bp.DefaultModel
+				}
+			}
+		}); err != nil {
+			m.chat.AddMessage(ChatMessage{
+				Role:    "system",
+				Content: fmt.Sprintf("failed to save API key: %v", err),
+			})
+			m.pendingProvider = nil
+			return m, nil
+		}
+
+		if m.appCfg.Providers == nil {
+			m.appCfg.Providers = make(map[string]*ProviderConfig)
+		}
+		p := m.appCfg.Providers[providerID]
+		if p == nil {
+			p = &ProviderConfig{}
+			m.appCfg.Providers[providerID] = p
+		}
+		p.APIKey = apiKey
+		if bp, ok := GetBuiltinProvider(providerID); ok {
+			if p.BaseURL == "" {
+				p.BaseURL = bp.BaseURL
+			}
+			if p.DefaultModel == "" {
+				p.DefaultModel = bp.DefaultModel
+			}
+		}
+
+		m.pendingProvider = nil
+		return m, func() tea.Msg { return ProviderSwitchMsg{Name: providerID} }
+	}
+
+	m.pendingProvider = nil
 	return m, nil
 }
 
@@ -204,12 +325,12 @@ func fetchModelsCmd(baseURL, apiKey string) tea.Cmd {
 
 func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 	if len(args) == 0 {
-		return m.skillList()
+		return m.openSkillSelector()
 	}
 
 	switch args[0] {
 	case "list":
-		return m.skillList()
+		return m.openSkillSelector()
 	case "enable":
 		if len(args) < 2 {
 			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill enable <name>"})
@@ -260,6 +381,34 @@ func (m *Model) skillList() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
+	if m.skillService == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "skill service not available"})
+		return m, nil
+	}
+	skills, _ := m.skillService.ListSkills(context.Background(), nil)
+	if len(skills) == 0 {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no skills)"})
+		return m, nil
+	}
+	options := make([]tuiui.SelectOption, len(skills))
+	for i, s := range skills {
+		icon := "○"
+		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
+			icon = "●"
+		}
+		options[i] = tuiui.SelectOption{
+			Label:       icon + " " + s.Name,
+			Value:       s.Name,
+			Description: s.Description,
+		}
+	}
+	dialog := tuiui.NewSelectDialog("skill-select", "Skills", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	return m, nil
+}
+
 func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 	if m.mcpManager == nil {
 		m.chat.AddMessage(ChatMessage{Role: "system", Content: "MCP manager not available"})
@@ -267,12 +416,12 @@ func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 	}
 
 	if len(args) == 0 {
-		return m.mcpList()
+		return m.openMCPSelector()
 	}
 
 	switch args[0] {
 	case "list":
-		return m.mcpList()
+		return m.openMCPSelector()
 	case "connect":
 		if len(args) < 2 {
 			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp connect <name>"})
@@ -317,6 +466,41 @@ func (m *Model) mcpList() (tea.Model, tea.Cmd) {
 		sb.WriteString("\n")
 	}
 	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	return m, nil
+}
+
+func (m *Model) openMCPSelector() (tea.Model, tea.Cmd) {
+	if m.mcpManager == nil {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "MCP manager not available"})
+		return m, nil
+	}
+	entries := m.mcpManager.ServerEntries()
+	if len(entries) == 0 {
+		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no MCP servers)"})
+		return m, nil
+	}
+	options := make([]tuiui.SelectOption, len(entries))
+	for i, e := range entries {
+		active := stringsContains(m.sessionMeta.ActiveMCPServers, e.Name)
+		icon := "○"
+		if active && e.Status == mcp.MCPStatusConnected {
+			icon = "●"
+		} else if e.Status == mcp.MCPStatusError {
+			icon = "✗"
+		}
+		desc := string(e.Status)
+		if e.ToolCount > 0 {
+			desc += fmt.Sprintf(" (%d tools)", e.ToolCount)
+		}
+		options[i] = tuiui.SelectOption{
+			Label:       icon + " " + e.Name,
+			Value:       e.Name,
+			Description: desc,
+		}
+	}
+	dialog := tuiui.NewSelectDialog("mcp-select", "MCP Servers", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
 	return m, nil
 }
 

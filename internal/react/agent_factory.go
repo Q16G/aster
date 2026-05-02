@@ -195,6 +195,14 @@ func (f *AgentFactory) resolveAIClient(modelID string) ai.ChatClient {
 	return f.defaultAIClient
 }
 
+func (f *AgentFactory) UpdateDefaultClient(client ai.ChatClient) {
+	f.defaultAIClient = client
+}
+
+func (f *AgentFactory) UpdateClientFactory(factory ai.ClientFactory) {
+	f.aiClientFactory = factory
+}
+
 func (f *AgentFactory) resolveEmitter(agentName string) *Emitter {
 	if f.emitterFunc != nil {
 		return NewEmitter("", agentName, f.emitterFunc)

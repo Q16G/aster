@@ -24,6 +24,7 @@ type AgentExecContext struct {
 	SessionDir     string // ~/.aster/sessions/<id>
 	InitialState   builtin_tools.StateSnapshot
 	InitialHistory []*ai.MsgInfo
+	RebuildClient  func(baseURL, apiKey, model string)
 	cancelMu       sync.Mutex
 	cancelFunc     context.CancelFunc
 }

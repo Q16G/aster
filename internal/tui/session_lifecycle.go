@@ -291,9 +291,32 @@ func (m *Model) restoreSessionProvider(rec *SessionRecord) {
 		return
 	}
 	if rec.ProviderName != "" {
-		if p, ok := m.appCfg.Providers[rec.ProviderName]; ok && p != nil {
-			m.providerCfg.BaseURL = p.BaseURL
-			m.providerCfg.APIKey = p.APIKey
+		resolved := false
+		cfgP := m.appCfg.Providers[rec.ProviderName]
+		if bp, ok := GetBuiltinProvider(rec.ProviderName); ok {
+			m.providerCfg.Name = rec.ProviderName
+			m.providerCfg.BaseURL = bp.BaseURL
+			cfgKey := ""
+			if cfgP != nil {
+				cfgKey = cfgP.APIKey
+				if cfgP.BaseURL != "" {
+					m.providerCfg.BaseURL = cfgP.BaseURL
+				}
+			}
+			m.providerCfg.APIKey = resolveAPIKey(bp, cfgKey)
+			resolved = true
+		} else if cfgP != nil {
+			m.providerCfg.Name = rec.ProviderName
+			m.providerCfg.BaseURL = cfgP.BaseURL
+			m.providerCfg.APIKey = cfgP.APIKey
+			resolved = true
+		}
+		if resolved && m.agentCtx != nil && m.agentCtx.RebuildClient != nil {
+			modelID := rec.ModelID
+			if modelID == "" {
+				modelID = m.providerCfg.ModelID
+			}
+			m.agentCtx.RebuildClient(m.providerCfg.BaseURL, m.providerCfg.APIKey, modelID)
 		}
 	}
 	if rec.ModelID != "" {
