@@ -57,7 +57,7 @@ func defaultPolicies() react.AgentPolicies {
 	}
 }
 
-var defaultToolNames = []string{"list_files", "read_file", "rg", "bash", "list_skills", "load_skills"}
+var defaultToolNames = []string{"list_files", "read_file", "rg", "list_skills", "load_skills"}
 
 func DefaultProfiles() []react.AgentDefinition {
 	return []react.AgentDefinition{

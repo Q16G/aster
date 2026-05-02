@@ -107,7 +107,13 @@ func (r *ProfileRegistry) MergeYAML(p ProfileYAML) {
 		existing.SkillNames = p.SkillNames
 	}
 	if len(p.ToolNames) > 0 {
-		existing.ToolNames = p.ToolNames
+		filtered := make([]string, 0, len(p.ToolNames))
+		for _, t := range p.ToolNames {
+			if t != "bash" {
+				filtered = append(filtered, t)
+			}
+		}
+		existing.ToolNames = filtered
 	}
 
 	if p.Policies != nil {
