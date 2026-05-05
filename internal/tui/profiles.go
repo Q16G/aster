@@ -52,6 +52,7 @@ func defaultPolicies() react.AgentPolicies {
 			PermCtx: &builtin_tools.BashPermissionContext{
 				Mode: builtin_tools.PermissionModeManual,
 			},
+			SessionAL: builtin_tools.NewSessionAllowlist(),
 		},
 		EnableHistoryCompaction: true,
 	}

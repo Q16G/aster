@@ -423,6 +423,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Value != "" {
 				return m, func() tea.Msg { return SessionSwitchMsg{SessionID: msg.Value} }
 			}
+		case "mode-select":
+			if msg.Value != "" {
+				if mode, ok := parsePermissionModeArg(msg.Value); ok {
+					return m.applyPermissionMode(mode)
+				}
+			}
 		case "theme-select":
 			if msg.Value != "" {
 				m.themeProvider.SetByName(msg.Value)
@@ -503,7 +509,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSlashCommand(msg.Command)
 
 	case AgentSwitchMsg:
+		if m.agentCtx == nil {
+			return m, nil
+		}
 		m.agentCtx.Definition = msg.Definition
+		if m.sessionMeta.PermissionMode != "" {
+			if mode, ok := parsePermissionModeArg(m.sessionMeta.PermissionMode); ok {
+				if m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
+					m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx != nil {
+					m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx.Mode = mode
+				}
+			}
+		}
 		m.statusText = fmt.Sprintf("switched to %s", msg.Definition.Name)
 		if m.currentSessionID != "" {
 			m.updateSessionAgent(msg.Definition.Name)

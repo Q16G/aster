@@ -33,7 +33,10 @@ func (m *Model) newSession() bool {
 		agentName = m.agentCtx.Definition.Name
 	}
 
-	m.sessionMeta = SessionMeta{Theme: m.themeProvider.Get().Name}
+	m.sessionMeta = SessionMeta{
+		Theme:          m.themeProvider.Get().Name,
+		PermissionMode: string(m.currentPermissionMode()),
+	}
 	rec := &SessionRecord{
 		Title:     "",
 		Status:    "active",
@@ -288,6 +291,11 @@ func (m *Model) toggleSessionMCP(name string, connect bool) {
 
 func (m *Model) restoreSessionState() {
 	m.themeProvider.SetByName(m.sessionMeta.Theme)
+	if m.sessionMeta.PermissionMode != "" {
+		if mode, ok := parsePermissionModeArg(m.sessionMeta.PermissionMode); ok {
+			m.setPermissionMode(mode)
+		}
+	}
 	m.applySessionRuntimeState()
 }
 
