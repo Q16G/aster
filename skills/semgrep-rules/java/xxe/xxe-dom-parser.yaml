@@ -1,0 +1,30 @@
+rules:
+  - id: java-xxe-dom-parser
+    patterns:
+      - pattern: |
+          DocumentBuilderFactory $DBF = DocumentBuilderFactory.newInstance();
+          ...
+          $DBF.newDocumentBuilder().parse(...);
+      - pattern-not-inside: |
+          DocumentBuilderFactory $DBF = DocumentBuilderFactory.newInstance();
+          ...
+          $DBF.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+          ...
+      - pattern-not-inside: |
+          DocumentBuilderFactory $DBF = DocumentBuilderFactory.newInstance();
+          ...
+          $DBF.setFeature("http://xml.org/sax/features/external-general-entities", false);
+          ...
+    message: >
+      XML External Entity (XXE) vulnerability via DocumentBuilderFactory.
+      The parser does not disable external entity processing, allowing
+      attackers to read local files, perform SSRF, or cause denial of
+      service. Set the feature "http://apache.org/xml/features/disallow-doctype-decl"
+      to true, or disable external general and parameter entities.
+    metadata:
+      cwe: CWE-611
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]

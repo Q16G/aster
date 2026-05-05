@@ -1,0 +1,39 @@
+rules:
+  - id: python-injection-sql-injection-django-raw
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $MODEL.objects.raw(f"...{$VAR}...")
+          - pattern: |
+              $MODEL.objects.raw("..." % $VAR)
+          - pattern: |
+              $MODEL.objects.raw("...".format(...))
+          - pattern: |
+              $MODEL.objects.raw("..." + $VAR + ...)
+          - pattern: |
+              RawSQL(f"...{$VAR}...", ...)
+          - pattern: |
+              RawSQL("..." % $VAR, ...)
+          - pattern: |
+              RawSQL("...".format(...), ...)
+          - pattern: |
+              RawSQL("..." + $VAR + ..., ...)
+          - pattern: |
+              $SQL = f"...{$VAR}..."
+              ...
+              $MODEL.objects.raw($SQL)
+          - pattern: |
+              $SQL = "..." + $VAR + ...
+              ...
+              $MODEL.objects.raw($SQL)
+    message: >
+      SQL injection via Django raw() or RawSQL() with string interpolation.
+      User-controlled input is concatenated into a raw SQL query. Use
+      parameterized queries: Model.objects.raw("SELECT ... WHERE id = %s", [param]).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

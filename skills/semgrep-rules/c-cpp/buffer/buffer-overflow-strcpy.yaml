@@ -1,0 +1,24 @@
+rules:
+  - id: c-buffer-overflow-strcpy
+    patterns:
+      - pattern-either:
+          - pattern: strcpy($DST, $SRC);
+          - pattern: strcat($DST, $SRC);
+          - pattern: wcscpy($DST, $SRC);
+          - pattern: wcscat($DST, $SRC);
+      - pattern-not: strcpy($DST, "...");
+      - pattern-not: strcat($DST, "...");
+    message: >
+      Buffer overflow risk via strcpy() or strcat() without bounds
+      checking. These functions copy data without verifying that the
+      destination buffer is large enough, leading to buffer overflows.
+      Use strncpy()/strncat() with explicit size limits, or prefer
+      safer alternatives like snprintf() or strlcpy()/strlcat() where
+      available.
+    metadata:
+      cwe: CWE-120
+      owasp: "A06:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [c]

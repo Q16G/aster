@@ -1,0 +1,30 @@
+rules:
+  - id: java-ssrf-url-connection
+    patterns:
+      - pattern-either:
+          - pattern: new java.net.URL($INPUT).openConnection()
+          - pattern: new java.net.URL($INPUT).openStream()
+          - pattern: new URL($INPUT).openConnection()
+          - pattern: new URL($INPUT).openStream()
+          - pattern: |
+              URL $URL = new URL($INPUT);
+              ...
+              $URL.openConnection();
+          - pattern: |
+              URL $URL = new URL($INPUT);
+              ...
+              $URL.openStream();
+      - pattern-not: new URL("...").openConnection()
+      - pattern-not: new URL("...").openStream()
+    message: >
+      Server-Side Request Forgery (SSRF) via URL.openConnection/openStream.
+      A user-controlled URL is used to make a server-side HTTP request.
+      Validate URLs against an allowlist of permitted hosts and schemes,
+      and block requests to internal/private IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

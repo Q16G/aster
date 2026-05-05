@@ -1,0 +1,41 @@
+rules:
+  - id: php-ssrf-curl
+    patterns:
+      - pattern-either:
+          - pattern: curl_setopt($CH, CURLOPT_URL, $_GET[$KEY]);
+          - pattern: curl_setopt($CH, CURLOPT_URL, $_POST[$KEY]);
+          - pattern: curl_setopt($CH, CURLOPT_URL, $_REQUEST[$KEY]);
+          - pattern: |
+              $URL = $_GET[$KEY];
+              ...
+              curl_setopt($CH, CURLOPT_URL, $URL);
+          - pattern: |
+              $URL = $_POST[$KEY];
+              ...
+              curl_setopt($CH, CURLOPT_URL, $URL);
+          - pattern: |
+              $URL = $_REQUEST[$KEY];
+              ...
+              curl_setopt($CH, CURLOPT_URL, $URL);
+          - pattern: curl_setopt($CH, CURLOPT_URL, $URL . ...);
+          - pattern: |
+              curl_init($_GET[$KEY]);
+          - pattern: |
+              curl_init($_POST[$KEY]);
+          - pattern: |
+              $URL = $_GET[$KEY];
+              ...
+              curl_init($URL);
+    message: >
+      Server-side request forgery (SSRF) via cURL with user-controlled
+      URL. An attacker may force the server to make requests to internal
+      services, cloud metadata endpoints (169.254.169.254), or other
+      unintended destinations. Validate URLs against an allowlist of
+      permitted hosts and schemes, and block private/internal IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

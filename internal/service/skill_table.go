@@ -15,7 +15,7 @@ type SkillIndexRow struct {
 	Status      string
 }
 
-func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName string, activeSkillNames []string) (string, error) {
+func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName string, allowedSkillNames []string, activeSkillNames []string) (string, error) {
 	if s == nil {
 		return "", fmt.Errorf("skill service is nil")
 	}
@@ -23,6 +23,7 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 	if agentName == "" {
 		return "", fmt.Errorf("agent name is required")
 	}
+	allowedSet := toStringSet(allowedSkillNames)
 	activeSet := make(map[string]struct{}, len(activeSkillNames))
 	for _, raw := range activeSkillNames {
 		name := strings.TrimSpace(raw)
@@ -43,17 +44,23 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 		if item == nil {
 			continue
 		}
+		name := strings.TrimSpace(item.Name)
+		if len(allowedSet) > 0 {
+			if _, ok := allowedSet[name]; !ok {
+				continue
+			}
+		}
 		skillAgent := firstNonEmpty(strings.TrimSpace(item.Agent), "all")
 		if !skillVisibleToAgent(skillAgent, agentName) {
 			continue
 		}
 
 		rows = append(rows, SkillIndexRow{
-			Name:        strings.TrimSpace(item.Name),
+			Name:        name,
 			Description: strings.TrimSpace(item.Description),
 			WhenToUse:   strings.TrimSpace(item.WhenToUse),
 			Context:     firstNonEmpty(strings.TrimSpace(item.Context), "inline"),
-			Status:      skillStatus(strings.TrimSpace(item.Name), activeSet),
+			Status:      skillStatus(name, activeSet),
 		})
 	}
 
@@ -64,7 +71,7 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 	return formatSkillsTable(rows), nil
 }
 
-func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, names []string) (string, error) {
+func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, allowedSkillNames []string, names []string) (string, error) {
 	if s == nil {
 		return "", fmt.Errorf("skill service is nil")
 	}
@@ -72,6 +79,7 @@ func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, names []s
 	if len(normalized) == 0 {
 		return "", nil
 	}
+	allowedSet := toStringSet(allowedSkillNames)
 	skills, err := s.LoadSkills(ctx, normalized)
 	if err != nil {
 		return "", err
@@ -84,6 +92,11 @@ func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, names []s
 		name := strings.TrimSpace(skill.Name)
 		if name == "" {
 			continue
+		}
+		if len(allowedSet) > 0 {
+			if _, ok := allowedSet[name]; !ok {
+				continue
+			}
 		}
 		desc := strings.TrimSpace(skill.Description)
 		if desc == "" {
@@ -102,6 +115,23 @@ func (s *SkillService) BuildInjectedSkillsSection(ctx context.Context, names []s
 		)))
 	}
 	return strings.TrimSpace(strings.Join(sections, "\n\n")), nil
+}
+
+func toStringSet(names []string) map[string]struct{} {
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(names))
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name != "" {
+			set[name] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
 }
 
 func skillVisibleToAgent(skillAgent string, agentName string) bool {

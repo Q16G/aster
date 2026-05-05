@@ -1,0 +1,26 @@
+rules:
+  - id: java-injection-command-injection-processbuilder
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new ProcessBuilder($CMD, ...);
+          - pattern: |
+              new ProcessBuilder(java.util.Arrays.asList($CMD, ...));
+          - pattern: |
+              (ProcessBuilder $PB).command($CMD, ...);
+          - pattern: |
+              new ProcessBuilder($LIST);
+      - pattern-not: |
+          new ProcessBuilder("...", ...);
+    message: >
+      Command injection via ProcessBuilder. A variable is passed as the
+      command argument, which may allow an attacker to execute arbitrary
+      system commands. Validate and sanitize all arguments before passing
+      them to ProcessBuilder.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

@@ -1,0 +1,55 @@
+rules:
+  - id: php-misc-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: include($_GET[$KEY]);
+          - pattern: include($_POST[$KEY]);
+          - pattern: include($_REQUEST[$KEY]);
+          - pattern: include("..." . $_GET[$KEY]);
+          - pattern: include("..." . $_POST[$KEY]);
+          - pattern: include("..." . $_REQUEST[$KEY]);
+          - pattern: require($_GET[$KEY]);
+          - pattern: require($_POST[$KEY]);
+          - pattern: require("..." . $_GET[$KEY]);
+          - pattern: require("..." . $_POST[$KEY]);
+          - pattern: include_once($_GET[$KEY]);
+          - pattern: require_once($_GET[$KEY]);
+          - pattern: fopen($_GET[$KEY], ...);
+          - pattern: fopen($_POST[$KEY], ...);
+          - pattern: fopen("..." . $_GET[$KEY], ...);
+          - pattern: readfile($_GET[$KEY]);
+          - pattern: readfile($_POST[$KEY]);
+          - pattern: |
+              $FILE = $_GET[$KEY];
+              ...
+              include($FILE);
+          - pattern: |
+              $FILE = $_GET[$KEY];
+              ...
+              require($FILE);
+          - pattern: |
+              $FILE = $_GET[$KEY];
+              ...
+              fopen($FILE, ...);
+          - pattern: |
+              $FILE = $_POST[$KEY];
+              ...
+              include($FILE);
+          - pattern: |
+              $FILE = $_POST[$KEY];
+              ...
+              fopen($FILE, ...);
+    message: >
+      Path traversal via include, require, fopen, or readfile with
+      user-controlled path. An attacker can use ../ sequences to read
+      arbitrary files (Local File Inclusion) or, with allow_url_include
+      enabled, load remote code (Remote File Inclusion). Validate paths
+      against an allowlist, use basename() to strip directory components,
+      and verify the resolved path with realpath().
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [php]

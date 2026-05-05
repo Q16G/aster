@@ -1,0 +1,20 @@
+rules:
+  - id: go-injection-command-injection-exec
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command($CMD, ...)
+          - pattern: exec.CommandContext($CTX, $CMD, ...)
+      - pattern-not: exec.Command("...", ...)
+      - pattern-not: exec.CommandContext($CTX, "...", ...)
+    message: >
+      Potential command injection via exec.Command. A variable is used
+      as the command or argument, which may allow an attacker to execute
+      arbitrary system commands. Validate input against a whitelist of
+      allowed commands and arguments.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

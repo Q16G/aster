@@ -1,0 +1,27 @@
+rules:
+  - id: javascript-prototype-unsafe-object-assign
+    patterns:
+      - pattern-either:
+          - pattern: Object.assign($TARGET, $REQ.body)
+          - pattern: Object.assign($TARGET, $REQ.query)
+          - pattern: Object.assign($TARGET, $REQ.params)
+          - pattern: Object.assign($TARGET, ..., $REQ.body, ...)
+          - pattern: |
+              {...$REQ.body}
+          - pattern: |
+              {...$REQ.query}
+          - pattern: |
+              $OBJ = {...$OBJ, ...$REQ.body}
+    message: >
+      Unsafe Object.assign() or spread with user-controlled source. Merging
+      user input (req.body, req.query) directly into an object can lead to
+      prototype pollution or mass assignment vulnerabilities. Explicitly pick
+      only expected properties, or use a schema validation library to sanitize
+      input before merging.
+    metadata:
+      cwe: CWE-1321
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

@@ -1,0 +1,26 @@
+rules:
+  - id: go-injection-template-injection
+    patterns:
+      - pattern-either:
+          - pattern: template.HTML($INPUT)
+          - pattern: template.JS($INPUT)
+          - pattern: template.CSS($INPUT)
+          - pattern: template.URL($INPUT)
+          - pattern: template.HTMLAttr($INPUT)
+      - pattern-not: template.HTML("...")
+      - pattern-not: template.JS("...")
+      - pattern-not: template.CSS("...")
+      - pattern-not: template.URL("...")
+      - pattern-not: template.HTMLAttr("...")
+    message: >
+      Unsafe template type conversion. Wrapping user-controlled input
+      with template.HTML, template.JS, template.CSS, or template.URL
+      bypasses Go's html/template auto-escaping, potentially leading to
+      XSS. Only use these types with trusted, pre-sanitized content.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

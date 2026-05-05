@@ -1,0 +1,24 @@
+rules:
+  - id: go-auth-permissive-cors
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $W.Header().Set("Access-Control-Allow-Origin", "*")
+          - pattern: |
+              $W.Header().Add("Access-Control-Allow-Origin", "*")
+          - pattern: |
+              AllowOrigins: []string{"*"}
+          - pattern: |
+              AllowAllOrigins: true
+    message: >
+      Permissive CORS configuration detected. Setting
+      Access-Control-Allow-Origin to "*" allows any origin to make
+      cross-origin requests, potentially exposing sensitive data.
+      Specify explicit trusted origins instead of using a wildcard.
+    metadata:
+      cwe: CWE-942
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [go]

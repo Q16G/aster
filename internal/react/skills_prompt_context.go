@@ -38,20 +38,20 @@ func (fn SkillsPromptProviderFunc) BuildSkillsPrompt(ctx context.Context, agentN
 }
 
 type SkillsCatalog interface {
-	BuildSkillsTableWithStatus(ctx context.Context, agentName string, activeSkillNames []string) (string, error)
-	BuildInjectedSkillsSection(ctx context.Context, names []string) (string, error)
+	BuildSkillsTableWithStatus(ctx context.Context, agentName string, allowedSkillNames []string, activeSkillNames []string) (string, error)
+	BuildInjectedSkillsSection(ctx context.Context, allowedSkillNames []string, names []string) (string, error)
 }
 
-func NewSkillsPromptProviderFromCatalog(catalog SkillsCatalog) SkillsPromptProvider {
+func NewSkillsPromptProviderFromCatalog(catalog SkillsCatalog, allowedSkillNames []string) SkillsPromptProvider {
 	if catalog == nil {
 		return nil
 	}
 	return SkillsPromptProviderFunc(func(ctx context.Context, agentName string, snapshot builtin_tools.StateSnapshot) (*SkillsPromptContext, error) {
-		table, err := catalog.BuildSkillsTableWithStatus(ctx, agentName, snapshot.ActiveSkillNames)
+		table, err := catalog.BuildSkillsTableWithStatus(ctx, agentName, allowedSkillNames, snapshot.ActiveSkillNames)
 		if err != nil {
 			return nil, err
 		}
-		injected, err := catalog.BuildInjectedSkillsSection(ctx, snapshot.ActiveSkillNames)
+		injected, err := catalog.BuildInjectedSkillsSection(ctx, allowedSkillNames, snapshot.ActiveSkillNames)
 		if err != nil {
 			return nil, err
 		}

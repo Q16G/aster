@@ -1,0 +1,23 @@
+rules:
+  - id: java-deserialization-xmldecoder
+    patterns:
+      - pattern-either:
+          - pattern: (java.beans.XMLDecoder $DEC).readObject()
+          - pattern: |
+              new java.beans.XMLDecoder(...).readObject()
+          - pattern: |
+              XMLDecoder $DEC = new XMLDecoder(...);
+              ...
+              $DEC.readObject();
+    message: >
+      Unsafe deserialization via XMLDecoder.readObject(). XMLDecoder can
+      instantiate arbitrary classes and invoke methods, leading to remote
+      code execution when processing untrusted XML input. Avoid using
+      XMLDecoder with untrusted data; use a safe XML parser or JSON instead.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

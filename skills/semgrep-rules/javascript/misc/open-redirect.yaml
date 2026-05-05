@@ -1,0 +1,32 @@
+rules:
+  - id: javascript-misc-open-redirect
+    patterns:
+      - pattern-either:
+          - pattern: $RES.redirect($REQ.query.$PARAM)
+          - pattern: $RES.redirect($REQ.body.$PARAM)
+          - pattern: $RES.redirect($REQ.params.$PARAM)
+          - pattern: |
+              $URL = $REQ.query.$PARAM
+              ...
+              $RES.redirect($URL)
+          - pattern: |
+              $URL = $REQ.body.$PARAM
+              ...
+              $RES.redirect($URL)
+          - pattern: $RES.redirect($REQ.query.url)
+          - pattern: $RES.redirect($REQ.query.redirect)
+          - pattern: $RES.redirect($REQ.query.next)
+          - pattern: $RES.redirect($REQ.query.return_url)
+          - pattern: $RES.redirect($REQ.query.returnUrl)
+    message: >
+      Open redirect vulnerability. User-controlled input from request parameters
+      is passed directly to res.redirect(), allowing an attacker to redirect
+      users to a malicious external site (phishing). Validate redirect URLs
+      against an allowlist of trusted domains or use relative paths only.
+    metadata:
+      cwe: CWE-601
+      owasp: "A01:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [javascript, typescript]

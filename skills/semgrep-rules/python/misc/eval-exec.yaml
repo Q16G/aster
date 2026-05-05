@@ -1,0 +1,23 @@
+rules:
+  - id: python-misc-eval-exec
+    patterns:
+      - pattern-either:
+          - pattern: eval($INPUT)
+          - pattern: exec($INPUT)
+          - pattern: compile($INPUT, ...)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+      - pattern-not: compile("...", ...)
+    message: >
+      Use of eval(), exec(), or compile() with non-literal input. These functions
+      execute arbitrary Python code and can lead to remote code execution if any
+      user-controlled data reaches them. Avoid eval/exec entirely; use
+      ast.literal_eval() for safe parsing of Python literals, or restructure
+      the code to avoid dynamic code execution.
+    metadata:
+      cwe: CWE-95
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

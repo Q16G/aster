@@ -1,0 +1,34 @@
+rules:
+  - id: javascript-injection-sql-injection-raw
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$VAR}...`)
+          - pattern: $DB.query("..." + $VAR + ...)
+          - pattern: $CONN.query(`...${$VAR}...`)
+          - pattern: $CONN.query("..." + $VAR + ...)
+          - pattern: $POOL.query(`...${$VAR}...`)
+          - pattern: $POOL.query("..." + $VAR + ...)
+          - pattern: |
+              $SQL = `...${$VAR}...`
+              ...
+              $DB.query($SQL)
+          - pattern: |
+              $SQL = "..." + $VAR + ...
+              ...
+              $DB.query($SQL)
+          - pattern: $CLIENT.query(`...${$VAR}...`)
+          - pattern: $CLIENT.query("..." + $VAR + ...)
+          - pattern: $KNEX.raw(`...${$VAR}...`)
+          - pattern: $KNEX.raw("..." + $VAR + ...)
+    message: >
+      SQL injection via raw query with template literal or string concatenation.
+      User-controlled input is interpolated into a SQL query string. Use
+      parameterized queries or prepared statements instead:
+      db.query("SELECT * FROM t WHERE id = $1", [userId]).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

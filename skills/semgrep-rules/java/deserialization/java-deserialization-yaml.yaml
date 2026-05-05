@@ -1,0 +1,32 @@
+rules:
+  - id: java-deserialization-yaml
+    patterns:
+      - pattern-either:
+          - pattern: new org.yaml.snakeyaml.Yaml().load(...)
+          - pattern: |
+              org.yaml.snakeyaml.Yaml $YAML = new org.yaml.snakeyaml.Yaml();
+              ...
+              $YAML.load(...);
+          - pattern: |
+              Yaml $YAML = new Yaml();
+              ...
+              $YAML.load(...);
+          - pattern: new Yaml().load(...)
+      - pattern-not: |
+          new Yaml(new SafeConstructor(...)).load(...)
+      - pattern-not: |
+          Yaml $YAML = new Yaml(new SafeConstructor(...));
+          ...
+          $YAML.load(...);
+    message: >
+      Unsafe YAML deserialization via SnakeYAML without SafeConstructor.
+      SnakeYAML's default constructor can instantiate arbitrary Java
+      objects, leading to remote code execution. Always use
+      SafeConstructor or Yaml.loadAs() with a specific safe type.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]

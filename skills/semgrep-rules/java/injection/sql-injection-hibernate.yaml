@@ -1,0 +1,45 @@
+rules:
+  - id: java-injection-sql-injection-hibernate
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (org.hibernate.Session $SESSION).createQuery($ARG + ...);
+          - pattern: |
+              (org.hibernate.Session $SESSION).createSQLQuery($ARG + ...);
+          - pattern: |
+              (org.hibernate.Session $SESSION).createNativeQuery($ARG + ...);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (org.hibernate.Session $SESSION).createQuery($SQL);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (org.hibernate.Session $SESSION).createSQLQuery($SQL);
+          - pattern: |
+              String $SQL = String.format(...);
+              ...
+              (org.hibernate.Session $SESSION).createQuery($SQL);
+          - pattern: |
+              (javax.persistence.EntityManager $EM).createQuery($ARG + ...);
+          - pattern: |
+              (javax.persistence.EntityManager $EM).createNativeQuery($ARG + ...);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (javax.persistence.EntityManager $EM).createQuery($SQL);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (javax.persistence.EntityManager $EM).createNativeQuery($SQL);
+    message: >
+      SQL injection via Hibernate/JPA. User-controlled input is concatenated
+      into a query string passed to createQuery or createNativeQuery. Use
+      parameterized queries with named parameters or positional parameters.
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

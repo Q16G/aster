@@ -1,0 +1,50 @@
+rules:
+  - id: c-misc-integer-overflow
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $SIZE = atoi($INPUT);
+              ...
+              malloc($SIZE);
+          - pattern: |
+              $SIZE = atol($INPUT);
+              ...
+              malloc($SIZE);
+          - pattern: |
+              $SIZE = strtol($INPUT, ...);
+              ...
+              malloc($SIZE);
+          - pattern: |
+              $SIZE = atoi($INPUT);
+              ...
+              calloc($SIZE, ...);
+          - pattern: |
+              $SIZE = atoi($INPUT);
+              ...
+              realloc($PTR, $SIZE);
+          - pattern: |
+              $COUNT = atoi($INPUT);
+              ...
+              $RESULT = $COUNT * $ELEMENT_SIZE;
+          - pattern: |
+              $COUNT = atoi($INPUT);
+              ...
+              malloc($COUNT * ...);
+          - pattern: |
+              $SIZE = strtoul($INPUT, ...);
+              ...
+              malloc($SIZE);
+    message: >
+      Potential integer overflow with user-controlled input. A value
+      parsed from user input (via atoi/atol/strtol/strtoul) is used
+      in arithmetic or as a size argument to memory allocation without
+      bounds validation. This can lead to undersized allocations and
+      subsequent buffer overflows. Validate that parsed values are
+      within expected bounds before use in arithmetic or allocation.
+    metadata:
+      cwe: CWE-190
+      owasp: "A06:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [c]

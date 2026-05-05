@@ -1,0 +1,35 @@
+rules:
+  - id: c-format-string
+    patterns:
+      - pattern-either:
+          - pattern: printf($VAR);
+          - pattern: fprintf($STREAM, $VAR);
+          - pattern: sprintf($BUF, $VAR);
+          - pattern: snprintf($BUF, $SIZE, $VAR);
+          - pattern: syslog($PRIORITY, $VAR);
+          - pattern: vprintf($VAR, ...);
+          - pattern: vfprintf($STREAM, $VAR, ...);
+      - pattern-not: printf("...");
+      - pattern-not: fprintf($STREAM, "...");
+      - pattern-not: sprintf($BUF, "...");
+      - pattern-not: snprintf($BUF, $SIZE, "...");
+      - pattern-not: syslog($PRIORITY, "...");
+      - pattern-not: printf("...", ...);
+      - pattern-not: fprintf($STREAM, "...", ...);
+      - pattern-not: sprintf($BUF, "...", ...);
+      - pattern-not: snprintf($BUF, $SIZE, "...", ...);
+      - pattern-not: syslog($PRIORITY, "...", ...);
+    message: >
+      Format string vulnerability. A variable is used as the format
+      string argument to printf/fprintf/sprintf/snprintf/syslog. If an
+      attacker controls this variable, they can read from or write to
+      arbitrary memory using format specifiers like %x, %s, and %n.
+      Always use a string literal as the format string and pass
+      variables as additional arguments (e.g., printf("%s", var)).
+    metadata:
+      cwe: CWE-134
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [c]

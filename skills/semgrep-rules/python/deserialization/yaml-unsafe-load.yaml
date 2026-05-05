@@ -1,0 +1,20 @@
+rules:
+  - id: python-deserialization-yaml-unsafe-load
+    patterns:
+      - pattern-either:
+          - pattern: yaml.load($DATA)
+          - pattern: yaml.load($DATA, Loader=yaml.Loader)
+          - pattern: yaml.load($DATA, Loader=yaml.UnsafeLoader)
+          - pattern: yaml.load($DATA, Loader=yaml.FullLoader)
+          - pattern: yaml.unsafe_load($DATA)
+    message: >
+      Unsafe YAML deserialization. yaml.load() without Loader=SafeLoader can
+      execute arbitrary Python objects embedded in YAML, leading to remote code
+      execution. Use yaml.safe_load() or yaml.load(data, Loader=yaml.SafeLoader).
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]

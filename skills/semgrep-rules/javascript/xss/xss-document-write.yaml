@@ -1,0 +1,24 @@
+rules:
+  - id: javascript-xss-document-write
+    patterns:
+      - pattern-either:
+          - pattern: document.write($INPUT)
+          - pattern: document.writeln($INPUT)
+          - pattern: document.write(`...${$VAR}...`)
+          - pattern: document.writeln(`...${$VAR}...`)
+          - pattern: document.write("..." + $VAR + ...)
+          - pattern: document.writeln("..." + $VAR + ...)
+      - pattern-not: document.write("...")
+      - pattern-not: document.writeln("...")
+    message: >
+      Cross-site scripting (XSS) via document.write(). Writing user-controlled
+      content directly to the document allows injection of malicious scripts.
+      Avoid document.write() entirely; use DOM manipulation methods like
+      createElement/textContent and sanitize any HTML content with DOMPurify.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

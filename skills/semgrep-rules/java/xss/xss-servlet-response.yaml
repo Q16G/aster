@@ -1,0 +1,34 @@
+rules:
+  - id: java-xss-servlet-response
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).getWriter().write($INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).getWriter().println($INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).getWriter().print($INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).getOutputStream().write($INPUT);
+          - pattern: |
+              PrintWriter $W = (javax.servlet.http.HttpServletResponse $RESP).getWriter();
+              ...
+              $W.write($INPUT);
+          - pattern: |
+              PrintWriter $W = (javax.servlet.http.HttpServletResponse $RESP).getWriter();
+              ...
+              $W.println($INPUT);
+      - pattern-not: |
+          (javax.servlet.http.HttpServletResponse $RESP).getWriter().write("...");
+    message: >
+      Potential XSS via HttpServletResponse writer. User-controlled input
+      is written directly to the HTTP response without encoding. Use proper
+      HTML encoding (e.g., OWASP Java Encoder) before writing user input
+      to the response.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

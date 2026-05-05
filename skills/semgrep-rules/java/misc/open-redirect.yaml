@@ -1,0 +1,28 @@
+rules:
+  - id: java-misc-open-redirect
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).sendRedirect($URL);
+          - pattern: |
+              (HttpServletResponse $RESP).sendRedirect($URL);
+          - pattern: |
+              String $URL = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              (javax.servlet.http.HttpServletResponse $RESP).sendRedirect($URL);
+      - pattern-not: |
+          (javax.servlet.http.HttpServletResponse $RESP).sendRedirect("...");
+      - pattern-not: |
+          (HttpServletResponse $RESP).sendRedirect("...");
+    message: >
+      Potential open redirect. A variable is passed to sendRedirect(),
+      which may allow attackers to redirect users to malicious sites.
+      Validate redirect URLs against an allowlist of permitted domains,
+      or use relative paths only.
+    metadata:
+      cwe: CWE-601
+      owasp: "A01:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

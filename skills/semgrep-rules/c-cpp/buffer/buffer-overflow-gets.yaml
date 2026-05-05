@@ -1,0 +1,15 @@
+rules:
+  - id: c-buffer-overflow-gets
+    pattern: gets($BUF);
+    message: >
+      Use of gets() which is always unsafe. gets() reads input without
+      any bounds checking, making buffer overflow inevitable for
+      sufficiently long input. This function was removed from the C11
+      standard. Use fgets() with an explicit buffer size instead.
+    metadata:
+      cwe: CWE-120
+      owasp: "A06:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [c]

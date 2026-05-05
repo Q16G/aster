@@ -1,0 +1,49 @@
+rules:
+  - id: c-memory-use-after-free
+    patterns:
+      - pattern-either:
+          - pattern: |
+              free($PTR);
+              ...
+              $FUNC(..., $PTR, ...);
+          - pattern: |
+              free($PTR);
+              ...
+              *$PTR;
+          - pattern: |
+              free($PTR);
+              ...
+              $PTR->$FIELD;
+          - pattern: |
+              free($PTR);
+              ...
+              $PTR[$IDX];
+      - pattern-not: |
+          free($PTR);
+          ...
+          $PTR = NULL;
+          ...
+          $PTR->$FIELD;
+      - pattern-not: |
+          free($PTR);
+          ...
+          $PTR = NULL;
+          ...
+          *$PTR;
+      - pattern-not: |
+          free($PTR);
+          $PTR = NULL;
+    message: >
+      Potential use-after-free. A pointer is dereferenced or passed to
+      a function after being freed. Accessing freed memory leads to
+      undefined behavior and can be exploited for code execution. Set
+      pointers to NULL immediately after freeing and check for NULL
+      before use. Note: this is a simplified pattern-based check and
+      may not catch all control-flow-dependent cases.
+    metadata:
+      cwe: CWE-416
+      owasp: "A06:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [c]

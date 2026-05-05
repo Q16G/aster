@@ -1,0 +1,25 @@
+rules:
+  - id: javascript-xss-dom-manipulation
+    patterns:
+      - pattern-either:
+          - pattern: $EL.insertAdjacentHTML($POS, $VAR)
+          - pattern: $EL.outerHTML = $VAR
+          - pattern: $EL.outerHTML += $VAR
+          - pattern: $EL.outerHTML = `...${$VAR}...`
+          - pattern: $EL.outerHTML = "..." + $VAR + ...
+          - pattern: $EL.insertAdjacentHTML($POS, `...${$VAR}...`)
+          - pattern: $EL.insertAdjacentHTML($POS, "..." + $VAR + ...)
+      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
+      - pattern-not: $EL.outerHTML = "..."
+    message: >
+      Cross-site scripting (XSS) via insertAdjacentHTML() or outerHTML
+      assignment. These DOM APIs inject raw HTML without escaping, allowing
+      script injection if user-controlled data is included. Sanitize HTML
+      content with DOMPurify or use safe DOM APIs like textContent.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

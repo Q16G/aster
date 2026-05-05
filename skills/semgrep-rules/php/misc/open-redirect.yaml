@@ -1,0 +1,37 @@
+rules:
+  - id: php-misc-open-redirect
+    patterns:
+      - pattern-either:
+          - pattern: header("Location: " . $_GET[$KEY]);
+          - pattern: header("Location: " . $_POST[$KEY]);
+          - pattern: header("Location: " . $_REQUEST[$KEY]);
+          - pattern: |
+              header("Location: " . $URL);
+          - pattern: |
+              $URL = $_GET[$KEY];
+              ...
+              header("Location: " . $URL);
+          - pattern: |
+              $URL = $_POST[$KEY];
+              ...
+              header("Location: " . $URL);
+          - pattern: |
+              $URL = $_REQUEST[$KEY];
+              ...
+              header("Location: " . $URL);
+          - pattern: header("Location: $_GET[$KEY]");
+          - pattern: header("Location: $_POST[$KEY]");
+          - pattern: header("Location: $_REQUEST[$KEY]");
+    message: >
+      Open redirect via header("Location: ...") with user-controlled
+      URL. An attacker can craft a link that redirects users to a
+      malicious site, enabling phishing attacks. Validate the redirect
+      URL against an allowlist of trusted domains, or use only relative
+      paths for redirects.
+    metadata:
+      cwe: CWE-601
+      owasp: "A01:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [php]

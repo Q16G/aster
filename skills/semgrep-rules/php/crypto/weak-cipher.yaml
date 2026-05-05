@@ -1,0 +1,27 @@
+rules:
+  - id: php-crypto-weak-cipher
+    patterns:
+      - pattern-either:
+          - pattern: mcrypt_encrypt(MCRYPT_DES, ...);
+          - pattern: mcrypt_encrypt(MCRYPT_3DES, ...);
+          - pattern: mcrypt_encrypt(MCRYPT_RC4, ...);
+          - pattern: mcrypt_encrypt(MCRYPT_RC2, ...);
+          - pattern: mcrypt_encrypt("des", ...);
+          - pattern: mcrypt_encrypt("rc4", ...);
+          - pattern: mcrypt_encrypt("rc2", ...);
+          - pattern: openssl_encrypt($DATA, "des-ecb", ...);
+          - pattern: openssl_encrypt($DATA, "des-cbc", ...);
+          - pattern: openssl_encrypt($DATA, "rc4", ...);
+          - pattern: openssl_encrypt($DATA, "rc2-cbc", ...);
+    message: >
+      Weak or deprecated cipher algorithm (DES, 3DES, RC4, RC2) used for
+      encryption. These algorithms have known cryptographic weaknesses and
+      should not be used. Migrate to AES-256-GCM or AES-256-CBC via
+      openssl_encrypt() with a strong key derivation function.
+    metadata:
+      cwe: CWE-327
+      owasp: "A02:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [php]

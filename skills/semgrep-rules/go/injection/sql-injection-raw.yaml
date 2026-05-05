@@ -1,0 +1,41 @@
+rules:
+  - id: go-injection-sql-injection-raw
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $DB.Query(fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $DB.QueryRow(fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $DB.Exec(fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $DB.QueryContext($CTX, fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $DB.QueryRowContext($CTX, fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $DB.ExecContext($CTX, fmt.Sprintf($FMT, ...), ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.Query($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.Exec($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.QueryRow($QUERY, ...)
+    message: >
+      SQL injection via fmt.Sprintf used to build SQL queries. User input
+      interpolated via fmt.Sprintf is not escaped, allowing SQL injection.
+      Use parameterized queries with $1/$2 placeholders (PostgreSQL) or
+      ? placeholders (MySQL) and pass values as additional arguments to
+      Query/Exec.
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

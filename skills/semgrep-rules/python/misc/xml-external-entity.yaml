@@ -1,0 +1,31 @@
+rules:
+  - id: python-misc-xml-external-entity
+    patterns:
+      - pattern-either:
+          - pattern: xml.etree.ElementTree.parse(...)
+          - pattern: ET.parse(...)
+          - pattern: xml.etree.ElementTree.fromstring(...)
+          - pattern: ET.fromstring(...)
+          - pattern: xml.sax.parseString(...)
+          - pattern: xml.sax.parse(...)
+          - pattern: xml.dom.minidom.parse(...)
+          - pattern: xml.dom.minidom.parseString(...)
+          - pattern: xml.dom.pulldom.parse(...)
+          - pattern: xml.dom.pulldom.parseString(...)
+          - pattern: lxml.etree.parse(...)
+          - pattern: lxml.etree.fromstring(...)
+          - pattern: etree.parse(...)
+          - pattern: etree.fromstring(...)
+    message: >
+      Potential XML External Entity (XXE) injection. Python's built-in XML
+      parsers and lxml may process external entities by default, allowing
+      attackers to read local files, perform SSRF, or cause denial of service.
+      Use defusedxml (defusedxml.ElementTree, defusedxml.sax, etc.) which
+      disables external entity processing by default.
+    metadata:
+      cwe: CWE-611
+      owasp: "A05:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [python]

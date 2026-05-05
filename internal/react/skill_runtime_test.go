@@ -148,7 +148,7 @@ func TestNewSkillsPromptProviderFromCatalog_BuildsTableAndInjectedSection(t *tes
 		t.Fatalf("ImportSkill failed: %v", err)
 	}
 
-	provider := NewSkillsPromptProviderFromCatalog(svc)
+	provider := NewSkillsPromptProviderFromCatalog(svc, nil)
 	if provider == nil {
 		t.Fatalf("expected provider")
 	}

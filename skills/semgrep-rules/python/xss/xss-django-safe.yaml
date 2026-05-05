@@ -1,0 +1,21 @@
+rules:
+  - id: python-xss-django-safe
+    patterns:
+      - pattern-either:
+          - pattern: mark_safe($VAR)
+          - pattern: mark_safe(f"...{$VAR}...")
+          - pattern: mark_safe("..." % $VAR)
+          - pattern: mark_safe("...".format(...))
+          - pattern: mark_safe("..." + $VAR + ...)
+      - pattern-not: mark_safe("...")
+    message: >
+      Cross-site scripting (XSS) via Django mark_safe(). Marking user-controlled
+      input as safe bypasses Django's auto-escaping, allowing script injection.
+      Use django.utils.html.format_html() for safe HTML interpolation instead.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

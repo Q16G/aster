@@ -20,7 +20,7 @@ func TestBuildSkillsTableWithStatus(t *testing.T) {
 		t.Fatalf("import skill failed: %v", err)
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", []string{"data-flow"})
+	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", nil, []string{"data-flow"})
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestBuildSkillsTableWithStatus_AllAgentWildcard(t *testing.T) {
 		}
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "all", nil)
+	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "all", nil, nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestBuildInjectedSkillsSection_DedupAndPreserveOrder(t *testing.T) {
 		}
 	}
 
-	section, err := svc.BuildInjectedSkillsSection(context.Background(), []string{"skill-b", "skill-a", "skill-b"})
+	section, err := svc.BuildInjectedSkillsSection(context.Background(), nil, []string{"skill-b", "skill-a", "skill-b"})
 	if err != nil {
 		t.Fatalf("BuildInjectedSkillsSection failed: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestImportEmbeddedSkills(t *testing.T) {
 		t.Fatalf("expected embedded skills to be imported")
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", nil)
+	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", nil, nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestBuildSkillsTableWithStatus_V2Fields(t *testing.T) {
 		t.Fatalf("import failed: %v", err)
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "TestAgent", nil)
+	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "TestAgent", nil, nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestBuildSkillsTableWithStatus_AgentFilterWithV2Field(t *testing.T) {
 		}
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "AgentA", nil)
+	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "AgentA", nil, nil)
 	if err != nil {
 		t.Fatalf("failed: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
 	}
 
-	skills, err := svc.LoadSkills(context.Background(), []string{"semgrep-scan"})
+	skills, err := svc.LoadSkills(context.Background(), []string{"sast-scan"})
 	if err != nil {
 		t.Fatalf("LoadSkills failed: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		t.Fatalf("expected agent 'all', got %q", skill.Agent)
 	}
 	if skill.WhenToUse == "" {
-		t.Fatal("expected non-empty when-to-use for semgrep-scan skill")
+		t.Fatal("expected non-empty when-to-use for sast-scan skill")
 	}
 	if skill.Context != "inline" {
 		t.Fatalf("expected context 'inline', got %q", skill.Context)

@@ -1,0 +1,51 @@
+rules:
+  - id: php-crypto-weak-hash-password
+    patterns:
+      - pattern-either:
+          - pattern: md5($PASSWORD);
+          - pattern: sha1($PASSWORD);
+          - pattern: |
+              $HASH = md5($PASSWORD);
+          - pattern: |
+              $HASH = sha1($PASSWORD);
+      - metavariable-regex:
+          metavariable: $PASSWORD
+          regex: (?i).*(pass|pwd|secret|credential|token).*
+    message: >
+      Weak hash function (md5/sha1) used for password hashing. MD5 and
+      SHA1 are cryptographically broken and too fast for password hashing,
+      making them vulnerable to brute-force and rainbow table attacks.
+      Use password_hash() with PASSWORD_BCRYPT or PASSWORD_ARGON2ID instead.
+    metadata:
+      cwe: CWE-328
+      owasp: "A02:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [php]
+  - id: php-crypto-weak-hash-generic
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if (md5($INPUT) == $EXPECTED) { ... }
+          - pattern: |
+              if (md5($INPUT) === $EXPECTED) { ... }
+          - pattern: |
+              if (sha1($INPUT) == $EXPECTED) { ... }
+          - pattern: |
+              if (sha1($INPUT) === $EXPECTED) { ... }
+          - pattern: |
+              password_verify($INPUT, md5($HASH));
+    message: >
+      Weak hash function (md5/sha1) used for authentication or integrity
+      checks. MD5 and SHA1 have known collision attacks and should not
+      be used for security-sensitive comparisons. Use password_hash()
+      and password_verify() for passwords, or hash('sha256', ...) for
+      integrity checks.
+    metadata:
+      cwe: CWE-328
+      owasp: "A02:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [php]

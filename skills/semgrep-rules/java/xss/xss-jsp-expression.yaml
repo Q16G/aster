@@ -1,0 +1,17 @@
+rules:
+  - id: java-xss-jsp-expression
+    pattern-regex: <%=\s*request\.getParameter\s*\(
+    message: >
+      Potential XSS via JSP expression. User input from request.getParameter()
+      is rendered directly without output encoding. Use JSTL <c:out> tag,
+      fn:escapeXml(), or OWASP Java Encoder to properly encode output.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "*.jsp"

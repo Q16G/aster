@@ -138,7 +138,7 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 
 	// Skills
 	if f.skillsCatalog != nil {
-		opts = append(opts, WithSkillCatalog(f.skillsCatalog))
+		opts = append(opts, WithSkillCatalog(f.skillsCatalog, def.SkillNames))
 	}
 
 	// Human input

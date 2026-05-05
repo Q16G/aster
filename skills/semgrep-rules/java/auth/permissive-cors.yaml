@@ -1,0 +1,28 @@
+rules:
+  - id: java-auth-permissive-cors
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @CrossOrigin(origins = "*")
+          - pattern: |
+              @CrossOrigin(origins = {"*"})
+          - pattern: |
+              @CrossOrigin("*")
+          - pattern: |
+              (HttpServletResponse $RESP).setHeader("Access-Control-Allow-Origin", "*");
+          - pattern: |
+              (HttpServletResponse $RESP).addHeader("Access-Control-Allow-Origin", "*");
+          - pattern: |
+              $CONFIG.addAllowedOrigin("*");
+    message: >
+      Permissive CORS configuration detected. Setting
+      Access-Control-Allow-Origin to "*" allows any origin to make
+      cross-origin requests, potentially exposing sensitive data.
+      Specify explicit trusted origins instead of using a wildcard.
+    metadata:
+      cwe: CWE-942
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [java]

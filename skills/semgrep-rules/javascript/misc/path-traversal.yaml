@@ -1,0 +1,33 @@
+rules:
+  - id: javascript-misc-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: path.join(..., $REQ.query.$PARAM, ...)
+          - pattern: path.join(..., $REQ.params.$PARAM, ...)
+          - pattern: path.join(..., $REQ.body.$PARAM, ...)
+          - pattern: path.resolve(..., $REQ.query.$PARAM, ...)
+          - pattern: path.resolve(..., $REQ.params.$PARAM, ...)
+          - pattern: path.resolve(..., $REQ.body.$PARAM, ...)
+          - pattern: fs.readFile(path.join(..., $INPUT, ...), ...)
+          - pattern: fs.readFileSync(path.join(..., $INPUT, ...), ...)
+          - pattern: |
+              $PATH = path.join(..., $INPUT, ...)
+              ...
+              fs.readFile($PATH, ...)
+          - pattern: |
+              $PATH = path.join(..., $INPUT, ...)
+              ...
+              fs.readFileSync($PATH, ...)
+    message: >
+      Path traversal vulnerability. User-controlled input from request parameters
+      is used in path.join() or path.resolve(), which may allow an attacker to
+      access files outside the intended directory using "../" sequences. Validate
+      that the resolved path starts with the expected base directory using
+      path.resolve() and startsWith() checks.
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

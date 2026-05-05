@@ -1,0 +1,31 @@
+rules:
+  - id: javascript-injection-sql-injection-sequelize
+    patterns:
+      - pattern-either:
+          - pattern: $SEQ.literal(`...${$VAR}...`)
+          - pattern: $SEQ.literal("..." + $VAR + ...)
+          - pattern: Sequelize.literal(`...${$VAR}...`)
+          - pattern: Sequelize.literal("..." + $VAR + ...)
+          - pattern: $SEQ.query(`...${$VAR}...`)
+          - pattern: $SEQ.query("..." + $VAR + ...)
+          - pattern: sequelize.query(`...${$VAR}...`)
+          - pattern: sequelize.query("..." + $VAR + ...)
+          - pattern: |
+              $SQL = `...${$VAR}...`
+              ...
+              $SEQ.query($SQL)
+          - pattern: |
+              $SQL = "..." + $VAR + ...
+              ...
+              $SEQ.query($SQL)
+    message: >
+      SQL injection via Sequelize literal() or query() with string interpolation.
+      User-controlled input is concatenated into raw SQL. Use parameterized
+      replacements: sequelize.query("SELECT ... WHERE id = ?", { replacements: [val] }).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

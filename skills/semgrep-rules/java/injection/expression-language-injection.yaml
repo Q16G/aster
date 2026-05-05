@@ -1,0 +1,34 @@
+rules:
+  - id: java-injection-expression-language-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.el.ExpressionFactory $EF).createValueExpression($CTX, $EXPR + ..., ...);
+          - pattern: |
+              (javax.el.ExpressionFactory $EF).createMethodExpression($CTX, $EXPR + ..., ...);
+          - pattern: |
+              new org.springframework.expression.spel.standard.SpelExpressionParser().parseExpression($INPUT);
+          - pattern: |
+              (org.springframework.expression.ExpressionParser $PARSER).parseExpression($INPUT);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (org.springframework.expression.ExpressionParser $PARSER).parseExpression($EXPR);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (javax.el.ExpressionFactory $EF).createValueExpression($CTX, $EXPR, ...);
+      - pattern-not: |
+          (org.springframework.expression.ExpressionParser $PARSER).parseExpression("...");
+    message: >
+      Expression Language (EL/SpEL) injection detected. User-controlled
+      input is passed to an expression parser, which can lead to remote
+      code execution. Never evaluate expressions containing user input.
+      Use a SimpleEvaluationContext in Spring to restrict available features.
+    metadata:
+      cwe: CWE-917
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

@@ -1,0 +1,33 @@
+rules:
+  - id: java-auth-missing-auth-annotation
+    patterns:
+      - pattern: |
+          @RequestMapping(...)
+          public $RET $METHOD(...) {
+            ...
+          }
+      - pattern-not-inside: |
+          @PreAuthorize(...)
+          ...
+      - pattern-not-inside: |
+          @Secured(...)
+          ...
+      - pattern-not-inside: |
+          @RolesAllowed(...)
+          ...
+      - pattern-not-inside: |
+          @PermitAll
+          ...
+    message: >
+      Controller method lacks authorization annotation. The endpoint
+      mapped by @RequestMapping has no @PreAuthorize, @Secured, or
+      @RolesAllowed annotation, which may allow unauthorized access.
+      Add appropriate authorization checks or explicitly annotate with
+      @PermitAll if public access is intended.
+    metadata:
+      cwe: CWE-862
+      owasp: "A01:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: false
+    severity: INFO
+    languages: [java]

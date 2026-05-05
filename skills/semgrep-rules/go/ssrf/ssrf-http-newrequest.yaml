@@ -1,0 +1,20 @@
+rules:
+  - id: go-ssrf-http-newrequest
+    patterns:
+      - pattern-either:
+          - pattern: http.NewRequest($METHOD, $URL, ...)
+          - pattern: http.NewRequestWithContext($CTX, $METHOD, $URL, ...)
+      - pattern-not: http.NewRequest($METHOD, "...", ...)
+      - pattern-not: http.NewRequestWithContext($CTX, $METHOD, "...", ...)
+    message: >
+      Potential SSRF via http.NewRequest with a variable URL. User-controlled
+      URLs can be used to access internal services, metadata endpoints, or
+      private network resources. Validate URLs against an allowlist and
+      block private/internal IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

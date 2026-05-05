@@ -1,0 +1,25 @@
+rules:
+  - id: go-crypto-weak-random
+    patterns:
+      - pattern-either:
+          - pattern: rand.Intn(...)
+          - pattern: rand.Int()
+          - pattern: rand.Int63()
+          - pattern: rand.Int63n(...)
+          - pattern: rand.Float64()
+          - pattern: rand.Float32()
+          - pattern: rand.Read(...)
+          - pattern: rand.New(...)
+          - pattern: rand.NewSource(...)
+    message: >
+      math/rand is not cryptographically secure. If this random value is
+      used for security purposes (tokens, keys, nonces, session IDs),
+      use crypto/rand instead. math/rand is predictable and should only
+      be used for non-security purposes like shuffling or simulation.
+    metadata:
+      cwe: CWE-338
+      owasp: "A02:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

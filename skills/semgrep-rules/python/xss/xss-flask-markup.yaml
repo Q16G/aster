@@ -1,0 +1,21 @@
+rules:
+  - id: python-xss-flask-markup
+    patterns:
+      - pattern-either:
+          - pattern: Markup($VAR)
+          - pattern: Markup(f"...{$VAR}...")
+          - pattern: Markup("..." % $VAR)
+          - pattern: Markup("...".format(...))
+          - pattern: Markup("..." + $VAR + ...)
+      - pattern-not: Markup("...")
+    message: >
+      Cross-site scripting (XSS) via Flask Markup(). Wrapping user-controlled
+      input in Markup() marks it as safe HTML, bypassing auto-escaping. Sanitize
+      input with bleach.clean() or use Markup.escape() before wrapping.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

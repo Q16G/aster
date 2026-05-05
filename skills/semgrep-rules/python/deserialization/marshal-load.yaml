@@ -1,0 +1,17 @@
+rules:
+  - id: python-deserialization-marshal-load
+    patterns:
+      - pattern-either:
+          - pattern: marshal.loads(...)
+          - pattern: marshal.load(...)
+    message: >
+      Unsafe deserialization via marshal. The marshal module is not intended for
+      untrusted data and can crash the interpreter or execute malicious bytecode.
+      Use safe serialization formats like JSON for untrusted data.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

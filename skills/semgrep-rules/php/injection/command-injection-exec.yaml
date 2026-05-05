@@ -1,0 +1,32 @@
+rules:
+  - id: php-injection-command-injection-exec
+    patterns:
+      - pattern-either:
+          - pattern: exec($CMD . ...);
+          - pattern: exec("...$INTERPOLATED...");
+          - pattern: system($CMD . ...);
+          - pattern: system("...$INTERPOLATED...");
+          - pattern: passthru($CMD . ...);
+          - pattern: passthru("...$INTERPOLATED...");
+          - pattern: shell_exec($CMD . ...);
+          - pattern: shell_exec("...$INTERPOLATED...");
+          - pattern: popen($CMD . ..., ...);
+          - pattern: popen("...$INTERPOLATED...", ...);
+          - pattern: proc_open($CMD . ..., ...);
+          - pattern: proc_open("...$INTERPOLATED...", ...);
+      - pattern-not: exec("...");
+      - pattern-not: system("...");
+      - pattern-not: passthru("...");
+      - pattern-not: shell_exec("...");
+    message: >
+      OS command injection via exec(), system(), passthru(), shell_exec(),
+      popen(), or proc_open() with variable input. An attacker may inject
+      arbitrary commands. Use escapeshellarg() or escapeshellcmd() to
+      sanitize user input, or avoid shell commands entirely.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

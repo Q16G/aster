@@ -1,0 +1,23 @@
+rules:
+  - id: python-crypto-insecure-random
+    patterns:
+      - pattern-either:
+          - pattern: random.random()
+          - pattern: random.randint(...)
+          - pattern: random.choice(...)
+          - pattern: random.randrange(...)
+          - pattern: random.uniform(...)
+          - pattern: random.getrandbits(...)
+    message: >
+      Use of non-cryptographic random number generator. Python's random module
+      uses a Mersenne Twister PRNG which is predictable and must not be used
+      for security-sensitive purposes such as token generation, password resets,
+      or nonce creation. Use secrets.token_hex(), secrets.token_urlsafe(), or
+      os.urandom() instead.
+    metadata:
+      cwe: CWE-330
+      owasp: "A02:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

@@ -1,0 +1,41 @@
+rules:
+  - id: java-injection-sql-injection-jdbc
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (java.sql.Statement $STMT).executeQuery($ARG + ...);
+          - pattern: |
+              (java.sql.Statement $STMT).execute($ARG + ...);
+          - pattern: |
+              (java.sql.Statement $STMT).executeUpdate($ARG + ...);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (java.sql.Statement $STMT).executeQuery($SQL);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (java.sql.Statement $STMT).execute($SQL);
+          - pattern: |
+              String $SQL = $PREFIX + $INPUT + ...;
+              ...
+              (java.sql.Statement $STMT).executeUpdate($SQL);
+          - pattern: |
+              String $SQL = String.format(...);
+              ...
+              (java.sql.Statement $STMT).executeQuery($SQL);
+          - pattern: |
+              String $SQL = String.format(...);
+              ...
+              (java.sql.Statement $STMT).execute($SQL);
+    message: >
+      SQL injection via JDBC Statement. User-controlled input is concatenated
+      into a SQL query string passed to executeQuery/execute/executeUpdate.
+      Use PreparedStatement with parameterized queries instead.
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

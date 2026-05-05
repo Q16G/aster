@@ -1,0 +1,33 @@
+rules:
+  - id: javascript-misc-regex-dos
+    patterns:
+      - pattern-either:
+          - pattern: new RegExp($INPUT)
+          - pattern: new RegExp($INPUT, $FLAGS)
+          - pattern: |
+              $PATTERN = $REQ.query.$PARAM
+              ...
+              new RegExp($PATTERN)
+          - pattern: |
+              $PATTERN = $REQ.body.$PARAM
+              ...
+              new RegExp($PATTERN)
+          - pattern: |
+              $PATTERN = $REQ.params.$PARAM
+              ...
+              new RegExp($PATTERN)
+      - pattern-not: new RegExp("...")
+      - pattern-not: new RegExp("...", "...")
+    message: >
+      Regular expression denial of service (ReDoS). User-controlled input is
+      used to construct a RegExp, which may allow an attacker to craft a pattern
+      causing catastrophic backtracking and CPU exhaustion. Validate and escape
+      user input before using in RegExp (use a library like escape-string-regexp),
+      or use the RE2 library which guarantees linear-time matching.
+    metadata:
+      cwe: CWE-1333
+      owasp: "A06:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]
