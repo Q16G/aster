@@ -10,6 +10,120 @@ import (
 	"aster/internal/builtin_tools"
 )
 
+func TestExecute_LooseSimplePatternRoutesToSimpleReply(t *testing.T) {
+	inputs := []string{
+		"你是什么 agent",
+		"你是谁啊",
+		"你能做什么呢",
+		"hello agent",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			client := &executeModelTestClient{
+				replies: []executeModelReply{
+					{content: "我是你的助手。"},
+				},
+			}
+			planner := &intentPreludeCapturePlanner{
+				result: &builtin_tools.TaskPlannerResult{
+					NeedsPlanning: false,
+					Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "x", Status: builtin_tools.PlanStepPending}},
+				},
+			}
+			agent, err := NewReActAgent("test-loose", client, WithEmitter(NewDummyEmitter()), WithTaskPlanner(planner))
+			if err != nil {
+				t.Fatalf("NewReActAgent: %v", err)
+			}
+			result, err := agent.Execute(context.Background(), input)
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if !result.Success {
+				t.Fatalf("expected success, got %+v", result)
+			}
+			if len(planner.inputs) != 0 {
+				t.Fatalf("expected planner bypassed, got %d calls", len(planner.inputs))
+			}
+			snap := agent.State()
+			if snap.FinalAnswer == nil || snap.FinalAnswer.Source != "simple_reply" {
+				t.Fatalf("expected simple_reply source, got %+v", snap.FinalAnswer)
+			}
+		})
+	}
+}
+
+func TestExecute_LoosePatternRejectsLongInput(t *testing.T) {
+	longSuffix := strings.Repeat("请帮我做安全审计", 20)
+	input := "你是什么 " + longSuffix
+
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{content: `{"mode":"react_run","intent_summary":"complex","complexity":"complex","matched_capabilities":[],"reply_hint":"","confidence":0.9}`},
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "c1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "done", "result": "done",
+					}),
+				},
+			},
+			{content: `{"status_summary":"ok","step_short_summary":"ok","step_long_summary":"ok","key_facts":[],"open_questions":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"final","references":[]}`},
+		},
+	}
+	planner := &intentPreludeCapturePlanner{
+		result: &builtin_tools.TaskPlannerResult{
+			NeedsPlanning: false,
+			Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "x", Status: builtin_tools.PlanStepPending}},
+		},
+	}
+	agent, err := NewReActAgent("test-reject", client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(6),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(planner),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+	result, err := agent.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected success")
+	}
+	if len(planner.inputs) == 0 {
+		t.Fatalf("expected planner to be called for long input")
+	}
+}
+
+func TestExecute_AgentKeywordNoLongerTriggersComplexPattern(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{content: `{"mode":"simple_reply","intent_summary":"能力询问","complexity":"simple","matched_capabilities":[],"reply_hint":"简洁回答","confidence":0.85}`},
+			{content: "我是一个 agent 助手。"},
+		},
+	}
+	planner := &intentPreludeCapturePlanner{}
+	agent, err := NewReActAgent("test-agent-kw", client,
+		WithEmitter(NewDummyEmitter()),
+		WithTaskPlanner(planner),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+	result, err := agent.Execute(context.Background(), "what is an agent")
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected success")
+	}
+	if len(planner.inputs) != 0 {
+		t.Fatalf("expected planner bypassed since LLM returned simple_reply, got %d", len(planner.inputs))
+	}
+}
+
 type intentPreludeCapturePlanner struct {
 	result *builtin_tools.TaskPlannerResult
 	err    error

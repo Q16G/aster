@@ -27,8 +27,10 @@ const (
 	EventTypeToolUpdate       EventType = "tool_update"
 	EventTypeLog              EventType = "log"
 	EventTypeStream           EventType = "stream"
-	EventTypeStepFinish       EventType = "step_finish"
-	EventTypeHistoryCompacted EventType = "history_compacted"
+	EventTypeStepFinish            EventType = "step_finish"
+	EventTypeHistoryCompacted      EventType = "history_compacted"
+	EventTypeStepSummaryResult     EventType = "step_summary_result"
+	EventTypeFinalAnswerResult     EventType = "final_answer_result"
 )
 
 // AgentOutputEvent 统一的事件结构
@@ -358,6 +360,41 @@ func (e *Emitter) EmitWarning(message string) {
 // EmitError 发射 error 级别日志
 func (e *Emitter) EmitError(message string) {
 	e.EmitLog("error", message)
+}
+
+func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome *builtin_tools.StepOutcome) {
+	if outcome == nil {
+		return
+	}
+	e.Emit(&AgentOutputEvent{
+		Type:   EventTypeStepSummaryResult,
+		NodeID: "step_summary_result",
+		Payload: map[string]any{
+			"step_id":           strings.TrimSpace(stepID),
+			"step_name":         strings.TrimSpace(stepName),
+			"short_summary":     strings.TrimSpace(outcome.ShortSummary),
+			"long_summary":      strings.TrimSpace(outcome.LongSummary),
+			"key_facts":         outcome.KeyFacts,
+			"open_questions":    outcome.OpenQuestions,
+			"tool_calls_digest": strings.Join(outcome.ToolCallsDigest, "\n"),
+			"references":        outcome.References,
+		},
+	})
+}
+
+func (e *Emitter) EmitFinalAnswerResult(answer *builtin_tools.FinalAnswer) {
+	if answer == nil || strings.TrimSpace(answer.Content) == "" {
+		return
+	}
+	e.Emit(&AgentOutputEvent{
+		Type:   EventTypeFinalAnswerResult,
+		NodeID: "final_answer_result",
+		Payload: map[string]any{
+			"content":    strings.TrimSpace(answer.Content),
+			"source":     strings.TrimSpace(answer.Source),
+			"references": answer.References,
+		},
+	})
 }
 
 func (e *Emitter) EmitHistoryCompacted(payload map[string]any) {

@@ -140,6 +140,28 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 	}
 
 	snapshot = a.state.Snapshot()
+
+	if a.shouldBypassPlanner(snapshot) {
+		stepText := strings.TrimSpace(snapshot.CurrentGoal)
+		if stepText == "" {
+			if latest := snapshot.LatestInput(); latest != nil {
+				stepText = strings.TrimSpace(latest.Content)
+			}
+		}
+		if stepText != "" {
+			items := []*builtin_tools.PlanItem{{
+				ID: "fast-1", Step: stepText, Status: builtin_tools.PlanStepPending,
+			}}
+			snapshot = a.ApplyPlanAndEmit(ctx, items, "planner bypassed: non-complex intent", false)
+			a.emitRuntimeLog("info", "planner bypassed for simple intent", snapshot, map[string]any{
+				"event":      "planner_bypassed",
+				"plan_count": 1,
+			})
+			return nil
+		}
+	}
+
+	snapshot = a.state.Snapshot()
 	input := PlannerInputFromSnapshot(snapshot, a.currentIntent, PlannerInputOptions{
 		UserInstruction:    strings.TrimSpace(a.cfg.Instruction),
 		ExtraContext:       strings.TrimSpace(extraText),
@@ -843,6 +865,29 @@ func stepIDOf(step *builtin_tools.PlanItem) string {
 		return ""
 	}
 	return strings.TrimSpace(step.ID)
+}
+
+func (a *Agent) shouldBypassPlanner(snapshot builtin_tools.StateSnapshot) bool {
+	if a.currentIntent == nil {
+		return false
+	}
+	if a.currentIntent.Complexity == "complex" || a.currentIntent.Complexity == "unknown" {
+		return false
+	}
+	if snapshot.ReplanContext != nil || len(snapshot.Plan) > 0 {
+		return false
+	}
+	if len(snapshot.StepOutcomes) > 0 {
+		return false
+	}
+	latest := snapshot.LatestInput()
+	if latest == nil {
+		return false
+	}
+	if len([]rune(strings.TrimSpace(latest.Content))) > 200 || strings.Count(strings.TrimSpace(latest.Content), "\n") >= 3 {
+		return false
+	}
+	return true
 }
 
 // blockingStepFailure 已由 step_summary -> final_answer 的统一链路覆盖；本次重构不再提前截断。
