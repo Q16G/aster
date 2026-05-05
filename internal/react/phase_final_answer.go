@@ -234,6 +234,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		Unresolved:            []string{},
 	})
 	a.emitter.EmitStateChange(snapshot)
+	if snapshot.FinalAnswer != nil {
+		a.emitter.EmitFinalAnswerResult(snapshot.FinalAnswer)
+	}
 	record, err := writer.PersistFinalArtifacts(snapshot, a.workspaceSessionID, assessmentPayload, finalText)
 	if err != nil {
 		return snapshot, err

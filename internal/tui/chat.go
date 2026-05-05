@@ -8,26 +8,23 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
-type ChatMessage struct {
-	Role    string // "user" / "assistant" / "tool" / "system"
-	Content string
-	Time    time.Time
-}
-
 type ChatModel struct {
-	viewport     viewport.Model
-	messages     []ChatMessage
-	streaming    strings.Builder
-	isStreaming  bool
-	width        int
-	height       int
-	toolVerbose  bool
-	toolExpanded   map[int]bool
-	cursor         int
-	focused        bool
-	msgLineOffsets []int
+	viewport        viewport.Model
+	parts           []DisplayPart
+	streaming       *strings.Builder
+	isStreaming      bool
+	thinkingBuf     *strings.Builder
+	isThinking      bool
+	width           int
+	height          int
+	toolVerbose     bool
+	toolExpanded    map[int]bool
+	cursor          int
+	focused         bool
+	partLineOffsets []int
 }
 
 func NewChatModel() ChatModel {
@@ -35,6 +32,8 @@ func NewChatModel() ChatModel {
 	vp.SetContent("")
 	return ChatModel{
 		viewport:     vp,
+		streaming:    &strings.Builder{},
+		thinkingBuf:  &strings.Builder{},
 		toolExpanded: make(map[int]bool),
 	}
 }
@@ -47,14 +46,18 @@ func (m *ChatModel) SetSize(w, h int) {
 	m.refreshContent()
 }
 
-func (m *ChatModel) AddMessage(msg ChatMessage) {
-	if msg.Time.IsZero() {
-		msg.Time = time.Now()
+func (m *ChatModel) AddPart(part DisplayPart) {
+	if part.Time.IsZero() {
+		part.Time = time.Now()
 	}
-	m.messages = append(m.messages, msg)
-	m.cursor = len(m.messages) - 1
+	m.parts = append(m.parts, part)
+	m.cursor = len(m.parts) - 1
 	m.refreshContent()
 	m.viewport.GotoBottom()
+}
+
+func (m *ChatModel) StreamContent() string {
+	return m.streaming.String()
 }
 
 func (m *ChatModel) AppendStream(delta string) {
@@ -67,10 +70,10 @@ func (m *ChatModel) AppendStream(delta string) {
 func (m *ChatModel) FlushStream() bool {
 	flushed := false
 	if m.streaming.Len() > 0 {
-		m.messages = append(m.messages, ChatMessage{
-			Role:    "assistant",
-			Content: m.streaming.String(),
-			Time:    time.Now(),
+		m.parts = append(m.parts, DisplayPart{
+			Type: PartTypeText,
+			Time: time.Now(),
+			Text: &TextPart{Content: m.streaming.String()},
 		})
 		m.streaming.Reset()
 		flushed = true
@@ -79,6 +82,79 @@ func (m *ChatModel) FlushStream() bool {
 	m.refreshContent()
 	m.viewport.GotoBottom()
 	return flushed
+}
+
+func (m *ChatModel) AppendThinking(delta string) {
+	m.thinkingBuf.WriteString(delta)
+	m.isThinking = true
+	m.refreshContent()
+	m.viewport.GotoBottom()
+}
+
+func (m *ChatModel) FlushThinking() bool {
+	if m.thinkingBuf.Len() == 0 {
+		m.isThinking = false
+		return false
+	}
+	m.parts = append(m.parts, DisplayPart{
+		Type:     PartTypeThinking,
+		Time:     time.Now(),
+		Thinking: &ThinkingPart{Content: m.thinkingBuf.String()},
+	})
+	m.thinkingBuf.Reset()
+	m.isThinking = false
+	m.refreshContent()
+	m.viewport.GotoBottom()
+	return true
+}
+
+func (m *ChatModel) UpdateLastTool(fn func(*ToolPart)) {
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
+			fn(m.parts[i].Tool)
+			m.refreshContent()
+			return
+		}
+	}
+}
+
+func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
+	if callID == "" {
+		m.UpdateLastTool(fn)
+		return
+	}
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil && m.parts[i].Tool.CallID == callID {
+			fn(m.parts[i].Tool)
+			m.refreshContent()
+			return
+		}
+	}
+}
+
+func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
+			t := m.parts[i].Tool
+			if callID != "" && t.CallID == callID {
+				return m.parts[i].Time
+			}
+			if callID == "" && t.Name == toolName {
+				return m.parts[i].Time
+			}
+		}
+	}
+	return time.Now()
+}
+
+func (m *ChatModel) UpdateLastPlan(fn func(*PlanPart)) {
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypePlan && m.parts[i].Plan != nil {
+			fn(m.parts[i].Plan)
+			m.refreshContent()
+			return
+		}
+	}
 }
 
 func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
@@ -92,18 +168,21 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			m.scrollToCursor()
 			return m, nil
 		case "down", "j":
-			if m.cursor < len(m.messages)-1 {
+			if m.cursor < len(m.parts)-1 {
 				m.cursor++
 			}
 			m.refreshContent()
 			m.scrollToCursor()
 			return m, nil
 		case "enter", " ":
-			if m.cursor >= 0 && m.cursor < len(m.messages) && m.messages[m.cursor].Role == "tool" {
-				m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
-				m.refreshContent()
-				m.scrollToCursor()
-				return m, nil
+			if m.cursor >= 0 && m.cursor < len(m.parts) {
+				t := m.parts[m.cursor].Type
+				if t == PartTypeTool || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan {
+					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
+					m.refreshContent()
+					m.scrollToCursor()
+					return m, nil
+				}
 			}
 		}
 	}
@@ -118,31 +197,38 @@ func (m ChatModel) View() string {
 
 func (m *ChatModel) refreshContent() {
 	var sb strings.Builder
-	m.msgLineOffsets = make([]int, 0, len(m.messages))
+	m.partLineOffsets = make([]int, 0, len(m.parts))
 	lineCount := 0
 
-	for i, msg := range m.messages {
-		m.msgLineOffsets = append(m.msgLineOffsets, lineCount)
-		rendered := m.renderMessage(i, msg)
+	for i, part := range m.parts {
+		m.partLineOffsets = append(m.partLineOffsets, lineCount)
+		rendered := m.renderPart(i, part)
+		if rendered == "" {
+			continue
+		}
 		sb.WriteString(rendered)
 		sb.WriteString("\n")
 		lineCount += strings.Count(rendered, "\n") + 1
 	}
-	if m.isStreaming {
-		sb.WriteString(m.renderStreamingMessage())
+	if m.isThinking {
+		sb.WriteString(m.renderThinkingStream())
 		sb.WriteString("\n")
 	}
-	if len(m.messages) == 0 && !m.isStreaming {
+	if m.isStreaming {
+		sb.WriteString(m.renderStreamingContent())
+		sb.WriteString("\n")
+	}
+	if len(m.parts) == 0 && !m.isStreaming && !m.isThinking {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
 	m.viewport.SetContent(sb.String())
 }
 
 func (m *ChatModel) scrollToCursor() {
-	if len(m.msgLineOffsets) == 0 || m.cursor < 0 || m.cursor >= len(m.msgLineOffsets) {
+	if len(m.partLineOffsets) == 0 || m.cursor < 0 || m.cursor >= len(m.partLineOffsets) {
 		return
 	}
-	targetLine := m.msgLineOffsets[m.cursor]
+	targetLine := m.partLineOffsets[m.cursor]
 	viewTop := m.viewport.YOffset
 	viewBottom := viewTop + m.viewport.Height - 1
 
@@ -163,19 +249,19 @@ func (m *ChatModel) ToggleToolVerbose() {
 	m.refreshContent()
 }
 
-func (m *ChatModel) SetMessages(msgs []ChatMessage) {
-	m.messages = msgs
+func (m *ChatModel) SetParts(parts []DisplayPart) {
+	m.parts = parts
 	m.toolExpanded = make(map[int]bool)
 	m.refreshContent()
 	m.viewport.GotoBottom()
 }
 
-func (m *ChatModel) Messages() []ChatMessage {
-	return m.messages
+func (m *ChatModel) Parts() []DisplayPart {
+	return m.parts
 }
 
 func (m *ChatModel) HasContent() bool {
-	return len(m.messages) > 0 || m.isStreaming
+	return len(m.parts) > 0 || m.isStreaming
 }
 
 func (m *ChatModel) SetFocused(f bool) {
@@ -183,37 +269,50 @@ func (m *ChatModel) SetFocused(f bool) {
 	m.refreshContent()
 }
 
-// --- Panel-style rendering ---
+// --- Rendering ---
 
 var (
 	userBorderColor      = lipgloss.Color("12")
 	assistantBorderColor = lipgloss.Color("10")
 	toolBorderColor      = lipgloss.Color("11")
+	toolErrorColor       = lipgloss.Color("9")
+	toolCompletedColor   = lipgloss.Color("8")
 )
 
-func (m *ChatModel) renderMessage(idx int, msg ChatMessage) string {
+func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 	maxWidth := m.width - 4
 	if maxWidth < 10 {
 		maxWidth = 10
 	}
 
-	switch msg.Role {
-	case "user":
-		return m.renderUserMessage(msg, maxWidth)
-	case "assistant":
-		return m.renderAssistantMessage(msg, maxWidth)
-	case "tool":
-		return m.renderToolMessage(idx, msg, maxWidth)
-	case "plan":
-		return renderPlanMessage(msg.Content)
-	case "system":
-		return m.renderSystemMessage(msg)
+	switch part.Type {
+	case PartTypeUser:
+		return m.renderUserPart(part, maxWidth)
+	case PartTypeText:
+		return m.renderTextPart(part, maxWidth)
+	case PartTypeTool:
+		return m.renderToolPart(idx, part, maxWidth)
+	case PartTypePlan:
+		return m.renderPlanPart(idx, part, maxWidth)
+	case PartTypeSystem:
+		return m.renderSystemPart(part)
+	case PartTypeThinking:
+		return m.renderThinkingPart(part, maxWidth)
+	case PartTypeSummary:
+		return m.renderSummaryPart(part)
+	case PartTypeStepSummary:
+		return m.renderStepSummaryPart(idx, part, maxWidth)
+	case PartTypeFinalAnswer:
+		return m.renderFinalAnswerPart(idx, part, maxWidth)
 	default:
-		return msg.Content
+		return ""
 	}
 }
 
-func (m *ChatModel) renderUserMessage(msg ChatMessage, maxWidth int) string {
+func (m *ChatModel) renderUserPart(part DisplayPart, maxWidth int) string {
+	if part.User == nil {
+		return ""
+	}
 	style := lipgloss.NewStyle().
 		BorderStyle(lipgloss.ThickBorder()).
 		BorderLeft(true).
@@ -221,11 +320,14 @@ func (m *ChatModel) renderUserMessage(msg ChatMessage, maxWidth int) string {
 		PaddingLeft(1).
 		Width(maxWidth)
 
-	content := wrapText(msg.Content, maxWidth-4)
+	content := wrapText(part.User.Content, maxWidth-4)
 	return style.Render(content)
 }
 
-func (m *ChatModel) renderAssistantMessage(msg ChatMessage, maxWidth int) string {
+func (m *ChatModel) renderTextPart(part DisplayPart, maxWidth int) string {
+	if part.Text == nil {
+		return ""
+	}
 	style := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderLeft(true).
@@ -233,11 +335,11 @@ func (m *ChatModel) renderAssistantMessage(msg ChatMessage, maxWidth int) string
 		PaddingLeft(1).
 		Width(maxWidth)
 
-	content := wrapText(msg.Content, maxWidth-4)
+	content := wrapText(part.Text.Content, maxWidth-4)
 	return style.Render(content)
 }
 
-func (m *ChatModel) renderStreamingMessage() string {
+func (m *ChatModel) renderStreamingContent() string {
 	maxWidth := m.width - 4
 	if maxWidth < 10 {
 		maxWidth = 10
@@ -254,24 +356,72 @@ func (m *ChatModel) renderStreamingMessage() string {
 	return style.Render(content)
 }
 
-func (m *ChatModel) renderToolMessage(idx int, msg ChatMessage, maxWidth int) string {
+func (m *ChatModel) renderThinkingStream() string {
+	maxWidth := m.width - 4
+	if maxWidth < 10 {
+		maxWidth = 10
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(lipgloss.Color("8")).
+		PaddingLeft(1).
+		Width(maxWidth).
+		Foreground(lipgloss.Color("8"))
+
+	content := wrapText("Thinking: "+m.thinkingBuf.String(), maxWidth-4) + "▌"
+	return style.Render(content)
+}
+
+func (m *ChatModel) renderToolPart(idx int, part DisplayPart, maxWidth int) string {
+	t := part.Tool
+	if t == nil {
+		return ""
+	}
 	expanded := m.toolExpanded[idx]
 	selected := m.focused && idx == m.cursor
+	icon := ToolIcon(t.Name)
 
 	if !expanded {
-		icon := "▸"
-		if selected {
-			icon = "▶"
+		summary := t.Name
+		if t.Arguments != "" {
+			args := truncateOneLine(t.Arguments, 40)
+			summary += " " + args
 		}
-		summary := compactToolMessage(msg.Content, maxWidth-4)
-		style := lipgloss.NewStyle().Foreground(toolBorderColor)
+		if t.State == "completed" && t.Duration > 0 {
+			summary += " · " + formatDuration(t.Duration)
+		}
+		if t.State == "error" && t.Error != "" {
+			summary += " · " + truncateDisplayWidth(t.Error, 50)
+		} else if t.State == "running" {
+			summary += " · running..."
+		}
+
+		var style lipgloss.Style
+		switch t.State {
+		case "running":
+			style = lipgloss.NewStyle().Foreground(toolBorderColor)
+		case "error":
+			style = lipgloss.NewStyle().Foreground(toolErrorColor)
+		default:
+			style = lipgloss.NewStyle().Foreground(toolCompletedColor)
+		}
 		if selected {
 			style = style.Bold(true)
 		}
-		return style.Render(icon + " " + summary)
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
 	}
 
+	// Expanded mode
 	borderColor := toolBorderColor
+	switch t.State {
+	case "error":
+		borderColor = toolErrorColor
+	case "completed":
+		borderColor = toolCompletedColor
+	}
 	if selected {
 		borderColor = lipgloss.Color("15")
 	}
@@ -283,25 +433,268 @@ func (m *ChatModel) renderToolMessage(idx int, msg ChatMessage, maxWidth int) st
 		PaddingLeft(1).
 		Width(maxWidth)
 
-	content := msg.Content
+	var content string
+	if t.Error != "" {
+		content = t.Error
+	} else if t.Result != "" {
+		content = t.Result
+	}
 	if !m.toolVerbose {
 		lines := strings.Split(content, "\n")
 		if len(lines) > 20 {
 			content = strings.Join(lines[:20], "\n") + fmt.Sprintf("\n... (%d more lines)", len(lines)-20)
 		}
 	}
-	icon := "▾"
-	if selected {
-		icon = "▼"
+
+	header := icon + " " + t.Name
+	if t.Duration > 0 {
+		header += " · " + formatDuration(t.Duration)
 	}
-	return icon + " " + style.Render(wrapText(content, maxWidth-4))
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+
+	result := headerStyle.Render(header) + "\n" + style.Render(wrapText(content, maxWidth-4))
+	return result
 }
 
-func (m *ChatModel) renderSystemMessage(msg ChatMessage) string {
-	return lipgloss.NewStyle().Faint(true).Italic(true).Render(msg.Content)
+func (m *ChatModel) renderStepSummaryPart(idx int, part DisplayPart, maxWidth int) string {
+	s := part.StepSummary
+	if s == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	icon := "◆"
+	color := toolCompletedColor
+
+	if !expanded {
+		summary := "step_summary"
+		if s.StepName != "" {
+			summary += ": " + s.StepName
+		}
+		if s.ShortSummary != "" {
+			summary += " — " + truncateDisplayWidth(s.ShortSummary, 60)
+		}
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := icon + " step_summary"
+	if s.StepName != "" {
+		header += ": " + s.StepName
+	}
+
+	var body strings.Builder
+	if s.LongSummary != "" {
+		body.WriteString(s.LongSummary)
+	} else if s.ShortSummary != "" {
+		body.WriteString(s.ShortSummary)
+	}
+	if len(s.KeyFacts) > 0 {
+		body.WriteString("\n\nKey Facts:")
+		for _, f := range s.KeyFacts {
+			body.WriteString("\n  • " + f)
+		}
+	}
+	if len(s.OpenQuestions) > 0 {
+		body.WriteString("\n\nOpen Questions:")
+		for _, q := range s.OpenQuestions {
+			body.WriteString("\n  ? " + q)
+		}
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(body.String(), maxWidth-4))
+}
+
+func (m *ChatModel) renderFinalAnswerPart(idx int, part DisplayPart, maxWidth int) string {
+	fa := part.FinalAnswer
+	if fa == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	icon := "★"
+	color := assistantBorderColor
+
+	if !expanded {
+		summary := "answer"
+		summary += ": " + truncateDisplayWidth(fa.Content, 60)
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := icon + " answer"
+	if fa.Source != "" {
+		header += " (" + fa.Source + ")"
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(fa.Content, maxWidth-4))
+}
+
+func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) string {
+	p := part.Plan
+	if p == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	total := len(p.Items)
+	var done, failed, active int
+	for _, item := range p.Items {
+		switch item.Status {
+		case "completed":
+			done++
+		case "failed":
+			failed++
+		case "in_progress":
+			active++
+		}
+	}
+
+	icon := "▤"
+	color := lipgloss.Color("11")
+	if total > 0 && done == total {
+		color = lipgloss.Color("10")
+	} else if failed > 0 {
+		color = lipgloss.Color("9")
+	}
+
+	if !expanded {
+		summary := fmt.Sprintf("plan [%d/%d", done, total)
+		if failed > 0 {
+			summary += fmt.Sprintf(", %d failed", failed)
+		}
+		if active > 0 {
+			summary += fmt.Sprintf(", %d active", active)
+		}
+		summary += "]"
+		if p.Explanation != "" {
+			prefix := icon + " " + summary + " — "
+			remaining := maxWidth - runewidth.StringWidth(prefix)
+			if remaining > 10 {
+				summary += " — " + truncateDisplayWidth(p.Explanation, remaining)
+			}
+		}
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := fmt.Sprintf("%s plan [%d/%d]", icon, done, total)
+
+	var body strings.Builder
+	if p.Explanation != "" {
+		body.WriteString(planExplanationStyle.Render(p.Explanation))
+		body.WriteString("\n")
+	}
+	for _, item := range p.Items {
+		switch item.Status {
+		case "completed":
+			body.WriteString(planCompleteStyle.Render("  ✓ "+item.Step) + "\n")
+		case "in_progress":
+			body.WriteString(planActiveStyle.Render("  ▸ "+item.Step) + "\n")
+		case "failed":
+			body.WriteString(planFailedStyle.Render("  ✗ "+item.Step) + "\n")
+		default:
+			body.WriteString(planPendingStyle.Render("  ○ "+item.Step) + "\n")
+		}
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(strings.TrimRight(body.String(), "\n"))
+}
+
+func (m *ChatModel) renderSystemPart(part DisplayPart) string {
+	if part.System == nil {
+		return ""
+	}
+	return lipgloss.NewStyle().Faint(true).Italic(true).Render(part.System.Content)
+}
+
+func (m *ChatModel) renderThinkingPart(part DisplayPart, maxWidth int) string {
+	if part.Thinking == nil || part.Thinking.Content == "" {
+		return ""
+	}
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(lipgloss.Color("8")).
+		PaddingLeft(1).
+		Width(maxWidth).
+		Foreground(lipgloss.Color("8"))
+
+	return style.Render(wrapText("Thinking: "+part.Thinking.Content, maxWidth-4))
+}
+
+func (m *ChatModel) renderSummaryPart(part DisplayPart) string {
+	s := part.Summary
+	if s == nil {
+		return ""
+	}
+	var iconStyle lipgloss.Style
+	if s.Success {
+		iconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	} else {
+		iconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	}
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	return iconStyle.Render("▣") + infoStyle.Render(fmt.Sprintf(" %s · %s · %s", s.AgentName, s.ModelID, formatDuration(s.Duration)))
 }
 
 // --- Helpers ---
+
+var (
+	planPendingStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	planActiveStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
+	planCompleteStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	planFailedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	planExplanationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Italic(true)
+)
 
 func wrapText(s string, maxWidth int) string {
 	if maxWidth <= 0 {
@@ -325,72 +718,8 @@ func wrapText(s string, maxWidth int) string {
 	return strings.Join(result, "\n")
 }
 
-func compactToolMessage(content string, maxWidth int) string {
-	idx := strings.Index(content, " → ")
-	if idx < 0 {
-		if len(content) > maxWidth {
-			return content[:maxWidth-1] + "…"
-		}
-		return content
-	}
-	header := content[:idx]
-	rest := content[idx+len(" → "):]
-	if len(rest) > 60 {
-		rest = rest[:57] + "..."
-	}
-	line := header + " → " + rest
-	if len(line) > maxWidth {
-		line = line[:maxWidth-1] + "…"
-	}
-	return line
+func truncateOneLine(s string, maxWidth int) string {
+	s = strings.Split(s, "\n")[0]
+	return truncateDisplayWidth(s, maxWidth)
 }
 
-func toolMessageContent(toolName string, args string, result string) string {
-	summary := result
-	if len(summary) > 200 {
-		summary = summary[:200] + "…"
-	}
-	if args != "" {
-		return fmt.Sprintf("[%s](%s) → %s", toolName, truncateLines(args, 80), summary)
-	}
-	return fmt.Sprintf("[%s] → %s", toolName, summary)
-}
-
-func truncateLines(s string, maxWidth int) string {
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		if len(line) > maxWidth {
-			lines[i] = line[:maxWidth-1] + "…"
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-var (
-	planPendingStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	planActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
-	planCompleteStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	planFailedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	systemStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Italic(true)
-)
-
-func renderPlanMessage(content string) string {
-	lines := strings.Split(content, "\n")
-	var rendered []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(trimmed, "[completed]"):
-			rendered = append(rendered, planCompleteStyle.Render("  ✓ "+strings.TrimPrefix(trimmed, "[completed] ")))
-		case strings.HasPrefix(trimmed, "[in_progress]"):
-			rendered = append(rendered, planActiveStyle.Render("  ▸ "+strings.TrimPrefix(trimmed, "[in_progress] ")))
-		case strings.HasPrefix(trimmed, "[failed]"):
-			rendered = append(rendered, planFailedStyle.Render("  ✗ "+strings.TrimPrefix(trimmed, "[failed] ")))
-		case strings.HasPrefix(trimmed, "[pending]"):
-			rendered = append(rendered, planPendingStyle.Render("  ○ "+strings.TrimPrefix(trimmed, "[pending] ")))
-		default:
-			rendered = append(rendered, systemStyle.Render(line))
-		}
-	}
-	return strings.Join(rendered, "\n")
-}

@@ -70,6 +70,7 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/new":
 		return m.cmdSession([]string{"new"})
 	case "/exit":
+		m.persistCurrentSession()
 		return m, tea.Quit
 	case "/session":
 		return m.cmdSession(parts[1:])
@@ -77,6 +78,7 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.chat = NewChatModel()
 		m.restoreToolVerbose()
 		m.updateLayout()
+		m.persistCurrentSession()
 		return m, nil
 	case "/verbose":
 		m.localProvider.ToggleToolVerbose()
@@ -106,7 +108,7 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.dialogStack.SetSize(m.width, m.height)
 		return m, nil
 	default:
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown command: " + parts[0]})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown command: " + parts[0]}})
 		return m, nil
 	}
 }
@@ -121,7 +123,7 @@ func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {
 				return m, m.input.Focus()
 			}
 		}
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown agent: " + args[0]})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown agent: " + args[0]}})
 	} else {
 		if m.profileRegistry != nil {
 			m.showAgentSelector()
@@ -132,7 +134,7 @@ func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {
 
 func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
 	if m.appCfg == nil || m.providerCfg == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "provider config not available"}})
 		return m, nil
 	}
 
@@ -144,7 +146,7 @@ func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
 	_, isBuiltin := GetBuiltinProvider(name)
 	_, inConfig := m.appCfg.Providers[name]
 	if !isBuiltin && !inConfig {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown provider: " + name})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + name}})
 		return m, nil
 	}
 	return m, func() tea.Msg { return ProviderSwitchMsg{Name: name} }
@@ -152,7 +154,7 @@ func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
 
 func (m *Model) openProviderSelector() (tea.Model, tea.Cmd) {
 	if m.providerCfg == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "provider config not available"}})
 		return m, nil
 	}
 
@@ -256,10 +258,7 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 				}
 			}
 		}); err != nil {
-			m.chat.AddMessage(ChatMessage{
-				Role:    "system",
-				Content: fmt.Sprintf("failed to save API key: %v", err),
-			})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("failed to save API key: %v", err)}})
 			m.pendingProvider = nil
 			return m, nil
 		}
@@ -292,7 +291,7 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 
 func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 	if m.providerCfg == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "provider config not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "provider config not available"}})
 		return m, nil
 	}
 
@@ -333,7 +332,7 @@ func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 		return m.openSkillSelector()
 	case "enable":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill enable <name>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /skill enable <name>"}})
 			return m, nil
 		}
 		m.toggleSessionSkill(args[1], true)
@@ -341,14 +340,14 @@ func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 		return m, m.toastManager.Push(fmt.Sprintf("skill enabled: %s", args[1]), tuiui.ToastSuccess, 3*time.Second)
 	case "disable":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill disable <name>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /skill disable <name>"}})
 			return m, nil
 		}
 		m.toggleSessionSkill(args[1], false)
 		m.statusText = fmt.Sprintf("skill disabled: %s", args[1])
 		return m, m.toastManager.Push(fmt.Sprintf("skill disabled: %s", args[1]), tuiui.ToastWarning, 3*time.Second)
 	default:
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /skill [list|enable|disable] [name]"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /skill [list|enable|disable] [name]"}})
 	}
 	return m, nil
 }
@@ -372,12 +371,12 @@ func (m *Model) allowedSkillNames() map[string]struct{} {
 
 func (m *Model) skillList() (tea.Model, tea.Cmd) {
 	if m.skillService == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "skill service not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "skill service not available"}})
 		return m, nil
 	}
 	skills, _ := m.skillService.ListSkills(context.Background(), nil)
 	if len(skills) == 0 {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no skills)"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "(no skills)"}})
 		return m, nil
 	}
 
@@ -400,18 +399,18 @@ func (m *Model) skillList() (tea.Model, tea.Cmd) {
 		}
 		sb.WriteString("\n")
 	}
-	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: sb.String()}})
 	return m, nil
 }
 
 func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
 	if m.skillService == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "skill service not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "skill service not available"}})
 		return m, nil
 	}
 	skills, _ := m.skillService.ListSkills(context.Background(), nil)
 	if len(skills) == 0 {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no skills)"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "(no skills)"}})
 		return m, nil
 	}
 	allowed := m.allowedSkillNames()
@@ -440,7 +439,7 @@ func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
 
 func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 	if m.mcpManager == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "MCP manager not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "MCP manager not available"}})
 		return m, nil
 	}
 
@@ -453,20 +452,20 @@ func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 		return m.openMCPSelector()
 	case "connect":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp connect <name>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mcp connect <name>"}})
 			return m, nil
 		}
 		m.toggleSessionMCP(args[1], true)
 		m.statusText = fmt.Sprintf("MCP connecting: %s", args[1])
 	case "disconnect":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp disconnect <name>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mcp disconnect <name>"}})
 			return m, nil
 		}
 		m.toggleSessionMCP(args[1], false)
 		m.statusText = fmt.Sprintf("MCP disconnected: %s", args[1])
 	default:
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /mcp [list|connect|disconnect] [name]"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mcp [list|connect|disconnect] [name]"}})
 	}
 	return m, nil
 }
@@ -474,7 +473,7 @@ func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 func (m *Model) mcpList() (tea.Model, tea.Cmd) {
 	entries := m.mcpManager.ServerEntries()
 	if len(entries) == 0 {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no MCP servers)"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "(no MCP servers)"}})
 		return m, nil
 	}
 
@@ -494,18 +493,18 @@ func (m *Model) mcpList() (tea.Model, tea.Cmd) {
 		}
 		sb.WriteString("\n")
 	}
-	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: sb.String()}})
 	return m, nil
 }
 
 func (m *Model) openMCPSelector() (tea.Model, tea.Cmd) {
 	if m.mcpManager == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "MCP manager not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "MCP manager not available"}})
 		return m, nil
 	}
 	entries := m.mcpManager.ServerEntries()
 	if len(entries) == 0 {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no MCP servers)"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "(no MCP servers)"}})
 		return m, nil
 	}
 	options := make([]tuiui.SelectOption, len(entries))
@@ -541,7 +540,7 @@ func (m *Model) cmdSession(args []string) (tea.Model, tea.Cmd) {
 	switch args[0] {
 	case "new":
 		if !m.newSession() {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "failed to create session"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "failed to create session"}})
 			return m, nil
 		}
 		m.statusText = fmt.Sprintf("new session: %s", shortSessionID(m.currentSessionID))
@@ -550,35 +549,35 @@ func (m *Model) cmdSession(args []string) (tea.Model, tea.Cmd) {
 		return m.openSessionSelector()
 	case "switch":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session switch <id>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /session switch <id>"}})
 			return m, nil
 		}
 		m.switchSession(args[1])
 		return m, m.input.Focus()
 	case "delete":
 		if len(args) < 2 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session delete <id>"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /session delete <id>"}})
 			return m, nil
 		}
 		return m.sessionDelete(args[1])
 	default:
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "usage: /session [new|list|switch|delete]"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /session [new|list|switch|delete]"}})
 		return m, nil
 	}
 }
 
 func (m *Model) sessionList() (tea.Model, tea.Cmd) {
 	if m.store == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "session store not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "session store not available"}})
 		return m, nil
 	}
 	sessions, err := m.store.List()
 	if err != nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("list sessions error: %v", err)})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("list sessions error: %v", err)}})
 		return m, nil
 	}
 	if len(sessions) == 0 {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no sessions)"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "(no sessions)"}})
 		return m, nil
 	}
 
@@ -596,18 +595,18 @@ func (m *Model) sessionList() (tea.Model, tea.Cmd) {
 		sb.WriteString(fmt.Sprintf("%s%s  %s  [%s]  msgs:%d\n",
 			marker, s.ID[:8], title, s.AgentName, s.MessageCount))
 	}
-	m.chat.AddMessage(ChatMessage{Role: "system", Content: sb.String()})
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: sb.String()}})
 	return m, nil
 }
 
 func (m *Model) openSessionSelector() (tea.Model, tea.Cmd) {
 	if m.store == nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: "session store not available"})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "session store not available"}})
 		return m, nil
 	}
 	sessions, err := m.store.List()
 	if err != nil {
-		m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("list sessions error: %v", err)})
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("list sessions error: %v", err)}})
 		return m, nil
 	}
 	options := buildSessionSelectOptions(sessions, m.currentSessionID)
@@ -637,19 +636,19 @@ func (m *Model) sessionDelete(idPrefix string) (tea.Model, tea.Cmd) {
 	for _, s := range sessions {
 		if strings.HasPrefix(s.ID, idPrefix) {
 			if s.ID == m.currentSessionID {
-				m.chat.AddMessage(ChatMessage{Role: "system", Content: "cannot delete current session"})
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "cannot delete current session"}})
 				return m, nil
 			}
 			if err := m.store.Delete(s.ID); err != nil {
-				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("delete error: %v", err)})
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("delete error: %v", err)}})
 			} else {
-				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("deleted session %s", s.ID[:8])})
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("deleted session %s", s.ID[:8])}})
 				m.refreshSidebarData()
 			}
 			return m, nil
 		}
 	}
-	m.chat.AddMessage(ChatMessage{Role: "system", Content: "session not found: " + idPrefix})
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "session not found: " + idPrefix}})
 	return m, nil
 }
 

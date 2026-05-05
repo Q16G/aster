@@ -382,6 +382,7 @@ func (a *Agent) runStepSummaryPhase(ctx context.Context, iter int, runClient ai.
 		return err
 	}
 	a.emitter.EmitStateChange(snapshot)
+	a.emitter.EmitStepSummaryResult(stepID, strings.TrimSpace(current.Step), &tmp)
 
 	// step baseline 清理，下一步重新记录
 	a.stepBaselineAt = time.Time{}

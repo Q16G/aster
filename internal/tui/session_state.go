@@ -6,6 +6,7 @@ type SessionMeta struct {
 	ActiveSkillNames []string `json:"active_skill_names,omitempty"`
 	ActiveMCPServers []string `json:"active_mcp_servers,omitempty"`
 	Theme            string   `json:"theme,omitempty"`
+	PermissionMode   string   `json:"permission_mode,omitempty"`
 }
 
 func parseSessionMeta(raw string) SessionMeta {

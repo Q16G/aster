@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 	"time"
 
 	"aster/internal/ai"
@@ -21,6 +21,7 @@ type persistedMessage struct {
 type persistedPart struct {
 	Type    string    `json:"type"`
 	Name    string    `json:"name,omitempty"`
+	CallID  string    `json:"call_id,omitempty"`
 	Content string    `json:"content"`
 	Time    time.Time `json:"time"`
 }
@@ -42,46 +43,67 @@ func sessionWorkspaceDir(baseDir, sessionID string) string {
 	return filepath.Join(baseDir, sessionID, "workspace")
 }
 
-func saveSessionMessages(baseDir, sessionID string, messages []ChatMessage) error {
+func saveSessionDisplayParts(baseDir, sessionID string, parts []DisplayPart) error {
 	dir := sessionDir(baseDir, sessionID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	f, err := os.Create(filepath.Join(dir, "messages.jsonl"))
+	f, err := os.Create(filepath.Join(dir, "display_parts.jsonl"))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
 	enc := json.NewEncoder(f)
-	for _, m := range messages {
-		_ = enc.Encode(persistedMessage{Role: m.Role, Content: m.Content, Time: m.Time})
+	for _, p := range parts {
+		_ = enc.Encode(p)
 	}
 	return nil
 }
 
-func appendSessionMessage(baseDir, sessionID string, msg ChatMessage) error {
+func appendSessionDisplayPart(baseDir, sessionID string, part DisplayPart) error {
 	dir := sessionDir(baseDir, sessionID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(filepath.Join(dir, "messages.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filepath.Join(dir, "display_parts.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(persistedMessage{Role: msg.Role, Content: msg.Content, Time: msg.Time})
+	return json.NewEncoder(f).Encode(part)
 }
 
-func loadSessionMessages(baseDir, sessionID string) ([]ChatMessage, error) {
-	path := filepath.Join(sessionDir(baseDir, sessionID), "messages.jsonl")
-	return readJSONLMessages(path)
+func loadSessionDisplayParts(baseDir, sessionID string) ([]DisplayPart, error) {
+	path := filepath.Join(sessionDir(baseDir, sessionID), "display_parts.jsonl")
+	parts, err := readJSONLDisplayParts(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if parts == nil {
+		// Fallback: try loading old messages.jsonl and migrate
+		oldPath := filepath.Join(sessionDir(baseDir, sessionID), "messages.jsonl")
+		oldMsgs, err := readJSONLOldMessages(oldPath)
+		if err != nil || len(oldMsgs) == 0 {
+			return nil, err
+		}
+		parts = migrateOldMessages(oldMsgs)
+	}
+
+	// Always merge recovery parts that are newer than the snapshot
+	recoveryParts, _ := loadRecoveryParts(baseDir, sessionID)
+	if len(recoveryParts) > 0 {
+		parts = mergeRecoveryParts(parts, recoveryParts)
+	}
+
+	return parts, nil
 }
 
-func readJSONLMessages(path string) ([]ChatMessage, error) {
+func readJSONLDisplayParts(path string) ([]DisplayPart, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -91,7 +113,34 @@ func readJSONLMessages(path string) ([]ChatMessage, error) {
 	}
 	defer f.Close()
 
-	var messages []ChatMessage
+	var parts []DisplayPart
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var part DisplayPart
+		if err := json.Unmarshal(line, &part); err != nil {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return parts, scanner.Err()
+}
+
+func readJSONLOldMessages(path string) ([]persistedMessage, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	var messages []persistedMessage
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
 	for scanner.Scan() {
@@ -103,27 +152,33 @@ func readJSONLMessages(path string) ([]ChatMessage, error) {
 		if err := json.Unmarshal(line, &pm); err != nil {
 			continue
 		}
-		messages = append(messages, ChatMessage{Role: pm.Role, Content: pm.Content, Time: pm.Time})
+		messages = append(messages, pm)
 	}
 	return messages, scanner.Err()
 }
 
-func appendSessionPart(baseDir, sessionID string, part persistedPart) error {
-	dir := sessionDir(baseDir, sessionID)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+func migrateOldMessages(messages []persistedMessage) []DisplayPart {
+	var parts []DisplayPart
+	for _, msg := range messages {
+		switch msg.Role {
+		case "user":
+			parts = append(parts, DisplayPart{Type: PartTypeUser, Time: msg.Time, User: &UserPart{Content: msg.Content}})
+		case "assistant":
+			parts = append(parts, DisplayPart{Type: PartTypeText, Time: msg.Time, Text: &TextPart{Content: msg.Content}})
+		case "tool":
+			parts = append(parts, DisplayPart{Type: PartTypeTool, Time: msg.Time, Tool: &ToolPart{Name: "unknown", Result: msg.Content, State: "completed"}})
+		case "system":
+			parts = append(parts, DisplayPart{Type: PartTypeSystem, Time: msg.Time, System: &SystemPart{Content: msg.Content}})
+		case "plan":
+			parts = append(parts, DisplayPart{Type: PartTypePlan, Time: msg.Time, Plan: &PlanPart{Explanation: msg.Content}})
+		default:
+			parts = append(parts, DisplayPart{Type: PartTypeSystem, Time: msg.Time, System: &SystemPart{Content: msg.Content}})
+		}
 	}
-
-	f, err := os.OpenFile(filepath.Join(dir, "parts.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return json.NewEncoder(f).Encode(part)
+	return parts
 }
 
-func loadSessionParts(baseDir, sessionID string) ([]persistedPart, error) {
+func loadRecoveryParts(baseDir, sessionID string) ([]persistedPart, error) {
 	path := filepath.Join(sessionDir(baseDir, sessionID), "parts.jsonl")
 	f, err := os.Open(path)
 	if err != nil {
@@ -149,6 +204,176 @@ func loadSessionParts(baseDir, sessionID string) ([]persistedPart, error) {
 		parts = append(parts, part)
 	}
 	return parts, scanner.Err()
+}
+
+func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []DisplayPart {
+	if len(recovery) == 0 {
+		return existing
+	}
+	latestTime := time.Time{}
+	for _, p := range existing {
+		if p.Time.After(latestTime) {
+			latestTime = p.Time
+		}
+	}
+
+	for _, rp := range recovery {
+		if !latestTime.IsZero() && !rp.Time.After(latestTime) {
+			continue
+		}
+		switch rp.Type {
+		case "tool_start":
+			existing = append(existing, DisplayPart{
+				Type: PartTypeTool,
+				Time: rp.Time,
+				Tool: &ToolPart{Name: rp.Name, CallID: rp.CallID, Arguments: rp.Content, State: "running"},
+			})
+		case "tool_end":
+			existing = recoveryUpdateTool(existing, rp, func(t *ToolPart) {
+				t.Result = rp.Content
+				if strings.HasPrefix(rp.Content, "error: ") {
+					t.State = "error"
+					t.Error = strings.TrimPrefix(rp.Content, "error: ")
+				} else {
+					t.State = "completed"
+				}
+			})
+		case "tool_update":
+			existing = recoveryUpdateTool(existing, rp, func(t *ToolPart) {
+				if t.Result == "" {
+					t.Result = rp.Content
+				} else {
+					t.Result += " " + rp.Content
+				}
+			})
+		case "result", "stream":
+			if rp.Content != "" {
+				existing = append(existing, DisplayPart{
+					Type: PartTypeText,
+					Time: rp.Time,
+					Text: &TextPart{Content: rp.Content},
+				})
+			}
+		case "task_plan":
+			var plan PlanPart
+			if json.Unmarshal([]byte(rp.Content), &plan) == nil && (len(plan.Items) > 0 || plan.Explanation != "") {
+				existing = append(existing, DisplayPart{
+					Type: PartTypePlan,
+					Time: rp.Time,
+					Plan: &plan,
+				})
+			} else if rp.Content != "" {
+				existing = append(existing, DisplayPart{
+					Type: PartTypePlan,
+					Time: rp.Time,
+					Plan: &PlanPart{Explanation: rp.Content},
+				})
+			}
+		case "task_item":
+			if rp.Name != "" {
+				merged := false
+				for i := len(existing) - 1; i >= 0; i-- {
+					if existing[i].Type == PartTypePlan && existing[i].Plan != nil {
+						found := false
+						for j := range existing[i].Plan.Items {
+							if existing[i].Plan.Items[j].ID != "" && existing[i].Plan.Items[j].ID == rp.Name {
+								existing[i].Plan.Items[j].Status = rp.Content
+								found = true
+								break
+							}
+						}
+						if !found {
+							for j := range existing[i].Plan.Items {
+								if existing[i].Plan.Items[j].Step == rp.Name {
+									existing[i].Plan.Items[j].Status = rp.Content
+									found = true
+									break
+								}
+							}
+						}
+						if !found {
+							existing[i].Plan.Items = append(existing[i].Plan.Items, PlanItemView{ID: rp.Name, Step: rp.Name, Status: rp.Content})
+						}
+						merged = true
+						break
+					}
+				}
+				if !merged {
+					existing = append(existing, DisplayPart{
+						Type: PartTypePlan,
+						Time: rp.Time,
+						Plan: &PlanPart{Items: []PlanItemView{{ID: rp.Name, Step: rp.Name, Status: rp.Content}}},
+					})
+				}
+			}
+		case "step_summary":
+			if rp.Content != "" {
+				var sp StepSummaryPart
+				if json.Unmarshal([]byte(rp.Content), &sp) == nil && (sp.ShortSummary != "" || sp.LongSummary != "") {
+					existing = append(existing, DisplayPart{
+						Type:        PartTypeStepSummary,
+						Time:        rp.Time,
+						StepSummary: &sp,
+					})
+				}
+			}
+		case "final_answer":
+			if rp.Content != "" {
+				existing = append(existing, DisplayPart{
+					Type: PartTypeFinalAnswer,
+					Time: rp.Time,
+					FinalAnswer: &FinalAnswerPart{
+						Content: rp.Content,
+						Source:  rp.Name,
+					},
+				})
+			}
+		default:
+			if rp.Content != "" {
+				existing = append(existing, DisplayPart{
+					Type:   PartTypeSystem,
+					Time:   rp.Time,
+					System: &SystemPart{Content: rp.Content},
+				})
+			}
+		}
+	}
+	return existing
+}
+
+func recoveryUpdateTool(existing []DisplayPart, rp persistedPart, fn func(*ToolPart)) []DisplayPart {
+	for i := len(existing) - 1; i >= 0; i-- {
+		if existing[i].Type != PartTypeTool || existing[i].Tool == nil {
+			continue
+		}
+		t := existing[i].Tool
+		if rp.CallID != "" && t.CallID == rp.CallID {
+			fn(t)
+			return existing
+		}
+		if rp.CallID == "" && t.Name == rp.Name && t.State == "running" {
+			fn(t)
+			return existing
+		}
+	}
+	newTool := &ToolPart{Name: rp.Name, CallID: rp.CallID, State: "completed"}
+	fn(newTool)
+	return append(existing, DisplayPart{Type: PartTypeTool, Time: rp.Time, Tool: newTool})
+}
+
+func appendSessionPart(baseDir, sessionID string, part persistedPart) error {
+	dir := sessionDir(baseDir, sessionID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(filepath.Join(dir, "parts.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return json.NewEncoder(f).Encode(part)
 }
 
 func appendSessionRunEvent(baseDir, sessionID string, event persistedRunEvent) error {
@@ -278,52 +503,6 @@ func saveSessionWorkspaceState(baseDir, sessionID string, state *builtin_tools.W
 	return os.WriteFile(filepath.Join(dir, "state.json"), data, 0o644)
 }
 
-func mergeRecoveredPartMessages(messages []ChatMessage, parts []persistedPart) []ChatMessage {
-	if len(parts) == 0 {
-		return messages
-	}
-	latestMsgTime := time.Time{}
-	for _, msg := range messages {
-		if msg.Time.After(latestMsgTime) {
-			latestMsgTime = msg.Time
-		}
-	}
-
-	var recovered []ChatMessage
-	for _, part := range parts {
-		if !latestMsgTime.IsZero() && !part.Time.After(latestMsgTime) {
-			continue
-		}
-		role := "system"
-		content := part.Content
-		switch part.Type {
-		case "tool_start":
-			role = "tool"
-			content = toolMessageContent(part.Name, part.Content, "running...")
-		case "tool_end":
-			role = "tool"
-			content = toolMessageContent(part.Name, "", part.Content)
-		default:
-			if part.Name != "" {
-				content = part.Name + ": " + part.Content
-			}
-		}
-		recovered = append(recovered, ChatMessage{
-			Role:    role,
-			Content: content,
-			Time:    part.Time,
-		})
-	}
-	if len(recovered) == 0 {
-		return messages
-	}
-
-	out := append(append([]ChatMessage{}, messages...), recovered...)
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Time.Before(out[j].Time)
-	})
-	return out
-}
 
 func ensureSessionWorkspace(baseDir, sessionID string) error {
 	return os.MkdirAll(sessionWorkspaceDir(baseDir, sessionID), 0755)

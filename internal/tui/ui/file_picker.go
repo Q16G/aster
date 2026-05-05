@@ -92,6 +92,21 @@ func (p *FilePickerModel) SetWidth(w int) {
 	p.width = w
 }
 
+func (p *FilePickerModel) visibleCount() int {
+	if len(p.filtered) == 0 {
+		return 1
+	}
+	visible := len(p.filtered)
+	if visible > filePickerMaxVisible {
+		visible = filePickerMaxVisible
+	}
+	return visible
+}
+
+func (p *FilePickerModel) Height() int {
+	return p.visibleCount() + 2
+}
+
 func (p *FilePickerModel) Update(msg tea.Msg) tea.Cmd {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -126,9 +141,14 @@ func (p *FilePickerModel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *FilePickerModel) View() string {
-	if len(p.filtered) == 0 {
-		style := lipgloss.NewStyle().Faint(true).Padding(0, 1)
-		return style.Render("No matching files")
+	boxStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		Width(p.width - 2)
+	lineWidth := boxStyle.GetWidth() - boxStyle.GetHorizontalPadding()
+	if lineWidth < 1 {
+		lineWidth = 1
 	}
 
 	selectedStyle := lipgloss.NewStyle().
@@ -139,10 +159,7 @@ func (p *FilePickerModel) View() string {
 	dirStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("12"))
 
-	visible := len(p.filtered)
-	if visible > filePickerMaxVisible {
-		visible = filePickerMaxVisible
-	}
+	visible := p.visibleCount()
 
 	start := 0
 	if p.cursor >= visible {
@@ -154,33 +171,31 @@ func (p *FilePickerModel) View() string {
 	}
 
 	var lines []string
-	for i := start; i < end; i++ {
-		idx := p.filtered[i]
-		entry := p.files[idx]
-		prefix := "  "
-		style := normalStyle
-		if i == p.cursor {
-			prefix = "> "
-			style = selectedStyle
-		}
-
-		label := entry.RelPath
-		if entry.IsDir {
-			label += "/"
-			if i != p.cursor {
-				style = dirStyle
+	if len(p.filtered) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(truncateDisplayWidth("No matching files", lineWidth)))
+	} else {
+		for i := start; i < end; i++ {
+			idx := p.filtered[i]
+			entry := p.files[idx]
+			prefix := "  "
+			style := normalStyle
+			if i == p.cursor {
+				prefix = "> "
+				style = selectedStyle
 			}
+
+			label := entry.RelPath
+			if entry.IsDir {
+				label += "/"
+				if i != p.cursor {
+					style = dirStyle
+				}
+			}
+			lines = append(lines, style.Render(truncateDisplayWidth(prefix+label, lineWidth)))
 		}
-		lines = append(lines, style.Render(prefix+label))
 	}
 
 	content := strings.Join(lines, "\n")
-
-	boxStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		Padding(0, 1).
-		Width(p.width - 2)
 
 	return boxStyle.Render(content)
 }
