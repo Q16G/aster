@@ -246,6 +246,18 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			resumeDecisionReplanWithContext:
 			rehydrated := applyResumeDecisionToSnapshot(probe.Snapshot, decision)
 			_ = a.state.Replace(rehydrated)
+		case resumeDecisionResumeSessionOnly:
+			rehydrated := probe.Snapshot
+			rehydrated.Phase = builtin_tools.AgentPhasePlan
+			rehydrated.Status = builtin_tools.TaskStatusRunning
+			rehydrated.Error = ""
+			rehydrated.CurrentStepID = ""
+			rehydrated.Plan = nil
+			rehydrated.PlanVersion++
+			rehydrated.NeedsPlanning = true
+			rehydrated.FinalAnswer = nil
+			rehydrated.ReplanContext = nil
+			_ = a.state.Replace(rehydrated)
 		default:
 			a.state.Reset()
 		}
