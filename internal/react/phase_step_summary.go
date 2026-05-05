@@ -108,6 +108,10 @@ func (a *Agent) runStepSummaryPhase(ctx context.Context, iter int, runClient ai.
 		"reducer_triggered": rawTimelineTokens > stepBudget,
 	})
 
+	if a.canFastCloseStep(snapshot) {
+		return a.fastCloseStepSummary(ctx, snapshot, stepID, rawOutcome, writer, artifactPlan, window, refs)
+	}
+
 	if rawTimelineTokens > stepBudget {
 		a.emitRuntimeLog("info", "step reducer started", snapshot, map[string]any{
 			"event":             "step_reducer_started",

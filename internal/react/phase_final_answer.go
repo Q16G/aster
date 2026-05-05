@@ -64,6 +64,10 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		return snapshot, err
 	}
 
+	if a.canFastCloseFinalAnswer(snapshot, ctx) {
+		return a.fastCloseFinalAnswer(snapshot, writer, payload)
+	}
+
 	var modelOut FinalAnswerModelOutput
 	rawResponse := ""
 	if ctx != nil && ctx.Err() != nil {

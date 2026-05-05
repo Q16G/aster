@@ -42,8 +42,12 @@ var intentRecognitionPrompt string
 var simpleReplyPrompt string
 
 var (
-	simpleIntentPattern  = regexp.MustCompile(`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)\s*[!?？！。,.]*\s*$`)
-	complexIntentPattern = regexp.MustCompile("(?i)(```|/[\\w./-]+|\\.go\\b|\\.ts\\b|\\.tsx\\b|\\.vue\\b|\\.java\\b|审计|漏洞|代码|文件|函数|类|项目|分析|修复|编译|测试|报错|sql注入|xss|调用链|规则|报告|复现|\\brg\\b|read\\s+file|list\\s+files|tool|agent|workspace|repo|repository)")
+	simpleIntentPattern = regexp.MustCompile(`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)\s*[!?？！。,.]*\s*$`)
+	looseSimpleIntentPattern = regexp.MustCompile(
+		`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)` +
+			`[\s]*(agent|助手|吗|呢|啊|呀|\?|？|。|！|!)*\s*$`,
+	)
+	complexIntentPattern = regexp.MustCompile("(?i)(```|/[\\w./-]+|\\.go\\b|\\.ts\\b|\\.tsx\\b|\\.vue\\b|\\.java\\b|审计|漏洞|代码|文件|函数|类|项目|分析|修复|编译|测试|报错|sql注入|xss|调用链|规则|报告|复现|\\brg\\b|read\\s+file|list\\s+files|tool|workspace|repo|repository)")
 )
 
 func (a *Agent) runIntentPrelude(ctx context.Context, runClient ai.ChatClient, input string) *IntentDecision {
@@ -116,6 +120,18 @@ func fastIntentDecision(input string) (*IntentDecision, bool) {
 			Complexity:    "simple",
 			ReplyHint:     "直接给出简洁、友好的单轮答复，不要规划，不要展示内部流程。",
 			Confidence:    0.98,
+		}, true
+	}
+
+	if looseSimpleIntentPattern.MatchString(trimmed) &&
+		len([]rune(trimmed)) <= 60 &&
+		strings.Count(trimmed, "\n") == 0 {
+		return &IntentDecision{
+			Mode:          IntentModeSimpleReply,
+			IntentSummary: "用户在进行简单对话或能力询问（宽松匹配）。",
+			Complexity:    "simple",
+			ReplyHint:     "直接给出简洁、友好的单轮答复，不要规划，不要展示内部流程。",
+			Confidence:    0.92,
 		}, true
 	}
 
