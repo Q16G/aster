@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"aster/internal/ai"
 )
@@ -323,5 +324,87 @@ func TestChatEx_DoesNotLogRetryForCanceled(t *testing.T) {
 
 	if strings.Contains(out, "[openai.retry]") {
 		t.Fatalf("did not expect retry log for canceled request, got %q", out)
+	}
+}
+
+func TestChatEx_DoesNotRetryInsufficientQuota(t *testing.T) {
+	transport := &retryRoundTripper{
+		steps: []retryRoundTripStep{
+			{statusCode: http.StatusTooManyRequests, body: `{"error":{"message":"Error from provider: insufficient quota","code":"insufficient_quota","type":"insufficient_quota"}}`},
+			{body: `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"should-not-happen"}}]}`},
+		},
+	}
+	var retryEvents []RetryEvent
+	client := newRetryTestClient(
+		transport,
+		WithStream(false),
+		WithMaxRetries(1),
+		WithRetryCallback(func(event RetryEvent) {
+			retryEvents = append(retryEvents, event)
+		}),
+	)
+
+	_, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+	if err == nil {
+		t.Fatalf("expected insufficient quota error")
+	}
+	if transport.Calls() != 1 {
+		t.Fatalf("expected 1 attempt, got %d", transport.Calls())
+	}
+	if len(retryEvents) != 0 {
+		t.Fatalf("did not expect retry callback, got %#v", retryEvents)
+	}
+}
+
+func TestChatEx_UsesRetryCallbackForRateLimit(t *testing.T) {
+	transport := &retryRoundTripper{
+		steps: []retryRoundTripStep{
+			{
+				statusCode: http.StatusTooManyRequests,
+				body:       `{"error":{"message":"Too many requests","code":"rate_limit_exceeded","type":"rate_limit_error"}}`,
+				header: http.Header{
+					"Retry-After-Ms": []string{"1"},
+				},
+			},
+			{body: `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`},
+		},
+	}
+	var retryEvents []RetryEvent
+	client := newRetryTestClient(
+		transport,
+		WithStream(false),
+		WithMaxRetries(1),
+		WithRetryCallback(func(event RetryEvent) {
+			retryEvents = append(retryEvents, event)
+		}),
+	)
+
+	out := captureOpenAILogOutput(t, func() {
+		choices, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+		if err != nil {
+			t.Fatalf("ChatEx failed: %v", err)
+		}
+		if len(choices) != 1 || choices[0] == nil || choices[0].Message == nil || choices[0].Message.Content != "ok" {
+			t.Fatalf("unexpected choices: %#v", choices)
+		}
+	})
+
+	if strings.Contains(out, "[openai.retry]") {
+		t.Fatalf("did not expect raw retry log when callback is installed, got %q", out)
+	}
+	if len(retryEvents) != 1 {
+		t.Fatalf("expected 1 retry event, got %#v", retryEvents)
+	}
+	if retryEvents[0].Attempt != 1 || retryEvents[0].MaxAttempts != 2 {
+		t.Fatalf("unexpected retry attempt metadata: %#v", retryEvents[0])
+	}
+	if retryEvents[0].Message != "Too Many Requests" {
+		t.Fatalf("unexpected retry message: %#v", retryEvents[0])
+	}
+	if retryEvents[0].RetryAfter != time.Millisecond || retryEvents[0].Delay != time.Millisecond {
+		t.Fatalf("expected 1ms retry delay, got %#v", retryEvents[0])
+	}
+	if retryEvents[0].Next.IsZero() {
+		t.Fatalf("expected retry next timestamp, got %#v", retryEvents[0])
 	}
 }

@@ -31,8 +31,9 @@ type Config struct {
 	MaxTokens   int
 	ExtraBody   map[string]any
 
-	HTTPClient *http.Client
-	StreamFunc StreamFunc
+	HTTPClient    *http.Client
+	StreamFunc    StreamFunc
+	RetryCallback RetryCallback
 
 	// InsecureSkipVerify 是否跳过 TLS 证书校验（默认 false）
 	InsecureSkipVerify bool
@@ -50,6 +51,7 @@ type StreamEvent struct {
 }
 
 type StreamFunc func(event *StreamEvent)
+type RetryCallback func(event RetryEvent)
 
 type Option func(*Config)
 
@@ -192,6 +194,12 @@ func WithHTTPClient(client *http.Client) Option {
 func WithStreamFunc(fn StreamFunc) Option {
 	return func(c *Config) {
 		c.StreamFunc = fn
+	}
+}
+
+func WithRetryCallback(fn RetryCallback) Option {
+	return func(c *Config) {
+		c.RetryCallback = fn
 	}
 }
 

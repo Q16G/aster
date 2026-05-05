@@ -91,6 +91,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	defer syncStore.Close()
 	bridge.BindSyncStore(syncStore)
 	bootstrapEmitter := react.NewEmitter("bootstrap", "bootstrap", bridge.EmitterFunc())
+	retryCallback := newRetryCallback(bootstrapEmitter)
 
 	providerCfg := &tui.ProviderState{}
 	providerCfg.Name, providerCfg.BaseURL, providerCfg.APIKey, providerCfg.ModelID = appCfg.ResolveProvider(flagProvider, flagModel, flagBaseURL, flagAPIKey)
@@ -101,6 +102,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		openai.WithAPIKey(providerCfg.APIKey),
 		openai.WithModel(providerCfg.ModelID),
 		openai.WithStream(true),
+		openai.WithRetryCallback(retryCallback),
 	)
 
 	clientFactory := ai.NewSimpleClientFactory(aiClient, func(mid string) ai.ChatClient {
@@ -113,6 +115,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			openai.WithAPIKey(providerCfg.APIKey),
 			openai.WithModel(mid),
 			openai.WithStream(true),
+			openai.WithRetryCallback(retryCallback),
 		)
 	})
 
@@ -182,6 +185,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 				openai.WithAPIKey(apiKey),
 				openai.WithModel(model),
 				openai.WithStream(true),
+				openai.WithRetryCallback(retryCallback),
 			)
 			newFactory := ai.NewSimpleClientFactory(newClient, func(mid string) ai.ChatClient {
 				if mid == "" {
@@ -193,6 +197,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 					openai.WithAPIKey(apiKey),
 					openai.WithModel(mid),
 					openai.WithStream(true),
+					openai.WithRetryCallback(retryCallback),
 				)
 			})
 			factory.UpdateDefaultClient(newClient)
@@ -223,4 +228,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tui: %w", err)
 	}
 	return nil
+}
+
+func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
+	if emitter == nil {
+		return nil
+	}
+	return func(event openai.RetryEvent) {
+		emitter.EmitRetry(event.Attempt, event.MaxAttempts, event.Delay, event.Next, event.Message, event.RetryAfter)
+	}
 }
