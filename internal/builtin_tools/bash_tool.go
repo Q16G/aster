@@ -84,6 +84,9 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	if t == nil || t.ctx == nil {
 		return "", fmt.Errorf("tool context is nil")
 	}
+	if t.permCtx == nil {
+		return "", fmt.Errorf("bash tool: permission context not configured")
+	}
 
 	command, err := argx.RequiredText(args, "command")
 	if err != nil {

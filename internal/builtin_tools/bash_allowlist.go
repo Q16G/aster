@@ -221,6 +221,9 @@ func NewSessionAllowlist() *SessionAllowlist {
 }
 
 func (a *SessionAllowlist) Rules() []*AllowlistRule {
+	if a == nil {
+		return nil
+	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	out := make([]*AllowlistRule, len(a.rules))
@@ -229,7 +232,7 @@ func (a *SessionAllowlist) Rules() []*AllowlistRule {
 }
 
 func (a *SessionAllowlist) Add(rule *AllowlistRule) error {
-	if rule == nil {
+	if a == nil || rule == nil {
 		return nil
 	}
 	a.mu.Lock()
@@ -248,6 +251,9 @@ func (a *SessionAllowlist) Add(rule *AllowlistRule) error {
 }
 
 func (a *SessionAllowlist) Remove(idx int) bool {
+	if a == nil {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if idx < 0 || idx >= len(a.rules) {
