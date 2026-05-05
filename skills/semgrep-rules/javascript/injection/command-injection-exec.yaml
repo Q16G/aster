@@ -1,0 +1,26 @@
+rules:
+  - id: javascript-injection-command-injection-exec
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec($CMD, ...)
+          - pattern: child_process.execSync($CMD, ...)
+          - pattern: exec($CMD, ...)
+          - pattern: execSync($CMD, ...)
+          - pattern: require("child_process").exec($CMD, ...)
+          - pattern: require("child_process").execSync($CMD, ...)
+      - pattern-not: child_process.exec("...", ...)
+      - pattern-not: child_process.execSync("...", ...)
+      - pattern-not: exec("...", ...)
+      - pattern-not: execSync("...", ...)
+    message: >
+      Command injection via child_process.exec(). The exec function passes
+      commands through a shell, allowing injection if user-controlled input is
+      included. Use child_process.execFile() or child_process.spawn() with an
+      array of arguments instead, which bypass the shell.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

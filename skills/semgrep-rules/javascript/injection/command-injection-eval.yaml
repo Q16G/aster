@@ -1,0 +1,26 @@
+rules:
+  - id: javascript-injection-command-injection-eval
+    patterns:
+      - pattern-either:
+          - pattern: eval($INPUT)
+          - pattern: new Function($INPUT)
+          - pattern: new Function(..., $INPUT)
+          - pattern: setTimeout($INPUT, ...)
+          - pattern: setInterval($INPUT, ...)
+      - pattern-not: eval("...")
+      - pattern-not: new Function("...")
+      - pattern-not: setTimeout("...", ...)
+      - pattern-not: setInterval("...", ...)
+    message: >
+      Code injection via eval(), Function(), setTimeout(), or setInterval() with
+      non-literal input. These functions execute arbitrary JavaScript code and
+      can lead to remote code execution if user-controlled data is passed in.
+      Avoid dynamic code evaluation; use safer alternatives like JSON.parse()
+      for data parsing.
+    metadata:
+      cwe: CWE-95
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

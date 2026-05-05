@@ -1,0 +1,34 @@
+rules:
+  - id: python-ssrf-requests
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL, ...)
+          - pattern: requests.post($URL, ...)
+          - pattern: requests.put($URL, ...)
+          - pattern: requests.delete($URL, ...)
+          - pattern: requests.patch($URL, ...)
+          - pattern: requests.head($URL, ...)
+          - pattern: requests.request($METHOD, $URL, ...)
+          - pattern: $SESSION.get($URL, ...)
+          - pattern: $SESSION.post($URL, ...)
+          - pattern: $SESSION.put($URL, ...)
+          - pattern: $SESSION.request($METHOD, $URL, ...)
+      - pattern-not: requests.get("...", ...)
+      - pattern-not: requests.post("...", ...)
+      - pattern-not: requests.put("...", ...)
+      - pattern-not: requests.delete("...", ...)
+      - pattern-not: requests.patch("...", ...)
+      - pattern-not: requests.head("...", ...)
+      - pattern-not: requests.request($METHOD, "...", ...)
+    message: >
+      Server-side request forgery (SSRF) via requests library. A variable URL
+      is passed to requests.get/post/etc., which may allow an attacker to force
+      the server to make requests to internal services. Validate and allowlist
+      URLs before making requests.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

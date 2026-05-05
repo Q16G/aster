@@ -1,0 +1,34 @@
+rules:
+  - id: php-auth-weak-comparison
+    pattern-either:
+      - patterns:
+          - pattern: |
+              if ($HASH == $OTHER) { ... }
+          - metavariable-regex:
+              metavariable: $HASH
+              regex: (?i).*(hash|token|password|secret|key|csrf|nonce|signature|digest|hmac).*
+      - patterns:
+          - pattern: |
+              if ($OTHER == $HASH) { ... }
+          - metavariable-regex:
+              metavariable: $HASH
+              regex: (?i).*(hash|token|password|secret|key|csrf|nonce|signature|digest|hmac).*
+      - patterns:
+          - pattern: |
+              if (md5($A) == md5($B)) { ... }
+      - patterns:
+          - pattern: |
+              if (sha1($A) == sha1($B)) { ... }
+    message: >
+      Weak comparison (==) used for authentication or hash comparison.
+      PHP's loose comparison operator can lead to type juggling
+      vulnerabilities where "0e..." hash strings compare as equal to 0
+      or to each other. Use strict comparison (===) or hash_equals()
+      for constant-time comparison of hashes and tokens.
+    metadata:
+      cwe: CWE-697
+      owasp: "A07:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [php]

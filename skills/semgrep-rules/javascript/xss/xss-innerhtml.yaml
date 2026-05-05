@@ -1,0 +1,24 @@
+rules:
+  - id: javascript-xss-innerhtml
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $VAR
+          - pattern: $EL.innerHTML += $VAR
+          - pattern: $EL.innerHTML = `...${$VAR}...`
+          - pattern: $EL.innerHTML = "..." + $VAR + ...
+          - pattern: document.getElementById(...).innerHTML = $VAR
+          - pattern: document.querySelector(...).innerHTML = $VAR
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.innerHTML = ""
+    message: >
+      Cross-site scripting (XSS) via innerHTML assignment. Setting innerHTML
+      with user-controlled content allows injection of malicious HTML and
+      scripts. Use textContent for plain text, or sanitize HTML with DOMPurify
+      before assigning to innerHTML.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

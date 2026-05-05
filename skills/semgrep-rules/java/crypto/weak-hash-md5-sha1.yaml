@@ -1,0 +1,22 @@
+rules:
+  - id: java-crypto-weak-hash-md5-sha1
+    patterns:
+      - pattern-either:
+          - pattern: MessageDigest.getInstance("MD5")
+          - pattern: MessageDigest.getInstance("SHA-1")
+          - pattern: MessageDigest.getInstance("SHA1")
+          - pattern: MessageDigest.getInstance("md5")
+          - pattern: MessageDigest.getInstance("sha-1")
+          - pattern: MessageDigest.getInstance("sha1")
+    message: >
+      Weak hash algorithm detected. MD5 and SHA-1 are cryptographically
+      broken and should not be used for security-sensitive operations
+      such as password hashing, digital signatures, or integrity
+      verification. Use SHA-256 or stronger algorithms instead.
+    metadata:
+      cwe: CWE-328
+      owasp: "A02:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [java]

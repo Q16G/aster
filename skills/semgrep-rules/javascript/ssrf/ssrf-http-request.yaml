@@ -1,0 +1,28 @@
+rules:
+  - id: javascript-ssrf-http-request
+    patterns:
+      - pattern-either:
+          - pattern: http.request($URL, ...)
+          - pattern: https.request($URL, ...)
+          - pattern: http.get($URL, ...)
+          - pattern: https.get($URL, ...)
+          - pattern: http.request({..., host: $VAR, ...}, ...)
+          - pattern: https.request({..., host: $VAR, ...}, ...)
+          - pattern: http.request({..., hostname: $VAR, ...}, ...)
+          - pattern: https.request({..., hostname: $VAR, ...}, ...)
+      - pattern-not: http.request("...", ...)
+      - pattern-not: https.request("...", ...)
+      - pattern-not: http.get("...", ...)
+      - pattern-not: https.get("...", ...)
+    message: >
+      Server-side request forgery (SSRF) via Node.js http/https module. A
+      variable URL or host is passed to http.request() or https.request(),
+      which may allow an attacker to make the server request internal services.
+      Validate and allowlist the target host/URL before making requests.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

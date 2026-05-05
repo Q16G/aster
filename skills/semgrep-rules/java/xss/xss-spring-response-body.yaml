@@ -1,0 +1,44 @@
+rules:
+  - id: java-xss-spring-response-body
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  @org.springframework.web.bind.annotation.ResponseBody
+                  public String $METHOD(..., @RequestParam(...) String $INPUT, ...) {
+                    ...
+                    return $INPUT;
+                  }
+          - patterns:
+              - pattern: |
+                  @org.springframework.web.bind.annotation.ResponseBody
+                  public String $METHOD(..., @RequestParam String $INPUT, ...) {
+                    ...
+                    return $INPUT;
+                  }
+          - patterns:
+              - pattern: |
+                  @ResponseBody
+                  public String $METHOD(..., @RequestParam(...) String $INPUT, ...) {
+                    ...
+                    return $INPUT;
+                  }
+          - patterns:
+              - pattern: |
+                  @ResponseBody
+                  public String $METHOD(..., @RequestParam String $INPUT, ...) {
+                    ...
+                    return $INPUT;
+                  }
+    message: >
+      Potential reflected XSS via Spring @ResponseBody. A @RequestParam
+      value is returned directly as a raw string response without encoding.
+      Set the Content-Type to a non-HTML type (e.g., application/json),
+      or encode the output before returning it.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

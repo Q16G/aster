@@ -1,0 +1,40 @@
+rules:
+  - id: javascript-xss-express-response
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $RES.send($REQ.$PROP.$PARAM)
+          - pattern: |
+              $RES.send($REQ.query.$PARAM)
+          - pattern: |
+              $RES.send($REQ.body.$PARAM)
+          - pattern: |
+              $RES.send($REQ.params.$PARAM)
+          - pattern: |
+              $RES.write($REQ.query.$PARAM)
+          - pattern: |
+              $RES.write($REQ.body.$PARAM)
+          - pattern: |
+              $RES.write($REQ.params.$PARAM)
+          - pattern: |
+              $RES.send(`...${$REQ.query.$PARAM}...`)
+          - pattern: |
+              $RES.send(`...${$REQ.body.$PARAM}...`)
+          - pattern: |
+              $RES.send(`...${$REQ.params.$PARAM}...`)
+          - pattern: |
+              $RES.send("<..." + $REQ.query.$PARAM + ..."...")
+          - pattern: |
+              $RES.send("<..." + $REQ.body.$PARAM + ..."...")
+    message: >
+      Cross-site scripting (XSS) via Express response. User input from
+      req.query, req.body, or req.params is sent directly in the HTTP response
+      without sanitization. Encode output with a library like he/escape-html
+      or use a template engine with auto-escaping.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

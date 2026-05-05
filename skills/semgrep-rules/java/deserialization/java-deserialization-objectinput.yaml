@@ -1,0 +1,25 @@
+rules:
+  - id: java-deserialization-objectinput
+    patterns:
+      - pattern-either:
+          - pattern: (java.io.ObjectInputStream $OIS).readObject()
+          - pattern: (java.io.ObjectInputStream $OIS).readUnshared()
+          - pattern: |
+              new java.io.ObjectInputStream(...).readObject()
+          - pattern: |
+              ObjectInputStream $OIS = new ObjectInputStream(...);
+              ...
+              $OIS.readObject();
+    message: >
+      Unsafe Java deserialization via ObjectInputStream.readObject().
+      Deserializing untrusted data can lead to remote code execution
+      through gadget chains. Use an allowlist-based ObjectInputFilter
+      (Java 9+), or avoid native Java serialization entirely in favor
+      of safe formats like JSON.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

@@ -1,0 +1,27 @@
+rules:
+  - id: java-injection-ldap-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.naming.directory.DirContext $CTX).search($BASE, $FILTER + ..., ...);
+          - pattern: |
+              String $FILTER = $PREFIX + $INPUT + ...;
+              ...
+              (javax.naming.directory.DirContext $CTX).search($BASE, $FILTER, ...);
+          - pattern: |
+              (javax.naming.directory.InitialDirContext $CTX).search($BASE, $FILTER + ..., ...);
+          - pattern: |
+              String $FILTER = String.format(...);
+              ...
+              (javax.naming.directory.DirContext $CTX).search($BASE, $FILTER, ...);
+    message: >
+      LDAP injection detected. User-controlled input is concatenated into
+      an LDAP search filter without sanitization. Use parameterized LDAP
+      filters or escape special characters before including them in the filter.
+    metadata:
+      cwe: CWE-90
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

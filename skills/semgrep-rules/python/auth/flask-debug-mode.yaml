@@ -1,0 +1,18 @@
+rules:
+  - id: python-auth-flask-debug-mode
+    patterns:
+      - pattern-either:
+          - pattern: $APP.run(..., debug=True, ...)
+          - pattern: app.run(..., debug=True, ...)
+    message: >
+      Flask application running in debug mode. Debug mode enables the interactive
+      debugger and reloader, which can allow remote code execution via the
+      Werkzeug debugger console. Never use debug=True in production. Use
+      environment variables to control debug mode.
+    metadata:
+      cwe: CWE-489
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]

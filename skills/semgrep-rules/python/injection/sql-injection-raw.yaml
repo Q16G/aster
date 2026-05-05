@@ -1,0 +1,42 @@
+rules:
+  - id: python-injection-sql-injection-raw
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $CURSOR.execute(f"...{$VAR}...")
+          - pattern: |
+              $CURSOR.execute(f"...{$VAR}..." + ...)
+          - pattern: |
+              $CURSOR.execute("..." % $VAR)
+          - pattern: |
+              $CURSOR.execute("...".format(...))
+          - pattern: |
+              $CURSOR.execute("..." + $VAR + ...)
+          - pattern: |
+              $SQL = f"...{$VAR}..."
+              ...
+              $CURSOR.execute($SQL)
+          - pattern: |
+              $SQL = "..." % $VAR
+              ...
+              $CURSOR.execute($SQL)
+          - pattern: |
+              $SQL = "...".format(...)
+              ...
+              $CURSOR.execute($SQL)
+          - pattern: |
+              $SQL = "..." + $VAR + ...
+              ...
+              $CURSOR.execute($SQL)
+    message: >
+      SQL injection via raw cursor.execute() with string interpolation.
+      User-controlled input is inserted into a SQL query using f-strings,
+      format(), or %-formatting. Use parameterized queries with placeholders
+      instead: cursor.execute("SELECT * FROM t WHERE id = %s", (user_id,)).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

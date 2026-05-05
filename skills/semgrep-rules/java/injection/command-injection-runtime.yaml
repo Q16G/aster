@@ -1,0 +1,26 @@
+rules:
+  - id: java-injection-command-injection-runtime
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Runtime.getRuntime().exec($CMD);
+          - pattern: |
+              Runtime.getRuntime().exec($CMD, ...);
+          - pattern: |
+              (Runtime $RT).exec($CMD);
+          - pattern: |
+              (Runtime $RT).exec($CMD, ...);
+      - pattern-not: |
+          Runtime.getRuntime().exec("...");
+    message: >
+      Command injection via Runtime.exec(). A variable is passed as the
+      command argument, which may allow an attacker to execute arbitrary
+      system commands. Avoid Runtime.exec() with user-controlled input;
+      use a whitelist of allowed commands and validate all arguments.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

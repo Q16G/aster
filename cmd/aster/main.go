@@ -17,6 +17,7 @@ import (
 	"aster/internal/service"
 	"aster/internal/tui"
 	tuicontext "aster/internal/tui/context"
+	semgrep_rules "aster/skills/semgrep-rules"
 )
 
 var (
@@ -38,6 +39,19 @@ func main() {
 	f.StringVar(&flagModel, "model", "", "model ID (overrides config/env)")
 	f.StringVar(&flagBaseURL, "base-url", "", "API base URL (overrides config/env)")
 	f.StringVar(&flagAPIKey, "api-key", "", "API key (overrides config/env)")
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "semgrep-rules-path",
+		Short: "Print extracted semgrep rules directory path",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, err := semgrep_rules.ExtractRulesDir()
+			if err != nil {
+				return err
+			}
+			fmt.Print(path)
+			return nil
+		},
+	})
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -150,7 +164,11 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	defaultDef := profileRegistry.List()[0]
+	profiles := profileRegistry.List()
+	if len(profiles) == 0 {
+		return fmt.Errorf("no agent profiles found; check %s for .yaml files", agentsDir)
+	}
+	defaultDef := profiles[0]
 
 	agentCtx := &tui.AgentExecContext{
 		Factory:     factory,

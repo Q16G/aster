@@ -1,0 +1,44 @@
+rules:
+  - id: php-misc-file-upload-no-check
+    patterns:
+      - pattern: |
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+      - pattern-not-inside: |
+          ...
+          $EXT = pathinfo(...);
+          ...
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+      - pattern-not-inside: |
+          ...
+          mime_content_type(...);
+          ...
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+      - pattern-not-inside: |
+          ...
+          finfo_file(...);
+          ...
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+      - pattern-not-inside: |
+          ...
+          getimagesize(...);
+          ...
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+      - pattern-not-inside: |
+          ...
+          in_array(...);
+          ...
+          move_uploaded_file($_FILES[$NAME]["tmp_name"], $DEST);
+    message: >
+      File upload without type or extension validation. The uploaded file
+      is moved to its destination via move_uploaded_file() without
+      checking MIME type, file extension, or file content. An attacker
+      can upload a PHP webshell or other malicious file. Validate file
+      extensions against an allowlist, check MIME type with finfo_file(),
+      and store uploads outside the web root.
+    metadata:
+      cwe: CWE-434
+      owasp: "A04:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

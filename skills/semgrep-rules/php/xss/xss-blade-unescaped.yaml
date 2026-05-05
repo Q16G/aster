@@ -1,0 +1,16 @@
+rules:
+  - id: php-xss-blade-unescaped
+    pattern: '{!! ... !!}'
+    message: >
+      Cross-site scripting (XSS) via Laravel Blade unescaped output
+      syntax {!! !!}. This outputs the expression without HTML encoding.
+      If user-controlled data reaches this expression, an attacker can
+      inject malicious scripts. Use the escaped {{ }} syntax instead,
+      or ensure the data is explicitly sanitized before rendering.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [php]

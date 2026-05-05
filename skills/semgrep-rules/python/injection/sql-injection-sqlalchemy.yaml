@@ -1,0 +1,39 @@
+rules:
+  - id: python-injection-sql-injection-sqlalchemy
+    patterns:
+      - pattern-either:
+          - pattern: |
+              text(f"...{$VAR}...")
+          - pattern: |
+              text("..." % $VAR)
+          - pattern: |
+              text("...".format(...))
+          - pattern: |
+              text("..." + $VAR + ...)
+          - pattern: |
+              $SESSION.execute(f"...{$VAR}...")
+          - pattern: |
+              $SESSION.execute("..." % $VAR)
+          - pattern: |
+              $SESSION.execute("...".format(...))
+          - pattern: |
+              $SESSION.execute("..." + $VAR + ...)
+          - pattern: |
+              $SQL = f"...{$VAR}..."
+              ...
+              $SESSION.execute(text($SQL))
+          - pattern: |
+              $SQL = "..." + $VAR + ...
+              ...
+              $SESSION.execute(text($SQL))
+    message: >
+      SQL injection via SQLAlchemy text() or session.execute() with string
+      interpolation. User-controlled input is inserted into a raw SQL string.
+      Use parameterized queries: text("SELECT ... WHERE id = :id").bindparams(id=val).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

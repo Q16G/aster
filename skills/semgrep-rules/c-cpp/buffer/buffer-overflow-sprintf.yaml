@@ -1,0 +1,21 @@
+rules:
+  - id: c-buffer-overflow-sprintf
+    patterns:
+      - pattern-either:
+          - pattern: sprintf($BUF, $FMT, ...);
+          - pattern: vsprintf($BUF, $FMT, ...);
+      - pattern-not: snprintf(...);
+      - pattern-not: vsnprintf(...);
+    message: >
+      Buffer overflow risk via sprintf() or vsprintf() without bounds
+      checking. These functions write formatted output to a buffer
+      without verifying available space. If the formatted string exceeds
+      the buffer size, a buffer overflow occurs. Use snprintf() or
+      vsnprintf() with an explicit size parameter to prevent overflow.
+    metadata:
+      cwe: CWE-120
+      owasp: "A06:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [c]

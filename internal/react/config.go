@@ -253,12 +253,12 @@ func WithSkillsPromptProvider(provider SkillsPromptProvider) Option {
 	}
 }
 
-func WithSkillCatalog(catalog SkillsCatalog) Option {
+func WithSkillCatalog(catalog SkillsCatalog, allowedSkillNames []string) Option {
 	return func(c *AgentConfig) {
 		if c == nil || catalog == nil {
 			return
 		}
-		c.SkillsPromptProvider = NewSkillsPromptProviderFromCatalog(catalog)
+		c.SkillsPromptProvider = NewSkillsPromptProviderFromCatalog(catalog, allowedSkillNames)
 	}
 }
 

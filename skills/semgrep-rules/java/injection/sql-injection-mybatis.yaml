@@ -1,0 +1,20 @@
+rules:
+  - id: java-injection-sql-injection-mybatis
+    patterns:
+      - pattern-regex: \$\{[^}]+\}
+    message: >
+      Potential SQL injection via MyBatis ${} interpolation. The ${}
+      syntax performs direct string substitution without escaping, unlike
+      #{} which uses parameterized queries. Replace ${} with #{} wherever
+      possible, or validate/sanitize the input if #{} cannot be used
+      (e.g., for table names or ORDER BY clauses).
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
+    paths:
+      include:
+        - "*.xml"

@@ -1,0 +1,39 @@
+rules:
+  - id: php-injection-ldap-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              ldap_search($CONN, $BASE, "..." . $INPUT . "...");
+          - pattern: |
+              ldap_search($CONN, $BASE, "...$INTERPOLATED...");
+          - pattern: |
+              ldap_search($CONN, $BASE, $INPUT . "...");
+          - pattern: |
+              $FILTER = "..." . $INPUT . "...";
+              ...
+              ldap_search($CONN, $BASE, $FILTER);
+          - pattern: |
+              $FILTER = "...$INTERPOLATED...";
+              ...
+              ldap_search($CONN, $BASE, $FILTER);
+          - pattern: |
+              ldap_list($CONN, $BASE, "..." . $INPUT . "...");
+          - pattern: |
+              ldap_list($CONN, $BASE, "...$INTERPOLATED...");
+          - pattern: |
+              ldap_read($CONN, $BASE, "..." . $INPUT . "...");
+          - pattern: |
+              ldap_read($CONN, $BASE, "...$INTERPOLATED...");
+    message: >
+      LDAP injection via ldap_search(), ldap_list(), or ldap_read() with
+      unsanitized filter input. An attacker may manipulate the LDAP query
+      filter to bypass authentication or access unauthorized data. Use
+      ldap_escape() (PHP 5.6+) to sanitize user input before embedding
+      it in LDAP filters.
+    metadata:
+      cwe: CWE-90
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

@@ -1,0 +1,35 @@
+rules:
+  - id: java-auth-insecure-cookie
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  Cookie $COOKIE = new Cookie(...);
+                  ...
+                  $RESP.addCookie($COOKIE);
+              - pattern-not-inside: |
+                  ...
+                  $COOKIE.setSecure(true);
+                  ...
+          - patterns:
+              - pattern: |
+                  Cookie $COOKIE = new Cookie(...);
+                  ...
+                  $RESP.addCookie($COOKIE);
+              - pattern-not-inside: |
+                  ...
+                  $COOKIE.setHttpOnly(true);
+                  ...
+    message: >
+      Insecure cookie configuration. The cookie is missing setSecure(true)
+      and/or setHttpOnly(true). Without setSecure, the cookie can be
+      transmitted over unencrypted HTTP. Without setHttpOnly, the cookie
+      is accessible via JavaScript, increasing XSS impact. Set both
+      flags for security-sensitive cookies.
+    metadata:
+      cwe: CWE-614
+      owasp: "A05:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [java]

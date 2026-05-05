@@ -353,6 +353,23 @@ func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) allowedSkillNames() map[string]struct{} {
+	if m.agentCtx == nil || len(m.agentCtx.Definition.SkillNames) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(m.agentCtx.Definition.SkillNames))
+	for _, name := range m.agentCtx.Definition.SkillNames {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			set[name] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
 func (m *Model) skillList() (tea.Model, tea.Cmd) {
 	if m.skillService == nil {
 		m.chat.AddMessage(ChatMessage{Role: "system", Content: "skill service not available"})
@@ -364,9 +381,15 @@ func (m *Model) skillList() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	allowed := m.allowedSkillNames()
 	var sb strings.Builder
 	sb.WriteString("Skills:\n")
 	for _, s := range skills {
+		if len(allowed) > 0 {
+			if _, ok := allowed[s.Name]; !ok {
+				continue
+			}
+		}
 		icon := "○"
 		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
 			icon = "●"
@@ -391,17 +414,23 @@ func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
 		m.chat.AddMessage(ChatMessage{Role: "system", Content: "(no skills)"})
 		return m, nil
 	}
-	options := make([]tuiui.SelectOption, len(skills))
-	for i, s := range skills {
+	allowed := m.allowedSkillNames()
+	options := make([]tuiui.SelectOption, 0, len(skills))
+	for _, s := range skills {
+		if len(allowed) > 0 {
+			if _, ok := allowed[s.Name]; !ok {
+				continue
+			}
+		}
 		icon := "○"
 		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
 			icon = "●"
 		}
-		options[i] = tuiui.SelectOption{
+		options = append(options, tuiui.SelectOption{
 			Label:       icon + " " + s.Name,
 			Value:       s.Name,
 			Description: s.Description,
-		}
+		})
 	}
 	dialog := tuiui.NewSelectDialog("skill-select", "Skills", options)
 	m.dialogStack.Push(dialog, nil)

@@ -1,0 +1,37 @@
+rules:
+  - id: javascript-ssrf-fetch
+    patterns:
+      - pattern-either:
+          - pattern: fetch($URL, ...)
+          - pattern: axios.get($URL, ...)
+          - pattern: axios.post($URL, ...)
+          - pattern: axios.put($URL, ...)
+          - pattern: axios.delete($URL, ...)
+          - pattern: axios.patch($URL, ...)
+          - pattern: axios($URL, ...)
+          - pattern: axios({..., url: $URL, ...})
+          - pattern: got($URL, ...)
+          - pattern: got.get($URL, ...)
+          - pattern: got.post($URL, ...)
+          - pattern: node_fetch($URL, ...)
+      - pattern-not: fetch("...", ...)
+      - pattern-not: axios.get("...", ...)
+      - pattern-not: axios.post("...", ...)
+      - pattern-not: axios.put("...", ...)
+      - pattern-not: axios.delete("...", ...)
+      - pattern-not: axios.patch("...", ...)
+      - pattern-not: axios("...", ...)
+      - pattern-not: got("...", ...)
+    message: >
+      Server-side request forgery (SSRF) via fetch(), axios, or similar HTTP
+      client. A variable URL is passed to an HTTP request function, which may
+      allow an attacker to make the server request internal services or cloud
+      metadata endpoints (169.254.169.254). Validate and allowlist URLs before
+      making requests.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

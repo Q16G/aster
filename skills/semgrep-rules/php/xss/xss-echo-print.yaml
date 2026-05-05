@@ -1,0 +1,38 @@
+rules:
+  - id: php-xss-echo-print
+    patterns:
+      - pattern-either:
+          - pattern: echo $_GET[$KEY];
+          - pattern: echo $_POST[$KEY];
+          - pattern: echo $_REQUEST[$KEY];
+          - pattern: echo $_GET[$KEY] . ...;
+          - pattern: echo $_POST[$KEY] . ...;
+          - pattern: echo $_REQUEST[$KEY] . ...;
+          - pattern: echo "..." . $_GET[$KEY] . "...";
+          - pattern: echo "..." . $_POST[$KEY] . "...";
+          - pattern: echo "..." . $_REQUEST[$KEY] . "...";
+          - pattern: echo "...$_GET[$KEY]...";
+          - pattern: echo "...$_POST[$KEY]...";
+          - pattern: echo "...$_REQUEST[$KEY]...";
+          - pattern: print $_GET[$KEY];
+          - pattern: print $_POST[$KEY];
+          - pattern: print $_REQUEST[$KEY];
+          - pattern: print("..." . $_GET[$KEY] . "...");
+          - pattern: print("..." . $_POST[$KEY] . "...");
+          - pattern: print("..." . $_REQUEST[$KEY] . "...");
+      - pattern-not: echo htmlspecialchars(...);
+      - pattern-not: echo htmlentities(...);
+      - pattern-not: print htmlspecialchars(...);
+      - pattern-not: print htmlentities(...);
+    message: >
+      Cross-site scripting (XSS) via echo or print of unsanitized
+      superglobal ($_GET, $_POST, $_REQUEST). User input is output
+      directly without HTML encoding. Use htmlspecialchars($input,
+      ENT_QUOTES, 'UTF-8') to properly escape output.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [php]

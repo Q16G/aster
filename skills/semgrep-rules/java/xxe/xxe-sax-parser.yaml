@@ -1,0 +1,29 @@
+rules:
+  - id: java-xxe-sax-parser
+    patterns:
+      - pattern: |
+          SAXParserFactory $SPF = SAXParserFactory.newInstance();
+          ...
+          $SPF.newSAXParser().parse(...);
+      - pattern-not-inside: |
+          SAXParserFactory $SPF = SAXParserFactory.newInstance();
+          ...
+          $SPF.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+          ...
+      - pattern-not-inside: |
+          SAXParserFactory $SPF = SAXParserFactory.newInstance();
+          ...
+          $SPF.setFeature("http://xml.org/sax/features/external-general-entities", false);
+          ...
+    message: >
+      XML External Entity (XXE) vulnerability via SAXParserFactory. The
+      parser does not disable external entity processing. Set the feature
+      "http://apache.org/xml/features/disallow-doctype-decl" to true,
+      or disable external general and parameter entities.
+    metadata:
+      cwe: CWE-611
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]

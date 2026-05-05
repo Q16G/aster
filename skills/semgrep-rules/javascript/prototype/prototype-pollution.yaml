@@ -1,0 +1,26 @@
+rules:
+  - id: javascript-prototype-pollution
+    patterns:
+      - pattern-either:
+          - pattern: $OBJ[$KEY] = $VALUE
+          - pattern: $OBJ[$KEY1][$KEY2] = $VALUE
+          - pattern: |
+              $OBJ[$KEY] = {}
+              ...
+              $OBJ[$KEY][$KEY2] = $VALUE
+      - pattern-not: $OBJ["..."] = $VALUE
+      - pattern-not: $OBJ[0] = $VALUE
+    message: >
+      Potential prototype pollution. Assigning to an object property using a
+      user-controlled key (e.g., obj[key] = value) can allow an attacker to
+      inject properties into Object.prototype by using keys like "__proto__",
+      "constructor", or "prototype". Validate keys against a denylist or use
+      Object.create(null) for lookup objects. Consider using Map instead of
+      plain objects.
+    metadata:
+      cwe: CWE-1321
+      owasp: "A03:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

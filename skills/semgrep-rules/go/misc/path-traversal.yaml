@@ -1,0 +1,30 @@
+rules:
+  - id: go-misc-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: |
+              filepath.Join($BASE, $INPUT)
+          - pattern: |
+              path.Join($BASE, $INPUT)
+      - pattern-not-inside: |
+          ...
+          filepath.Clean(...)
+          ...
+      - pattern-not: |
+          filepath.Join($BASE, "...")
+      - pattern-not: |
+          path.Join($BASE, "...")
+    message: >
+      Potential path traversal. User input is passed to filepath.Join
+      or path.Join without sanitization via filepath.Clean and base
+      directory validation. An attacker can use "../" sequences to
+      access files outside the intended directory. Use filepath.Clean
+      on the joined path and verify the result is within the expected
+      base directory.
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

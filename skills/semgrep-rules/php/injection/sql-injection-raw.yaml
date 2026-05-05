@@ -1,0 +1,40 @@
+rules:
+  - id: php-injection-sql-injection-raw
+    patterns:
+      - pattern-either:
+          - pattern: |
+              mysqli_query($CONN, "..." . $INPUT . "...");
+          - pattern: |
+              mysqli_query($CONN, "..." . $INPUT);
+          - pattern: |
+              mysqli_query($CONN, $INPUT . "...");
+          - pattern: |
+              mysql_query("..." . $INPUT . "...");
+          - pattern: |
+              mysql_query("..." . $INPUT);
+          - pattern: |
+              mysql_query($INPUT . "...");
+          - pattern: |
+              $SQL = "..." . $INPUT . "...";
+              ...
+              mysqli_query($CONN, $SQL);
+          - pattern: |
+              $SQL = "..." . $INPUT . "...";
+              ...
+              mysql_query($SQL);
+          - pattern: |
+              mysqli_query($CONN, "...$INTERPOLATED...");
+          - pattern: |
+              mysql_query("...$INTERPOLATED...");
+    message: >
+      SQL injection via mysqli_query() or mysql_query() with variable
+      interpolation or string concatenation. User-controlled input may be
+      inserted directly into the SQL query. Use prepared statements with
+      parameterized queries (mysqli_prepare / bind_param) instead.
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

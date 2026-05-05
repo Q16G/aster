@@ -1,0 +1,24 @@
+rules:
+  - id: python-deserialization-pickle-load
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          - pattern: cPickle.load(...)
+          - pattern: cPickle.loads(...)
+          - pattern: _pickle.load(...)
+          - pattern: _pickle.loads(...)
+          - pattern: shelve.open(...)
+    message: >
+      Unsafe deserialization via pickle. Pickle can execute arbitrary code during
+      deserialization, leading to remote code execution if the data source is
+      untrusted. Use safe serialization formats like JSON, MessagePack, or
+      Protocol Buffers. If pickle is required, verify data integrity with HMAC
+      before deserializing.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

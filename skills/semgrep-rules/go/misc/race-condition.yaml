@@ -1,0 +1,48 @@
+rules:
+  - id: go-misc-race-condition
+    patterns:
+      - pattern-either:
+          - pattern: |
+              go func() {
+                ...
+                $VAR = ...
+                ...
+              }()
+          - pattern: |
+              go func() {
+                ...
+                $VAR++
+                ...
+              }()
+          - pattern: |
+              go func() {
+                ...
+                $VAR--
+                ...
+              }()
+          - pattern: |
+              go func() {
+                ...
+                $VAR += ...
+                ...
+              }()
+      - pattern-not-inside: |
+          $MU.Lock()
+          ...
+          $MU.Unlock()
+      - pattern-not-inside: |
+          $MU.RLock()
+          ...
+          $MU.RUnlock()
+    message: >
+      Potential race condition. A goroutine modifies a variable that may
+      be shared with other goroutines without synchronization (mutex,
+      channel, or atomic operation). Use sync.Mutex, sync/atomic, or
+      channels to safely coordinate access to shared state.
+    metadata:
+      cwe: CWE-362
+      owasp: "A04:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

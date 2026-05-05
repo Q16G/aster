@@ -1,0 +1,17 @@
+rules:
+  - id: javascript-crypto-insecure-random
+    patterns:
+      - pattern: Math.random()
+    message: >
+      Use of Math.random() which is not cryptographically secure. Math.random()
+      uses a predictable PRNG and must not be used for security-sensitive
+      purposes such as generating tokens, session IDs, passwords, or nonces.
+      Use crypto.randomBytes(), crypto.randomUUID(), or
+      crypto.getRandomValues() (in browsers) instead.
+    metadata:
+      cwe: CWE-330
+      owasp: "A02:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

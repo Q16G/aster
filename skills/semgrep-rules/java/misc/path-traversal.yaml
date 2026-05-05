@@ -1,0 +1,24 @@
+rules:
+  - id: java-misc-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: new File($INPUT)
+          - pattern: new File($BASE, $INPUT)
+          - pattern: java.nio.file.Paths.get($INPUT)
+          - pattern: java.nio.file.Path.of($INPUT)
+      - pattern-not: new File("...")
+      - pattern-not: new File("...", "...")
+      - pattern-not: java.nio.file.Paths.get("...")
+      - pattern-not: java.nio.file.Path.of("...")
+    message: >
+      Potential path traversal. A variable is used to construct a file
+      path, which may allow an attacker to access files outside the
+      intended directory using "../" sequences. Canonicalize the path
+      and verify it is within the expected base directory.
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

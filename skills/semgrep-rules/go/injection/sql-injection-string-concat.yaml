@@ -1,0 +1,39 @@
+rules:
+  - id: go-injection-sql-injection-string-concat
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $DB.Query("..." + $INPUT + "...", ...)
+          - pattern: |
+              $DB.QueryRow("..." + $INPUT + "...", ...)
+          - pattern: |
+              $DB.Exec("..." + $INPUT + "...", ...)
+          - pattern: |
+              $DB.Query("..." + $INPUT, ...)
+          - pattern: |
+              $DB.QueryRow("..." + $INPUT, ...)
+          - pattern: |
+              $DB.Exec("..." + $INPUT, ...)
+          - pattern: |
+              $QUERY := "..." + $INPUT + "..."
+              ...
+              $DB.Query($QUERY, ...)
+          - pattern: |
+              $QUERY := "..." + $INPUT
+              ...
+              $DB.Query($QUERY, ...)
+          - pattern: |
+              $QUERY := "..." + $INPUT + "..."
+              ...
+              $DB.Exec($QUERY, ...)
+    message: >
+      SQL injection via string concatenation. User input is concatenated
+      into a SQL query string using the + operator. Use parameterized
+      queries with placeholder arguments instead.
+    metadata:
+      cwe: CWE-89
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

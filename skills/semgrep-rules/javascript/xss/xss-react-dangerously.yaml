@@ -1,0 +1,23 @@
+rules:
+  - id: javascript-xss-react-dangerously
+    patterns:
+      - pattern-either:
+          - pattern: |
+              <$EL dangerouslySetInnerHTML={{__html: $VAR}} />
+          - pattern: |
+              <$EL dangerouslySetInnerHTML={{__html: $VAR}}>...</$EL>
+          - pattern: |
+              dangerouslySetInnerHTML={{__html: $VAR}}
+    message: >
+      Cross-site scripting (XSS) via React dangerouslySetInnerHTML. This prop
+      bypasses React's built-in XSS protection by injecting raw HTML. If the
+      value contains user-controlled content, it can lead to script injection.
+      Sanitize the HTML with DOMPurify before passing it to dangerouslySetInnerHTML,
+      or restructure to avoid raw HTML injection.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

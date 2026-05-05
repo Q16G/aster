@@ -1,0 +1,18 @@
+rules:
+  - id: python-xss-jinja-autoescape-off
+    patterns:
+      - pattern-either:
+          - pattern: jinja2.Environment(..., autoescape=False, ...)
+          - pattern: Environment(..., autoescape=False, ...)
+    message: >
+      Cross-site scripting (XSS) risk with Jinja2 autoescape disabled. When
+      autoescape=False, template variables are rendered without HTML escaping,
+      allowing script injection. Set autoescape=True or use
+      jinja2.select_autoescape().
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]

@@ -1,0 +1,56 @@
+rules:
+  - id: java-misc-log-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.info($INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.info(..., $INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.debug($INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.debug(..., $INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.warn($INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.warn(..., $INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.error($INPUT);
+          - pattern: |
+              String $INPUT = (javax.servlet.http.HttpServletRequest $REQ).getParameter(...);
+              ...
+              $LOG.error(..., $INPUT);
+          - pattern: |
+              String $INPUT = $REQ.getParameter(...);
+              ...
+              $LOG.info(..., $INPUT);
+          - pattern: |
+              String $INPUT = $REQ.getParameter(...);
+              ...
+              $LOG.error(..., $INPUT);
+    message: >
+      Log injection detected. User input from request parameters is logged
+      without sanitization. An attacker can inject newline characters
+      (\r\n) to forge log entries or corrupt log files. Sanitize user
+      input by removing or encoding control characters before logging.
+    metadata:
+      cwe: CWE-117
+      owasp: "A09:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

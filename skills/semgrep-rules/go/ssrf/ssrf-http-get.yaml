@@ -1,0 +1,24 @@
+rules:
+  - id: go-ssrf-http-get
+    patterns:
+      - pattern-either:
+          - pattern: http.Get($URL)
+          - pattern: http.Post($URL, ...)
+          - pattern: http.PostForm($URL, ...)
+          - pattern: http.Head($URL)
+      - pattern-not: http.Get("...")
+      - pattern-not: http.Post("...", ...)
+      - pattern-not: http.PostForm("...", ...)
+      - pattern-not: http.Head("...")
+    message: >
+      Potential SSRF via http.Get/Post/Head with a variable URL.
+      User-controlled URLs can be used to access internal services,
+      metadata endpoints, or private network resources. Validate URLs
+      against an allowlist and block private/internal IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

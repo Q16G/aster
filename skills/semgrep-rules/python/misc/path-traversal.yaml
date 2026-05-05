@@ -1,0 +1,23 @@
+rules:
+  - id: python-misc-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: open($PATH, ...)
+          - pattern: os.path.join($BASE, $INPUT)
+          - pattern: pathlib.Path($INPUT)
+      - pattern-not: open("...", ...)
+      - pattern-not: os.path.join("...", "...")
+      - pattern-not: pathlib.Path("...")
+    message: >
+      Potential path traversal vulnerability. User-controlled input is used to
+      construct a file path, which may allow an attacker to access files outside
+      the intended directory using sequences like "../". Validate and sanitize
+      file paths, use os.path.realpath() to resolve symlinks, and verify the
+      resolved path starts with the expected base directory.
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

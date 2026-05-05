@@ -1,0 +1,38 @@
+rules:
+  - id: java-ssrf-httpclient
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (org.apache.http.client.HttpClient $CLIENT).execute(new HttpGet($URL));
+          - pattern: |
+              (org.apache.http.client.HttpClient $CLIENT).execute(new HttpPost($URL));
+          - pattern: |
+              HttpGet $REQ = new HttpGet($URL);
+              ...
+              (org.apache.http.client.HttpClient $CLIENT).execute($REQ);
+          - pattern: |
+              HttpPost $REQ = new HttpPost($URL);
+              ...
+              (org.apache.http.client.HttpClient $CLIENT).execute($REQ);
+          - pattern: |
+              (java.net.http.HttpClient $CLIENT).send(
+                java.net.http.HttpRequest.newBuilder().uri(URI.create($URL)).build(),
+                ...
+              );
+          - pattern: |
+              HttpRequest $REQ = HttpRequest.newBuilder().uri(URI.create($URL)).build();
+              ...
+              (java.net.http.HttpClient $CLIENT).send($REQ, ...);
+      - pattern-not: new HttpGet("...")
+      - pattern-not: new HttpPost("...")
+    message: >
+      Server-Side Request Forgery (SSRF) via HttpClient. A user-controlled
+      URL is passed to an HTTP client for server-side requests. Validate
+      URLs against an allowlist and block internal/private IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

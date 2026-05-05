@@ -1,0 +1,28 @@
+rules:
+  - id: javascript-injection-nosql-injection-mongo
+    patterns:
+      - pattern-either:
+          - pattern: $COLLECTION.find({$where: $INPUT})
+          - pattern: $COLLECTION.findOne({$where: $INPUT})
+          - pattern: $COLLECTION.find({..., $where: $INPUT, ...})
+          - pattern: $COLLECTION.findOne({..., $where: $INPUT, ...})
+          - pattern: $COLLECTION.update({$where: $INPUT}, ...)
+          - pattern: $COLLECTION.deleteMany({$where: $INPUT})
+          - pattern: |
+              $QUERY = {$where: $INPUT}
+              ...
+              $COLLECTION.find($QUERY)
+          - pattern: $MODEL.find({$where: $INPUT})
+          - pattern: $MODEL.findOne({$where: $INPUT})
+    message: >
+      NoSQL injection via MongoDB $where operator. The $where operator executes
+      JavaScript expressions on the server, enabling injection attacks if
+      user-controlled input is used. Avoid $where entirely; use standard query
+      operators ($eq, $gt, $in, etc.) and always validate/sanitize user input.
+    metadata:
+      cwe: CWE-943
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

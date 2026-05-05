@@ -1,0 +1,45 @@
+rules:
+  - id: java-ssrf-resttemplate
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (org.springframework.web.client.RestTemplate $RT).getForObject($URL, ...);
+          - pattern: |
+              (org.springframework.web.client.RestTemplate $RT).getForEntity($URL, ...);
+          - pattern: |
+              (org.springframework.web.client.RestTemplate $RT).postForObject($URL, ...);
+          - pattern: |
+              (org.springframework.web.client.RestTemplate $RT).postForEntity($URL, ...);
+          - pattern: |
+              (org.springframework.web.client.RestTemplate $RT).exchange($URL, ...);
+          - pattern: |
+              (RestTemplate $RT).getForObject($URL, ...);
+          - pattern: |
+              (RestTemplate $RT).getForEntity($URL, ...);
+          - pattern: |
+              (RestTemplate $RT).postForObject($URL, ...);
+          - pattern: |
+              (RestTemplate $RT).postForEntity($URL, ...);
+          - pattern: |
+              (RestTemplate $RT).exchange($URL, ...);
+      - pattern-not: |
+          (RestTemplate $RT).getForObject("...", ...);
+      - pattern-not: |
+          (RestTemplate $RT).getForEntity("...", ...);
+      - pattern-not: |
+          (RestTemplate $RT).postForObject("...", ...);
+      - pattern-not: |
+          (RestTemplate $RT).postForEntity("...", ...);
+      - pattern-not: |
+          (RestTemplate $RT).exchange("...", ...);
+    message: >
+      Server-Side Request Forgery (SSRF) via RestTemplate. A variable
+      URL is passed to RestTemplate methods. Validate URLs against an
+      allowlist and block internal/private IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

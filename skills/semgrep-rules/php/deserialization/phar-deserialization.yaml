@@ -1,0 +1,35 @@
+rules:
+  - id: php-deserialization-phar-deserialization
+    patterns:
+      - pattern-either:
+          - pattern: file_get_contents("phar://" . $INPUT);
+          - pattern: file_get_contents("phar://" . $INPUT . ...);
+          - pattern: file_exists("phar://" . $INPUT);
+          - pattern: file_exists("phar://" . $INPUT . ...);
+          - pattern: is_file("phar://" . $INPUT);
+          - pattern: is_dir("phar://" . $INPUT);
+          - pattern: fopen("phar://" . $INPUT, ...);
+          - pattern: include("phar://" . $INPUT);
+          - pattern: require("phar://" . $INPUT);
+          - pattern: |
+              $PATH = "phar://" . $INPUT;
+              ...
+              file_get_contents($PATH);
+          - pattern: |
+              $PATH = "phar://" . $INPUT;
+              ...
+              fopen($PATH, ...);
+    message: >
+      Phar deserialization vulnerability. File operations on phar://
+      streams with user-controlled paths trigger automatic
+      deserialization of the phar manifest metadata. An attacker can
+      supply a crafted phar file to achieve remote code execution.
+      Validate and restrict file paths, avoid phar:// with user input,
+      and set phar.readonly=1 in php.ini.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

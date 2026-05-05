@@ -1,0 +1,50 @@
+rules:
+  - id: php-xss-unescaped-output
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $VAR = $_GET[$KEY];
+              ...
+              echo $VAR;
+          - pattern: |
+              $VAR = $_POST[$KEY];
+              ...
+              echo $VAR;
+          - pattern: |
+              $VAR = $_REQUEST[$KEY];
+              ...
+              echo $VAR;
+          - pattern: |
+              $VAR = $_GET[$KEY];
+              ...
+              echo "..." . $VAR . "...";
+          - pattern: |
+              $VAR = $_POST[$KEY];
+              ...
+              echo "..." . $VAR . "...";
+          - pattern: |
+              $VAR = $_REQUEST[$KEY];
+              ...
+              echo "..." . $VAR . "...";
+          - pattern: |
+              $VAR = $_COOKIE[$KEY];
+              ...
+              echo $VAR;
+          - pattern: |
+              $VAR = $_SERVER[$KEY];
+              ...
+              echo $VAR;
+      - pattern-not: echo htmlspecialchars(...);
+      - pattern-not: echo htmlentities(...);
+    message: >
+      Cross-site scripting (XSS) via direct output of a variable assigned
+      from user input ($_GET, $_POST, $_REQUEST, $_COOKIE, $_SERVER).
+      The variable is echoed without sanitization. Use htmlspecialchars()
+      with ENT_QUOTES and UTF-8 encoding before outputting user data.
+    metadata:
+      cwe: CWE-79
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

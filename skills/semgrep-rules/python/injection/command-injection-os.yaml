@@ -1,0 +1,22 @@
+rules:
+  - id: python-injection-command-injection-os
+    patterns:
+      - pattern-either:
+          - pattern: os.system($CMD)
+          - pattern: os.popen($CMD)
+          - pattern: os.popen2($CMD)
+          - pattern: os.popen3($CMD)
+          - pattern: os.popen4($CMD)
+      - pattern-not: os.system("...")
+      - pattern-not: os.popen("...")
+    message: >
+      Command injection via os.system() or os.popen() with a variable argument.
+      User-controlled input may be passed to a shell command. Use the subprocess
+      module with a list of arguments and shell=False instead.
+    metadata:
+      cwe: CWE-78
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

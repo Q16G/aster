@@ -1,0 +1,38 @@
+rules:
+  - id: php-ssrf-file-get-contents
+    patterns:
+      - pattern-either:
+          - pattern: file_get_contents($_GET[$KEY]);
+          - pattern: file_get_contents($_POST[$KEY]);
+          - pattern: file_get_contents($_REQUEST[$KEY]);
+          - pattern: |
+              $URL = $_GET[$KEY];
+              ...
+              file_get_contents($URL);
+          - pattern: |
+              $URL = $_POST[$KEY];
+              ...
+              file_get_contents($URL);
+          - pattern: |
+              $URL = $_REQUEST[$KEY];
+              ...
+              file_get_contents($URL);
+          - pattern: file_get_contents("..." . $_GET[$KEY]);
+          - pattern: file_get_contents("..." . $_POST[$KEY]);
+          - pattern: file_get_contents("..." . $_REQUEST[$KEY]);
+          - pattern: file_get_contents("..." . $_GET[$KEY] . "...");
+          - pattern: file_get_contents("..." . $_POST[$KEY] . "...");
+    message: >
+      Server-side request forgery (SSRF) via file_get_contents() with
+      user-controlled URL. When allow_url_fopen is enabled (default),
+      file_get_contents() can fetch remote URLs. An attacker may access
+      internal services or cloud metadata endpoints. Validate URLs
+      against an allowlist of permitted hosts and disable
+      allow_url_fopen if remote file access is not needed.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

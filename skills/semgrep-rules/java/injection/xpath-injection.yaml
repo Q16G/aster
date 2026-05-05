@@ -1,0 +1,31 @@
+rules:
+  - id: java-injection-xpath-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.xml.xpath.XPath $XPATH).evaluate($EXPR + ..., ...);
+          - pattern: |
+              (javax.xml.xpath.XPath $XPATH).compile($EXPR + ...);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (javax.xml.xpath.XPath $XPATH).evaluate($EXPR, ...);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (javax.xml.xpath.XPath $XPATH).compile($EXPR);
+          - pattern: |
+              String $EXPR = String.format(...);
+              ...
+              (javax.xml.xpath.XPath $XPATH).evaluate($EXPR, ...);
+    message: >
+      XPath injection detected. User-controlled input is concatenated into
+      an XPath expression without sanitization. Use parameterized XPath
+      queries (XPathVariableResolver) or validate input against a whitelist.
+    metadata:
+      cwe: CWE-643
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

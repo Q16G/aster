@@ -1,0 +1,22 @@
+rules:
+  - id: python-ssrf-urllib
+    patterns:
+      - pattern-either:
+          - pattern: urllib.request.urlopen($URL, ...)
+          - pattern: urllib.request.Request($URL, ...)
+          - pattern: urlopen($URL, ...)
+      - pattern-not: urllib.request.urlopen("...", ...)
+      - pattern-not: urllib.request.Request("...", ...)
+      - pattern-not: urlopen("...", ...)
+    message: >
+      Server-side request forgery (SSRF) via urllib. A variable URL is passed to
+      urllib.request.urlopen() or Request(), which may allow an attacker to force
+      the server to make requests to internal services or cloud metadata endpoints.
+      Validate and allowlist URLs before making requests.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

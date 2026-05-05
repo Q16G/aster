@@ -1,0 +1,34 @@
+rules:
+  - id: c-memory-double-free
+    patterns:
+      - pattern-either:
+          - pattern: |
+              free($PTR);
+              ...
+              free($PTR);
+      - pattern-not: |
+          free($PTR);
+          ...
+          $PTR = NULL;
+          ...
+          free($PTR);
+      - pattern-not: |
+          free($PTR);
+          ...
+          $PTR = $ALLOC(...);
+          ...
+          free($PTR);
+    message: >
+      Potential double-free. The same pointer is passed to free() twice
+      without being reassigned or set to NULL between calls. Double-free
+      corrupts the heap allocator metadata and can be exploited for
+      arbitrary code execution. Set pointers to NULL immediately after
+      freeing. Note: this is a simplified pattern-based check and may
+      produce false positives across different control-flow paths.
+    metadata:
+      cwe: CWE-415
+      owasp: "A06:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [c]
