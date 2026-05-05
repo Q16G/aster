@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aster/internal/ai"
+	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	tuiui "aster/internal/tui/ui"
 )
@@ -23,6 +24,7 @@ var slashCommands = []tuiui.CommandEntry{
 	{Name: "/new", Description: "New session"},
 	{Name: "/clear", Description: "Clear chat history"},
 	{Name: "/verbose", Description: "Toggle tool call detail"},
+	{Name: "/mode", Description: "Switch bash permission mode (yolo/manual/ai)"},
 	{Name: "/theme", Description: "Switch theme"},
 	{Name: "/help", Description: "Show help"},
 	{Name: "/exit", Description: "Quit application"},
@@ -37,6 +39,7 @@ const helpText = `Available commands:
   /session [new|list|switch|delete] — Session management / selector
   /clear                 — Clear chat history
   /verbose               — Toggle tool call detail level
+  /mode [yolo|manual|ai] — Switch bash permission mode
   /theme                 — Toggle dark/light theme
   /help                  — Show this help
 
@@ -89,6 +92,8 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.statusText = fmt.Sprintf("tool display: %s", state)
 		return m, nil
+	case "/mode":
+		return m.cmdMode(parts[1:])
 	case "/theme":
 		if len(parts) > 1 {
 			if parts[1] == "toggle" {
@@ -668,4 +673,69 @@ func (m *Model) openThemeSelector() (tea.Model, tea.Cmd) {
 	m.dialogStack.SetSize(m.width, m.height)
 	m.statusText = "select theme"
 	return m, nil
+}
+
+func (m *Model) cmdMode(args []string) (tea.Model, tea.Cmd) {
+	if m.agentCtx == nil {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "agent context not available"}})
+		return m, nil
+	}
+	if len(args) == 0 {
+		return m.openModeSelector()
+	}
+	mode, ok := parsePermissionModeArg(args[0])
+	if !ok {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mode [yolo|manual|ai]"}})
+		return m, nil
+	}
+	return m.applyPermissionMode(mode)
+}
+
+func (m *Model) openModeSelector() (tea.Model, tea.Cmd) {
+	current := string(m.currentPermissionMode())
+	modes := []struct {
+		value string
+		label string
+		desc  string
+	}{
+		{"YOLO", "yolo", "auto-approve all"},
+		{"MANUAL", "manual", "always confirm"},
+		{"AI", "ai", "risk-based (confirm high risk only)"},
+	}
+	options := make([]tuiui.SelectOption, len(modes))
+	for i, md := range modes {
+		desc := md.desc
+		if md.value == current {
+			desc += " (current)"
+		}
+		options[i] = tuiui.SelectOption{Label: md.label, Value: md.value, Description: desc}
+	}
+	dialog := tuiui.NewSelectDialog("mode-select", "Bash Permission Mode", options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	m.statusText = "select mode"
+	return m, nil
+}
+
+func (m *Model) applyPermissionMode(mode builtin_tools.PermissionMode) (tea.Model, tea.Cmd) {
+	m.setPermissionMode(mode)
+	m.statusText = fmt.Sprintf("bash mode: %s", mode)
+	toastLevel := tuiui.ToastSuccess
+	if mode == builtin_tools.PermissionModeYOLO {
+		toastLevel = tuiui.ToastWarning
+	}
+	return m, m.toastManager.Push(fmt.Sprintf("bash mode: %s", mode), toastLevel, 3*time.Second)
+}
+
+func parsePermissionModeArg(arg string) (builtin_tools.PermissionMode, bool) {
+	switch strings.ToLower(strings.TrimSpace(arg)) {
+	case "yolo":
+		return builtin_tools.PermissionModeYOLO, true
+	case "manual":
+		return builtin_tools.PermissionModeManual, true
+	case "ai":
+		return builtin_tools.PermissionModeAI, true
+	default:
+		return "", false
+	}
 }
