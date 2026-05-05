@@ -79,16 +79,13 @@ func (m *Model) switchSession(idOrPrefix string) {
 			}
 			m.bindSessionToAgent()
 
-			messages, err := loadSessionMessages(m.store.BaseDir(), s.ID)
+			parts, err := loadSessionDisplayParts(m.store.BaseDir(), s.ID)
 			if err != nil {
 				m.chat = NewChatModel()
-				messages = nil
+			} else {
+				m.chat = NewChatModel()
+				m.chat.SetParts(parts)
 			}
-			if parts, partErr := loadSessionParts(m.store.BaseDir(), s.ID); partErr == nil {
-				messages = mergeRecoveredPartMessages(messages, parts)
-			}
-			m.chat = NewChatModel()
-			m.chat.SetMessages(messages)
 			m.restoreToolVerbose()
 			m.updateLayout()
 
@@ -111,7 +108,7 @@ func (m *Model) switchSession(idOrPrefix string) {
 
 			if runEvents, runErr := loadSessionRunEvents(m.store.BaseDir(), s.ID); runErr == nil {
 				if note := summarizeRunRecovery(runEvents); note != "" {
-					m.chat.AddMessage(ChatMessage{Role: "system", Content: note})
+					m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: note}})
 				}
 			}
 
@@ -121,7 +118,7 @@ func (m *Model) switchSession(idOrPrefix string) {
 			return
 		}
 	}
-	m.chat.AddMessage(ChatMessage{Role: "system", Content: "session not found: " + idOrPrefix})
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "session not found: " + idOrPrefix}})
 }
 
 func (m *Model) bindSessionToAgent() {
@@ -136,7 +133,7 @@ func (m *Model) persistCurrentSession() {
 	if m.store == nil || m.currentSessionID == "" {
 		return
 	}
-	saveSessionMessages(m.store.BaseDir(), m.currentSessionID, m.chat.Messages())
+	saveSessionDisplayParts(m.store.BaseDir(), m.currentSessionID, m.chat.Parts())
 	m.persistSessionSummary()
 	m.persistSessionMeta()
 }
@@ -145,24 +142,31 @@ func (m *Model) persistSessionSummary() {
 	if m.store == nil || m.currentSessionID == "" {
 		return
 	}
-	messages := m.chat.Messages()
-	msgCount := len(messages)
-	lastMsg := ""
+	parts := m.chat.Parts()
+	partCount := len(parts)
+	lastContent := ""
 	title := ""
-	for _, msg := range messages {
-		if msg.Role == "user" && title == "" {
-			title = msg.Content
+	for _, p := range parts {
+		if p.Type == PartTypeUser && p.User != nil && title == "" {
+			title = p.User.Content
 			if len(title) > 50 {
 				title = title[:50]
 			}
 		}
-		lastMsg = msg.Content
+		switch {
+		case p.User != nil:
+			lastContent = p.User.Content
+		case p.Text != nil:
+			lastContent = p.Text.Content
+		case p.System != nil:
+			lastContent = p.System.Content
+		}
 	}
-	if len(lastMsg) > 100 {
-		lastMsg = lastMsg[:100]
+	if len(lastContent) > 100 {
+		lastContent = lastContent[:100]
 	}
 
-	_ = m.store.UpdateSummary(m.currentSessionID, msgCount, lastMsg)
+	_ = m.store.UpdateSummary(m.currentSessionID, partCount, lastContent)
 	if title != "" {
 		if rec, err := m.store.Get(m.currentSessionID); err == nil && rec.Title == "" {
 			rec.Title = title
@@ -232,20 +236,25 @@ func (m *Model) rememberRecentModel(modelID string) {
 	})
 }
 
-func (m *Model) appendMessage(msg ChatMessage) {
+func (m *Model) appendPart(part DisplayPart) {
 	if m.store == nil || m.currentSessionID == "" {
 		return
 	}
-	_ = appendSessionMessage(m.store.BaseDir(), m.currentSessionID, msg)
+	_ = appendSessionDisplayPart(m.store.BaseDir(), m.currentSessionID, part)
 }
 
 func (m *Model) persistPart(partType, name, content string) {
+	m.persistPartWithCallID(partType, name, "", content)
+}
+
+func (m *Model) persistPartWithCallID(partType, name, callID, content string) {
 	if m.store == nil || m.currentSessionID == "" {
 		return
 	}
 	_ = appendSessionPart(m.store.BaseDir(), m.currentSessionID, persistedPart{
 		Type:    partType,
 		Name:    name,
+		CallID:  callID,
 		Content: content,
 		Time:    time.Now(),
 	})
@@ -280,6 +289,25 @@ func (m *Model) toggleSessionMCP(name string, connect bool) {
 func (m *Model) restoreSessionState() {
 	m.themeProvider.SetByName(m.sessionMeta.Theme)
 	m.applySessionRuntimeState()
+}
+
+func (m *Model) setPermissionMode(mode builtin_tools.PermissionMode) {
+	if m.agentCtx != nil &&
+		m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
+		m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx != nil {
+		m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx.Mode = mode
+	}
+	m.sessionMeta.PermissionMode = string(mode)
+	m.persistSessionMeta()
+}
+
+func (m *Model) currentPermissionMode() builtin_tools.PermissionMode {
+	if m.agentCtx != nil &&
+		m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
+		m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx != nil {
+		return m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx.Mode
+	}
+	return builtin_tools.PermissionModeManual
 }
 
 func (m *Model) restoreToolVerbose() {

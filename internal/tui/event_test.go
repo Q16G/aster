@@ -18,6 +18,7 @@ func TestMapReactEvent_AllTypes(t *testing.T) {
 		{react.EventTypeThink, TuiEventThink},
 		{react.EventTypeIteration, TuiEventIteration},
 		{react.EventTypeStateChange, TuiEventStateChange},
+		{react.EventTypeRetry, TuiEventRetry},
 		{react.EventTypeAgentEnter, TuiEventAgentEnter},
 		{react.EventTypeAgentExit, TuiEventAgentExit},
 		{react.EventTypeTaskPlan, TuiEventTaskPlan},

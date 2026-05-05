@@ -13,6 +13,7 @@ const (
 	TuiEventThink
 	TuiEventIteration
 	TuiEventStateChange
+	TuiEventRetry
 	TuiEventAgentEnter
 	TuiEventAgentExit
 	TuiEventTaskPlan
@@ -21,6 +22,8 @@ const (
 	TuiEventStepFinish
 	TuiEventHistoryCompacted
 	TuiEventHumanRequest
+	TuiEventStepSummaryResult
+	TuiEventFinalAnswerResult
 	// UI-specific events
 	TuiEventToast
 	TuiEventRouteChange
@@ -43,6 +46,7 @@ var reactToTuiMap = map[react.EventType]TuiEventType{
 	react.EventTypeThink:            TuiEventThink,
 	react.EventTypeIteration:        TuiEventIteration,
 	react.EventTypeStateChange:      TuiEventStateChange,
+	react.EventTypeRetry:            TuiEventRetry,
 	react.EventTypeAgentEnter:       TuiEventAgentEnter,
 	react.EventTypeAgentExit:        TuiEventAgentExit,
 	react.EventTypeTaskPlan:         TuiEventTaskPlan,
@@ -50,7 +54,9 @@ var reactToTuiMap = map[react.EventType]TuiEventType{
 	react.EventTypeLog:              TuiEventLog,
 	react.EventTypeStepFinish:       TuiEventStepFinish,
 	react.EventTypeHistoryCompacted: TuiEventHistoryCompacted,
-	react.EventTypeHumanRequest:     TuiEventHumanRequest,
+	react.EventTypeHumanRequest:         TuiEventHumanRequest,
+	react.EventTypeStepSummaryResult:    TuiEventStepSummaryResult,
+	react.EventTypeFinalAnswerResult:    TuiEventFinalAnswerResult,
 }
 
 func MapReactEvent(e *react.AgentOutputEvent) TuiEvent {

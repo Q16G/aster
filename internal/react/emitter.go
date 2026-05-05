@@ -25,6 +25,7 @@ const (
 	EventTypeIteration        EventType = "iteration"
 	EventTypeResult           EventType = "result"
 	EventTypeToolUpdate       EventType = "tool_update"
+	EventTypeRetry            EventType = "retry"
 	EventTypeLog              EventType = "log"
 	EventTypeStream           EventType = "stream"
 	EventTypeStepFinish            EventType = "step_finish"
@@ -325,6 +326,21 @@ func (e *Emitter) EmitToolUpdate(payload map[string]any) {
 		Type:    EventTypeToolUpdate,
 		NodeID:  nodeID,
 		Payload: builtin_tools.CloneAnyMap(payload),
+	})
+}
+
+func (e *Emitter) EmitRetry(attempt int, maxAttempts int, delay time.Duration, next time.Time, message string, retryAfter time.Duration) {
+	e.Emit(&AgentOutputEvent{
+		Type:   EventTypeRetry,
+		NodeID: "retry",
+		Payload: map[string]any{
+			"attempt":        attempt,
+			"max_attempts":   maxAttempts,
+			"delay_ms":       delay.Milliseconds(),
+			"next_unix_ms":   next.UnixMilli(),
+			"message":        strings.TrimSpace(message),
+			"retry_after_ms": retryAfter.Milliseconds(),
+		},
 	})
 }
 

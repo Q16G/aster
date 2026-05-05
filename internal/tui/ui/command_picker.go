@@ -48,6 +48,21 @@ func (p *CommandPickerModel) SetWidth(w int) {
 	p.width = w
 }
 
+func (p *CommandPickerModel) visibleCount() int {
+	if len(p.filtered) == 0 {
+		return 1
+	}
+	visible := len(p.filtered)
+	if visible > pickerMaxVisible {
+		visible = pickerMaxVisible
+	}
+	return visible
+}
+
+func (p *CommandPickerModel) Height() int {
+	return p.visibleCount() + 2
+}
+
 func (p *CommandPickerModel) Update(msg tea.Msg) tea.Cmd {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -83,9 +98,14 @@ func (p *CommandPickerModel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *CommandPickerModel) View() string {
-	if len(p.filtered) == 0 {
-		style := lipgloss.NewStyle().Faint(true).Padding(0, 1)
-		return style.Render("No matching commands")
+	boxStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		Width(p.width - 2)
+	lineWidth := boxStyle.GetWidth() - boxStyle.GetHorizontalPadding()
+	if lineWidth < 1 {
+		lineWidth = 1
 	}
 
 	selectedStyle := lipgloss.NewStyle().
@@ -96,10 +116,7 @@ func (p *CommandPickerModel) View() string {
 	descStyle := lipgloss.NewStyle().
 		Faint(true)
 
-	visible := len(p.filtered)
-	if visible > pickerMaxVisible {
-		visible = pickerMaxVisible
-	}
+	visible := p.visibleCount()
 
 	start := 0
 	if p.cursor >= visible {
@@ -111,29 +128,34 @@ func (p *CommandPickerModel) View() string {
 	}
 
 	var lines []string
-	for i := start; i < end; i++ {
-		idx := p.filtered[i]
-		entry := p.commands[idx]
-		prefix := "  "
-		style := normalStyle
-		if i == p.cursor {
-			prefix = "> "
-			style = selectedStyle
+	if len(p.filtered) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Faint(true).Render(truncateDisplayWidth("No matching commands", lineWidth)))
+	} else {
+		for i := start; i < end; i++ {
+			idx := p.filtered[i]
+			entry := p.commands[idx]
+			prefix := "  "
+			style := normalStyle
+			if i == p.cursor {
+				prefix = "> "
+				style = selectedStyle
+			}
+			base := prefix + entry.Name
+			baseWidth := lipgloss.Width(base)
+			if entry.Description != "" && baseWidth < lineWidth {
+				descWidth := lineWidth - baseWidth - 1
+				if descWidth > 0 {
+					line := style.Render(base)
+					line += " " + descStyle.Render(truncateDisplayWidth(entry.Description, descWidth))
+					lines = append(lines, line)
+					continue
+				}
+			}
+			lines = append(lines, style.Render(truncateDisplayWidth(base, lineWidth)))
 		}
-		line := style.Render(prefix + entry.Name)
-		if entry.Description != "" {
-			line += " " + descStyle.Render(entry.Description)
-		}
-		lines = append(lines, line)
 	}
 
 	content := strings.Join(lines, "\n")
-
-	boxStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		Padding(0, 1).
-		Width(p.width - 2)
 
 	return boxStyle.Render(content)
 }

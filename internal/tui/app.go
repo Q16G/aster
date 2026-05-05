@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 
 	"aster/internal/ai"
 	"aster/internal/mcp"
@@ -34,6 +35,13 @@ type pendingProviderSetup struct {
 	ProviderID string
 }
 
+type retryState struct {
+	Message     string
+	Attempt     int
+	MaxAttempts int
+	Next        time.Time
+}
+
 type Model struct {
 	width  int
 	height int
@@ -46,6 +54,7 @@ type Model struct {
 	humanBridge     *HumanInputBridge
 	agentRunning    bool
 	statusText      string
+	retryState      *retryState
 	profileRegistry *ProfileRegistry
 
 	skillService    *service.SkillService
@@ -54,9 +63,11 @@ type Model struct {
 	providerCfg     *ProviderState
 	pendingProvider *pendingProviderSetup
 
-	currentSessionID string
-	sessionMeta      SessionMeta
-	focus            FocusTarget
+	currentSessionID    string
+	sessionMeta         SessionMeta
+	focus               FocusTarget
+	runStartTime        time.Time
+	hadStreamDuringRun  bool
 
 	syncStore       *tuicontext.SyncStore
 	themeProvider   *tuicontext.ThemeProvider
@@ -136,10 +147,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			if m.agentRunning && m.agentCtx != nil {
 				m.agentCtx.Cancel()
+				m.clearRetryState()
 				m.statusText = "cancelling..."
 				return m, nil
 			}
 			if m.exitProvider.RequestQuit() {
+				m.persistCurrentSession()
 				return m, tea.Quit
 			}
 			m.statusText = "press Ctrl+C again to quit"
@@ -283,14 +296,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UserSubmitMsg:
 		if !m.ensureSession() {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "Failed to create session. Please try again."})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "Failed to create session. Please try again."}})
 			return m, m.input.Focus()
 		}
-		chatMsg := ChatMessage{Role: "user", Content: msg.Text, Time: time.Now()}
-		m.chat.AddMessage(chatMsg)
-		m.appendMessage(chatMsg)
+		userPart := DisplayPart{Type: PartTypeUser, Time: time.Now(), User: &UserPart{Content: msg.Text}}
+		m.chat.AddPart(userPart)
+		m.appendPart(userPart)
 		m.input.SetEnabled(false)
 		m.agentRunning = true
+		m.hadStreamDuringRun = false
+		m.clearRetryState()
+		m.runStartTime = time.Now()
 		m.statusText = "thinking..."
 		spinnerCmd := m.spinner.Start()
 		fileRefs := extractFileRefs(msg.Text)
@@ -306,38 +322,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AgentDoneMsg:
-		hadStream := m.chat.FlushStream()
+		m.chat.FlushThinking()
+		hadStream := m.flushStreamAndPersist()
+		m.clearRetryState()
 		m.dialogStack.Clear()
 		m.agentRunning = false
 		m.spinner.Stop()
 		m.input.SetEnabled(true)
 		if msg.Err != nil {
-			sysMsg := ChatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", msg.Err)}
-			m.chat.AddMessage(sysMsg)
-			m.appendMessage(sysMsg)
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Error: %v", msg.Err)}})
 			m.statusText = "error"
 		} else if msg.Result != nil && !msg.Result.Success {
-			sysMsg := ChatMessage{Role: "system", Content: fmt.Sprintf("Agent failed: %s", msg.Result.Error)}
-			m.chat.AddMessage(sysMsg)
-			m.appendMessage(sysMsg)
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Agent failed: %s", msg.Result.Error)}})
 			m.statusText = "failed"
 		} else {
+			if !hadStream && !m.hadStreamDuringRun && msg.Result != nil && msg.Result.Result != "" {
+				m.chat.AddPart(DisplayPart{
+					Type: PartTypeText,
+					Time: time.Now(),
+					Text: &TextPart{Content: msg.Result.Result},
+				})
+			}
 			if m.agentCtx != nil {
 				m.agentCtx.InitialHistory = ai.NormalizeMsgInfoSlice(msg.History)
 			}
-			if !hadStream && msg.Result != nil && msg.Result.Result != "" {
-				aiMsg := ChatMessage{Role: "assistant", Content: msg.Result.Result}
-				m.chat.AddMessage(aiMsg)
-				m.appendMessage(aiMsg)
-			} else if hadStream {
-				msgs := m.chat.Messages()
-				if len(msgs) > 0 {
-					m.appendMessage(msgs[len(msgs)-1])
-				}
-			}
 			m.statusText = "ready"
 		}
-		m.persistSessionSummary()
+		// Run summary
+		success := msg.Err == nil && (msg.Result == nil || msg.Result.Success)
+		agentName := ""
+		modelID := ""
+		if m.agentCtx != nil {
+			agentName = m.agentCtx.Definition.Name
+		}
+		if m.providerCfg != nil {
+			modelID = m.providerCfg.ModelID
+		}
+		m.chat.AddPart(DisplayPart{
+			Type: PartTypeSummary,
+			Time: time.Now(),
+			Summary: &SummaryPart{
+				AgentName: agentName,
+				ModelID:   modelID,
+				Duration:  time.Since(m.runStartTime),
+				Success:   success,
+			},
+		})
+		m.persistCurrentSession()
 		return m, tea.Batch(m.input.Focus(), m.refreshSidebarCmd())
 
 	case HumanRequestMsg:
@@ -493,7 +524,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				apiKey = resolveAPIKey(bp, cfgP.APIKey)
 			}
 			if apiKey == "" && bp.APIKeyEnvVar != "" {
-				m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)})
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)}})
 				return m, nil
 			}
 			baseURL = bp.BaseURL
@@ -511,7 +542,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			apiKey = p.APIKey
 			model = p.DefaultModel
 		} else {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "unknown provider: " + msg.Name})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + msg.Name}})
 			return m, nil
 		}
 
@@ -543,7 +574,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}); err != nil {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("provider switched but config save failed: %v", err)})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider switched but config save failed: %v", err)}})
 		}
 
 		if m.appCfg.Providers == nil {
@@ -567,7 +598,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ModelPickerLoadedMsg:
 		if len(msg.Models) == 0 {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: "no models available from current provider"})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "no models available from current provider"}})
 			m.statusText = "no models"
 			return m, nil
 		}
@@ -585,7 +616,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ModelPickerFailedMsg:
 		if msg.Err != nil {
-			m.chat.AddMessage(ChatMessage{Role: "system", Content: fmt.Sprintf("load models failed: %v\nUsage: /model <model_id>", msg.Err)})
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("load models failed: %v\nUsage: /model <model_id>", msg.Err)}})
 			m.statusText = "model list failed"
 		}
 		return m, nil
@@ -724,6 +755,93 @@ func (m *Model) sidebarVisible() bool {
 	return false
 }
 
+func (m *Model) inlineLoading() bool {
+	return m.agentRunning && m.spinner != nil && m.spinner.IsVisible()
+}
+
+func (m *Model) pickerHeight(chatWidth int) int {
+	if chatWidth < 1 {
+		chatWidth = 1
+	}
+	if m.commandPicker != nil {
+		m.commandPicker.SetWidth(chatWidth)
+		return m.commandPicker.Height()
+	}
+	if m.filePicker != nil {
+		m.filePicker.SetWidth(chatWidth)
+		return m.filePicker.Height()
+	}
+	return 0
+}
+
+func (m *Model) clearRetryState() {
+	m.retryState = nil
+}
+
+func (m *Model) loadingLabel(maxWidth int) string {
+	if m.retryState != nil {
+		label := formatRetryLabel(m.retryState, maxWidth)
+		if label != "" {
+			return label
+		}
+	}
+	label := strings.TrimSpace(m.statusText)
+	if label == "" || label == "ready" {
+		return "thinking..."
+	}
+	return truncateDisplayWidth(label, maxWidth)
+}
+
+func formatRetryLabel(state *retryState, maxWidth int) string {
+	if state == nil {
+		return ""
+	}
+	message := strings.TrimSpace(state.Message)
+	if message == "" {
+		message = "Retrying"
+	}
+	suffix := fmt.Sprintf(" [retrying attempt #%d]", state.Attempt)
+	if remaining := time.Until(state.Next); remaining > 0 {
+		seconds := int((remaining + time.Second - 1) / time.Second)
+		if seconds > 0 {
+			suffix = fmt.Sprintf(" [retrying in %ds attempt #%d]", seconds, state.Attempt)
+		}
+	}
+	if maxWidth <= 0 {
+		return message + suffix
+	}
+	suffixWidth := runewidth.StringWidth(suffix)
+	if suffixWidth >= maxWidth {
+		return truncateDisplayWidth(strings.TrimSpace(message+suffix), maxWidth)
+	}
+	message = truncateDisplayWidth(message, maxWidth-suffixWidth)
+	return message + suffix
+}
+
+func truncateDisplayWidth(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if runewidth.StringWidth(s) <= maxWidth {
+		return s
+	}
+	if maxWidth == 1 {
+		return "…"
+	}
+
+	var b strings.Builder
+	width := 0
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if width+rw > maxWidth-1 {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	return b.String() + "…"
+}
+
 func (m *Model) updateLayout() {
 	footerHeight := 1
 	inputHeight := 3
@@ -743,7 +861,8 @@ func (m *Model) updateLayout() {
 		mainHeight = 1
 	}
 
-	chatHeight := mainHeight - inputHeight
+	pickerHeight := m.pickerHeight(chatWidth)
+	chatHeight := mainHeight - inputHeight - pickerHeight
 	if chatHeight < 1 {
 		chatHeight = 1
 	}
@@ -752,7 +871,7 @@ func (m *Model) updateLayout() {
 		m.sidebar.SetSize(sidebarWidth, mainHeight)
 	}
 	m.chat.SetSize(chatWidth-2, chatHeight)
-	m.input.SetWidth(chatWidth)
+	m.input.SetWidth(chatWidth - 2)
 	m.footer.SetWidth(m.width)
 	m.dialogStack.SetSize(m.width, m.height)
 }
@@ -788,7 +907,8 @@ func (m Model) View() string {
 		mainHeight = 1
 	}
 
-	chatHeight := mainHeight - inputHeight
+	pickerHeight := m.pickerHeight(chatWidth)
+	chatHeight := mainHeight - inputHeight - pickerHeight
 	if chatHeight < 1 {
 		chatHeight = 1
 	}
@@ -824,19 +944,31 @@ func (m Model) View() string {
 
 	inputStyle := lipgloss.NewStyle().
 		Width(chatWidth).
+		Height(inputHeight - 1).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderTop(true).
 		BorderForeground(inputBorderColor).
 		Padding(0, 1)
 
-	inputView := inputStyle.Render(m.input.View())
+	m.input.SetWidth(chatWidth - 2)
+	inlineLoading := m.inlineLoading()
+	var inputContent string
+	if inlineLoading {
+		inputContentWidth := chatWidth - 4
+		if inputContentWidth < 1 {
+			inputContentWidth = 1
+		}
+		m.spinner.SetLabel(m.loadingLabel(inputContentWidth))
+		inputContent = m.spinner.View()
+	} else {
+		inputContent = m.input.View()
+	}
+	inputView := inputStyle.Render(inputContent)
 
 	pickerView := ""
 	if m.commandPicker != nil {
-		m.commandPicker.SetWidth(chatWidth)
 		pickerView = m.commandPicker.View()
 	} else if m.filePicker != nil {
-		m.filePicker.SetWidth(chatWidth)
 		pickerView = m.filePicker.View()
 	}
 
@@ -855,9 +987,13 @@ func (m Model) View() string {
 	} else {
 		mainArea = leftPane
 	}
+	mainArea = lipgloss.NewStyle().Width(m.width).Height(mainHeight).Render(mainArea)
 
 	spinnerView := ""
-	if m.spinner != nil && m.spinner.IsVisible() {
+	statusText := m.statusText
+	if inlineLoading {
+		statusText = ""
+	} else if m.spinner != nil && m.spinner.IsVisible() {
 		spinnerView = m.spinner.View()
 	}
 	focusHint := ""
@@ -866,15 +1002,22 @@ func (m Model) View() string {
 		focusHint = "[chat]"
 	}
 
-	m.footer.SetStatus(m.statusText, spinnerView, focusHint)
+	m.footer.SetModeIndicator(string(m.currentPermissionMode()))
+	m.footer.SetStatus(statusText, spinnerView, focusHint)
 	footerView := m.footer.View(th)
 
 	if m.toastManager != nil && !m.toastManager.IsEmpty() {
 		m.toastManager.SetWidth(m.width)
 		toastView := m.toastManager.View()
-		return lipgloss.JoinVertical(lipgloss.Left, mainArea, toastView, footerView)
+		return lipgloss.NewStyle().
+			Width(m.width).
+			Height(m.height).
+			Render(lipgloss.JoinVertical(lipgloss.Left, mainArea, toastView, footerView))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, mainArea, footerView)
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Render(lipgloss.JoinVertical(lipgloss.Left, mainArea, footerView))
 }
 
 var fileRefPattern = regexp.MustCompile(`@([\w./_-]+[\w./_-])(?:#(\d+)(?:-(\d+))?)?`)

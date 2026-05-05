@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,12 +15,12 @@ func TestSessionArtifactsRoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	sessionID := "ses-test"
 
-	msgs := []ChatMessage{
-		{Role: "user", Content: "hello", Time: time.Unix(10, 0)},
-		{Role: "assistant", Content: "world", Time: time.Unix(20, 0)},
+	parts := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "hello"}},
+		{Type: PartTypeText, Time: time.Unix(20, 0), Text: &TextPart{Content: "world"}},
 	}
-	if err := saveSessionMessages(baseDir, sessionID, msgs); err != nil {
-		t.Fatalf("saveSessionMessages failed: %v", err)
+	if err := saveSessionDisplayParts(baseDir, sessionID, parts); err != nil {
+		t.Fatalf("saveSessionDisplayParts failed: %v", err)
 	}
 	if err := appendSessionPart(baseDir, sessionID, persistedPart{
 		Type:    "tool_end",
@@ -57,20 +59,19 @@ func TestSessionArtifactsRoundTrip(t *testing.T) {
 		t.Fatalf("saveSessionWorkspaceState failed: %v", err)
 	}
 
-	loadedMsgs, err := loadSessionMessages(baseDir, sessionID)
+	loadedParts, err := loadSessionDisplayParts(baseDir, sessionID)
 	if err != nil {
-		t.Fatalf("loadSessionMessages failed: %v", err)
+		t.Fatalf("loadSessionDisplayParts failed: %v", err)
 	}
-	if len(loadedMsgs) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(loadedMsgs))
+	// 2 saved display parts + 1 recovery part (tool_end at t=30, newer than t=20)
+	if len(loadedParts) != 3 {
+		t.Fatalf("expected 3 parts (2 saved + 1 recovered), got %d", len(loadedParts))
 	}
-
-	loadedParts, err := loadSessionParts(baseDir, sessionID)
-	if err != nil {
-		t.Fatalf("loadSessionParts failed: %v", err)
+	if loadedParts[0].Type != PartTypeUser || loadedParts[0].User.Content != "hello" {
+		t.Fatalf("unexpected first part: %+v", loadedParts[0])
 	}
-	if len(loadedParts) != 1 || loadedParts[0].Name != "list_files" {
-		t.Fatalf("unexpected parts: %+v", loadedParts)
+	if loadedParts[2].Type != PartTypeTool || loadedParts[2].Tool.Name != "list_files" {
+		t.Fatalf("unexpected recovered part: %+v", loadedParts[2])
 	}
 
 	loadedRuns, err := loadSessionRunEvents(baseDir, sessionID)
@@ -100,14 +101,6 @@ func TestSessionArtifactsRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected workspace mcp state: %+v", loadedState)
 	}
 
-	recovered := mergeRecoveredPartMessages(loadedMsgs, loadedParts)
-	if len(recovered) != 3 {
-		t.Fatalf("expected merged recovered message, got %d", len(recovered))
-	}
-	if recovered[2].Role != "tool" {
-		t.Fatalf("unexpected recovered message: %+v", recovered[2])
-	}
-
 	if _, err := loadSessionWorkspaceState(baseDir, "missing"); err != nil {
 		t.Fatalf("loadSessionWorkspaceState(missing) failed: %v", err)
 	}
@@ -117,5 +110,68 @@ func TestSessionArtifactsRoundTrip(t *testing.T) {
 
 	if got := filepath.Join(baseDir, sessionID, "workspace", "state.json"); got == "" {
 		t.Fatal("expected workspace path")
+	}
+}
+
+func TestOldMessagesMigration(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "ses-migrate"
+
+	// Write old-format messages.jsonl
+	oldMsgs := []persistedMessage{
+		{Role: "user", Content: "hello", Time: time.Unix(10, 0)},
+		{Role: "assistant", Content: "world", Time: time.Unix(20, 0)},
+	}
+	if err := saveOldMessages(baseDir, sessionID, oldMsgs); err != nil {
+		t.Fatalf("saveOldMessages failed: %v", err)
+	}
+
+	// loadSessionDisplayParts should migrate old format
+	parts, err := loadSessionDisplayParts(baseDir, sessionID)
+	if err != nil {
+		t.Fatalf("loadSessionDisplayParts failed: %v", err)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 migrated parts, got %d", len(parts))
+	}
+	if parts[0].Type != PartTypeUser || parts[0].User.Content != "hello" {
+		t.Fatalf("unexpected migrated part[0]: %+v", parts[0])
+	}
+	if parts[1].Type != PartTypeText || parts[1].Text.Content != "world" {
+		t.Fatalf("unexpected migrated part[1]: %+v", parts[1])
+	}
+}
+
+func saveOldMessages(baseDir, sessionID string, msgs []persistedMessage) error {
+	dir := sessionDir(baseDir, sessionID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(filepath.Join(dir, "messages.jsonl"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	for _, m := range msgs {
+		_ = enc.Encode(m)
+	}
+	return nil
+}
+
+func TestMergeRecoveryParts(t *testing.T) {
+	existing := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "hello"}},
+	}
+	recovery := []persistedPart{
+		{Type: "tool_end", Name: "bash", Content: "done", Time: time.Unix(20, 0)},
+		{Type: "tool_start", Name: "rg", Content: "search", Time: time.Unix(5, 0)}, // before existing, should be skipped
+	}
+	merged := mergeRecoveryParts(existing, recovery)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 parts after merge, got %d", len(merged))
+	}
+	if merged[1].Type != PartTypeTool || merged[1].Tool.Name != "bash" {
+		t.Fatalf("unexpected merged part: %+v", merged[1])
 	}
 }
