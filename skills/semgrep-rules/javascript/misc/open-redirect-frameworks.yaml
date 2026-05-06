@@ -1,0 +1,44 @@
+rules:
+  - id: javascript-misc-open-redirect-frameworks
+    message: >
+      Potential framework-level open redirect: request-derived data is used as
+      the target of Koa, Fastify, or Next.js redirect helpers. Allow only
+      relative paths or validate targets against an explicit allowlist.
+    metadata:
+      cwe: CWE-601
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $CTX.redirect($CTX.query.$PARAM)
+          - pattern: $CTX.redirect($CTX.request.query.$PARAM)
+          - pattern: $CTX.redirect($CTX.params.$PARAM)
+          - pattern: $REPLY.redirect($REQ.query.$PARAM)
+          - pattern: $REPLY.redirect($REQ.body.$PARAM)
+          - pattern: $REPLY.redirect($REQ.params.$PARAM)
+          - pattern: |
+              $TARGET = $CTX.query.$PARAM
+              ...
+              $CTX.redirect($TARGET)
+          - pattern: |
+              $TARGET = $REQ.query.$PARAM
+              ...
+              $REPLY.redirect($TARGET)
+          - patterns:
+              - pattern-inside: |
+                  import { redirect } from "next/navigation";
+                  ...
+              - pattern-either:
+                  - pattern: redirect($SEARCH_PARAMS.$PARAM)
+                  - pattern: redirect($SEARCH_PARAMS.get(...))
+                  - pattern: |
+                      $TARGET = $SEARCH_PARAMS.get(...)
+                      ...
+                      redirect($TARGET)
+      - pattern-not: $CTX.redirect("/...")
+      - pattern-not: $REPLY.redirect("/...")

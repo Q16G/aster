@@ -1,0 +1,30 @@
+rules:
+  - id: python-ssti-render-template-string
+    message: >
+      Server-side template injection via direct render_template_string() use.
+      A request-derived string is rendered as a template, allowing attacker
+      input to be interpreted as Jinja template syntax. Use fixed templates and
+      pass user data as template variables instead of template source.
+    metadata:
+      cwe: CWE-1336
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: render_template_string(request.args.get(...), ...)
+          - pattern: render_template_string(request.form.get(...), ...)
+          - pattern: render_template_string(request.values.get(...), ...)
+          - pattern: |
+              $TEMPLATE = request.args.get(...)
+              ...
+              render_template_string($TEMPLATE, ...)
+          - pattern: |
+              $TEMPLATE = request.form.get(...)
+              ...
+              render_template_string($TEMPLATE, ...)
+      - pattern-not: render_template_string("...", ...)

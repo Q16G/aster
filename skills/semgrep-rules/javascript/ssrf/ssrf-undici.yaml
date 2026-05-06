@@ -1,0 +1,35 @@
+rules:
+  - id: javascript-ssrf-undici
+    message: >
+      Server-side request forgery (SSRF) via undici. A variable URL is passed
+      to undici request helpers, which may allow the server to access internal
+      services or cloud metadata endpoints. Validate and allowlist targets
+      before making requests.
+    metadata:
+      cwe: CWE-918
+      owasp:
+        - A10:2021 - Server-Side Request Forgery
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: undici.request($URL, ...)
+          - pattern: undici.fetch($URL, ...)
+          - pattern: undici.stream($URL, ...)
+          - pattern: undici.pipeline($URL, ...)
+          - patterns:
+              - pattern-inside: |
+                  import { request } from "undici";
+                  ...
+              - pattern: request($URL, ...)
+          - patterns:
+              - pattern-inside: |
+                  const { request } = require("undici");
+                  ...
+              - pattern: request($URL, ...)
+      - pattern-not: undici.request("...", ...)
+      - pattern-not: undici.fetch("...", ...)
+      - pattern-not: undici.stream("...", ...)
+      - pattern-not: undici.pipeline("...", ...)

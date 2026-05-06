@@ -2,5 +2,5 @@ package semgrep_rules
 
 import "embed"
 
-//go:embed java/**/*.yaml go/**/*.yaml python/**/*.yaml javascript/**/*.yaml php/**/*.yaml c-cpp/**/*.yaml
+//go:embed all:java all:go all:python all:javascript all:php all:c-cpp
 var EmbeddedRules embed.FS

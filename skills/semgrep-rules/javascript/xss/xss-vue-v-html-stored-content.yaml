@@ -1,0 +1,27 @@
+rules:
+  - id: javascript-xss-vue-v-html-stored-content
+    message: >
+      Potential stored XSS in Vue templates: v-html renders content-like or
+      markdown-rendered values as raw HTML. If these values come from persisted
+      user input, attacker-controlled markup can execute in the browser.
+      Sanitize HTML before binding to v-html.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://vuejs.org/guide/best-practices/security.html#html-injection
+    severity: ERROR
+    languages: [regex]
+    paths:
+      include:
+        - "*.vue"
+    patterns:
+      - pattern-either:
+          - pattern-regex: "v-html\\s*=\\s*[\"'][^\"']*\\.(content|body|description|comment|message|bio|html|htmlContent|renderedHtml|markdown|markdownHtml|richText|rich_text)[^\"']*[\"']"
+          - pattern-regex: "v-html\\s*=\\s*[\"'][^\"']*(marked\\.parse|md\\.render|renderMarkdown)[^\"']*[\"']"
+      - pattern-not-regex: "v-html\\s*=\\s*[\"'][^\"']*DOMPurify\\.sanitize"
+      - pattern-not-regex: "v-html\\s*=\\s*[\"'][^\"']*sanitizeHtml"

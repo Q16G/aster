@@ -1,0 +1,37 @@
+rules:
+  - id: java-injection-code-injection-script-engine
+    message: >
+      Script engine code injection detected. Dynamic input is passed to
+      ScriptEngine.eval(), which can execute attacker-controlled code. Avoid
+      evaluating scripts from request data or other untrusted sources.
+    metadata:
+      cwe: CWE-94
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              javax.script.ScriptEngine $SE = ...;
+              ...
+              $SE.eval($INPUT);
+          - pattern: |
+              ScriptEngine $SE = ...;
+              ...
+              $SE.eval($INPUT);
+          - pattern: |
+              javax.script.ScriptEngineManager $MGR = ...;
+              ...
+              $MGR.getEngineByName(...).eval($INPUT);
+          - pattern: |
+              ScriptEngineManager $MGR = ...;
+              ...
+              $MGR.getEngineByName(...).eval($INPUT);
+      - pattern-not: |
+          ScriptEngine $SE = ...;
+          ...
+          $SE.eval("...");

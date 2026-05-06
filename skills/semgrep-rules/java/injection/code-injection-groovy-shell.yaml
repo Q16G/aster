@@ -1,0 +1,39 @@
+rules:
+  - id: java-injection-code-injection-groovy-shell
+    message: >
+      Groovy code injection detected. Dynamic input is passed to GroovyShell or
+      GroovyClassLoader for evaluation or class parsing, which can lead to
+      arbitrary code execution. Never evaluate user-controlled Groovy code.
+    metadata:
+      cwe: CWE-94
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: (new groovy.lang.GroovyShell(...)).evaluate($INPUT)
+          - pattern: (new GroovyShell(...)).evaluate($INPUT)
+          - pattern: (new groovy.lang.GroovyShell(...)).parse($INPUT)
+          - pattern: (new GroovyShell(...)).parse($INPUT)
+          - pattern: (new groovy.lang.GroovyClassLoader(...)).parseClass($INPUT)
+          - pattern: |
+              groovy.lang.GroovyShell $SHELL = ...;
+              ...
+              $SHELL.evaluate($INPUT);
+          - pattern: |
+              GroovyShell $SHELL = ...;
+              ...
+              $SHELL.evaluate($INPUT);
+          - pattern: |
+              groovy.lang.GroovyClassLoader $LOADER = ...;
+              ...
+              $LOADER.parseClass($INPUT);
+      - pattern-not: (new groovy.lang.GroovyShell(...)).evaluate("...");
+      - pattern-not: |
+          GroovyShell $SHELL = ...;
+          ...
+          $SHELL.evaluate("...");

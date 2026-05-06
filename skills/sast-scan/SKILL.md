@@ -1,6 +1,6 @@
 ---
 name: sast-scan
-description: 基于 Semgrep 的静态应用安全测试（SAST）- 650+ 条本地安全规则覆盖 6 大语言
+description: 基于 Semgrep 的静态应用安全测试（SAST）- 530+ 条本地安全规则覆盖 6 大语言
 tags: code-audit,sast,semgrep
 when-to-use: 当需要对代码进行静态安全扫描、发现已知漏洞模式、检测强 sink 点时
 allowed-tools: bash,read_file,list_files,rg
@@ -17,7 +17,7 @@ arguments:
 
 ## 本地规则路径
 
-ASTER 内置了 650+ 条安全规则（自建规则 + Semgrep 社区 taint-mode 规则，已去除代码风格/配置类规则），启动时已自动提取到以下固定目录：
+ASTER 内置了 530+ 条安全规则（自建 pattern 规则 + 社区 taint-mode 数据流规则 + 社区高质量 pattern 规则，已去除 LOW/LOW/LOW 审计规则及配置类/CSRF toggle/debug 检测等噪声规则），启动时已自动提取到以下固定目录：
 
 ```
 ~/.aster/rules/
@@ -29,7 +29,7 @@ ASTER 内置了 650+ 条安全规则（自建规则 + Semgrep 社区 taint-mode 
 └── c-cpp/         # C/C++: 缓冲区溢出(gets/sprintf/strcpy/memcpy/scanf)、命令注入(system/popen)、格式化字符串、内存安全 + 社区规则
 ```
 
-每个语言目录下包含 `community/` 子目录，存放从 Semgrep 官方仓库同步的 taint-mode 安全规则。
+每个语言目录下包含 `community/` 子目录，存放从 Semgrep 官方仓库筛选的高质量安全规则（taint-mode 数据流追踪 + 高置信度 pattern 规则）。
 
 ## 扫描流程
 

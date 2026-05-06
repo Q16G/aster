@@ -1,0 +1,34 @@
+rules:
+  - id: java-misc-open-redirect-spring
+    message: >
+      Potential Spring open redirect: user-controlled input is used to build a
+      redirect target via redirect:, RedirectView, or ModelAndView. Allow only
+      relative paths or validate targets against an explicit allowlist.
+    metadata:
+      cwe: CWE-601
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: return "redirect:" + $URL;
+          - pattern: return "redirect:" + $REQ.getParameter(...);
+          - pattern: new org.springframework.web.servlet.view.RedirectView($URL);
+          - pattern: new RedirectView($URL);
+          - pattern: new org.springframework.web.servlet.ModelAndView("redirect:" + $URL);
+          - pattern: new ModelAndView("redirect:" + $URL);
+          - pattern: |
+              String $REDIR = "redirect:" + $URL;
+              ...
+              return $REDIR;
+          - pattern: |
+              String $REDIR = "redirect:" + $URL;
+              ...
+              new ModelAndView($REDIR);
+      - pattern-not: return "redirect:/...";
+      - pattern-not: new RedirectView("/...");
+      - pattern-not: new ModelAndView("redirect:/...");

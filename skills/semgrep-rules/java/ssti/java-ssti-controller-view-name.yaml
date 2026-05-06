@@ -1,0 +1,75 @@
+rules:
+  - id: java-ssti-controller-view-name
+    message: >
+      Potential SSTI or template path injection: a Spring MVC controller
+      returns a user-controlled view name or ModelAndView template name. Do
+      not let request parameters or path variables decide the template name;
+      use a fixed allowlist of views instead.
+    metadata:
+      cwe: CWE-1336
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://cwe.mitre.org/data/definitions/1336.html
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-inside: |
+          @Controller
+          class $CLASS {
+            ...
+          }
+      - pattern-not-inside: |
+          @ResponseBody
+          $RET $METHOD(...) {
+            ...
+          }
+      - pattern-not: return "redirect:" + $VIEW;
+      - pattern-not: return "redirect:" + $REQ.getParameter(...);
+      - pattern-not: return new ModelAndView("redirect:" + $VIEW);
+      - pattern-either:
+          - pattern: |
+              String $METHOD(..., @RequestParam(...) String $VIEW, ...) {
+                ...
+                return $VIEW;
+              }
+          - pattern: |
+              String $METHOD(..., @RequestParam(...) String $VIEW, ...) {
+                ...
+                return "views/" + $VIEW;
+              }
+          - pattern: |
+              String $METHOD(..., @PathVariable(...) String $VIEW, ...) {
+                ...
+                return $VIEW;
+              }
+          - pattern: |
+              String $METHOD(..., @PathVariable(...) String $VIEW, ...) {
+                ...
+                return $VIEW + ".ftl";
+              }
+          - pattern: |
+              org.springframework.web.servlet.ModelAndView $METHOD(..., @RequestParam(...) String $VIEW, ...) {
+                ...
+                return new ModelAndView($VIEW);
+              }
+          - pattern: |
+              ModelAndView $METHOD(..., @RequestParam(...) String $VIEW, ...) {
+                ...
+                return new ModelAndView($VIEW);
+              }
+          - pattern: |
+              String $VIEW = $REQ.getParameter(...);
+              ...
+              return $VIEW;
+          - pattern: |
+              String $VIEW = $REQ.getParameter(...);
+              ...
+              return "templates/" + $VIEW;
+          - pattern: |
+              String $VIEW = $REQ.getParameter(...);
+              ...
+              return new ModelAndView($VIEW);

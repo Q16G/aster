@@ -8,7 +8,7 @@
 
 - **三大安全 Agent** — 代码审计 / 渗透测试 / 主机防护，YAML 一键自定义
 - **ReAct 执行引擎** — 四阶段循环（Plan → Step → Summary → FinalAnswer），支持子 Agent 委派
-- **Semgrep SAST** — 内嵌 119 条规则（Go/Java/Python/JS/PHP/C），覆盖 OWASP Top 10
+- **Semgrep SAST** — 内嵌本地安全规则集（覆盖 Go/Java/Python/JS/PHP/C，持续扩展中）
 - **SyntaxFlow 数据流** — 通过 yak SSA 引擎进行 topdef/bottomUse 追踪验证
 - **MCP 协议** — stdio / SSE / Streamable HTTP，全局或按 Agent 挂载外部工具
 - **7 大 LLM Provider** — OpenAI、Anthropic、DeepSeek、Groq、OpenRouter、Together、Ollama
@@ -293,7 +293,7 @@ Ctrl+K                  # 快捷键打开选择器
 
 | 类别 | 技能 |
 |------|------|
-| **SAST** | `sast-scan` — Semgrep 多通道扫描（119 条规则） |
+| **SAST** | `sast-scan` — Semgrep 多通道扫描（本地规则集，覆盖 6 语言） |
 | **数据流** | `dataflow-analysis` — SyntaxFlow MCP 追踪（topdef/bottomUse） |
 | **Web 安全** | `sql-injection-comprehensive`, `file-upload`, `cors-misconfiguration`, `jwt-weakness`, `idor-detection`, `vertical-privilege-escalation`, `unauthorized-access` |
 | **认证安全** | `auth-comprehensive`, `registration-abuse`, `notification-abuse` |
@@ -313,6 +313,17 @@ Agent YAML: skill_names → SkillsCatalog 构建可用列表
   - inline: 技能指令直接注入当前 Agent 上下文
   - fork:   启动子 Agent 独立执行技能任务
 ```
+
+### 第二阶段框架层规则补充
+
+当前自建规则已经补到一批高价值的框架/API 入口，重点覆盖“通用漏洞类别已存在，但主流框架入口仍缺席”的空位：
+
+- Go：`http.Redirect`、`gin.Context.Redirect`、`Header().Set/Add(...)`、`sqlx`、`reform`、`pop`、`ent`、Beego / gin 上传落盘路径
+- Java：Spring MVC `redirect:`、`RedirectView`、`ModelAndView("redirect:...")`、`GroovyShell.evaluate`、`ScriptEngine.eval`、`Part.write(...)`、下载响应头文件名注入、Controller 视图名可控 SSTI
+- Python：Flask / Django / FastAPI `redirect(...)`、`render_template_string(...)`、`jinja2.Template(...).render(...)`、Django Storage / FastAPI UploadFile 保存路径
+- JavaScript / TypeScript：Koa / Fastify / Next.js `redirect(...)`、Vue `v-html` 存储型 XSS 入口、`undici` SSRF sink
+
+当前 README 不再手写维护规则总数，具体覆盖范围以 `skills/semgrep-rules/` 目录和对应最小样例为准。
 
 ### 运行时管理
 
@@ -577,7 +588,7 @@ internal/
   service/                   # 技能服务
   memory/                    # Agent 时间线记忆
 skills/                      # 内嵌技能定义（SKILL.md）
-  semgrep-rules/             # SAST 规则（6 语言 119 条）
+  semgrep-rules/             # SAST 规则（6 语言，本地自建 + 社区精选）
 ```
 
 ---

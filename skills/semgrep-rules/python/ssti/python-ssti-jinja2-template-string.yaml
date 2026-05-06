@@ -1,0 +1,29 @@
+rules:
+  - id: python-ssti-jinja2-template-string
+    message: >
+      Server-side template injection via direct Jinja2 Template() creation. A
+      request-derived string is compiled as a template and rendered, allowing
+      attacker input to execute Jinja expressions. Use fixed template files
+      instead of building templates from request data.
+    metadata:
+      cwe: CWE-1336
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: Template(request.args.get(...)).render(...)
+          - pattern: Template(request.form.get(...)).render(...)
+          - pattern: |
+              $TEMPLATE = Template(request.args.get(...))
+              ...
+              $TEMPLATE.render(...)
+          - pattern: |
+              $TEMPLATE = Template(request.form.get(...))
+              ...
+              $TEMPLATE.render(...)
+      - pattern-not: Template("...").render(...)

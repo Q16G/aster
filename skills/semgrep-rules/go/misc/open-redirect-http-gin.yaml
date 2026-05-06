@@ -1,0 +1,50 @@
+rules:
+  - id: go-misc-open-redirect-http-gin
+    message: >
+      Potential open redirect: user-controlled request data is used as the
+      target of http.Redirect() or gin.Context.Redirect(). Attackers can abuse
+      this to send users to phishing or malware sites. Allow only relative
+      paths or validate targets against an explicit allowlist.
+    metadata:
+      cwe: CWE-601
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet
+    severity: WARNING
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: http.Redirect($W, $R, $R.URL.Query().Get(...), ...)
+          - pattern: http.Redirect($W, $R, $R.FormValue(...), ...)
+          - pattern: http.Redirect($W, $R, $R.PostFormValue(...), ...)
+          - pattern: $CTX.Redirect(..., $CTX.Query(...))
+          - pattern: $CTX.Redirect(..., $CTX.PostForm(...))
+          - pattern: $CTX.Redirect(..., $CTX.Param(...))
+          - pattern: |
+              $TARGET := $R.URL.Query().Get(...)
+              ...
+              http.Redirect($W, $R, $TARGET, ...)
+          - pattern: |
+              $TARGET := $R.FormValue(...)
+              ...
+              http.Redirect($W, $R, $TARGET, ...)
+          - pattern: |
+              $TARGET := $R.PostFormValue(...)
+              ...
+              http.Redirect($W, $R, $TARGET, ...)
+          - pattern: |
+              $TARGET := $CTX.Query(...)
+              ...
+              $CTX.Redirect(..., $TARGET)
+          - pattern: |
+              $TARGET := $CTX.PostForm(...)
+              ...
+              $CTX.Redirect(..., $TARGET)
+          - pattern: |
+              $TARGET := $CTX.Param(...)
+              ...
+              $CTX.Redirect(..., $TARGET)
