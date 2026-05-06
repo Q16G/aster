@@ -1,0 +1,44 @@
+rules:
+  - id: python-misc-open-redirect-frameworks
+    message: >
+      Potential open redirect: request-derived data is used as the target of
+      Flask/Django/FastAPI redirect helpers. Allow only relative paths or
+      validate targets against an explicit allowlist before redirecting users.
+    metadata:
+      cwe: CWE-601
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: redirect(request.args.get(...))
+          - pattern: redirect(request.form.get(...))
+          - pattern: redirect(request.values.get(...))
+          - pattern: redirect(request.GET.get(...))
+          - pattern: redirect(request.POST.get(...))
+          - pattern: RedirectResponse(request.query_params.get(...))
+          - pattern: RedirectResponse(request.path_params.get(...))
+          - pattern: |
+              $TARGET = request.args.get(...)
+              ...
+              redirect($TARGET)
+          - pattern: |
+              $TARGET = request.form.get(...)
+              ...
+              redirect($TARGET)
+          - pattern: |
+              $TARGET = request.GET.get(...)
+              ...
+              redirect($TARGET)
+          - pattern: |
+              $TARGET = request.query_params.get(...)
+              ...
+              RedirectResponse($TARGET)
+      - pattern-not: redirect(url_for(...))
+      - pattern-not: redirect(reverse(...))
+      - pattern-not: redirect("...")
+      - pattern-not: RedirectResponse("...")

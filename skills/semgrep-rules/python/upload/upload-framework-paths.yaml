@@ -1,0 +1,29 @@
+rules:
+  - id: python-upload-framework-paths
+    message: >
+      Unsafe file upload handling in framework helpers: Django Storage.save()
+      or FastAPI UploadFile.filename is used directly as the persisted
+      filename. Attackers can abuse crafted names for path traversal or
+      overwriting files. Normalize with get_valid_name()/basename() or generate
+      a random server-side filename.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: default_storage.save($FILE.name, $FILE)
+          - pattern: $STORAGE.save($FILE.name, $FILE)
+          - pattern: $STORAGE.save($FILE.name, ...)
+          - pattern: open(f"...{$UPLOAD.filename}...", ...)
+          - pattern: open("%s/%s" % ($DIR, $UPLOAD.filename), ...)
+      - pattern-not: default_storage.save(os.path.basename($FILE.name), $FILE)
+      - pattern-not: $STORAGE.save($STORAGE.get_valid_name($FILE.name), $FILE)
+      - pattern-not: open(f"...{os.path.basename($UPLOAD.filename)}...", ...)

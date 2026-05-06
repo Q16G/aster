@@ -1,0 +1,64 @@
+rules:
+  - id: go-injection-sql-injection-sqlx
+    message: >
+      SQL injection via sqlx. Dynamic SQL built with string concatenation or
+      fmt.Sprintf() is passed into sqlx Queryx(), QueryRowx(), Get(), Select(),
+      NamedQuery(), NamedExec(), or MustExec(). Use placeholders and bind
+      parameters separately instead of assembling SQL strings.
+    metadata:
+      cwe: CWE-089
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: $DB.Queryx(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.QueryRowx(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.Get(..., fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.Select(..., fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.NamedQuery(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.NamedExec(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.MustExec(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.Queryx("..." + $INPUT + "...", ...)
+          - pattern: $DB.QueryRowx("..." + $INPUT + "...", ...)
+          - pattern: $DB.Get(..., "..." + $INPUT + "...", ...)
+          - pattern: $DB.Select(..., "..." + $INPUT + "...", ...)
+          - pattern: $DB.NamedQuery("..." + $INPUT + "...", ...)
+          - pattern: $DB.NamedExec("..." + $INPUT + "...", ...)
+          - pattern: $DB.MustExec("..." + $INPUT + "...", ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.Queryx($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.QueryRowx($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.NamedQuery($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.NamedExec($QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.Get($DEST, $QUERY, ...)
+          - pattern: |
+              $QUERY := fmt.Sprintf($FMT, ...)
+              ...
+              $DB.Select($DEST, $QUERY, ...)
+          - pattern: |
+              $QUERY := "..." + $INPUT + "..."
+              ...
+              $DB.Select(..., $QUERY, ...)
+          - pattern: |
+              $QUERY := "..." + $INPUT + "..."
+              ...
+              $DB.Get(..., $QUERY, ...)

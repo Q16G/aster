@@ -1,0 +1,24 @@
+rules:
+  - id: java-spring-csrf-disabled
+    message: >
+      CSRF protection is explicitly disabled in Spring Security. Unless this is
+      a stateless API with a deliberate alternate protection model, disabling
+      CSRF can expose authenticated users to forged state-changing requests.
+    metadata:
+      cwe: CWE-352
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+      references:
+        - https://owasp.org/www-community/attacks/csrf
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: $HTTP.csrf().disable()
+          - pattern: $HTTP.csrf($CSRF -> $CSRF.disable())
+          - pattern: $HTTP.csrf(($CSRF) -> $CSRF.disable())
+          - pattern: $HTTP.csrf(org.springframework.security.config.Customizer.withDefaults()).disable()
+          - pattern: $HTTP.csrf(org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer::disable)

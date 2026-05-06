@@ -1,0 +1,28 @@
+rules:
+  - id: javascript-upload-originalname-path
+    message: >
+      Unsafe file upload handling: the original client-supplied filename is
+      used directly as the stored filename or filesystem path. Attackers can
+      abuse crafted names for path traversal, overwrite, or dangerous file
+      placement. Normalize the name with path.basename() and generate a random
+      server-side filename.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: cb(null, $FILE.originalname)
+          - pattern: path.join($DIR, $FILE.originalname)
+          - pattern: path.resolve($DIR, $FILE.originalname)
+          - pattern: $DIR + $FILE.originalname
+      - pattern-not: cb(null, path.basename($FILE.originalname))
+      - pattern-not: path.join($DIR, path.basename($FILE.originalname))
+      - pattern-not: path.resolve($DIR, path.basename($FILE.originalname))

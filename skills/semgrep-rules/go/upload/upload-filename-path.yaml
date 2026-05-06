@@ -1,0 +1,31 @@
+rules:
+  - id: go-upload-filename-path
+    message: >
+      Unsafe file upload handling: the client-supplied upload filename is used
+      directly in a filesystem path or save destination. Attackers can abuse
+      crafted names for path traversal or overwriting files. Use
+      filepath.Base() or generate a random server-side filename.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: $CTX.SaveUploadedFile($FILE, filepath.Join($DIR, $FILE.Filename))
+          - pattern: $CTX.SaveUploadedFile($FILE, path.Join($DIR, $FILE.Filename))
+          - pattern: |
+              $DST := filepath.Join($DIR, $FILE.Filename)
+              ...
+              $CTX.SaveUploadedFile($FILE, $DST)
+          - pattern: |
+              $DST := path.Join($DIR, $FILE.Filename)
+              ...
+              $CTX.SaveUploadedFile($FILE, $DST)
+      - pattern-not: $CTX.SaveUploadedFile($FILE, filepath.Join($DIR, filepath.Base($FILE.Filename)))

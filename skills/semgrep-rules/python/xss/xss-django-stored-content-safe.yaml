@@ -1,0 +1,46 @@
+rules:
+  - id: python-xss-django-stored-content-safe
+    message: >
+      Potential stored XSS: mark_safe() is used on content-like fields that are
+      commonly persisted and later re-rendered, such as comment bodies, rich
+      text, descriptions, or rendered markdown. Prefer format_html() or
+      sanitize stored HTML with bleach.clean() before marking it safe.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/xss/
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: mark_safe($OBJ.content)
+          - pattern: mark_safe($OBJ.body)
+          - pattern: mark_safe($OBJ.description)
+          - pattern: mark_safe($OBJ.comment)
+          - pattern: mark_safe($OBJ.message)
+          - pattern: mark_safe($OBJ.bio)
+          - pattern: mark_safe($OBJ.html)
+          - pattern: mark_safe($OBJ.html_content)
+          - pattern: mark_safe($OBJ.rendered_html)
+          - pattern: mark_safe($OBJ.markdown)
+          - pattern: mark_safe($OBJ.markdown_html)
+          - pattern: mark_safe($OBJ.rich_text)
+          - pattern: django.utils.safestring.mark_safe($OBJ.content)
+          - pattern: django.utils.safestring.mark_safe($OBJ.body)
+          - pattern: django.utils.safestring.mark_safe($OBJ.description)
+          - pattern: django.utils.safestring.mark_safe($OBJ.comment)
+          - pattern: django.utils.safestring.mark_safe($OBJ.html)
+          - pattern: django.utils.safestring.mark_safe($OBJ.rendered_html)
+          - pattern: mark_safe($DICT["content"])
+          - pattern: mark_safe($DICT["body"])
+          - pattern: mark_safe($DICT["description"])
+          - pattern: mark_safe($DICT["comment"])
+          - pattern: mark_safe($DICT["html"])
+          - pattern: mark_safe($DICT["rendered_html"])
+      - pattern-not: mark_safe(bleach.clean(...))
+      - pattern-not: django.utils.safestring.mark_safe(bleach.clean(...))

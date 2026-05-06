@@ -1,0 +1,38 @@
+rules:
+  - id: go-injection-sql-injection-orm-builders
+    message: >
+      SQL injection via framework-specific ORM or SQL builder APIs. Dynamic SQL
+      fragments are passed to pop, reform, or ent SQL expression builders
+      without parameterization. Avoid feeding user-controlled strings into raw
+      query builders, order clauses, or sql.Expr/sql.ExprP helpers.
+    metadata:
+      cwe: CWE-089
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: $CONN.RawQuery(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $CONN.RawQuery("..." + $INPUT + "...", ...)
+          - pattern: |
+              $Q := $CONN.Q()
+              ...
+              $Q.Where("..." + $INPUT + "...")
+          - pattern: |
+              $Q := $CONN.Q()
+              ...
+              $Q.Order("..." + $INPUT + "...")
+          - pattern: |
+              $Q := $CONN.Q()
+              ...
+              $Q.OrderBy("..." + $INPUT + "...")
+          - pattern: $DB.Exec(fmt.Sprintf($FMT, ...), ...)
+          - pattern: $DB.Exec("..." + $INPUT + "...", ...)
+          - pattern: sql.ExprP(fmt.Sprintf($FMT, ...))
+          - pattern: sql.Expr("..." + $INPUT + "...")
+          - pattern: $SELECTOR.Where(sql.ExprP($INPUT))
+          - pattern: $SELECTOR.OrderExpr(sql.ExprP($INPUT))

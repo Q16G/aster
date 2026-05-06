@@ -1,0 +1,24 @@
+rules:
+  - id: javascript-csrf-csurf-state-changing-ignore
+    message: >
+      CSRF protection is weakened: csurf ignoreMethods includes state-changing
+      methods such as POST, PUT, PATCH, or DELETE. These methods should remain
+      protected by CSRF tokens unless a stronger anti-CSRF mechanism is in
+      place.
+    metadata:
+      cwe: CWE-352
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+      references:
+        - https://owasp.org/www-community/attacks/csrf
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: 'csurf({..., ignoreMethods: [..., "POST", ...], ...})'
+          - pattern: 'csurf({..., ignoreMethods: [..., "PUT", ...], ...})'
+          - pattern: 'csurf({..., ignoreMethods: [..., "PATCH", ...], ...})'
+          - pattern: 'csurf({..., ignoreMethods: [..., "DELETE", ...], ...})'

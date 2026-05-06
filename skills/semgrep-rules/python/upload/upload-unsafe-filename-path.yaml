@@ -1,0 +1,26 @@
+rules:
+  - id: python-upload-unsafe-filename-path
+    message: >
+      Unsafe file upload handling: client-supplied filenames are used directly
+      in filesystem paths or save destinations. Attackers can abuse crafted
+      names for path traversal or overwriting files. Use
+      werkzeug.utils.secure_filename() or generate a random server-side name.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $FILE.save(os.path.join($DIR, $FILE.filename))
+          - pattern: open(os.path.join($DIR, $FILE.filename), ...)
+          - pattern: pathlib.Path($DIR) / $FILE.filename
+          - pattern: $DIR + $FILE.filename
+      - pattern-not: $FILE.save(os.path.join($DIR, secure_filename($FILE.filename)))
+      - pattern-not: open(os.path.join($DIR, secure_filename($FILE.filename)), ...)

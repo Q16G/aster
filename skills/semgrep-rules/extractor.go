@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -47,15 +48,17 @@ func doExtract() (string, error) {
 		if err != nil {
 			return err
 		}
-		dest := filepath.Join(targetDir, path)
 		if d.IsDir() {
-			return os.MkdirAll(dest, 0o755)
+			return os.MkdirAll(filepath.Join(targetDir, path), 0o755)
+		}
+		if !strings.HasSuffix(path, ".yaml") {
+			return nil
 		}
 		data, readErr := fs.ReadFile(EmbeddedRules, path)
 		if readErr != nil {
 			return fmt.Errorf("read %s: %w", path, readErr)
 		}
-		return os.WriteFile(dest, data, 0o644)
+		return os.WriteFile(filepath.Join(targetDir, path), data, 0o644)
 	})
 	if err != nil {
 		return "", fmt.Errorf("extract rules: %w", err)
@@ -70,6 +73,9 @@ func contentHash() (string, error) {
 	err := fs.WalkDir(EmbeddedRules, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
+		}
+		if !strings.HasSuffix(path, ".yaml") {
+			return nil
 		}
 		data, readErr := fs.ReadFile(EmbeddedRules, path)
 		if readErr != nil {
