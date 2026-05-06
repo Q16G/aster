@@ -1,0 +1,23 @@
+rules:
+  - id: java-ssti-freemarker
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new Template($NAME, new StringReader($INPUT), $CFG)
+          - pattern: |
+              new Template($NAME, $INPUT, $CFG)
+          - pattern: |
+              $CFG.setNewBuiltinClassResolver(TemplateClassResolver.UNRESTRICTED_RESOLVE);
+    message: >
+      FreeMarker server-side template injection. Constructing templates
+      from user input or using UNRESTRICTED_RESOLVE allows execution of
+      arbitrary Java code via built-ins like ?new or ?api. Use
+      SAFER_RESOLVER or ALLOWS_NOTHING_RESOLVER, and never build
+      templates from untrusted strings.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

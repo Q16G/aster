@@ -1,0 +1,23 @@
+rules:
+  - id: php-sql-injection-mysqli
+    patterns:
+      - pattern-either:
+          - pattern: mysqli_query($CONN, $INPUT)
+          - pattern: $MYSQLI->query($INPUT)
+          - pattern: $MYSQLI->multi_query($INPUT)
+          - pattern: mysqli_multi_query($CONN, $INPUT)
+      - pattern-not: mysqli_query($CONN, "...")
+      - pattern-not: $MYSQLI->query("...")
+    message: >
+      SQL injection via mysqli query methods. Passing user-controlled
+      input directly to mysqli_query() or multi_query() without
+      parameterization enables SQL injection. Use prepared statements:
+      $stmt = $mysqli->prepare('SELECT * FROM t WHERE id = ?');
+      $stmt->bind_param('i', $id); $stmt->execute();
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

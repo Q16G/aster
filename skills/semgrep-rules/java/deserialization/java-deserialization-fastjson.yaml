@@ -1,0 +1,23 @@
+rules:
+  - id: java-deserialization-fastjson
+    patterns:
+      - pattern-either:
+          - pattern: com.alibaba.fastjson.JSON.parseObject($INPUT, ...)
+          - pattern: com.alibaba.fastjson.JSON.parse($INPUT, ...)
+          - pattern: JSON.parseObject($INPUT, Feature.SupportAutoType)
+          - pattern: |
+              ParserConfig.getGlobalInstance().setAutoTypeSupport(true);
+          - pattern: |
+              $CONFIG.setAutoTypeSupport(true);
+    message: >
+      Unsafe Fastjson deserialization detected. Fastjson's autoType feature
+      allows instantiation of arbitrary classes from JSON input, enabling
+      remote code execution. Upgrade to fastjson2, disable autoType, or use
+      a SafeMode parser. Known exploit chains exist for versions < 1.2.83.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

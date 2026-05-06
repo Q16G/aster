@@ -1,0 +1,22 @@
+rules:
+  - id: go-deserialization-gob
+    patterns:
+      - pattern-either:
+          - pattern: gob.NewDecoder($READER).Decode(...)
+          - pattern: |
+              $DEC := gob.NewDecoder($READER)
+              ...
+              $DEC.Decode(...)
+    message: >
+      Gob decoding of untrusted input. Go's encoding/gob can instantiate
+      any registered type and execute interface methods during decoding.
+      If the reader source is untrusted (network, file upload), this can
+      lead to unexpected type instantiation. Validate the source and
+      restrict registered types via gob.Register.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

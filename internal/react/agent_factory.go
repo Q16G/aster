@@ -151,6 +151,10 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 		return nil, fmt.Errorf("build agent %q failed: %w", def.Name, err)
 	}
 
+	if len(def.OutputContracts) > 0 {
+		agent.cfg.OutputContracts = def.OutputContracts
+	}
+
 	if err := agent.registerTool(NewSubAgentTool(agent, f)); err != nil {
 		return nil, fmt.Errorf("register sub_agent tool for %q failed: %w", def.Name, err)
 	}

@@ -1,0 +1,22 @@
+rules:
+  - id: python-deserialization-shelve
+    patterns:
+      - pattern-either:
+          - pattern: shelve.open($INPUT)
+          - pattern: |
+              $DB = shelve.open($INPUT)
+              ...
+              $DB[$KEY]
+    message: >
+      shelve.open() on user-controlled path. Python's shelve module uses
+      pickle internally and will deserialize arbitrary objects when
+      reading from the database file. An attacker who controls the file
+      path or file content can achieve remote code execution. Use a
+      safe storage format (JSON, SQLite) for untrusted data sources.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

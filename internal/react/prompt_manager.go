@@ -39,20 +39,27 @@ type ThinkActPromptInput struct {
 	Unresolved              any
 	ExtraContext            string
 	Nonce                   string
+	HasOutputContract       bool
+	OutputContractName      string
+	OutputContractSchema    string
+	OutputContractExample   string
 }
 
 type StepSummaryPromptInput struct {
-	InputTimeline any
-	CurrentGoal   any
-	CurrentStep   any
-	TaskPlan      any
-	RawOutcome    any
-	StepWindow    any
-	TimelineDiff  any
-	References    any
-	Artifacts     any
-	Warnings      any
-	Unresolved    any
+	InputTimeline       any
+	CurrentGoal         any
+	CurrentStep         any
+	TaskPlan            any
+	RawOutcome          any
+	StepWindow          any
+	TimelineDiff        any
+	References          any
+	Artifacts           any
+	Warnings            any
+	Unresolved          any
+	HasSummaryPolicy    bool
+	SummaryPolicyName   string
+	SummaryPolicyDetail string
 }
 
 type FinalAnswerPromptInput struct {
@@ -231,6 +238,10 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
 		"NONCE":                         strings.TrimSpace(input.Nonce),
+		"HAS_OUTPUT_CONTRACT":           input.HasOutputContract,
+		"OUTPUT_CONTRACT_NAME":          strings.TrimSpace(input.OutputContractName),
+		"OUTPUT_CONTRACT_SCHEMA":        strings.TrimSpace(input.OutputContractSchema),
+		"OUTPUT_CONTRACT_EXAMPLE":       strings.TrimSpace(input.OutputContractExample),
 	}); err != nil {
 		return "", err
 	}
@@ -252,8 +263,11 @@ func (m *defaultPromptManager) BuildStepSummaryPrompt(input StepSummaryPromptInp
 		"TIMELINE_DIFF":  prettyJSON(input.TimelineDiff),
 		"REFERENCES":     prettyJSON(input.References),
 		"ARTIFACTS":      prettyJSON(input.Artifacts),
-		"WARNINGS":       prettyJSON(input.Warnings),
-		"UNRESOLVED":     prettyJSON(input.Unresolved),
+		"WARNINGS":              prettyJSON(input.Warnings),
+		"UNRESOLVED":            prettyJSON(input.Unresolved),
+		"HAS_SUMMARY_POLICY":    input.HasSummaryPolicy,
+		"SUMMARY_POLICY_NAME":   strings.TrimSpace(input.SummaryPolicyName),
+		"SUMMARY_POLICY_DETAIL": strings.TrimSpace(input.SummaryPolicyDetail),
 	}); err != nil {
 		return "", err
 	}

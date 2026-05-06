@@ -11,7 +11,8 @@ import (
 )
 
 type UpdateCurrentStepTool struct {
-	ctx ToolContext
+	ctx            ToolContext
+	ContractLookup func(name string) *OutputContract
 }
 
 func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
@@ -93,6 +94,14 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		return "", fmt.Errorf("current step is empty, wait for runtime planning first")
 	}
 
+	if status == PlanStepCompleted && target.OutputContractRef != "" && t.ContractLookup != nil {
+		if contract := t.ContractLookup(target.OutputContractRef); contract != nil {
+			if vErr := validateContractResult(result, contract); vErr != "" {
+				return "", fmt.Errorf("output contract %q validation failed: %s", contract.Name, vErr)
+			}
+		}
+	}
+
 	artifactDir, summaryFile, resultFile := resolveStepArtifactPaths(prev.PlanVersion, strings.TrimSpace(target.ID))
 
 	snapshot := t.ctx.UpdateCurrentStep(CurrentStepUpdate{
@@ -154,4 +163,78 @@ func resolveStepArtifactPaths(planVersion int, stepID string) (artifactDir strin
 	}
 	artifactDir = "shared/step_artifacts"
 	return artifactDir, summaryFile, resultFile
+}
+
+func validateContractResult(result string, contract *OutputContract) string {
+	result = strings.TrimSpace(result)
+	if contract.Schema == "" && contract.Validate == "" {
+		return ""
+	}
+	if result == "" {
+		return "result is empty; contract requires structured JSON output"
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		return fmt.Sprintf("result is not valid JSON: %v", err)
+	}
+	if contract.Schema == "" {
+		return ""
+	}
+	var schema map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(contract.Schema)), &schema); err != nil {
+		return ""
+	}
+
+	if schemaType, _ := schema["type"].(string); schemaType != "" {
+		actual := jsonTypeName(parsed)
+		if actual != schemaType {
+			return fmt.Sprintf("expected JSON type %q but got %q", schemaType, actual)
+		}
+	}
+
+	obj, isObj := parsed.(map[string]any)
+	if !isObj {
+		return ""
+	}
+	reqRaw, ok := schema["required"]
+	if !ok {
+		return ""
+	}
+	reqSlice, ok := reqRaw.([]any)
+	if !ok {
+		return ""
+	}
+	var missing []string
+	for _, r := range reqSlice {
+		key, _ := r.(string)
+		if key == "" {
+			continue
+		}
+		if _, exists := obj[key]; !exists {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Sprintf("missing required fields: %s", strings.Join(missing, ", "))
+	}
+	return ""
+}
+
+func jsonTypeName(v any) string {
+	switch v.(type) {
+	case map[string]any:
+		return "object"
+	case []any:
+		return "array"
+	case string:
+		return "string"
+	case float64:
+		return "number"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	default:
+		return "unknown"
+	}
 }

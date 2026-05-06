@@ -90,6 +90,12 @@ func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
 	if extraText != "" {
 		execOpts = append(execOpts, react.WithExtraText(extraText))
 	}
+	if def.Policies.ResultSource != "" {
+		execOpts = append(execOpts, react.WithResultSource(def.Policies.ResultSource))
+	}
+	if def.Policies.PublishContract != "" {
+		execOpts = append(execOpts, react.WithPublishContract(def.Policies.PublishContract))
+	}
 
 	result, err := agent.Execute(ctx, input, execOpts...)
 	history := agent.History()

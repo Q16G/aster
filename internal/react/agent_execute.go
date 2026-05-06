@@ -28,6 +28,7 @@ type ExecuteConfig struct {
 	skipIntentPrelude          bool
 	resumeExecutionIntent      bool
 	resultSource               ResultSource
+	publishContract            string
 	finalAnswerPublish         *FinalAnswerPublishConfig
 }
 
@@ -138,6 +139,15 @@ func WithResultSource(source ResultSource) ExecuteOption {
 	}
 }
 
+func WithPublishContract(name string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.publishContract = strings.TrimSpace(name)
+	}
+}
+
 func WithFinalAnswerPublishConfig(publish *FinalAnswerPublishConfig) ExecuteOption {
 	return func(cfg *ExecuteConfig) {
 		if cfg == nil {
@@ -229,6 +239,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		a.currentRunID = generateAgentRunID()
 	}
 	a.currentResultSource = normalizeResultSource(cfg.resultSource)
+	a.currentPublishContract = strings.TrimSpace(cfg.publishContract)
 	a.currentFinalAnswerPublish = normalizeFinalAnswerPublishConfig(cfg.finalAnswerPublish)
 	a.currentIntent = nil
 
@@ -391,7 +402,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 	switch snapshot.Status {
 	case builtin_tools.TaskStatusCompleted:
 		if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
-			if result, ok := latestNonEmptyStepResult(snapshot.StepOutcomes); ok {
+			if result, ok := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok {
 				return &builtin_tools.RunResult{Success: true, Result: result}
 			}
 			return &builtin_tools.RunResult{

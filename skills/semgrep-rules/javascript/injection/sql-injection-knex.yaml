@@ -1,0 +1,24 @@
+rules:
+  - id: js-sql-injection-knex
+    patterns:
+      - pattern-either:
+          - pattern: knex.raw($INPUT)
+          - pattern: $KNEX.raw($INPUT)
+          - pattern: $QUERY.whereRaw($INPUT)
+          - pattern: $QUERY.orderByRaw($INPUT)
+          - pattern: $QUERY.havingRaw($INPUT)
+          - pattern: $QUERY.groupByRaw($INPUT)
+      - pattern-not: knex.raw("...", ...)
+      - pattern-not: $KNEX.raw("...", ...)
+    message: >
+      SQL injection via Knex.js raw query methods. Passing user input
+      directly to knex.raw(), whereRaw(), orderByRaw(), etc. without
+      parameterization allows SQL injection. Use parameterized bindings:
+      knex.raw('SELECT * FROM t WHERE id = ?', [input]).
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]
