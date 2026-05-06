@@ -1,10 +1,12 @@
 package react_test
 
 import (
+	openai "aster/internal/ai/openai"
 	. "aster/internal/react"
 	"bytes"
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -543,6 +545,410 @@ func TestExecute_LatestStepResultModeFailsWhenStepResultMissing(t *testing.T) {
 	}
 	if !strings.Contains(runResult.Error, "update_current_step.result") {
 		t.Fatalf("expected explicit latest_step_result error, got %q", runResult.Error)
+	}
+}
+
+func TestExecute_LatestStepResultModeSucceedsEvenWhenFinalAnswerSaysFailed(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "found 3 vulnerabilities",
+						"display_result": "security scan complete",
+						"result":         `{"total_findings":3,"findings":[{"id":"vuln-1"}]}`,
+					}),
+				},
+			},
+			{
+				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"扫描完成，发现3个漏洞。","key_facts":["f1"],"open_questions":[]}`,
+			},
+			{
+				content: `{"is_complete":true,"status":"failed","reason":"发现安全漏洞","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"发现漏洞","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"model-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行安全扫描", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "scan code", WithSkipIntentPrelude(), WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success when step result exists (even if final_answer model says failed), got %#v", runResult)
+	}
+	if !strings.Contains(runResult.Result, "total_findings") {
+		t.Fatalf("expected step result content, got %q", runResult.Result)
+	}
+}
+
+func TestExecute_LatestStepResultModeKeepsMarkdownFinalAnswerForDisplay(t *testing.T) {
+	stepResult := `{"findings_summary":{"confirmed_critical":3},"report_location":"shared/security_audit_report.md"}`
+	markdownReport := "## YP-34944 项目安全审计报告\n\n### 执行摘要\n- 已确认 7 个漏洞\n- 标准报告已写入 `shared/security_audit_report.md`"
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "安全审计完成",
+						"display_result": "审计完成",
+						"result":         stepResult,
+					}),
+				},
+			},
+			{
+				content: `{"status_summary":"完成","step_short_summary":"审计完成","step_long_summary":"已生成结构化审计结果。","key_facts":["report ready"],"open_questions":[]}`,
+			},
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"审计完成","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":` + strconv.Quote(markdownReport) + `,"references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"model-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行安全审计", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "scan code", WithSkipIntentPrelude(), WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success run result, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != stepResult {
+		t.Fatalf("expected step result for machine consumption, got %q", runResult.Result)
+	}
+
+	snapshot := agent.State()
+	if snapshot.FinalAnswer == nil {
+		t.Fatal("expected final answer snapshot")
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Content) != markdownReport {
+		t.Fatalf("expected markdown final answer for display, got %q", snapshot.FinalAnswer.Content)
+	}
+	if snapshot.FinalAnswer.Source != "final_assessment" {
+		t.Fatalf("expected final_assessment source, got %q", snapshot.FinalAnswer.Source)
+	}
+}
+
+// contextCancelClient wraps an executeModelTestClient and cancels the context
+// after a specified number of model calls (across ChatEx and ChatText).
+type contextCancelClient struct {
+	inner       *executeModelTestClient
+	cancelFunc  context.CancelFunc
+	cancelAfter int
+	calls       int
+}
+
+func (c *contextCancelClient) afterCall() {
+	c.calls++
+	if c.calls >= c.cancelAfter && c.cancelFunc != nil {
+		c.cancelFunc()
+	}
+}
+
+func (c *contextCancelClient) Chat(ctx context.Context, info *ai.MsgInfo, tools ...*ai.FunctionTool) (string, error) {
+	result, err := c.inner.Chat(ctx, info, tools...)
+	c.afterCall()
+	return result, err
+}
+
+func (c *contextCancelClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+	result, err := c.inner.ChatEx(ctx, infos, tools...)
+	c.afterCall()
+	return result, err
+}
+
+func (c *contextCancelClient) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
+	result, err := c.inner.ChatText(ctx, text, tools...)
+	c.afterCall()
+	return result, err
+}
+
+func (c *contextCancelClient) ModelContextInfo() ai.ModelContextInfo {
+	return c.inner.ModelContextInfo()
+}
+
+// errorOnCallClient wraps an executeModelTestClient and returns an error on
+// a specific model call number (across ChatEx and ChatText).
+type errorOnCallClient struct {
+	inner   *executeModelTestClient
+	errorAt int
+	calls   int
+	err     error
+}
+
+func (c *errorOnCallClient) Chat(ctx context.Context, info *ai.MsgInfo, tools ...*ai.FunctionTool) (string, error) {
+	c.calls++
+	if c.calls >= c.errorAt {
+		if c.err != nil {
+			return "", c.err
+		}
+		return "", context.DeadlineExceeded
+	}
+	return c.inner.Chat(ctx, info, tools...)
+}
+
+func (c *errorOnCallClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+	c.calls++
+	if c.calls >= c.errorAt {
+		if c.err != nil {
+			return nil, c.err
+		}
+		return nil, context.DeadlineExceeded
+	}
+	return c.inner.ChatEx(ctx, infos, tools...)
+}
+
+func (c *errorOnCallClient) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
+	c.calls++
+	if c.calls >= c.errorAt {
+		if c.err != nil {
+			return "", c.err
+		}
+		return "", context.DeadlineExceeded
+	}
+	return c.inner.ChatText(ctx, text, tools...)
+}
+
+func (c *errorOnCallClient) ModelContextInfo() ai.ModelContextInfo {
+	return c.inner.ModelContextInfo()
+}
+
+func TestExecute_LatestStepResultModeCanceledReturnsError(t *testing.T) {
+	inner := &executeModelTestClient{
+		replies: []executeModelReply{
+			// call 1 — step phase: tool call with result
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "found 3 vulnerabilities",
+						"display_result": "security scan complete",
+						"result":         `{"total_findings":3,"findings":[{"id":"vuln-1"}]}`,
+					}),
+				},
+			},
+			// call 2 — step_summary phase (after cancel, scheduler detects ctx.Err before reaching here)
+			{
+				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"完成。","key_facts":["f1"],"open_questions":[]}`,
+			},
+			// call 3 — final_answer phase (may or may not be reached depending on cancel timing)
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	wrapper := &contextCancelClient{
+		inner:       inner,
+		cancelFunc:  cancel,
+		cancelAfter: 1, // cancel after the first ChatEx call (step phase)
+	}
+
+	agent, err := NewReActAgent(
+		"model-agent",
+		wrapper,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(10),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行安全扫描", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(ctx, "scan code", WithSkipIntentPrelude(), WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if runResult.Success {
+		t.Fatalf("expected failure when context is canceled, but got Success: true with result=%q", runResult.Result)
+	}
+	if runResult.Error == "" {
+		t.Fatal("expected non-empty error message for canceled task")
+	}
+}
+
+func TestExecute_LatestStepResultModeRuntimeFailedReturnsError(t *testing.T) {
+	// Use MaxIterations=1 to trigger runtime-forced failure (max iterations reached).
+	// The step phase completes with a non-empty result, but the scheduler hits the
+	// iteration limit before completing all phases, triggering EnterFinalAnswer(Failed).
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// call 0 — step phase: tool call with result
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "found 3 vulnerabilities",
+						"display_result": "security scan complete",
+						"result":         `{"total_findings":3,"findings":[{"id":"vuln-1"}]}`,
+					}),
+				},
+			},
+			// call 1+ — final_answer phase (after max iterations hit)
+			{
+				content: `{"is_complete":true,"status":"failed","reason":"max iterations","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"达到最大迭代次数","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"model-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(1),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行安全扫描", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "scan code", WithSkipIntentPrelude(), WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if runResult.Success {
+		t.Fatalf("expected failure when max iterations reached, but got Success: true with result=%q", runResult.Result)
+	}
+	if runResult.Error == "" {
+		t.Fatal("expected non-empty error message for runtime-forced failure")
+	}
+}
+
+func TestExecute_LatestStepResultModeExternalInterruptKeepsReadableFinalAnswer(t *testing.T) {
+	stepResult := `{"total_findings":3,"findings":[{"id":"vuln-1"}]}`
+	inner := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "found 3 vulnerabilities",
+						"display_result": "security scan complete",
+						"result":         stepResult,
+					}),
+				},
+			},
+			{
+				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"扫描完成，发现 3 个漏洞。","key_facts":["f1"],"open_questions":[]}`,
+			},
+			{
+				content: `{"is_complete":false,"status":"running","reason":"还需要继续验证","should_replan":true,"next_goal":"继续验证","missing_items":["syntaxflow"],"warnings":[],"user_message":"继续执行","references":[]}`,
+			},
+		},
+	}
+	client := &errorOnCallClient{
+		inner:   inner,
+		errorAt: 3,
+		err: &openai.HTTPError{
+			StatusCode: 429,
+			Body:       `{"error":{"message":"Error from provider: insufficient quota","code":"insufficient_quota","type":"insufficient_quota"}}`,
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"model-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(8),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行安全扫描", Status: builtin_tools.PlanStepPending},
+					{ID: "step-2", Step: "执行 SyntaxFlow 数据流验证", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "scan code", WithSkipIntentPrelude(), WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected partial delivery success, got %#v", runResult)
+	}
+	if strings.Contains(runResult.Result, `"total_findings"`) {
+		t.Fatalf("expected readable final answer instead of raw step result, got %q", runResult.Result)
+	}
+	if !strings.Contains(runResult.Result, "当前可交付结果") || !strings.Contains(runResult.Result, "中断原因") {
+		t.Fatalf("expected interrupted final report, got %q", runResult.Result)
+	}
+
+	snapshot := agent.State()
+	if snapshot.ExternalInterrupt == nil {
+		t.Fatal("expected external interrupt snapshot")
+	}
+	if snapshot.ExternalInterrupt.ReasonCode != openai.RetryReasonProviderQuota {
+		t.Fatalf("expected provider quota reason, got %#v", snapshot.ExternalInterrupt)
+	}
+	if snapshot.FinalAnswer == nil || !strings.Contains(snapshot.FinalAnswer.Content, "未完成的步骤") {
+		t.Fatalf("expected readable final answer content, got %#v", snapshot.FinalAnswer)
 	}
 }
 

@@ -118,3 +118,61 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 		t.Fatalf("expected 3 model calls for sub-agent (no fast close), got %d", client.calls)
 	}
 }
+
+func TestExecute_FastCloseLatestStepResultKeepsDisplayResultForFinalAnswer(t *testing.T) {
+	stepDisplay := "## 标准报告\n\n- 已生成 Markdown 审计报告"
+	stepResult := `{"report_location":"shared/security_audit_report.md"}`
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{content: `{"mode":"react_run","intent_summary":"简单审计总结","complexity":"simple","matched_capabilities":[],"reply_hint":"","confidence":0.9}`},
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "c1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "已生成审计报告",
+						"display_result": stepDisplay,
+						"result":         stepResult,
+					}),
+				},
+			},
+		},
+	}
+	planner := &intentPreludeCapturePlanner{
+		result: &builtin_tools.TaskPlannerResult{
+			NeedsPlanning: false,
+			Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "输出结果", Status: builtin_tools.PlanStepPending}},
+		},
+	}
+
+	agent, err := NewReActAgent("fast-close-step-result", client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(6),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(planner),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+
+	result, err := agent.Execute(context.Background(), "生成简单结果", WithResultSource(ResultSourceLatestStepResult))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected success, got %+v", result)
+	}
+	if result.Result != stepResult {
+		t.Fatalf("expected machine result to stay on step result, got %q", result.Result)
+	}
+
+	snap := agent.State()
+	if snap.FinalAnswer == nil {
+		t.Fatal("expected final answer")
+	}
+	if snap.FinalAnswer.Content != stepDisplay {
+		t.Fatalf("expected display result to remain final answer content, got %q", snap.FinalAnswer.Content)
+	}
+	if snap.FinalAnswer.Source != "fast_close" {
+		t.Fatalf("expected fast_close source, got %q", snap.FinalAnswer.Source)
+	}
+}

@@ -183,6 +183,14 @@ type FinalAnswer struct {
 	PublishedOutput string `json:"published_output,omitempty"`
 }
 
+type ExternalInterrupt struct {
+	ReasonCode       string   `json:"reason_code,omitempty"`
+	Retryable        bool     `json:"retryable,omitempty"`
+	Error            string   `json:"error,omitempty"`
+	UserMessage      string   `json:"user_message,omitempty"`
+	SuggestedActions []string `json:"suggested_actions,omitempty"`
+}
+
 type TimelineInput struct {
 	Content   string    `json:"content,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
@@ -254,6 +262,8 @@ type StateSnapshot struct {
 	StepOutcomes  []*StepOutcome `json:"step_outcomes,omitempty"`
 	FinalAnswer   *FinalAnswer   `json:"final_answer,omitempty"`
 	ReplanContext *ReplanContext `json:"replan_context,omitempty"`
+	// ExternalInterrupt 记录导致当前 run 提前收尾的外部依赖中断（如 provider quota/auth/rate limit）。
+	ExternalInterrupt *ExternalInterrupt `json:"external_interrupt,omitempty"`
 	// ActiveSkillNames 表示当前 runtime 已注入到 prompt 的 skill 名称集合。
 	ActiveSkillNames []string `json:"active_skill_names,omitempty"`
 	// ActiveMCPServers 表示当前已连接的 MCP Server 名称集合。
