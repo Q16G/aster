@@ -13,25 +13,25 @@ import (
 type EventType string
 
 const (
-	EventTypeThink            EventType = "think"
-	EventTypeToolStart        EventType = "tool_start"
-	EventTypeToolEnd          EventType = "tool_end"
-	EventTypeAgentEnter       EventType = "agent_enter"
-	EventTypeAgentExit        EventType = "agent_exit"
-	EventTypeStateChange      EventType = "state_change"
-	EventTypeHumanRequest     EventType = "human_request"
-	EventTypeTaskPlan         EventType = "task_plan"
-	EventTypeTaskItem         EventType = "task_item"
-	EventTypeIteration        EventType = "iteration"
-	EventTypeResult           EventType = "result"
-	EventTypeToolUpdate       EventType = "tool_update"
-	EventTypeRetry            EventType = "retry"
-	EventTypeLog              EventType = "log"
-	EventTypeStream           EventType = "stream"
-	EventTypeStepFinish            EventType = "step_finish"
-	EventTypeHistoryCompacted      EventType = "history_compacted"
-	EventTypeStepSummaryResult     EventType = "step_summary_result"
-	EventTypeFinalAnswerResult     EventType = "final_answer_result"
+	EventTypeThink             EventType = "think"
+	EventTypeToolStart         EventType = "tool_start"
+	EventTypeToolEnd           EventType = "tool_end"
+	EventTypeAgentEnter        EventType = "agent_enter"
+	EventTypeAgentExit         EventType = "agent_exit"
+	EventTypeStateChange       EventType = "state_change"
+	EventTypeHumanRequest      EventType = "human_request"
+	EventTypeTaskPlan          EventType = "task_plan"
+	EventTypeTaskItem          EventType = "task_item"
+	EventTypeIteration         EventType = "iteration"
+	EventTypeResult            EventType = "result"
+	EventTypeToolUpdate        EventType = "tool_update"
+	EventTypeRetry             EventType = "retry"
+	EventTypeLog               EventType = "log"
+	EventTypeStream            EventType = "stream"
+	EventTypeStepFinish        EventType = "step_finish"
+	EventTypeHistoryCompacted  EventType = "history_compacted"
+	EventTypeStepSummaryResult EventType = "step_summary_result"
+	EventTypeFinalAnswerResult EventType = "final_answer_result"
 )
 
 // AgentOutputEvent 统一的事件结构
@@ -222,18 +222,19 @@ func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
 		NodeID:    "state",
 		Iteration: snapshot.Iteration,
 		Payload: map[string]any{
-			"phase":           snapshot.Phase,
-			"status":          snapshot.Status,
-			"current_goal":    snapshot.CurrentGoal,
-			"current_step_id": snapshot.CurrentStepID,
-			"input_timeline":  snapshot.InputTimeline,
-			"progress":        snapshot.Progress,
-			"status_summary":  snapshot.StatusSummary,
-			"final_answer":    snapshot.FinalAnswer,
-			"error":           snapshot.Error,
-			"warnings":        snapshot.Warnings,
-			"unresolved":      snapshot.Unresolved,
-			"plan_version":    snapshot.PlanVersion,
+			"phase":              snapshot.Phase,
+			"status":             snapshot.Status,
+			"current_goal":       snapshot.CurrentGoal,
+			"current_step_id":    snapshot.CurrentStepID,
+			"input_timeline":     snapshot.InputTimeline,
+			"progress":           snapshot.Progress,
+			"status_summary":     snapshot.StatusSummary,
+			"final_answer":       snapshot.FinalAnswer,
+			"error":              snapshot.Error,
+			"external_interrupt": snapshot.ExternalInterrupt,
+			"warnings":           snapshot.Warnings,
+			"unresolved":         snapshot.Unresolved,
+			"plan_version":       snapshot.PlanVersion,
 		},
 	})
 }

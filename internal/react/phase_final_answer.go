@@ -44,6 +44,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 
 	stateStatus := snapshot.Status
 	errText := strings.TrimSpace(snapshot.Error)
+	externalInterrupt := builtin_tools.CloneExternalInterrupt(snapshot.ExternalInterrupt)
 
 	payload := map[string]any{
 		"status":             stateStatus,
@@ -54,122 +55,141 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"plan":               snapshot.Plan,
 		"plan_version":       snapshot.PlanVersion,
 		"step_outcomes":      snapshot.StepOutcomes,
+		"external_interrupt": externalInterrupt,
 		"replan_context":     snapshot.ReplanContext,
 		"active_skill_names": snapshot.ActiveSkillNames,
 		"warnings":           snapshot.Warnings,
 		"unresolved":         snapshot.Unresolved,
 	}
-	prompt, err := a.BuildFinalAnswerPrompt(payload)
-	if err != nil {
-		return snapshot, err
-	}
-
-	if a.canFastCloseFinalAnswer(snapshot, ctx) {
-		return a.fastCloseFinalAnswer(snapshot, writer, payload)
-	}
 
 	var modelOut FinalAnswerModelOutput
 	rawResponse := ""
-	if ctx != nil && ctx.Err() != nil {
-		// ctx 已取消时不再调用模型；仍然给出可交付的 final answer。
-		modelOut = FinalAnswerModelOutput{
-			IsComplete:   true,
-			Status:       string(builtin_tools.TaskStatusCanceled),
-			Reason:       strings.TrimSpace(ctx.Err().Error()),
-			ShouldReplan: false,
-			NextGoal:     "",
-			MissingItems: nil,
-			Warnings:     nil,
-			UserMessage:  firstNonEmpty(strings.TrimSpace(errText), "任务已取消。"),
-		}
+	if externalInterrupt != nil {
+		a.emitRuntimeLog("warning", "final answer model bypassed due to external interrupt", snapshot, map[string]any{
+			"event":            "final_answer_model_bypassed",
+			"reason_code":      strings.TrimSpace(externalInterrupt.ReasonCode),
+			"retryable":        externalInterrupt.Retryable,
+			"warnings_count":   len(snapshot.Warnings),
+			"unresolved_count": len(snapshot.Unresolved),
+		})
+		modelOut = buildExternalInterruptModelOutput(snapshot, externalInterrupt)
 	} else {
-		a.emitRuntimeLog("info", "final answer model started", snapshot, map[string]any{
-			"event":               "final_answer_model_started",
-			"plan_version":        snapshot.PlanVersion,
-			"step_outcomes_count": len(snapshot.StepOutcomes),
-			"warnings_count":      len(snapshot.Warnings),
-			"unresolved_count":    len(snapshot.Unresolved),
-		})
-		runtimelog.LogJSON("info", map[string]any{
-			"event":              "final_answer_model_request",
-			"phase":              "final_answer",
-			"raw_request":        prompt,
-			"raw_request_length": len(prompt),
-		})
-		var retryResult structuredoutput.Result[FinalAnswerModelOutput]
-		retryResult, runErr := runStructuredOutputWithRetry(a, ctx, snapshot, runClient, "final_answer", prompt, func(raw string) (FinalAnswerModelOutput, error) {
-			return parseFinalAnswerOutput(raw, a.currentFinalAnswerPublishConfig())
-		})
-		if runErr == nil {
-			rawResponse = strings.TrimSpace(retryResult.RawResponse)
-			runtimelog.LogJSON("info", map[string]any{
-				"event":               "final_answer_model_raw_response",
-				"phase":               "final_answer",
-				"mode":                "success",
-				"raw_response":        rawResponse,
-				"raw_response_length": len(rawResponse),
-			})
-			modelOut = retryResult.Value
+		prompt, err := a.BuildFinalAnswerPrompt(payload)
+		if err != nil {
+			return snapshot, err
+		}
+
+		if a.canFastCloseFinalAnswer(snapshot, ctx) {
+			return a.fastCloseFinalAnswer(snapshot, writer, payload)
+		}
+
+		if ctx != nil && ctx.Err() != nil {
+			// ctx 已取消时不再调用模型；仍然给出可交付的 final answer。
+			modelOut = FinalAnswerModelOutput{
+				IsComplete:   true,
+				Status:       string(builtin_tools.TaskStatusCanceled),
+				Reason:       strings.TrimSpace(ctx.Err().Error()),
+				ShouldReplan: false,
+				NextGoal:     "",
+				MissingItems: nil,
+				Warnings:     nil,
+				UserMessage:  firstNonEmpty(strings.TrimSpace(errText), "任务已取消。"),
+			}
 		} else {
-			rawResponse = strings.TrimSpace(structuredoutput.LastResponse(runErr))
-			if rawResponse != "" {
-				if a.requiresPublishedOutput() {
-					runtimelog.LogJSON("error", map[string]any{
+			a.emitRuntimeLog("info", "final answer model started", snapshot, map[string]any{
+				"event":               "final_answer_model_started",
+				"plan_version":        snapshot.PlanVersion,
+				"step_outcomes_count": len(snapshot.StepOutcomes),
+				"warnings_count":      len(snapshot.Warnings),
+				"unresolved_count":    len(snapshot.Unresolved),
+			})
+			runtimelog.LogJSON("info", map[string]any{
+				"event":              "final_answer_model_request",
+				"phase":              "final_answer",
+				"raw_request":        prompt,
+				"raw_request_length": len(prompt),
+			})
+			var retryResult structuredoutput.Result[FinalAnswerModelOutput]
+			retryResult, runErr := runStructuredOutputWithRetry(a, ctx, snapshot, runClient, "final_answer", prompt, func(raw string) (FinalAnswerModelOutput, error) {
+				return parseFinalAnswerOutput(raw, a.currentFinalAnswerPublishConfig())
+			})
+			if runErr == nil {
+				rawResponse = strings.TrimSpace(retryResult.RawResponse)
+				runtimelog.LogJSON("info", map[string]any{
+					"event":               "final_answer_model_raw_response",
+					"phase":               "final_answer",
+					"mode":                "success",
+					"raw_response":        rawResponse,
+					"raw_response_length": len(rawResponse),
+				})
+				modelOut = retryResult.Value
+			} else {
+				rawResponse = strings.TrimSpace(structuredoutput.LastResponse(runErr))
+				if rawResponse != "" {
+					if a.requiresPublishedOutput() {
+						runtimelog.LogJSON("error", map[string]any{
+							"event":               "final_answer_model_raw_response",
+							"phase":               "final_answer",
+							"mode":                "publish_contract_parse_failed",
+							"error":               strings.TrimSpace(runErr.Error()),
+							"raw_response":        rawResponse,
+							"raw_response_length": len(rawResponse),
+						})
+						a.emitRuntimeLog("error", "final answer publish contract parse failed", snapshot, map[string]any{
+							"event":           "final_answer_publish_contract_parse_failed",
+							"response_length": len(rawResponse),
+							"error":           strings.TrimSpace(runErr.Error()),
+						})
+						return snapshot, fmt.Errorf("final_answer publish contract parse failed: %w", runErr)
+					}
+					runtimelog.LogJSON("warning", map[string]any{
 						"event":               "final_answer_model_raw_response",
 						"phase":               "final_answer",
-						"mode":                "publish_contract_parse_failed",
+						"mode":                "fallback_text",
 						"error":               strings.TrimSpace(runErr.Error()),
 						"raw_response":        rawResponse,
 						"raw_response_length": len(rawResponse),
 					})
-					a.emitRuntimeLog("error", "final answer publish contract parse failed", snapshot, map[string]any{
-						"event":           "final_answer_publish_contract_parse_failed",
+					a.emitRuntimeLog("warning", "final answer model fell back to plain text", snapshot, map[string]any{
+						"event":           "final_answer_model_fallback_text",
 						"response_length": len(rawResponse),
 						"error":           strings.TrimSpace(runErr.Error()),
 					})
-					return snapshot, fmt.Errorf("final_answer publish contract parse failed: %w", runErr)
+					modelOut = FinalAnswerModelOutput{
+						IsComplete:   true,
+						Status:       string(builtin_tools.TaskStatusCompleted),
+						Reason:       "模型输出未能满足 assessment JSON schema，重试已耗尽，已回退为直接交付文本。",
+						ShouldReplan: false,
+						NextGoal:     "",
+						UserMessage:  rawResponse,
+						References:   []string{},
+					}
+				} else {
+					runtimelog.LogJSON("error", map[string]any{
+						"event":               "final_answer_model_raw_response",
+						"phase":               "final_answer",
+						"mode":                "parse_failed",
+						"error":               strings.TrimSpace(runErr.Error()),
+						"raw_response":        rawResponse,
+						"raw_response_length": len(rawResponse),
+					})
+					a.emitRuntimeLog("error", "final answer model json parse failed", snapshot, map[string]any{
+						"event": "final_answer_model_parse_failed",
+						"error": strings.TrimSpace(runErr.Error()),
+					})
+					return snapshot, fmt.Errorf("final_answer structured output retry exhausted: %w", runErr)
 				}
-				runtimelog.LogJSON("warning", map[string]any{
-					"event":               "final_answer_model_raw_response",
-					"phase":               "final_answer",
-					"mode":                "fallback_text",
-					"error":               strings.TrimSpace(runErr.Error()),
-					"raw_response":        rawResponse,
-					"raw_response_length": len(rawResponse),
-				})
-				a.emitRuntimeLog("warning", "final answer model fell back to plain text", snapshot, map[string]any{
-					"event":           "final_answer_model_fallback_text",
-					"response_length": len(rawResponse),
-					"error":           strings.TrimSpace(runErr.Error()),
-				})
-				modelOut = FinalAnswerModelOutput{
-					IsComplete:   true,
-					Status:       string(builtin_tools.TaskStatusCompleted),
-					Reason:       "模型输出未能满足 assessment JSON schema，重试已耗尽，已回退为直接交付文本。",
-					ShouldReplan: false,
-					NextGoal:     "",
-					UserMessage:  rawResponse,
-					References:   []string{},
-				}
-			} else {
-				runtimelog.LogJSON("error", map[string]any{
-					"event":               "final_answer_model_raw_response",
-					"phase":               "final_answer",
-					"mode":                "parse_failed",
-					"error":               strings.TrimSpace(runErr.Error()),
-					"raw_response":        rawResponse,
-					"raw_response_length": len(rawResponse),
-				})
-				a.emitRuntimeLog("error", "final answer model json parse failed", snapshot, map[string]any{
-					"event": "final_answer_model_parse_failed",
-					"error": strings.TrimSpace(runErr.Error()),
-				})
-				return snapshot, fmt.Errorf("final_answer structured output retry exhausted: %w", runErr)
 			}
 		}
 	}
 
 	decision := normalizeFinalAnswerDecision(modelOut)
+	if externalInterrupt != nil {
+		decision = applyExternalInterruptDecision(snapshot, decision, externalInterrupt)
+		if warning := externalInterruptWarning(externalInterrupt); warning != "" {
+			decision.model.Warnings = normalizeReferences(append(decision.model.Warnings, warning))
+		}
+	}
 	assessmentPayload := map[string]any{
 		"session_id":     strings.TrimSpace(a.workspaceSessionID),
 		"plan_version":   snapshot.PlanVersion,
@@ -220,16 +240,14 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	if finalText == "" {
 		finalText = firstNonEmpty(strings.TrimSpace(decision.model.Reason), "任务已完成。")
 	}
+	if externalInterrupt != nil {
+		if interruptText := buildExternalInterruptFinalAnswer(snapshot, externalInterrupt); interruptText != "" {
+			finalText = interruptText
+		}
+	}
 	publishedOutput := strings.TrimSpace(string(decision.model.PublishedOutput))
 
 	finalAnswerSource := "final_assessment"
-	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
-		if stepResult, ok := latestNonEmptyStepResultWithPlan(
-			snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok && stepResult != "" {
-			finalText = stepResult
-			finalAnswerSource = "step_result"
-		}
-	}
 
 	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 		NextPhase:             builtin_tools.AgentPhaseFinalAnswer,
@@ -241,6 +259,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		FinalPublishedOutput:  publishedOutput,
 		Warnings:              decision.model.Warnings,
 		Unresolved:            []string{},
+		ExternalInterrupt:     externalInterrupt,
 	})
 	a.emitter.EmitStateChange(snapshot)
 	if snapshot.FinalAnswer != nil {
@@ -262,19 +281,16 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	})
 
 	if strings.TrimSpace(finalText) != "" {
-		historyText := finalText
-		if finalAnswerSource == "step_result" && len(historyText) > 4096 {
-			historyText = historyText[:4096] + "\n\n…(完整结果已持久化到 artifact 文件)"
-		}
+		historyText := truncateForHistory(finalText, finalAnswerSource)
 		msg := ai.NewAIMsgInfo(historyText)
 		a.history = append(a.history, msg)
 		// 用 replace 快照落盘，避免最终答案落到 delta（便于恢复与审计一致性）。
 		a.notifyHistoryReplace()
-		a.AddMemoryAssistantOutput(finalText)
+		a.AddMemoryAssistantOutput(historyText)
 		a.emitRuntimeLog("info", "final answer history persisted", snapshot, map[string]any{
 			"event":          "final_answer_history_persisted",
 			"history_length": len(a.history),
-			"content_length": len(strings.TrimSpace(finalText)),
+			"content_length": len(strings.TrimSpace(historyText)),
 		})
 	}
 

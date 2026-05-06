@@ -72,6 +72,9 @@ type FinalAnswerPromptInput struct {
 	StepOutcomes            any
 	Warnings                any
 	Unresolved              any
+	HasSummaryPolicy        bool
+	SummaryPolicyName       string
+	SummaryPolicyDetail     string
 	PublishedOutputRequired bool
 	PublishedOutputName     string
 	PublishedOutputSchema   string
@@ -254,15 +257,15 @@ func (m *defaultPromptManager) BuildStepSummaryPrompt(input StepSummaryPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepSummaryTmpl.Execute(buf, map[string]any{
-		"INPUT_TIMELINE": prettyJSON(input.InputTimeline),
-		"CURRENT_GOAL":   prettyJSON(input.CurrentGoal),
-		"CURRENT_STEP":   prettyJSON(input.CurrentStep),
-		"TASK_PLAN":      prettyJSON(input.TaskPlan),
-		"RAW_OUTCOME":    prettyJSON(input.RawOutcome),
-		"STEP_WINDOW":    prettyJSON(input.StepWindow),
-		"TIMELINE_DIFF":  prettyJSON(input.TimelineDiff),
-		"REFERENCES":     prettyJSON(input.References),
-		"ARTIFACTS":      prettyJSON(input.Artifacts),
+		"INPUT_TIMELINE":        prettyJSON(input.InputTimeline),
+		"CURRENT_GOAL":          prettyJSON(input.CurrentGoal),
+		"CURRENT_STEP":          prettyJSON(input.CurrentStep),
+		"TASK_PLAN":             prettyJSON(input.TaskPlan),
+		"RAW_OUTCOME":           prettyJSON(input.RawOutcome),
+		"STEP_WINDOW":           prettyJSON(input.StepWindow),
+		"TIMELINE_DIFF":         prettyJSON(input.TimelineDiff),
+		"REFERENCES":            prettyJSON(input.References),
+		"ARTIFACTS":             prettyJSON(input.Artifacts),
 		"WARNINGS":              prettyJSON(input.Warnings),
 		"UNRESOLVED":            prettyJSON(input.Unresolved),
 		"HAS_SUMMARY_POLICY":    input.HasSummaryPolicy,
@@ -289,6 +292,9 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"STEP_OUTCOMES":             prettyJSON(input.StepOutcomes),
 		"WARNINGS":                  prettyJSON(input.Warnings),
 		"UNRESOLVED":                prettyJSON(input.Unresolved),
+		"HAS_SUMMARY_POLICY":        input.HasSummaryPolicy,
+		"SUMMARY_POLICY_NAME":       strings.TrimSpace(input.SummaryPolicyName),
+		"SUMMARY_POLICY_DETAIL":     strings.TrimSpace(input.SummaryPolicyDetail),
 		"PUBLISHED_OUTPUT_REQUIRED": input.PublishedOutputRequired,
 		"PUBLISHED_OUTPUT_NAME":     strings.TrimSpace(input.PublishedOutputName),
 		"PUBLISHED_OUTPUT_SCHEMA":   strings.TrimSpace(input.PublishedOutputSchema),

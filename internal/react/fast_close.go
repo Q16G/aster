@@ -157,6 +157,9 @@ func (a *Agent) canFastCloseFinalAnswer(snapshot builtin_tools.StateSnapshot, ct
 	if a.currentIntent == nil {
 		return false
 	}
+	if snapshot.ExternalInterrupt != nil {
+		return false
+	}
 	if a.currentIntent.Complexity == "complex" || a.currentIntent.Complexity == "unknown" {
 		return false
 	}
@@ -202,13 +205,6 @@ func (a *Agent) fastCloseFinalAnswer(
 	}
 
 	finalAnswerSource := "fast_close"
-	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
-		if stepResult, ok := latestNonEmptyStepResultWithPlan(
-			snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok && stepResult != "" {
-			finalText = stepResult
-			finalAnswerSource = "step_result"
-		}
-	}
 
 	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 		NextPhase:          builtin_tools.AgentPhaseFinalAnswer,
@@ -238,10 +234,7 @@ func (a *Agent) fastCloseFinalAnswer(
 	}
 
 	if strings.TrimSpace(finalText) != "" {
-		historyText := finalText
-		if finalAnswerSource == "step_result" && len(historyText) > 4096 {
-			historyText = historyText[:4096] + "\n\n…(完整结果已持久化到 artifact 文件)"
-		}
+		historyText := truncateForHistory(finalText, finalAnswerSource)
 		msg := ai.NewAIMsgInfo(historyText)
 		a.history = append(a.history, msg)
 		a.notifyHistoryReplace()
