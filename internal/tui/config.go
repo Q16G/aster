@@ -176,6 +176,9 @@ background: |
   （本地嵌入规则 + 社区注册表 + OWASP），通过 SyntaxFlow MCP 进行
   topdef/bottomUse 数据流追踪验证，结合 AI 补充鉴权缺失和业务逻辑分析，
   给出精确的漏洞定位和修复建议。
+policies:
+  result_source: latest_step_result
+  publish_contract: sast-findings
 skill_names:
   - sast-scan
   - dataflow-analysis
@@ -185,6 +188,60 @@ tool_names:
   - rg
   - list_skills
   - load_skills
+output_contracts:
+  sast-findings:
+    schema: |
+      {
+        "type": "object",
+        "required": ["total_findings", "severity_counts", "findings"],
+        "properties": {
+          "total_findings": { "type": "integer", "description": "发现总数" },
+          "severity_counts": {
+            "type": "object",
+            "properties": {
+              "critical": { "type": "integer" },
+              "high":     { "type": "integer" },
+              "medium":   { "type": "integer" },
+              "low":      { "type": "integer" },
+              "info":     { "type": "integer" }
+            }
+          },
+          "scan_target": { "type": "string", "description": "扫描目标路径或仓库" },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "severity", "file", "line"],
+              "properties": {
+                "id":             { "type": "string" },
+                "title":          { "type": "string" },
+                "severity":       { "type": "string", "enum": ["critical","high","medium","low","info"] },
+                "file":           { "type": "string" },
+                "line":           { "type": "integer" },
+                "rule_id":        { "type": "string" },
+                "cwe":            { "type": "string" },
+                "description":    { "type": "string" },
+                "snippet":        { "type": "string" },
+                "recommendation": { "type": "string" },
+                "dataflow_verified": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    example: |
+      {
+        "total_findings": 3,
+        "severity_counts": { "critical": 1, "high": 1, "medium": 1, "low": 0, "info": 0 },
+        "scan_target": "./src",
+        "findings": [
+          { "id": "F-001", "title": "SQL Injection", "severity": "critical", "file": "src/db/query.go", "line": 42, "rule_id": "go.lang.security.audit.sqli", "cwe": "CWE-89", "description": "用户输入直接拼接到 SQL 查询", "snippet": "db.Raw(\"SELECT * FROM users WHERE id=\" + input)", "recommendation": "使用参数化查询", "dataflow_verified": true }
+        ]
+      }
+    summary_policy: |
+      禁止压缩或省略 findings 列表；total_findings 和 severity_counts 必须原样保留。
+      long_summary 中必须逐条列出所有 finding 的 id、title、severity、file:line。
+      若 findings 超过 30 条，可按 severity 分组呈现，但不得省略任何条目。
 `,
 
 	"pentest.yaml": `name: pentest
@@ -194,6 +251,9 @@ background: |
   主动探索页面结构、交互流程和 API 接口，捕获真实网络流量并进行深度安全分析。
   掌握 SQL 注入、XSS、IDOR、CORS、文件上传、JWT 等全面的 Web 安全检测技术。
   遵循 OWASP 测试指南和 PTES 标准。
+policies:
+  result_source: latest_step_result
+  publish_contract: pentest-findings
 skill_names:
   - agent-browser
   - SQL注入-多策略综合检测
@@ -213,6 +273,60 @@ tool_names:
   - rg
   - list_skills
   - load_skills
+output_contracts:
+  pentest-findings:
+    schema: |
+      {
+        "type": "object",
+        "required": ["total_findings", "severity_counts", "target", "findings"],
+        "properties": {
+          "total_findings": { "type": "integer", "description": "发现总数" },
+          "severity_counts": {
+            "type": "object",
+            "properties": {
+              "critical": { "type": "integer" },
+              "high":     { "type": "integer" },
+              "medium":   { "type": "integer" },
+              "low":      { "type": "integer" },
+              "info":     { "type": "integer" }
+            }
+          },
+          "target": { "type": "string", "description": "测试目标 URL 或域名" },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "severity", "endpoint"],
+              "properties": {
+                "id":               { "type": "string" },
+                "title":            { "type": "string" },
+                "severity":         { "type": "string", "enum": ["critical","high","medium","low","info"] },
+                "vulnerability_type": { "type": "string", "description": "漏洞类型，如 SQLi、XSS、IDOR 等" },
+                "endpoint":         { "type": "string", "description": "受影响的 URL 或 API 端点" },
+                "method":           { "type": "string", "description": "HTTP 方法" },
+                "parameter":        { "type": "string", "description": "受影响的参数" },
+                "cwe":              { "type": "string" },
+                "description":      { "type": "string" },
+                "proof_of_concept": { "type": "string", "description": "PoC 请求或复现步骤" },
+                "recommendation":   { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    example: |
+      {
+        "total_findings": 2,
+        "severity_counts": { "critical": 1, "high": 1, "medium": 0, "low": 0, "info": 0 },
+        "target": "https://example.com",
+        "findings": [
+          { "id": "PT-001", "title": "SQL Injection in login", "severity": "critical", "vulnerability_type": "SQLi", "endpoint": "/api/login", "method": "POST", "parameter": "username", "cwe": "CWE-89", "description": "登录接口 username 参数存在 SQL 注入", "proof_of_concept": "POST /api/login {\"username\": \"admin' OR 1=1--\"}", "recommendation": "使用参数化查询" }
+        ]
+      }
+    summary_policy: |
+      禁止压缩或省略 findings 列表；total_findings 和 severity_counts 必须原样保留。
+      long_summary 中必须逐条列出所有 finding 的 id、title、severity、endpoint。
+      若 findings 超过 30 条，可按 vulnerability_type 分组呈现，但不得省略任何条目。
 `,
 
 	"host-defense.yaml": `name: host-defense

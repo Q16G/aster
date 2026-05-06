@@ -1,0 +1,22 @@
+rules:
+  - id: python-ssti-tornado
+    patterns:
+      - pattern-either:
+          - pattern: tornado.template.Template($INPUT).generate(...)
+          - pattern: |
+              $T = tornado.template.Template($INPUT)
+              ...
+              $T.generate(...)
+    message: >
+      Tornado template injection. Constructing tornado.template.Template
+      from user input allows arbitrary Python code execution via {{}}
+      expressions and {% %} directives. Tornado templates execute in the
+      server process context with no sandboxing. Load templates from
+      trusted files and pass user data as generate() arguments only.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

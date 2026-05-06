@@ -1,0 +1,28 @@
+rules:
+  - id: js-sql-injection-typeorm
+    patterns:
+      - pattern-either:
+          - pattern: $REPO.query($INPUT)
+          - pattern: $MANAGER.query($INPUT)
+          - pattern: $CONNECTION.query($INPUT)
+          - pattern: |
+              $QB.where($INPUT).getMany()
+          - pattern: |
+              $QB.andWhere($INPUT).getMany()
+          - pattern: |
+              $QB.orderBy($INPUT).getMany()
+      - pattern-not: $REPO.query("...", ...)
+      - pattern-not: $MANAGER.query("...", ...)
+    message: >
+      SQL injection via TypeORM raw query. Passing user-controlled input
+      directly to query(), where(), andWhere(), or orderBy() without
+      parameterization enables SQL injection. Use parameterized queries:
+      repo.query('SELECT * FROM t WHERE id = $1', [input]) or
+      queryBuilder.where('t.id = :id', { id: input }).
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

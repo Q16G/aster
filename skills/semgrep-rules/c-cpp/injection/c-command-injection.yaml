@@ -1,0 +1,23 @@
+rules:
+  - id: c-command-injection
+    patterns:
+      - pattern-either:
+          - pattern: system($INPUT)
+          - pattern: popen($INPUT, ...)
+          - pattern: execl("/bin/sh", "sh", "-c", $INPUT, ...)
+          - pattern: execlp("sh", "sh", "-c", $INPUT, ...)
+      - pattern-not: system("...")
+      - pattern-not: popen("...", ...)
+    message: >
+      Command injection via system(), popen(), or exec with shell. Passing
+      user-controlled input to these functions allows arbitrary command
+      execution. Use execve() with an explicit argument array to avoid
+      shell interpretation, or validate input against a strict allowlist
+      of permitted characters.
+    metadata:
+      cwe: CWE-078
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [c]

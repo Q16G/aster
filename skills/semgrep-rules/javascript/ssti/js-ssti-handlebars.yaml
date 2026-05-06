@@ -1,0 +1,21 @@
+rules:
+  - id: js-ssti-handlebars
+    patterns:
+      - pattern-either:
+          - pattern: Handlebars.compile($INPUT)
+          - pattern: handlebars.compile($INPUT)
+          - pattern: |
+              $HBS.compile($INPUT)
+    message: >
+      Handlebars template injection. Compiling user-controlled strings as
+      Handlebars templates can lead to information disclosure via helper
+      enumeration or prototype access ({{constructor.constructor ...}}).
+      In combination with known CVEs (e.g. CVE-2021-23369), this enables
+      RCE. Pre-compile templates from trusted sources only.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

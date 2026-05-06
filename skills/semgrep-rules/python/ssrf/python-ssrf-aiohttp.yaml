@@ -1,0 +1,29 @@
+rules:
+  - id: python-ssrf-aiohttp
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $SESSION = aiohttp.ClientSession(...)
+              ...
+              await $SESSION.get($URL, ...)
+          - pattern: |
+              $SESSION = aiohttp.ClientSession(...)
+              ...
+              await $SESSION.post($URL, ...)
+          - pattern: |
+              async with aiohttp.ClientSession() as $S:
+                  ...
+                  await $S.get($URL, ...)
+    message: >
+      Potential SSRF via aiohttp. If the URL is derived from user input,
+      an attacker can force server-side requests to internal services,
+      cloud metadata APIs (169.254.169.254), or private network hosts.
+      Validate and sanitize URLs, restrict to an allowlist of permitted
+      hosts, and block reserved IP ranges.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

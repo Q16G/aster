@@ -1,0 +1,30 @@
+rules:
+  - id: python-ssrf-httpx
+    patterns:
+      - pattern-either:
+          - pattern: httpx.get($URL, ...)
+          - pattern: httpx.post($URL, ...)
+          - pattern: httpx.put($URL, ...)
+          - pattern: httpx.delete($URL, ...)
+          - pattern: httpx.request($METHOD, $URL, ...)
+          - pattern: |
+              $CLIENT = httpx.Client(...)
+              ...
+              $CLIENT.get($URL, ...)
+          - pattern: |
+              $CLIENT = httpx.AsyncClient(...)
+              ...
+              await $CLIENT.get($URL, ...)
+    message: >
+      Potential SSRF via httpx. If the URL is user-controlled, an attacker
+      can make the server request internal services, cloud metadata
+      endpoints, or private network resources. Validate URLs against an
+      allowlist and block private/reserved IP ranges before making
+      requests.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [python]

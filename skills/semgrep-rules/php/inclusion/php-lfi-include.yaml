@@ -1,0 +1,25 @@
+rules:
+  - id: php-lfi-include
+    patterns:
+      - pattern-either:
+          - pattern: include($INPUT);
+          - pattern: include_once($INPUT);
+          - pattern: require($INPUT);
+          - pattern: require_once($INPUT);
+      - pattern-not: include("...");
+      - pattern-not: include_once("...");
+      - pattern-not: require("...");
+      - pattern-not: require_once("...");
+    message: >
+      Local file inclusion (LFI) via dynamic include/require. Passing
+      user-controlled input to include/require allows reading arbitrary
+      files (e.g. /etc/passwd via path traversal) or executing uploaded
+      malicious PHP files. Use a whitelist of allowed file paths, or
+      map user input to an array of known safe paths.
+    metadata:
+      cwe: CWE-098
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

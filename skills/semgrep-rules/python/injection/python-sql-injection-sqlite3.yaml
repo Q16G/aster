@@ -1,0 +1,23 @@
+rules:
+  - id: python-sql-injection-sqlite3
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute($INPUT)
+          - pattern: $CONN.execute($INPUT)
+          - pattern: $CURSOR.executescript($INPUT)
+          - pattern: $CONN.executescript($INPUT)
+      - pattern-not: $CURSOR.execute("...", ...)
+      - pattern-not: $CONN.execute("...", ...)
+    message: >
+      SQL injection via sqlite3. Passing user-controlled input to
+      execute() or executescript() without parameterization enables SQL
+      injection. executescript() is especially dangerous as it runs
+      multiple SQL statements. Use parameterized queries:
+      cursor.execute('SELECT * FROM t WHERE id = ?', (input,)).
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

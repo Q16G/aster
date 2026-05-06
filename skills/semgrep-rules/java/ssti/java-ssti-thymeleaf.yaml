@@ -1,0 +1,23 @@
+rules:
+  - id: java-ssti-thymeleaf
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $ENGINE.process($INPUT, $CTX)
+          - pattern: |
+              new SpringTemplateEngine().process($INPUT, $CTX)
+          - pattern: |
+              return $INPUT;
+    message: >
+      Potential Thymeleaf SSTI. If user input controls the template name
+      or expression (e.g. __${...}__), Thymeleaf's SpEL preprocessor
+      enables remote code execution. Ensure template names are not derived
+      from user input, and disable SpEL preprocessing if not needed.
+      CVE-2023-38286 exploits this pattern.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

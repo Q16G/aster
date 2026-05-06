@@ -1,0 +1,23 @@
+rules:
+  - id: java-deserialization-gson
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new Gson().fromJson($INPUT, Object.class)
+          - pattern: |
+              $GSON.fromJson($INPUT, Object.class)
+          - pattern: |
+              new GsonBuilder().registerTypeAdapter(..., $ADAPTER).create().fromJson($INPUT, ...)
+    message: >
+      Gson deserialization with Object.class or custom TypeAdapter on
+      untrusted input. While Gson is safer than Jackson by default (no
+      polymorphic typing), deserializing to Object.class or using custom
+      adapters on user input can lead to type confusion or logic bypass.
+      Deserialize to a specific concrete type instead.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

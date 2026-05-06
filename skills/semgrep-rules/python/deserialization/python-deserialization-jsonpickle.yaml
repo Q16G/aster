@@ -1,0 +1,20 @@
+rules:
+  - id: python-deserialization-jsonpickle
+    patterns:
+      - pattern-either:
+          - pattern: jsonpickle.decode($INPUT)
+          - pattern: jsonpickle.loads($INPUT)
+          - pattern: jsonpickle.decode($INPUT, ...)
+    message: >
+      Unsafe deserialization via jsonpickle. jsonpickle.decode()
+      reconstructs arbitrary Python objects from JSON, including
+      executing __reduce__ and __setstate__ methods, enabling remote
+      code execution. Use json.loads() for untrusted input and reserve
+      jsonpickle for trusted internal data only.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

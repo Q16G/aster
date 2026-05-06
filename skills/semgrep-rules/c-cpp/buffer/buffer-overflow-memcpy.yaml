@@ -1,0 +1,20 @@
+rules:
+  - id: c-buffer-overflow-memcpy
+    patterns:
+      - pattern-either:
+          - pattern: memcpy($DST, $SRC, $SIZE)
+          - pattern: memmove($DST, $SRC, $SIZE)
+    message: >
+      Potential buffer overflow via memcpy/memmove. If the size parameter
+      is derived from untrusted input or exceeds the destination buffer
+      capacity, this leads to heap or stack buffer overflow, enabling
+      code execution or information disclosure. Validate that size does
+      not exceed sizeof(dst) and that the source buffer is at least
+      size bytes. Consider using memcpy_s() or explicit bounds checks.
+    metadata:
+      cwe: CWE-120
+      owasp: "A06:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [c]

@@ -35,6 +35,17 @@ func (a *Agent) BuildThinkActPrompt(extra string, taskContext *TaskContextData) 
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
 	}
 
+	var contractName, contractSchema, contractExample string
+	hasContract := false
+	if currentStep != nil && currentStep.OutputContractRef != "" && a.cfg != nil {
+		if c := a.cfg.LookupOutputContract(currentStep.OutputContractRef); c != nil {
+			hasContract = true
+			contractName = c.Name
+			contractSchema = c.Schema
+			contractExample = c.Example
+		}
+	}
+
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
 		AgentInstruction:        strings.TrimSpace(a.cfg.Instruction),
 		TaskContext:             taskContext,
@@ -67,6 +78,10 @@ func (a *Agent) BuildThinkActPrompt(extra string, taskContext *TaskContextData) 
 		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
 		Nonce:                   generateRandomString(8),
+		HasOutputContract:       hasContract,
+		OutputContractName:      contractName,
+		OutputContractSchema:    contractSchema,
+		OutputContractExample:   contractExample,
 	})
 	if err == nil {
 		return prompt

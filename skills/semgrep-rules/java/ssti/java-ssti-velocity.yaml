@@ -1,0 +1,24 @@
+rules:
+  - id: java-ssti-velocity
+    patterns:
+      - pattern-either:
+          - pattern: Velocity.evaluate($CTX, $WRITER, $TAG, $INPUT)
+          - pattern: |
+              $ENGINE.evaluate($CTX, $WRITER, $TAG, $INPUT);
+          - pattern: |
+              RuntimeServices $RS = ...;
+              ...
+              $RS.parse(new StringReader($INPUT), ...);
+    message: >
+      Apache Velocity template injection. Passing user-controlled input
+      to Velocity.evaluate() or RuntimeServices.parse() allows arbitrary
+      code execution via Velocity directives and Java reflection.
+      Pre-compile templates from trusted sources and only pass data
+      through the VelocityContext.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

@@ -1,0 +1,26 @@
+rules:
+  - id: java-deserialization-kryo
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Kryo $K = new Kryo();
+              ...
+              $K.setRegistrationRequired(false);
+          - pattern: |
+              $KRYO.setRegistrationRequired(false);
+          - pattern: |
+              Kryo $K = new Kryo();
+              ...
+              $K.readClassAndObject(...);
+    message: >
+      Unsafe Kryo deserialization. Disabling registration requirement
+      or using readClassAndObject on untrusted input allows arbitrary
+      class instantiation, leading to remote code execution. Always set
+      registrationRequired(true) and explicitly register allowed classes.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

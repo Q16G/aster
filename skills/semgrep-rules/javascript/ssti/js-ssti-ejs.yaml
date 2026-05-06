@@ -1,0 +1,21 @@
+rules:
+  - id: js-ssti-ejs
+    patterns:
+      - pattern-either:
+          - pattern: ejs.render($INPUT, ...)
+          - pattern: ejs.compile($INPUT, ...)
+          - pattern: |
+              $TEMPLATE = ejs.compile($INPUT);
+    message: >
+      EJS server-side template injection. Passing user input as the
+      template string to ejs.render() or ejs.compile() allows arbitrary
+      code execution via EJS delimiters (<%= %>). Only render
+      pre-compiled templates from trusted files, and pass user data
+      as template variables.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

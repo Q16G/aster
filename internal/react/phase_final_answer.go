@@ -222,12 +222,21 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	}
 	publishedOutput := strings.TrimSpace(string(decision.model.PublishedOutput))
 
+	finalAnswerSource := "final_assessment"
+	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
+		if stepResult, ok := latestNonEmptyStepResultWithPlan(
+			snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok && stepResult != "" {
+			finalText = stepResult
+			finalAnswerSource = "step_result"
+		}
+	}
+
 	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 		NextPhase:             builtin_tools.AgentPhaseFinalAnswer,
 		Status:                decision.status,
 		Error:                 errText,
 		FinalAnswerContent:    finalText,
-		FinalAnswerSource:     "final_assessment",
+		FinalAnswerSource:     finalAnswerSource,
 		FinalAnswerReferences: decision.model.References,
 		FinalPublishedOutput:  publishedOutput,
 		Warnings:              decision.model.Warnings,
@@ -252,10 +261,12 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"content_length":    len(strings.TrimSpace(finalText)),
 	})
 
-	// 将最终答案写回长期对话骨架 history，便于会话持久化与 UI 展示。
-	// step 内 tool transcript 已由 runtime 侧隔离在 StepHistory，不会进入长期 history。
 	if strings.TrimSpace(finalText) != "" {
-		msg := ai.NewAIMsgInfo(finalText)
+		historyText := finalText
+		if finalAnswerSource == "step_result" && len(historyText) > 4096 {
+			historyText = historyText[:4096] + "\n\n…(完整结果已持久化到 artifact 文件)"
+		}
+		msg := ai.NewAIMsgInfo(historyText)
 		a.history = append(a.history, msg)
 		// 用 replace 快照落盘，避免最终答案落到 delta（便于恢复与审计一致性）。
 		a.notifyHistoryReplace()

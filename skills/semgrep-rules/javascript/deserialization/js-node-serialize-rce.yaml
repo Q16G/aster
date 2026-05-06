@@ -1,0 +1,23 @@
+rules:
+  - id: js-node-serialize-rce
+    patterns:
+      - pattern-either:
+          - pattern: require('node-serialize').unserialize($INPUT)
+          - pattern: |
+              $NS = require('node-serialize');
+              ...
+              $NS.unserialize($INPUT);
+          - pattern: serialize.unserialize($INPUT)
+    message: >
+      node-serialize unserialize() on untrusted input. The node-serialize
+      package can execute arbitrary JavaScript during deserialization via
+      IIFE (immediately invoked function expression) payloads in serialized
+      data, leading to remote code execution. Remove node-serialize
+      entirely and use JSON.parse() for data interchange.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [javascript, typescript]

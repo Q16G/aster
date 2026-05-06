@@ -1,0 +1,23 @@
+rules:
+  - id: js-yaml-unsafe
+    patterns:
+      - pattern-either:
+          - pattern: require('js-yaml').load($INPUT)
+          - pattern: jsyaml.load($INPUT)
+          - pattern: yaml.load($INPUT)
+      - pattern-not: yaml.load($INPUT, { schema: yaml.SAFE_SCHEMA })
+      - pattern-not: yaml.load($INPUT, { schema: yaml.JSON_SCHEMA })
+      - pattern-not: yaml.safeLoad($INPUT)
+    message: >
+      js-yaml load() without safe schema. In js-yaml < 4.0, load() uses
+      DEFAULT_FULL_SCHEMA which supports !!js/function and !!js/regexp
+      tags, enabling arbitrary code execution. Use yaml.load() with
+      {schema: SAFE_SCHEMA}, safeLoad(), or upgrade to js-yaml >= 4.0
+      where load() defaults to safe schema.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [javascript, typescript]

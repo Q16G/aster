@@ -1,0 +1,21 @@
+rules:
+  - id: js-ssti-pug
+    patterns:
+      - pattern-either:
+          - pattern: pug.render($INPUT, ...)
+          - pattern: pug.compile($INPUT, ...)
+          - pattern: |
+              $FN = pug.compile($INPUT);
+    message: >
+      Pug (Jade) server-side template injection. Compiling or rendering
+      user-controlled template strings with Pug allows arbitrary JavaScript
+      execution via unbuffered code blocks (- var x = ...) or inline
+      expressions. Only compile templates from trusted files and pass
+      user data as template locals.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [javascript, typescript]

@@ -1,0 +1,24 @@
+rules:
+  - id: php-lfi-wrapper
+    patterns:
+      - pattern-either:
+          - pattern: file_get_contents($INPUT)
+          - pattern: fopen($INPUT, ...)
+          - pattern: readfile($INPUT)
+          - pattern: file($INPUT)
+      - pattern-not: file_get_contents("...")
+      - pattern-not: fopen("...", ...)
+    message: >
+      File operation with user-controlled path, potentially exploitable
+      via PHP stream wrappers. Attackers can use php://filter,
+      php://input, data://, or expect:// wrappers to read source code,
+      inject data, or execute commands. Validate and sanitize file paths,
+      restrict to a base directory, and disable dangerous wrappers via
+      allow_url_include=Off.
+    metadata:
+      cwe: CWE-073
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]
