@@ -80,6 +80,18 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	return &out
 }
 
+func CloneExternalInterrupt(in *ExternalInterrupt) *ExternalInterrupt {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.ReasonCode = strings.TrimSpace(in.ReasonCode)
+	out.Error = strings.TrimSpace(in.Error)
+	out.UserMessage = strings.TrimSpace(in.UserMessage)
+	out.SuggestedActions = CloneStringSlice(in.SuggestedActions)
+	return &out
+}
+
 func NormalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, error) {
 	return normalizePlanItems(items, requireStatus)
 }
