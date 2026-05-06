@@ -132,6 +132,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.statusText = fmt.Sprintf("iteration %d/%d", current, max)
 
 	case react.EventTypeStateChange:
+		m.externalInterrupt = payloadExternalInterrupt(event.Payload)
 		if summary := strings.TrimSpace(payloadString(event.Payload, "status_summary")); summary != "" {
 			m.statusText = summary
 		}
@@ -255,6 +256,31 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeToolUpdate:
 		updateCallID, _ := event.Payload["call_id"].(string)
 		toolName, _ := event.Payload["tool_name"].(string)
+		presentation := payloadString(event.Payload, "presentation")
+		if presentation == "step_result" {
+			part := StepResultPart{
+				StepID:        payloadString(event.Payload, "step_id"),
+				StepName:      payloadString(event.Payload, "step_name"),
+				Status:        payloadString(event.Payload, "step_status"),
+				DisplayResult: payloadString(event.Payload, "display_result"),
+				Summary:       payloadString(event.Payload, "summary"),
+				Error:         payloadString(event.Payload, "error"),
+			}
+			if part.DisplayResult != "" || part.Summary != "" || part.Error != "" {
+				m.chat.AddPart(DisplayPart{
+					Type:       PartTypeStepResult,
+					Time:       time.Now(),
+					StepResult: &part,
+				})
+				partJSON, _ := json.Marshal(part)
+				persistName := part.StepID
+				if persistName == "" {
+					persistName = toolName
+				}
+				m.persistPart("step_result", persistName, string(partJSON))
+			}
+			return
+		}
 		msg := payloadString(event.Payload, "message")
 		if msg == "" {
 			msg = payloadString(event.Payload, "progress")
@@ -315,6 +341,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeFinalAnswerResult:
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist()
+		m.hadFinalAnswerDuringRun = true
 		content := payloadString(event.Payload, "content")
 		source := payloadString(event.Payload, "source")
 		references := payloadStringSlice(event.Payload, "references")
@@ -333,6 +360,48 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeStepFinish, react.EventTypeHistoryCompacted:
 		// no-op
+	}
+}
+
+func payloadExternalInterrupt(payload map[string]any) *builtin_tools.ExternalInterrupt {
+	if payload == nil {
+		return nil
+	}
+	raw, ok := payload["external_interrupt"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case *builtin_tools.ExternalInterrupt:
+		return builtin_tools.CloneExternalInterrupt(v)
+	case map[string]any:
+		info := &builtin_tools.ExternalInterrupt{
+			ReasonCode:       payloadString(v, "reason_code"),
+			Retryable:        payloadBool(v, "retryable"),
+			Error:            payloadString(v, "error"),
+			UserMessage:      payloadString(v, "user_message"),
+			SuggestedActions: payloadStringSlice(v, "suggested_actions"),
+		}
+		if strings.TrimSpace(info.ReasonCode) == "" && strings.TrimSpace(info.UserMessage) == "" && strings.TrimSpace(info.Error) == "" {
+			return nil
+		}
+		return info
+	default:
+		return nil
+	}
+}
+
+func payloadBool(payload map[string]any, key string) bool {
+	if payload == nil {
+		return false
+	}
+	switch v := payload[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	default:
+		return false
 	}
 }
 

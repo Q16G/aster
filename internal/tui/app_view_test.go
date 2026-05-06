@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"aster/internal/builtin_tools"
 	"strings"
 	"testing"
 	"time"
@@ -111,5 +112,42 @@ func TestAgentDoneClearsRetryState(t *testing.T) {
 	updated := model.(Model)
 	if updated.retryState != nil {
 		t.Fatalf("expected retry state cleared after agent done, got %#v", updated.retryState)
+	}
+}
+
+func TestAgentDoneShowsInterruptNoticeAndSkipsMachineResultAfterFinalAnswer(t *testing.T) {
+	m := newViewTestModel()
+	m.agentRunning = true
+	m.hadFinalAnswerDuringRun = true
+	m.externalInterrupt = &builtin_tools.ExternalInterrupt{
+		ReasonCode:       "provider_quota",
+		Retryable:        false,
+		UserMessage:      "当前 provider 配额已耗尽，本次不会自动重试。",
+		SuggestedActions: []string{"切换到仍有额度的 provider 或 model"},
+	}
+
+	model, _ := m.Update(AgentDoneMsg{
+		Result: &builtin_tools.RunResult{
+			Success: true,
+			Result:  `{"raw":"machine-payload"}`,
+		},
+	})
+	updated := model.(Model)
+
+	var sawMachinePayload bool
+	var sawInterruptNotice bool
+	for _, part := range updated.chat.Parts() {
+		if part.Text != nil && part.Text.Content == `{"raw":"machine-payload"}` {
+			sawMachinePayload = true
+		}
+		if part.System != nil && strings.Contains(part.System.Content, "当前 provider 配额已耗尽，本次不会自动重试。") {
+			sawInterruptNotice = true
+		}
+	}
+	if sawMachinePayload {
+		t.Fatal("did not expect machine payload to be rendered after final answer was already shown")
+	}
+	if !sawInterruptNotice {
+		t.Fatal("expected interrupt notice to be rendered")
 	}
 }

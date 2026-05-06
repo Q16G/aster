@@ -113,6 +113,15 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		References:    references,
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
+	EmitToolRuntimeInfo(ctx, "step result ready", map[string]any{
+		"presentation":   "step_result",
+		"step_id":        strings.TrimSpace(target.ID),
+		"step_name":      strings.TrimSpace(target.Step),
+		"step_status":    status,
+		"display_result": displayResult,
+		"summary":        summary,
+		"error":          errText,
+	})
 	logLevel := "info"
 	logMessage := "current step completed"
 	if status == PlanStepFailed {
