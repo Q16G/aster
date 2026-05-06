@@ -301,7 +301,8 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				finalText = strings.TrimSpace(snapshot.FinalAnswer.PublishedOutput)
 			}
 			if finalText != "" {
-				msg := ai.NewAIMsgInfo(finalText)
+				historyText := truncateForHistory(finalText, strings.TrimSpace(snapshot.FinalAnswer.Source))
+				msg := ai.NewAIMsgInfo(historyText)
 				a.history = append(a.history, msg)
 				a.notifyHistoryAppend(msg)
 			}
@@ -399,17 +400,42 @@ func equalStringSets(aVals, bVals []string) bool {
 }
 
 func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_tools.RunResult {
-	switch snapshot.Status {
-	case builtin_tools.TaskStatusCompleted:
-		if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
+	// Canceled is unconditionally a failure — step results are irrelevant.
+	if snapshot.Status == builtin_tools.TaskStatusCanceled {
+		msg := ""
+		if snapshot.FinalAnswer != nil {
+			msg = strings.TrimSpace(snapshot.FinalAnswer.Content)
+		}
+		if msg == "" {
+			msg = strings.TrimSpace(snapshot.StatusSummary)
+		}
+		if msg == "" {
+			msg = "canceled"
+		}
+		return &builtin_tools.RunResult{Success: false, Error: msg}
+	}
+
+	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
+		// Runtime-forced failures (max iterations, phase errors) set snapshot.Error;
+		// model-assessed failures do not. Only short-circuit on step result when the
+		// runtime has NOT forced a failure.
+		runtimeForcedFail := snapshot.Status == builtin_tools.TaskStatusFailed &&
+			strings.TrimSpace(snapshot.Error) != ""
+		if !runtimeForcedFail && snapshot.ExternalInterrupt == nil {
 			if result, ok := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok {
 				return &builtin_tools.RunResult{Success: true, Result: result}
 			}
+		}
+		if snapshot.Status == builtin_tools.TaskStatusCompleted && snapshot.ExternalInterrupt == nil {
 			return &builtin_tools.RunResult{
 				Success: false,
 				Error:   "result_source=latest_step_result requires non-empty update_current_step.result, but none was produced",
 			}
 		}
+	}
+
+	switch snapshot.Status {
+	case builtin_tools.TaskStatusCompleted:
 		if a.requiresPublishedOutput() {
 			if snapshot.FinalAnswer != nil {
 				published := strings.TrimSpace(snapshot.FinalAnswer.PublishedOutput)

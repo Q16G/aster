@@ -80,6 +80,7 @@ func isolateSnapshot(src *builtin_tools.StateSnapshot) builtin_tools.StateSnapsh
 		out.FinalAnswer = &clone
 	}
 	out.ReplanContext = builtin_tools.CloneReplanContext(src.ReplanContext)
+	out.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(src.ExternalInterrupt)
 	out.ActiveSkillNames = normalizeSkillNames(src.ActiveSkillNames)
 
 	out.Warnings = copyStrings(src.Warnings)
@@ -329,6 +330,14 @@ func (t *StateTracker) SetFinalAnswer(content string, source string) builtin_too
 	return *t.state
 }
 
+func (t *StateTracker) SetExternalInterrupt(info *builtin_tools.ExternalInterrupt) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(info)
+	t.touchLocked()
+	return *t.state
+}
+
 // UpdatePlan 更新计划
 func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation string, needsPlanning bool) builtin_tools.StateSnapshot {
 	_ = strings.TrimSpace(explanation)
@@ -343,6 +352,7 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	t.state.Status = builtin_tools.TaskStatusRunning
 	t.state.Progress = builtin_tools.PlanProgress(plan)
 	t.state.ReplanContext = nil
+	t.state.ExternalInterrupt = nil
 	t.state.CurrentStepID = strings.TrimSpace(t.state.CurrentStepID)
 	if current := (builtin_tools.StateSnapshot{Plan: plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep(); current != nil {
 		t.state.CurrentStepID = strings.TrimSpace(current.ID)
@@ -563,10 +573,11 @@ type finalAnswerPhaseUpdate struct {
 	FinalAnswerReferences []string
 	FinalPublishedOutput  string
 
-	NextGoal      string
-	Warnings      []string
-	Unresolved    []string
-	ReplanContext *builtin_tools.ReplanContext
+	NextGoal          string
+	Warnings          []string
+	Unresolved        []string
+	ReplanContext     *builtin_tools.ReplanContext
+	ExternalInterrupt *builtin_tools.ExternalInterrupt
 }
 
 func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate) builtin_tools.StateSnapshot {
@@ -581,6 +592,7 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 	update.FinalPublishedOutput = strings.TrimSpace(update.FinalPublishedOutput)
 	update.FinalAnswerReferences = normalizeReferences(update.FinalAnswerReferences)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
+	update.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(update.ExternalInterrupt)
 
 	if strings.TrimSpace(string(update.Status)) != "" {
 		t.state.Status = update.Status
@@ -602,6 +614,11 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 		t.state.Warnings = normalizeReferences(append(t.state.Warnings, update.Warnings...))
 	}
 	t.state.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
+	if update.ExternalInterrupt != nil {
+		t.state.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(update.ExternalInterrupt)
+	} else if t.state.Phase == builtin_tools.AgentPhasePlan {
+		t.state.ExternalInterrupt = nil
+	}
 
 	if update.StatusSummary != "" {
 		t.state.StatusSummary = update.StatusSummary

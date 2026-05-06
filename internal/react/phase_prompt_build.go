@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aster/internal/builtin_tools"
 )
 
 func (a *Agent) BuildStepSummaryPrompt(payload map[string]any) (string, error) {
@@ -46,16 +48,27 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 	if a == nil || a.promptManager == nil {
 		return "", fmt.Errorf("final answer prompt manager is nil")
 	}
+	snap := a.state.Snapshot()
 	showPlanSection, _ := payload["show_plan"].(bool)
 	publish := a.currentFinalAnswerPublishConfig()
 	publishedOutputRequired := publish != nil && publish.Strict && publish.Contract != nil
 	publishedOutputName := ""
 	publishedOutputSchema := ""
 	publishedOutputExample := ""
+	hasSummaryPolicy := false
+	summaryPolicyName := ""
+	summaryPolicyDetail := ""
 	if publish != nil && publish.Contract != nil {
 		publishedOutputName = strings.TrimSpace(publish.Contract.Name)
 		publishedOutputSchema = strings.TrimSpace(publish.Contract.Schema)
 		publishedOutputExample = strings.TrimSpace(publish.Contract.Example)
+	}
+	if a.cfg != nil {
+		if contract := a.lookupFinalAnswerOutputContract(snap); contract != nil && strings.TrimSpace(contract.SummaryPolicy) != "" {
+			hasSummaryPolicy = true
+			summaryPolicyName = strings.TrimSpace(contract.Name)
+			summaryPolicyDetail = strings.TrimSpace(contract.SummaryPolicy)
+		}
 	}
 	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
 		Status:                  payload["status"],
@@ -67,11 +80,53 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 		StepOutcomes:            payload["step_outcomes"],
 		Warnings:                payload["warnings"],
 		Unresolved:              payload["unresolved"],
+		HasSummaryPolicy:        hasSummaryPolicy,
+		SummaryPolicyName:       summaryPolicyName,
+		SummaryPolicyDetail:     summaryPolicyDetail,
 		PublishedOutputRequired: publishedOutputRequired,
 		PublishedOutputName:     publishedOutputName,
 		PublishedOutputSchema:   publishedOutputSchema,
 		PublishedOutputExample:  publishedOutputExample,
 	})
+}
+
+func (a *Agent) lookupFinalAnswerOutputContract(snapshot builtin_tools.StateSnapshot) *builtin_tools.OutputContract {
+	if a == nil || a.cfg == nil {
+		return nil
+	}
+
+	candidates := make([]string, 0, len(snapshot.Plan)+2)
+	if name := strings.TrimSpace(a.currentPublishContract); name != "" {
+		candidates = append(candidates, name)
+	}
+	if currentStep := snapshot.CurrentStep(); currentStep != nil {
+		if name := strings.TrimSpace(currentStep.OutputContractRef); name != "" {
+			candidates = append(candidates, name)
+		}
+	}
+	for _, item := range snapshot.Plan {
+		if item == nil {
+			continue
+		}
+		if name := strings.TrimSpace(item.OutputContractRef); name != "" {
+			candidates = append(candidates, name)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(candidates))
+	for _, name := range candidates {
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		if contract := a.cfg.LookupOutputContract(name); contract != nil {
+			return contract
+		}
+	}
+	return nil
 }
 
 func (a *Agent) BuildReducerPrompt(payload map[string]any) (string, error) {

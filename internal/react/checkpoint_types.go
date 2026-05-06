@@ -31,18 +31,19 @@ type planCurrentCheckpoint struct {
 }
 
 type assessedStatePayload struct {
-	Status           builtin_tools.TaskStatus       `json:"status,omitempty"`
-	StateError       string                         `json:"state_error,omitempty"`
-	InputTimeline    []*builtin_tools.TimelineInput `json:"input_timeline,omitempty"`
-	NeedsPlanning    bool                           `json:"needs_planning,omitempty"`
-	Plan             []*builtin_tools.PlanItem      `json:"plan,omitempty"`
-	PlanVersion      int                            `json:"plan_version,omitempty"`
-	StepOutcomes     []*builtin_tools.StepOutcome   `json:"step_outcomes,omitempty"`
-	Warnings         []string                       `json:"warnings,omitempty"`
-	Unresolved       []string                       `json:"unresolved,omitempty"`
-	ReplanContext    *builtin_tools.ReplanContext   `json:"replan_context,omitempty"`
-	ActiveSkillNames []string                       `json:"active_skill_names,omitempty"`
-	ActiveMCPServers []string                       `json:"active_mcp_servers,omitempty"`
+	Status            builtin_tools.TaskStatus         `json:"status,omitempty"`
+	StateError        string                           `json:"state_error,omitempty"`
+	InputTimeline     []*builtin_tools.TimelineInput   `json:"input_timeline,omitempty"`
+	NeedsPlanning     bool                             `json:"needs_planning,omitempty"`
+	Plan              []*builtin_tools.PlanItem        `json:"plan,omitempty"`
+	PlanVersion       int                              `json:"plan_version,omitempty"`
+	StepOutcomes      []*builtin_tools.StepOutcome     `json:"step_outcomes,omitempty"`
+	ExternalInterrupt *builtin_tools.ExternalInterrupt `json:"external_interrupt,omitempty"`
+	Warnings          []string                         `json:"warnings,omitempty"`
+	Unresolved        []string                         `json:"unresolved,omitempty"`
+	ReplanContext     *builtin_tools.ReplanContext     `json:"replan_context,omitempty"`
+	ActiveSkillNames  []string                         `json:"active_skill_names,omitempty"`
+	ActiveMCPServers  []string                         `json:"active_mcp_servers,omitempty"`
 }
 
 type FinalAssessmentArtifact struct {

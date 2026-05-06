@@ -53,6 +53,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 		switch phase {
 		case builtin_tools.AgentPhasePlan:
 			if err := a.runPlanPhase(ctx, extraText, taskContext); err != nil {
+				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
 				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
@@ -61,6 +62,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			}
 		case builtin_tools.AgentPhaseStep:
 			if err := a.runStepPhase(ctx, iter, runClient, extraText, taskContext); err != nil {
+				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
 				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
@@ -69,6 +71,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			}
 		case builtin_tools.AgentPhaseStepSummary:
 			if err := a.runStepSummaryPhase(ctx, iter, runClient); err != nil {
+				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
 				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
@@ -365,7 +368,7 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, intent *Inte
 				StepID:        strings.TrimSpace(outcome.StepID),
 				Status:        strings.TrimSpace(string(outcome.Status)),
 				UpdatedAt:     outcome.UpdatedAt.Format(time.RFC3339),
-				ShortSummary:  truncateByRunes(short, 400),
+				ShortSummary:  short,
 				KeyFacts:      cloneAndTruncateStrings(outcome.KeyFacts, 20, 240),
 				OpenQuestions: cloneAndTruncateStrings(outcome.OpenQuestions, 12, 240),
 				References:    builtin_tools.CloneStringSlice(outcome.References),
@@ -587,6 +590,15 @@ func normalizeRuntimeErrorText(err error) string {
 		}
 	}
 	return strings.TrimSpace(err.Error())
+}
+
+func (a *Agent) prepareTerminalInterrupt(err error) {
+	if a == nil || a.state == nil {
+		return
+	}
+	if info := classifyExternalInterrupt(err); info != nil {
+		_ = a.state.SetExternalInterrupt(info)
+	}
 }
 
 func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatClient, extraText string, taskContext *TaskContextData) error {

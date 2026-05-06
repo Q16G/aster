@@ -210,6 +210,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		snapshot.Plan = payload.Plan
 		snapshot.PlanVersion = payload.PlanVersion
 		snapshot.StepOutcomes = payload.StepOutcomes
+		snapshot.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(payload.ExternalInterrupt)
 		snapshot.Warnings = payload.Warnings
 		snapshot.Unresolved = payload.Unresolved
 		snapshot.ReplanContext = builtin_tools.CloneReplanContext(payload.ReplanContext)
