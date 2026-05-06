@@ -8,28 +8,30 @@ import (
 type PartType string
 
 const (
-	PartTypeUser     PartType = "user"
-	PartTypeText     PartType = "text"
-	PartTypeTool     PartType = "tool"
-	PartTypePlan     PartType = "plan"
-	PartTypeSystem   PartType = "system"
-	PartTypeThinking PartType = "thinking"
-	PartTypeSummary      PartType = "summary"
-	PartTypeStepSummary  PartType = "step_summary"
-	PartTypeFinalAnswer  PartType = "final_answer"
+	PartTypeUser        PartType = "user"
+	PartTypeText        PartType = "text"
+	PartTypeTool        PartType = "tool"
+	PartTypePlan        PartType = "plan"
+	PartTypeSystem      PartType = "system"
+	PartTypeThinking    PartType = "thinking"
+	PartTypeSummary     PartType = "summary"
+	PartTypeStepResult  PartType = "step_result"
+	PartTypeStepSummary PartType = "step_summary"
+	PartTypeFinalAnswer PartType = "final_answer"
 )
 
 type DisplayPart struct {
 	Type PartType  `json:"type"`
 	Time time.Time `json:"time"`
 
-	User     *UserPart     `json:"user,omitempty"`
-	Text     *TextPart     `json:"text,omitempty"`
-	Tool     *ToolPart     `json:"tool,omitempty"`
-	Plan     *PlanPart     `json:"plan,omitempty"`
-	System   *SystemPart   `json:"system,omitempty"`
-	Thinking *ThinkingPart `json:"thinking,omitempty"`
+	User        *UserPart        `json:"user,omitempty"`
+	Text        *TextPart        `json:"text,omitempty"`
+	Tool        *ToolPart        `json:"tool,omitempty"`
+	Plan        *PlanPart        `json:"plan,omitempty"`
+	System      *SystemPart      `json:"system,omitempty"`
+	Thinking    *ThinkingPart    `json:"thinking,omitempty"`
 	Summary     *SummaryPart     `json:"summary,omitempty"`
+	StepResult  *StepResultPart  `json:"step_result,omitempty"`
 	StepSummary *StepSummaryPart `json:"step_summary,omitempty"`
 	FinalAnswer *FinalAnswerPart `json:"final_answer,omitempty"`
 }
@@ -77,6 +79,15 @@ type SummaryPart struct {
 	ModelID   string        `json:"model_id"`
 	Duration  time.Duration `json:"duration"`
 	Success   bool          `json:"success"`
+}
+
+type StepResultPart struct {
+	StepID        string `json:"step_id,omitempty"`
+	StepName      string `json:"step_name,omitempty"`
+	Status        string `json:"status,omitempty"`
+	DisplayResult string `json:"display_result,omitempty"`
+	Summary       string `json:"summary,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 type StepSummaryPart struct {

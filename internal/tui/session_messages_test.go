@@ -175,3 +175,28 @@ func TestMergeRecoveryParts(t *testing.T) {
 		t.Fatalf("unexpected merged part: %+v", merged[1])
 	}
 }
+
+func TestMergeRecoveryPartsRestoresStepResult(t *testing.T) {
+	existing := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "hello"}},
+	}
+	recovery := []persistedPart{
+		{
+			Type:    "step_result",
+			Name:    "step-5",
+			Time:    time.Unix(20, 0),
+			Content: `{"step_id":"step-5","step_name":"输出结果","status":"completed","display_result":"已输出 Markdown 标准报告"}`,
+		},
+	}
+
+	merged := mergeRecoveryParts(existing, recovery)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 parts after merge, got %d", len(merged))
+	}
+	if merged[1].Type != PartTypeStepResult || merged[1].StepResult == nil {
+		t.Fatalf("unexpected recovered step result part: %+v", merged[1])
+	}
+	if merged[1].StepResult.DisplayResult != "已输出 Markdown 标准报告" {
+		t.Fatalf("unexpected step result content: %+v", merged[1].StepResult)
+	}
+}

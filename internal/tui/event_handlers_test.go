@@ -94,3 +94,73 @@ func TestHandleAgentEventStateChangeDoesNotOverrideRetryLabel(t *testing.T) {
 		t.Fatalf("expected retry label to start with %q, got %q", want, label)
 	}
 }
+
+func TestHandleAgentEventStateChangeTracksExternalInterrupt(t *testing.T) {
+	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeStateChange,
+		Payload: map[string]any{
+			"status_summary": "正在收尾",
+			"external_interrupt": map[string]any{
+				"reason_code":       "provider_quota",
+				"retryable":         false,
+				"error":             "HTTP 429: insufficient_quota",
+				"user_message":      "当前 provider 配额已耗尽，本次不会自动重试。",
+				"suggested_actions": []any{"切换到仍有额度的 provider 或 model"},
+			},
+		},
+	})
+
+	if m.externalInterrupt == nil {
+		t.Fatal("expected external interrupt to be captured")
+	}
+	if m.externalInterrupt.ReasonCode != "provider_quota" || m.externalInterrupt.Retryable {
+		t.Fatalf("unexpected external interrupt: %#v", m.externalInterrupt)
+	}
+}
+
+func TestHandleAgentEventToolUpdateAddsStepResultPart(t *testing.T) {
+	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeToolUpdate,
+		Payload: map[string]any{
+			"tool_name":      "update_current_step",
+			"presentation":   "step_result",
+			"step_id":        "step-5",
+			"step_name":      "输出结果",
+			"step_status":    "completed",
+			"display_result": "已输出 Markdown 标准报告",
+		},
+	})
+
+	parts := m.chat.Parts()
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 chat part, got %d", len(parts))
+	}
+	if parts[0].Type != PartTypeStepResult || parts[0].StepResult == nil {
+		t.Fatalf("expected step result part, got %+v", parts[0])
+	}
+	if parts[0].StepResult.DisplayResult != "已输出 Markdown 标准报告" {
+		t.Fatalf("unexpected step result content: %+v", parts[0].StepResult)
+	}
+}
+
+func TestHandleAgentEventFinalAnswerShowsFullContentByDefault(t *testing.T) {
+	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m.chat.SetSize(100, 20)
+	content := strings.Repeat("A", 70) + "TAIL-XYZ"
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeFinalAnswerResult,
+		Payload: map[string]any{
+			"content": content,
+			"source":  "final_assessment",
+		},
+	})
+
+	view := m.chat.View()
+	if !strings.Contains(view, "TAIL-XYZ") {
+		t.Fatalf("expected final answer full content in default view, got %q", view)
+	}
+}
