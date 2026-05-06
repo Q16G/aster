@@ -286,7 +286,7 @@ func TestParseStreamResponse_PreservesReasoningContent(t *testing.T) {
 	}
 }
 
-func TestParseStreamResponse_RejectsNonSSEJSONBody(t *testing.T) {
+func TestParseStreamResponse_RejectsNonSSEBody(t *testing.T) {
 	client := NewClient(
 		WithURL("https://example.com/v1"),
 		WithModel("gpt-4o-mini"),
@@ -296,10 +296,62 @@ func TestParseStreamResponse_RejectsNonSSEJSONBody(t *testing.T) {
 	body := `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`
 	_, _, err := client.ParseStreamResponse(strings.NewReader(body))
 	if err == nil {
-		t.Fatalf("expected parseStreamResponse to reject non-sse json body")
+		t.Fatalf("expected error for non-SSE JSON body")
 	}
-	if !strings.Contains(err.Error(), "missing data prefix") {
-		t.Fatalf("expected missing data prefix error, got %v", err)
+	if !strings.Contains(err.Error(), "unrecognized non-data content") {
+		t.Fatalf("expected unrecognized content error, got: %v", err)
+	}
+}
+
+func TestParseStreamResponse_RejectsEmptyStream(t *testing.T) {
+	client := NewClient(
+		WithURL("https://example.com/v1"),
+		WithModel("gpt-4o-mini"),
+		WithStream(true),
+	)
+
+	body := strings.Join([]string{
+		": keepalive",
+		"event: ping",
+		"",
+	}, "\n")
+	_, _, err := client.ParseStreamResponse(strings.NewReader(body))
+	if err == nil {
+		t.Fatalf("expected error when stream has no data payload")
+	}
+	if !strings.Contains(err.Error(), "no data payload") {
+		t.Fatalf("expected 'no data payload' error, got: %v", err)
+	}
+}
+
+func TestParseStreamResponse_SSEStandardFieldsCompat(t *testing.T) {
+	client := NewClient(
+		WithURL("https://example.com/v1"),
+		WithModel("gpt-4o-mini"),
+		WithStream(true),
+	)
+
+	body := strings.Join([]string{
+		": heartbeat",
+		"event: message",
+		"id: evt-001",
+		"retry: 3000",
+		`data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"hello"}}]}`,
+		`data: {"choices":[{"index":0,"delta":{"content":" world"},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+
+	choices, _, err := client.ParseStreamResponse(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("SSE standard fields should be skipped, got error: %v", err)
+	}
+	if len(choices) == 0 {
+		t.Fatalf("expected choices")
+	}
+	content := choices[0].Message.Content
+	if content != "hello world" {
+		t.Fatalf("expected 'hello world', got %q", content)
 	}
 }
 

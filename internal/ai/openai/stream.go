@@ -21,6 +21,7 @@ func (c *Client) ParseStreamResponse(body io.Reader) ([]*ai.ChatChoices, time.Du
 	var aggregatedUsage *ai.TokenUsage
 	debugRawSSE := rawSSEDebugEnabled()
 	lineNo := 0
+	seenDataLine := false
 
 	for scanner.Scan() {
 		lineNo++
@@ -33,8 +34,12 @@ func (c *Client) ParseStreamResponse(body io.Reader) ([]*ai.ChatChoices, time.Du
 			continue
 		}
 		if !strings.HasPrefix(line, "data:") {
-			return nil, 0, fmt.Errorf("invalid sse line %d: missing data prefix", lineNo)
+			if isStandardSSEField(line) {
+				continue
+			}
+			return nil, 0, fmt.Errorf("invalid sse line %d: unrecognized non-data content", lineNo)
 		}
+		seenDataLine = true
 
 		data := line
 		if strings.HasPrefix(line, "data: ") {
@@ -112,6 +117,10 @@ func (c *Client) ParseStreamResponse(body io.Reader) ([]*ai.ChatChoices, time.Du
 		return nil, 0, err
 	}
 
+	if !seenDataLine && len(choicesMap) == 0 {
+		return nil, 0, fmt.Errorf("sse stream contained no data payload")
+	}
+
 	if c.config.StreamFunc != nil {
 		c.config.StreamFunc(&StreamEvent{Done: true})
 	}
@@ -155,6 +164,22 @@ func (c *Client) ParseStreamResponse(body io.Reader) ([]*ai.ChatChoices, time.Du
 	}
 
 	return choices, 0, nil
+}
+
+func isStandardSSEField(line string) bool {
+	if strings.HasPrefix(line, ":") {
+		return true
+	}
+	if strings.HasPrefix(line, "event:") {
+		return true
+	}
+	if strings.HasPrefix(line, "id:") {
+		return true
+	}
+	if strings.HasPrefix(line, "retry:") {
+		return true
+	}
+	return false
 }
 
 func rawSSEDebugEnabled() bool {
