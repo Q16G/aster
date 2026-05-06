@@ -59,6 +59,20 @@ type AgentConfig struct {
 
 	// BashTool 可选：bash 工具配置。非 nil 时 NewReActAgent 在内部注册 BashTool。
 	BashTool *BashToolConfig
+
+	// OutputContracts 按名称索引的 step output contract 定义。
+	OutputContracts map[string]*builtin_tools.OutputContract
+}
+
+func (c *AgentConfig) LookupOutputContract(name string) *builtin_tools.OutputContract {
+	if c == nil || len(c.OutputContracts) == 0 {
+		return nil
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	return c.OutputContracts[name]
 }
 
 // Option Agent 配置选项

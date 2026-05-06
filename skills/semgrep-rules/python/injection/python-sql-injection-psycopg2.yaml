@@ -1,0 +1,21 @@
+rules:
+  - id: python-sql-injection-psycopg2
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute($INPUT)
+          - pattern: $CURSOR.executemany($INPUT, ...)
+      - pattern-not: $CURSOR.execute("...", ...)
+      - pattern-not: $CURSOR.execute("..." % ...)
+    message: >
+      SQL injection via psycopg2 execute(). Passing user-controlled
+      strings directly to cursor.execute() without parameterization
+      enables SQL injection against PostgreSQL. Use parameterized
+      queries: cursor.execute('SELECT * FROM t WHERE id = %s', (input,))
+      with the tuple-based binding syntax.
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

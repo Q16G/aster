@@ -1,0 +1,22 @@
+rules:
+  - id: go-template-injection-text
+    patterns:
+      - pattern-either:
+          - pattern: template.New($NAME).Parse($INPUT)
+          - pattern: |
+              $T, $ERR := template.New($NAME).Parse($INPUT)
+          - pattern: |
+              $T := template.Must(template.New($NAME).Parse($INPUT))
+    message: >
+      text/template injection. Constructing Go text/template from user
+      input allows arbitrary method calls on data objects via template
+      directives ({{.Method}}). Unlike html/template, text/template
+      performs no escaping. Pre-compile templates from trusted sources
+      and only pass user data as template context values.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

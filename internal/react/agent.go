@@ -53,6 +53,7 @@ type Agent struct {
 	workspaceNamespace        string
 	frozenLineageByStep       map[string]*frozenStepLineage
 	currentResultSource       ResultSource
+	currentPublishContract    string
 	currentFinalAnswerPublish *FinalAnswerPublishConfig
 	workspaceRuntime          builtin_tools.WorkspaceRuntime
 	currentIntent             *IntentDecision
@@ -126,7 +127,11 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	}
 
 	// 平台级内置工具：状态回写和人工确认，所有 Agent 共享。
-	if err := agent.registerTool(builtin_tools.NewUpdateCurrentStepTool(agent)); err != nil {
+	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
+	ucsTool.ContractLookup = func(name string) *builtin_tools.OutputContract {
+		return agent.cfg.LookupOutputContract(name)
+	}
+	if err := agent.registerTool(ucsTool); err != nil {
 		return nil, err
 	}
 	if err := agent.registerTool(builtin_tools.NewTaskStatusQueryTool(agent)); err != nil {

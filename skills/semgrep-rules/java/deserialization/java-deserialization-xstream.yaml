@@ -1,0 +1,35 @@
+rules:
+  - id: java-deserialization-xstream
+    patterns:
+      - pattern-either:
+          - pattern: new XStream().fromXML($INPUT)
+          - pattern: |
+              XStream $XS = new XStream();
+              ...
+              $XS.fromXML($INPUT);
+          - pattern: new XStream($DRIVER).fromXML($INPUT)
+      - pattern-not: |
+          XStream $XS = new XStream();
+          ...
+          $XS.addPermission(...);
+          ...
+          $XS.fromXML($INPUT);
+      - pattern-not: |
+          XStream $XS = new XStream();
+          ...
+          $XS.allowTypes(...);
+          ...
+          $XS.fromXML($INPUT);
+    message: >
+      Unsafe XStream deserialization without type restrictions. XStream
+      can instantiate arbitrary classes from XML, enabling remote code
+      execution via gadget chains. Use XStream.addPermission() or
+      allowTypes() to restrict deserializable types. CVE-2021-21344
+      through CVE-2021-21351 exploit this pattern.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]

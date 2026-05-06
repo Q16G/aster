@@ -1,4 +1,13 @@
 .idea/
 *.md
 !README.md
+!skills/**/SKILL.md
 .ace-tool/
+aster
+.DS_Store
+*.db
+*.sqlite
+.env
+.env.*
+dist/
+tmp/

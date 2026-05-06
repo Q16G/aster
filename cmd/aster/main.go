@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -14,6 +15,7 @@ import (
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/react"
+	"aster/internal/runtimelog"
 	"aster/internal/service"
 	"aster/internal/tui"
 	tuicontext "aster/internal/tui/context"
@@ -29,9 +31,10 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   tui.AppCLIName,
-		Short: "ASTER - General-purpose agent TUI",
-		RunE:  runTUI,
+		Use:     tui.AppCLIName,
+		Short:   "ASTER - General-purpose agent TUI",
+		Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, BuildTime),
+		RunE:    runTUI,
 	}
 
 	f := rootCmd.Flags()
@@ -61,8 +64,14 @@ func main() {
 func runTUI(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
+	runtimelog.SetOutput(io.Discard)
+
 	if err := tui.EnsureAppDefaults(); err != nil {
 		return fmt.Errorf("init defaults: %w", err)
+	}
+
+	if _, err := semgrep_rules.ExtractRulesDir(); err != nil {
+		return fmt.Errorf("extract semgrep rules: %w", err)
 	}
 
 	appCfg, err := tui.LoadConfig(tui.DefaultConfigPath())
@@ -207,7 +216,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, appCfg, providerCfg, syncStore)
 
-	p := tea.NewProgram(&appModel, tea.WithAltScreen())
+	p := tea.NewProgram(&appModel)
 
 	syncStore.SetFlushCallback(func(events []any) {
 		tuiEvents := make([]tui.TuiEvent, 0, len(events))

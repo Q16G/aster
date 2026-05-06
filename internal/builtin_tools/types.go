@@ -60,12 +60,23 @@ const (
 	PlanStepSkipped    PlanStepStatus = "skipped"
 )
 
+// OutputContract 定义一个 step 的结构化输出契约。
+// 由 Profile / Skill 声明，PlanItem 通过 OutputContractRef 引用。
+type OutputContract struct {
+	Name          string `json:"name" yaml:"name"`
+	Schema        string `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Example       string `json:"example,omitempty" yaml:"example,omitempty"`
+	Validate      string `json:"validate,omitempty" yaml:"validate,omitempty"`
+	SummaryPolicy string `json:"summary_policy,omitempty" yaml:"summary_policy,omitempty"`
+}
+
 // PlanItem 计划项
 type PlanItem struct {
 	ID                string         `json:"id,omitempty"`
 	Step              string         `json:"step"`
 	Status            PlanStepStatus `json:"status,omitempty"`
 	DependsOn         []string       `json:"depends_on,omitempty"`
+	OutputContractRef string         `json:"output_contract_ref,omitempty"`
 	ResolvedDependsOn []*PlanItem    `json:"-"`
 }
 

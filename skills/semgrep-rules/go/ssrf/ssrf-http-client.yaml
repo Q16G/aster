@@ -1,0 +1,28 @@
+rules:
+  - id: go-ssrf-http-client
+    patterns:
+      - pattern-either:
+          - pattern: http.DefaultClient.Do($REQ)
+          - pattern: |
+              $CLIENT := &http.Client{...}
+              ...
+              $CLIENT.Do($REQ)
+          - pattern: |
+              $CLIENT.Get($URL)
+          - pattern: |
+              $CLIENT.Post($URL, ...)
+          - pattern: |
+              $CLIENT.PostForm($URL, ...)
+    message: >
+      HTTP client request with potentially user-controlled URL. Without
+      URL validation, an attacker can make the server request internal
+      services (cloud metadata, internal APIs) via SSRF. Validate URLs
+      against an allowlist, block private/reserved IP ranges, and
+      consider using a custom Transport with DialContext restrictions.
+    metadata:
+      cwe: CWE-918
+      owasp: "A10:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

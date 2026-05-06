@@ -1,0 +1,26 @@
+rules:
+  - id: go-sql-injection-gorm
+    patterns:
+      - pattern-either:
+          - pattern: $DB.Where($INPUT).Find(...)
+          - pattern: $DB.Raw($INPUT, ...).Scan(...)
+          - pattern: $DB.Exec($INPUT, ...)
+          - pattern: $DB.Order($INPUT).Find(...)
+          - pattern: $DB.Group($INPUT).Find(...)
+          - pattern: $DB.Having($INPUT).Find(...)
+          - pattern: $DB.Select($INPUT).Find(...)
+      - pattern-not: $DB.Where("...", ...).Find(...)
+      - pattern-not: $DB.Raw("...", ...).Scan(...)
+      - pattern-not: $DB.Exec("...", ...)
+    message: >
+      SQL injection via GORM. Passing user-controlled strings directly
+      to Where(), Raw(), Exec(), Order(), Group(), Having(), or Select()
+      without parameterization allows SQL injection. Use parameterized
+      queries: db.Where("name = ?", input) instead of string concatenation.
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

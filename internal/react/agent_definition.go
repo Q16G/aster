@@ -1,20 +1,24 @@
 package react
 
-import "aster/internal/mcp"
+import (
+	"aster/internal/builtin_tools"
+	"aster/internal/mcp"
+)
 
 // AgentDefinition is the declarative specification for an Agent.
 // Different agents are expressed as different definitions, not different runtimes.
 type AgentDefinition struct {
-	Name        string
-	Role        string
-	Background  string
-	Instruction string
-	ModelID     string
-	ToolNames   []string
-	SkillNames  []string
-	MCPServers  []*mcp.MCPServerConfig
-	Policies    AgentPolicies
-	Context     []TaskContextEntry
+	Name            string
+	Role            string
+	Background      string
+	Instruction     string
+	ModelID         string
+	ToolNames       []string
+	SkillNames      []string
+	MCPServers      []*mcp.MCPServerConfig
+	Policies        AgentPolicies
+	Context         []TaskContextEntry
+	OutputContracts map[string]*builtin_tools.OutputContract
 }
 
 // AgentPolicies controls runtime behavior boundaries.
@@ -23,6 +27,7 @@ type AgentPolicies struct {
 	AllowBash               bool
 	BashPermissionContext   *BashToolConfig
 	ResultSource            ResultSource
+	PublishContract         string
 	EnableHistoryCompaction bool
 }
 

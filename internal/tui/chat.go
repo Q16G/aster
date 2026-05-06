@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -534,7 +535,11 @@ func (m *ChatModel) renderFinalAnswerPart(idx int, part DisplayPart, maxWidth in
 
 	if !expanded {
 		summary := "answer"
-		summary += ": " + truncateDisplayWidth(fa.Content, 60)
+		if fa.Source == "step_result" {
+			summary += ": " + summarizeStepResultForCollapsed(fa.Content, 60)
+		} else {
+			summary += ": " + truncateDisplayWidth(fa.Content, 60)
+		}
 		style := lipgloss.NewStyle().Foreground(color)
 		if selected {
 			style = style.Bold(true)
@@ -559,7 +564,12 @@ func (m *ChatModel) renderFinalAnswerPart(idx int, part DisplayPart, maxWidth in
 		BorderForeground(borderColor).
 		PaddingLeft(1).
 		Width(maxWidth)
-	return headerStyle.Render(header) + "\n" + style.Render(wrapText(fa.Content, maxWidth-4))
+
+	displayContent := fa.Content
+	if fa.Source == "step_result" {
+		displayContent = prettyPrintJSON(displayContent)
+	}
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(displayContent, maxWidth-4))
 }
 
 func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) string {
@@ -721,5 +731,44 @@ func wrapText(s string, maxWidth int) string {
 func truncateOneLine(s string, maxWidth int) string {
 	s = strings.Split(s, "\n")[0]
 	return truncateDisplayWidth(s, maxWidth)
+}
+
+func summarizeStepResultForCollapsed(content string, maxWidth int) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "(empty)"
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		return truncateDisplayWidth(content, maxWidth)
+	}
+	var parts []string
+	if total, ok := parsed["total_findings"]; ok {
+		parts = append(parts, fmt.Sprintf("%v findings", total))
+	}
+	if sc, ok := parsed["severity_counts"]; ok {
+		if m, ok := sc.(map[string]any); ok {
+			for k, v := range m {
+				parts = append(parts, fmt.Sprintf("%v %s", v, k))
+			}
+		}
+	}
+	if len(parts) > 0 {
+		return truncateDisplayWidth(strings.Join(parts, ", "), maxWidth)
+	}
+	return truncateDisplayWidth(content, maxWidth)
+}
+
+func prettyPrintJSON(s string) string {
+	s = strings.TrimSpace(s)
+	var parsed any
+	if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+		return s
+	}
+	pretty, err := json.MarshalIndent(parsed, "", "  ")
+	if err != nil {
+		return s
+	}
+	return string(pretty)
 }
 
