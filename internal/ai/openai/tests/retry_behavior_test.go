@@ -356,6 +356,43 @@ func TestChatEx_DoesNotRetryInsufficientQuota(t *testing.T) {
 	}
 }
 
+func TestBuildRetryDecision_ProvidesQuotaGuidance(t *testing.T) {
+	decision := BuildRetryDecision(&HTTPError{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       `{"error":{"message":"insufficient quota","code":"insufficient_quota","type":"insufficient_quota"}}`,
+	}, nil)
+
+	if decision.Retry {
+		t.Fatalf("expected non-retryable quota decision, got %#v", decision)
+	}
+	if decision.ReasonCode != RetryReasonProviderQuota {
+		t.Fatalf("expected provider quota reason code, got %#v", decision)
+	}
+	if !strings.Contains(decision.UserMessage, "不会自动重试") {
+		t.Fatalf("expected user guidance, got %#v", decision)
+	}
+	if len(decision.SuggestedActions) == 0 {
+		t.Fatalf("expected suggested actions, got %#v", decision)
+	}
+}
+
+func TestBuildRetryDecision_ProvidesRateLimitReasonCode(t *testing.T) {
+	decision := BuildRetryDecision(&HTTPError{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       `{"error":{"message":"Too many requests","code":"rate_limit_exceeded","type":"rate_limit_error"}}`,
+	}, nil)
+
+	if !decision.Retry {
+		t.Fatalf("expected retryable rate limit decision, got %#v", decision)
+	}
+	if decision.ReasonCode != RetryReasonRateLimit {
+		t.Fatalf("expected rate limit reason code, got %#v", decision)
+	}
+	if decision.Message != "Too Many Requests" {
+		t.Fatalf("expected retry banner message, got %#v", decision)
+	}
+}
+
 func TestChatEx_UsesRetryCallbackForRateLimit(t *testing.T) {
 	transport := &retryRoundTripper{
 		steps: []retryRoundTripStep{
