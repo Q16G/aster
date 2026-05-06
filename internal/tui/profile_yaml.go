@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/react"
 
@@ -14,21 +15,31 @@ import (
 )
 
 type ProfileYAML struct {
-	Name        string                 `yaml:"name"`
-	Role        string                 `yaml:"role,omitempty"`
-	Background  string                 `yaml:"background,omitempty"`
-	Instruction string                 `yaml:"instruction,omitempty"`
-	ModelID     string                 `yaml:"model_id,omitempty"`
-	SkillNames  []string               `yaml:"skill_names,omitempty"`
-	ToolNames   []string               `yaml:"tool_names,omitempty"`
-	Policies    *ProfilePoliciesYAML   `yaml:"policies,omitempty"`
-	MCPServers  []ProfileMCPServerYAML `yaml:"mcp_servers,omitempty"`
+	Name            string                                `yaml:"name"`
+	Role            string                                `yaml:"role,omitempty"`
+	Background      string                                `yaml:"background,omitempty"`
+	Instruction     string                                `yaml:"instruction,omitempty"`
+	ModelID         string                                `yaml:"model_id,omitempty"`
+	SkillNames      []string                              `yaml:"skill_names,omitempty"`
+	ToolNames       []string                              `yaml:"tool_names,omitempty"`
+	Policies        *ProfilePoliciesYAML                  `yaml:"policies,omitempty"`
+	MCPServers      []ProfileMCPServerYAML                `yaml:"mcp_servers,omitempty"`
+	OutputContracts map[string]*ProfileOutputContractYAML `yaml:"output_contracts,omitempty"`
 }
 
 type ProfilePoliciesYAML struct {
-	MaxIterations           *int  `yaml:"max_iterations,omitempty"`
-	AllowBash               *bool `yaml:"allow_bash,omitempty"`
-	EnableHistoryCompaction *bool `yaml:"enable_history_compaction,omitempty"`
+	MaxIterations           *int    `yaml:"max_iterations,omitempty"`
+	AllowBash               *bool   `yaml:"allow_bash,omitempty"`
+	EnableHistoryCompaction *bool   `yaml:"enable_history_compaction,omitempty"`
+	ResultSource            *string `yaml:"result_source,omitempty"`
+	PublishContract         *string `yaml:"publish_contract,omitempty"`
+}
+
+type ProfileOutputContractYAML struct {
+	Schema        string `yaml:"schema,omitempty"`
+	Example       string `yaml:"example,omitempty"`
+	Validate      string `yaml:"validate,omitempty"`
+	SummaryPolicy string `yaml:"summary_policy,omitempty"`
 }
 
 type ProfileMCPServerYAML struct {
@@ -126,6 +137,12 @@ func (r *ProfileRegistry) MergeYAML(p ProfileYAML) {
 		if p.Policies.EnableHistoryCompaction != nil {
 			existing.Policies.EnableHistoryCompaction = *p.Policies.EnableHistoryCompaction
 		}
+		if p.Policies.ResultSource != nil {
+			existing.Policies.ResultSource = react.ResultSource(*p.Policies.ResultSource)
+		}
+		if p.Policies.PublishContract != nil {
+			existing.Policies.PublishContract = *p.Policies.PublishContract
+		}
 	}
 
 	if len(p.MCPServers) > 0 {
@@ -141,6 +158,20 @@ func (r *ProfileRegistry) MergeYAML(p ProfileYAML) {
 			})
 		}
 		existing.MCPServers = configs
+	}
+
+	if len(p.OutputContracts) > 0 {
+		contracts := make(map[string]*builtin_tools.OutputContract, len(p.OutputContracts))
+		for name, c := range p.OutputContracts {
+			contracts[name] = &builtin_tools.OutputContract{
+				Name:          name,
+				Schema:        c.Schema,
+				Example:       c.Example,
+				Validate:      c.Validate,
+				SummaryPolicy: c.SummaryPolicy,
+			}
+		}
+		existing.OutputContracts = contracts
 	}
 
 	if !found {

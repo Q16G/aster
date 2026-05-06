@@ -1,0 +1,24 @@
+rules:
+  - id: java-log4j-jndi-injection
+    patterns:
+      - pattern-either:
+          - pattern: org.apache.logging.log4j.Logger $LOG = ...; ... $LOG.info($INPUT);
+          - pattern: org.apache.logging.log4j.Logger $LOG = ...; ... $LOG.error($INPUT);
+          - pattern: org.apache.logging.log4j.Logger $LOG = ...; ... $LOG.warn($INPUT);
+          - pattern: org.apache.logging.log4j.Logger $LOG = ...; ... $LOG.debug($INPUT);
+          - pattern: org.apache.logging.log4j.Logger $LOG = ...; ... $LOG.fatal($INPUT);
+          - pattern: $LOG.info($INPUT)
+          - pattern: $LOG.error($INPUT)
+    message: >
+      User-controlled input passed directly to Log4j logging methods.
+      In Log4j2 < 2.17.0, message strings containing ${jndi:ldap://...}
+      trigger JNDI lookups leading to remote code execution (CVE-2021-44228,
+      Log4Shell). Upgrade to Log4j >= 2.17.0, set
+      log4j2.formatMsgNoLookups=true, or sanitize input before logging.
+    metadata:
+      cwe: CWE-917
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]

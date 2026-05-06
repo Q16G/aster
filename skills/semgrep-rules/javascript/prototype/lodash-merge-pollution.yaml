@@ -1,0 +1,26 @@
+rules:
+  - id: js-lodash-merge-pollution
+    patterns:
+      - pattern-either:
+          - pattern: _.merge({}, $INPUT)
+          - pattern: _.merge($TARGET, $INPUT)
+          - pattern: _.defaultsDeep({}, $INPUT)
+          - pattern: _.defaultsDeep($TARGET, $INPUT)
+          - pattern: _.set($OBJ, $PATH, $VALUE)
+          - pattern: lodash.merge($TARGET, $INPUT)
+          - pattern: lodash.defaultsDeep($TARGET, $INPUT)
+    message: >
+      Prototype pollution via lodash merge/defaultsDeep/set. Passing
+      user-controlled objects to these functions allows an attacker to
+      inject __proto__ or constructor.prototype properties, polluting
+      Object.prototype globally. This can lead to property injection,
+      DoS, or RCE in combination with other gadgets. Upgrade lodash to
+      >= 4.17.21 and validate input keys to reject __proto__ and
+      constructor paths.
+    metadata:
+      cwe: CWE-1321
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [javascript, typescript]

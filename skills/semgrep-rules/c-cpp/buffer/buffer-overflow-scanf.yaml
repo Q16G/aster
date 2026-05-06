@@ -1,0 +1,22 @@
+rules:
+  - id: c-buffer-overflow-scanf
+    patterns:
+      - pattern-either:
+          - pattern: scanf("%s", $BUF)
+          - pattern: scanf("%[^\\n]", $BUF)
+          - pattern: fscanf($FILE, "%s", $BUF)
+          - pattern: sscanf($SRC, "%s", $BUF)
+      - pattern-not: scanf("%99s", $BUF)
+    message: >
+      Buffer overflow via scanf %s without width limit. scanf("%s", buf)
+      reads unbounded input into a fixed-size buffer, causing stack or
+      heap overflow. Use a width specifier matching the buffer size:
+      scanf("%99s", buf) for a 100-byte buffer, or use fgets() for
+      line-oriented input.
+    metadata:
+      cwe: CWE-120
+      owasp: "A06:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [c]

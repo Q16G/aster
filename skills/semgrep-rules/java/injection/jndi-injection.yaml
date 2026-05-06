@@ -1,0 +1,24 @@
+rules:
+  - id: java-jndi-injection
+    patterns:
+      - pattern-either:
+          - pattern: new InitialContext().lookup($INPUT)
+          - pattern: |
+              $CTX = new InitialContext();
+              ...
+              $CTX.lookup($INPUT);
+          - pattern: |
+              $CTX.lookup($INPUT);
+    message: >
+      JNDI lookup with potentially user-controlled input. An attacker
+      can supply malicious JNDI URIs (ldap://, rmi://, dns://) to
+      trigger remote class loading and achieve remote code execution.
+      Validate and restrict the lookup name to a known allowlist, or
+      set com.sun.jndi.ldap.object.trustURLCodebase=false.
+    metadata:
+      cwe: CWE-074
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

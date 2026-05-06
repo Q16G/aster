@@ -1,0 +1,25 @@
+rules:
+  - id: python-ssti-mako
+    patterns:
+      - pattern-either:
+          - pattern: mako.template.Template($INPUT).render(...)
+          - pattern: Template($INPUT).render(...)
+          - pattern: |
+              $T = Template($INPUT)
+              ...
+              $T.render(...)
+          - pattern: |
+              $T = mako.template.Template($INPUT)
+    message: >
+      Mako server-side template injection. Constructing Mako templates
+      from user input allows arbitrary Python code execution via ${}
+      expressions and <% %> code blocks. Mako has no sandbox mode.
+      Load templates from trusted files using TemplateLookup and pass
+      user data only as render() keyword arguments.
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [python]

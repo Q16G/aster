@@ -1,0 +1,23 @@
+rules:
+  - id: go-json-unsafe-unmarshal
+    patterns:
+      - pattern-either:
+          - pattern: json.Unmarshal($INPUT, &$TARGET)
+          - pattern: json.NewDecoder($READER).Decode(&$TARGET)
+      - metavariable-pattern:
+          metavariable: $TARGET
+          pattern: |
+            interface{}
+    message: >
+      JSON unmarshaling into interface{} from untrusted input. When the
+      target type is interface{}, the decoder creates map[string]interface{}
+      with arbitrary structure, bypassing type safety. This can lead to
+      type confusion vulnerabilities in downstream processing. Unmarshal
+      into a concrete struct type instead.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: LOW
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [go]

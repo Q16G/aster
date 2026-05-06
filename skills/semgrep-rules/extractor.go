@@ -23,15 +23,19 @@ func ExtractRulesDir() (string, error) {
 }
 
 func doExtract() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home dir: %w", err)
+	}
+	targetDir := filepath.Join(home, ".aster", "rules")
+
 	hash, err := contentHash()
 	if err != nil {
 		return "", fmt.Errorf("compute content hash: %w", err)
 	}
 
-	targetDir := filepath.Join(os.TempDir(), "aster-semgrep-rules", hash)
-
-	marker := filepath.Join(targetDir, ".extracted")
-	if _, err := os.Stat(marker); err == nil {
+	marker := filepath.Join(targetDir, ".hash")
+	if existing, err := os.ReadFile(marker); err == nil && string(existing) == hash {
 		return targetDir, nil
 	}
 
@@ -57,7 +61,7 @@ func doExtract() (string, error) {
 		return "", fmt.Errorf("extract rules: %w", err)
 	}
 
-	_ = os.WriteFile(marker, []byte("ok"), 0o644)
+	_ = os.WriteFile(marker, []byte(hash), 0o644)
 	return targetDir, nil
 }
 

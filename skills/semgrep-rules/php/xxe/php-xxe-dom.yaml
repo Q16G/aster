@@ -1,0 +1,29 @@
+rules:
+  - id: php-xxe-dom
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $DOC = new DOMDocument();
+              ...
+              $DOC->loadXML($INPUT);
+          - pattern: |
+              $DOC = new DOMDocument();
+              ...
+              $DOC->load($INPUT);
+      - pattern-not: |
+          $DOC = new DOMDocument();
+          ...
+          $DOC->loadXML($INPUT, LIBXML_NOENT | LIBXML_NONET);
+    message: >
+      XXE injection via DOMDocument. Loading user-controlled XML without
+      disabling external entity resolution allows file disclosure, SSRF,
+      and DoS via billion-laughs attack. Use LIBXML_NOENT and
+      LIBXML_NONET flags, call libxml_disable_entity_loader(true)
+      (PHP < 8.0), or set substituteEntities = false.
+    metadata:
+      cwe: CWE-611
+      owasp: "A05:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]

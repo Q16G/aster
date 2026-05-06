@@ -1,0 +1,27 @@
+rules:
+  - id: java-deserialization-jackson
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $MAPPER.enableDefaultTyping(...);
+          - pattern: |
+              $MAPPER.activateDefaultTyping(...);
+          - pattern: |
+              @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, ...)
+          - pattern: |
+              @JsonTypeInfo(use = JsonTypeInfo.Id.MINIMAL_CLASS, ...)
+          - pattern: |
+              new ObjectMapper().readValue($INPUT, Object.class)
+    message: >
+      Unsafe Jackson polymorphic deserialization. Enabling default typing or
+      using @JsonTypeInfo with Id.CLASS allows attacker-controlled type
+      resolution, leading to remote code execution. Use
+      activateDefaultTyping with a PolymorphicTypeValidator whitelist,
+      or avoid Id.CLASS in favor of Id.NAME with explicit subtypes.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]

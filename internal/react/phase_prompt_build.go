@@ -10,18 +10,35 @@ func (a *Agent) BuildStepSummaryPrompt(payload map[string]any) (string, error) {
 	if a == nil || a.promptManager == nil {
 		return "", fmt.Errorf("step summary prompt manager is nil")
 	}
+
+	var hasSummaryPolicy bool
+	var summaryPolicyName, summaryPolicyDetail string
+	if a.cfg != nil {
+		snap := a.state.Snapshot()
+		if currentStep := snap.CurrentStep(); currentStep != nil && currentStep.OutputContractRef != "" {
+			if c := a.cfg.LookupOutputContract(currentStep.OutputContractRef); c != nil && c.SummaryPolicy != "" {
+				hasSummaryPolicy = true
+				summaryPolicyName = c.Name
+				summaryPolicyDetail = c.SummaryPolicy
+			}
+		}
+	}
+
 	return a.promptManager.BuildStepSummaryPrompt(StepSummaryPromptInput{
-		InputTimeline: payload["input_timeline"],
-		CurrentGoal:   payload["current_goal"],
-		CurrentStep:   payload["current_step"],
-		TaskPlan:      payload["task_plan"],
-		RawOutcome:    payload["raw_outcome"],
-		StepWindow:    payload["step_window"],
-		TimelineDiff:  payload["timeline_diff"],
-		References:    payload["references"],
-		Artifacts:     payload["artifacts"],
-		Warnings:      payload["warnings"],
-		Unresolved:    payload["unresolved"],
+		InputTimeline:       payload["input_timeline"],
+		CurrentGoal:         payload["current_goal"],
+		CurrentStep:         payload["current_step"],
+		TaskPlan:            payload["task_plan"],
+		RawOutcome:          payload["raw_outcome"],
+		StepWindow:          payload["step_window"],
+		TimelineDiff:        payload["timeline_diff"],
+		References:          payload["references"],
+		Artifacts:           payload["artifacts"],
+		Warnings:            payload["warnings"],
+		Unresolved:          payload["unresolved"],
+		HasSummaryPolicy:    hasSummaryPolicy,
+		SummaryPolicyName:   summaryPolicyName,
+		SummaryPolicyDetail: summaryPolicyDetail,
 	})
 }
 

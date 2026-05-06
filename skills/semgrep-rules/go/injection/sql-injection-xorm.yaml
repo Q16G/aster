@@ -1,0 +1,25 @@
+rules:
+  - id: go-sql-injection-xorm
+    patterns:
+      - pattern-either:
+          - pattern: $ENGINE.Where($INPUT).Find(...)
+          - pattern: $ENGINE.SQL($INPUT, ...).Find(...)
+          - pattern: $ENGINE.Query($INPUT, ...)
+          - pattern: $ENGINE.Exec($INPUT, ...)
+          - pattern: $ENGINE.OrderBy($INPUT).Find(...)
+      - pattern-not: $ENGINE.Where("...", ...).Find(...)
+      - pattern-not: $ENGINE.SQL("...", ...).Find(...)
+      - pattern-not: $ENGINE.Query("...", ...)
+      - pattern-not: $ENGINE.Exec("...", ...)
+    message: >
+      SQL injection via xorm. Passing user-controlled input directly to
+      Where(), SQL(), Query(), Exec(), or OrderBy() without parameterized
+      placeholders enables SQL injection. Use placeholder syntax:
+      engine.Where("name = ?", input).
+    metadata:
+      cwe: CWE-089
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [go]

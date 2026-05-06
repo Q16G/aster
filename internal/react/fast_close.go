@@ -21,9 +21,6 @@ func (a *Agent) canFastCloseStep(snapshot builtin_tools.StateSnapshot) bool {
 	if a.requiresPublishedOutput() {
 		return false
 	}
-	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
-		return false
-	}
 	if len(snapshot.Plan) != 1 || snapshot.Plan[0] == nil {
 		return false
 	}
@@ -166,9 +163,6 @@ func (a *Agent) canFastCloseFinalAnswer(snapshot builtin_tools.StateSnapshot, ct
 	if a.requiresPublishedOutput() {
 		return false
 	}
-	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
-		return false
-	}
 	if len(snapshot.Plan) != 1 {
 		return false
 	}
@@ -207,11 +201,20 @@ func (a *Agent) fastCloseFinalAnswer(
 		finalText = "任务已完成。"
 	}
 
+	finalAnswerSource := "fast_close"
+	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
+		if stepResult, ok := latestNonEmptyStepResultWithPlan(
+			snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok && stepResult != "" {
+			finalText = stepResult
+			finalAnswerSource = "step_result"
+		}
+	}
+
 	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 		NextPhase:          builtin_tools.AgentPhaseFinalAnswer,
 		Status:             builtin_tools.TaskStatusCompleted,
 		FinalAnswerContent: finalText,
-		FinalAnswerSource:  "fast_close",
+		FinalAnswerSource:  finalAnswerSource,
 	})
 	a.emitter.EmitStateChange(snapshot)
 	if snapshot.FinalAnswer != nil {
@@ -235,10 +238,14 @@ func (a *Agent) fastCloseFinalAnswer(
 	}
 
 	if strings.TrimSpace(finalText) != "" {
-		msg := ai.NewAIMsgInfo(finalText)
+		historyText := finalText
+		if finalAnswerSource == "step_result" && len(historyText) > 4096 {
+			historyText = historyText[:4096] + "\n\n…(完整结果已持久化到 artifact 文件)"
+		}
+		msg := ai.NewAIMsgInfo(historyText)
 		a.history = append(a.history, msg)
 		a.notifyHistoryReplace()
-		a.AddMemoryAssistantOutput(finalText)
+		a.AddMemoryAssistantOutput(historyText)
 	}
 
 	a.emitRuntimeLog("info", "final answer fast closed", snapshot, map[string]any{

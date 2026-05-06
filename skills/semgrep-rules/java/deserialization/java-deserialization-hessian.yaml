@@ -1,0 +1,26 @@
+rules:
+  - id: java-deserialization-hessian
+    patterns:
+      - pattern-either:
+          - pattern: new com.caucho.hessian.io.HessianInput(...).readObject()
+          - pattern: new com.caucho.hessian.io.Hessian2Input(...).readObject()
+          - pattern: |
+              HessianInput $HI = new HessianInput(...);
+              ...
+              $HI.readObject();
+          - pattern: |
+              Hessian2Input $HI = new Hessian2Input(...);
+              ...
+              $HI.readObject();
+    message: >
+      Unsafe Hessian deserialization of untrusted data. Hessian protocol
+      deserializes arbitrary Java objects, enabling remote code execution
+      via known gadget chains (e.g. Rome, Spring AOP). Use an allowlist
+      SerializerFactory or migrate to a safe serialization format.
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]
