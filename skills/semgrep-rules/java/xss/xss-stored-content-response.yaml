@@ -1,0 +1,31 @@
+rules:
+  - id: java-xss-stored-content-response
+    message: >
+      Potential stored XSS: content-like fields retrieved from domain objects
+      are written directly to an HTTP response or returned as raw HTML content.
+      If these fields contain persisted user input such as comments, rich text,
+      descriptions, or rendered markdown, they can trigger stored XSS. Apply
+      HTML encoding or sanitize the content before rendering.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/xss/
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: return $OBJ.$GETTER();
+          - pattern: return ResponseEntity.ok($OBJ.$GETTER());
+          - pattern: return ResponseEntity.status(...).body($OBJ.$GETTER());
+          - pattern: return ResponseEntity.ok().body($OBJ.$GETTER());
+          - pattern: (javax.servlet.http.HttpServletResponse $RESP).getWriter().write($OBJ.$GETTER());
+          - pattern: (javax.servlet.http.HttpServletResponse $RESP).getWriter().print($OBJ.$GETTER());
+          - pattern: (javax.servlet.http.HttpServletResponse $RESP).getWriter().println($OBJ.$GETTER());
+      - metavariable-regex:
+          metavariable: $GETTER
+          regex: ^get(Content|Body|Description|Comment|Message|Bio|Html|HtmlContent|RenderedHtml|Markdown|MarkdownHtml|RichText)$

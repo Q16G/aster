@@ -1,0 +1,21 @@
+rules:
+  - id: python-flask-wtf-csrf-disabled
+    message: >
+      CSRF protection is disabled in Flask-WTF configuration. Disabling
+      `WTF_CSRF_ENABLED` or `WTF_CSRF_CHECK_DEFAULT` can expose authenticated
+      state-changing actions to forged requests.
+    metadata:
+      cwe: CWE-352
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $APP.config["WTF_CSRF_ENABLED"] = False
+          - pattern: $APP.config['WTF_CSRF_ENABLED'] = False
+          - pattern: $APP.config["WTF_CSRF_CHECK_DEFAULT"] = False
+          - pattern: $APP.config['WTF_CSRF_CHECK_DEFAULT'] = False

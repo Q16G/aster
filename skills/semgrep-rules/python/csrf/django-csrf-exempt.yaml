@@ -1,0 +1,30 @@
+rules:
+  - id: python-django-csrf-exempt
+    message: >
+      CSRF protection is explicitly bypassed with csrf_exempt. Exempting a
+      state-changing Django view from CSRF checks can let attackers forge
+      authenticated requests unless a stronger alternate protection model is in
+      place.
+    metadata:
+      cwe: CWE-352
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @csrf_exempt
+              def $FUNC(...):
+                  ...
+          - pattern: |
+              @django.views.decorators.csrf.csrf_exempt
+              def $FUNC(...):
+                  ...
+          - pattern: |
+              @method_decorator(csrf_exempt, name="dispatch")
+              class $CLASS(...):
+                  ...

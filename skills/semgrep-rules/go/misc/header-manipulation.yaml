@@ -1,0 +1,41 @@
+rules:
+  - id: go-misc-header-manipulation
+    message: >
+      Potential header or CRLF injection: request-derived data is written into
+      response headers. Attackers can abuse unsanitized values to inject or
+      split headers such as Location, Set-Cookie, or Content-Disposition.
+      Strip CR/LF characters and validate redirect or filename values before
+      setting response headers.
+    metadata:
+      cwe: CWE-113
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/HTTP_Response_Splitting
+    severity: ERROR
+    languages: [go]
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.RequestURI
+          - pattern: $R.URL.Query().Get(...)
+          - pattern: $R.FormValue(...)
+          - pattern: $R.PostFormValue(...)
+          - pattern: $R.Header.Get(...)
+          - pattern: $CTX.Query(...)
+          - pattern: $CTX.PostForm(...)
+          - pattern: $CTX.Param(...)
+          - pattern: $CTX.GetHeader(...)
+    pattern-sinks:
+      - patterns:
+          - focus-metavariable: $VAL
+          - pattern-either:
+              - pattern: $W.Header().Set($NAME, $VAL)
+              - pattern: $W.Header().Add($NAME, $VAL)
+              - pattern: $CTX.Header($NAME, $VAL)
+    pattern-sanitizers:
+      - pattern: strings.ReplaceAll(..., "\r", "")
+      - pattern: strings.ReplaceAll(..., "\n", "")

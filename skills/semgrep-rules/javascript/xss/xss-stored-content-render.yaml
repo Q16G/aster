@@ -1,0 +1,66 @@
+rules:
+  - id: javascript-xss-stored-content-render
+    message: >
+      Potential stored XSS: content-like fields from persisted records are
+      rendered into raw HTML sinks such as innerHTML, outerHTML,
+      insertAdjacentHTML, or React dangerouslySetInnerHTML. Sanitize the HTML
+      with DOMPurify or sanitize-html before rendering stored content.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/xss/
+    severity: ERROR
+    languages: [javascript, typescript]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.content
+              - pattern: $OBJ.body
+              - pattern: $OBJ.description
+              - pattern: $OBJ.comment
+              - pattern: $OBJ.message
+              - pattern: $OBJ.bio
+              - pattern: $OBJ.html
+              - pattern: $OBJ.htmlContent
+              - pattern: $OBJ.renderedHtml
+              - pattern: $OBJ.markdown
+              - pattern: $OBJ.markdownHtml
+              - pattern: $OBJ.richText
+              - pattern: $OBJ.rich_text
+          - pattern-not: req.body
+          - pattern-not: request.body
+          - pattern-not: ctx.request.body
+          - pattern-not: response.body
+    pattern-sinks:
+      - patterns:
+          - focus-metavariable: $X
+          - pattern-either:
+              - pattern: $EL.innerHTML = $X
+              - pattern: $EL.outerHTML = $X
+              - pattern: $EL.insertAdjacentHTML($POS, $X)
+              - pattern: |
+                  <$COMP dangerouslySetInnerHTML={{__html: $X}} />
+              - pattern: |
+                  <$COMP dangerouslySetInnerHTML={{__html: $X}}>...</$COMP>
+          - pattern-not: $EL.innerHTML = marked(...)
+          - pattern-not: $EL.innerHTML = marked.parse(...)
+          - pattern-not: $EL.insertAdjacentHTML($POS, marked(...))
+          - pattern-not: $EL.insertAdjacentHTML($POS, marked.parse(...))
+          - pattern-not: $EL.innerHTML = $MD.render(...)
+          - pattern-not: $EL.insertAdjacentHTML($POS, $MD.render(...))
+          - pattern-not: |
+              <$COMP dangerouslySetInnerHTML={{__html: marked(...)}} />
+          - pattern-not: |
+              <$COMP dangerouslySetInnerHTML={{__html: marked.parse(...)}} />
+          - pattern-not: |
+              <$COMP dangerouslySetInnerHTML={{__html: $MD.render(...)}} />
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: DOMPurify.sanitize(...)
+          - pattern: sanitizeHtml(...)

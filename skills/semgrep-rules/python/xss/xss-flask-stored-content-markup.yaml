@@ -1,0 +1,49 @@
+rules:
+  - id: python-xss-flask-stored-content-markup
+    message: >
+      Potential stored XSS: Markup() is used on content-like fields that are
+      commonly persisted and later displayed to other users, such as comment
+      bodies, descriptions, stored HTML, or rendered markdown. Sanitize the
+      stored HTML with bleach.clean() or use Markup.escape() before rendering.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/xss/
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: Markup($OBJ.content)
+          - pattern: Markup($OBJ.body)
+          - pattern: Markup($OBJ.description)
+          - pattern: Markup($OBJ.comment)
+          - pattern: Markup($OBJ.message)
+          - pattern: Markup($OBJ.bio)
+          - pattern: Markup($OBJ.html)
+          - pattern: Markup($OBJ.html_content)
+          - pattern: Markup($OBJ.rendered_html)
+          - pattern: Markup($OBJ.markdown)
+          - pattern: Markup($OBJ.markdown_html)
+          - pattern: Markup($OBJ.rich_text)
+          - pattern: flask.Markup($OBJ.content)
+          - pattern: flask.Markup($OBJ.body)
+          - pattern: flask.Markup($OBJ.html)
+          - pattern: flask.Markup($OBJ.rendered_html)
+          - pattern: markupsafe.Markup($OBJ.content)
+          - pattern: markupsafe.Markup($OBJ.body)
+          - pattern: markupsafe.Markup($OBJ.html)
+          - pattern: markupsafe.Markup($OBJ.rendered_html)
+          - pattern: Markup($DICT["content"])
+          - pattern: Markup($DICT["body"])
+          - pattern: Markup($DICT["description"])
+          - pattern: Markup($DICT["comment"])
+          - pattern: Markup($DICT["html"])
+          - pattern: Markup($DICT["rendered_html"])
+      - pattern-not: Markup(bleach.clean(...))
+      - pattern-not: flask.Markup(bleach.clean(...))
+      - pattern-not: markupsafe.Markup(bleach.clean(...))

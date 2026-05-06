@@ -1,0 +1,37 @@
+rules:
+  - id: java-upload-original-filename-path
+    message: >
+      Unsafe file upload handling: MultipartFile.getOriginalFilename() is used
+      directly in a filesystem path or transfer destination. Attackers can
+      abuse crafted names for path traversal or overwriting files. Strip the
+      path with FilenameUtils.getName() or Path#getFileName() and generate a
+      random server-side filename.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: $FILE.transferTo(new File($DIR, $FILE.getOriginalFilename()))
+          - pattern: $FILE.transferTo(java.nio.file.Paths.get($DIR, $FILE.getOriginalFilename()).toFile())
+          - pattern: |
+              File $DEST = new File($DIR, $FILE.getOriginalFilename());
+              ...
+              $FILE.transferTo($DEST);
+          - pattern: |
+              java.io.File $DEST = new File($DIR, $FILE.getOriginalFilename());
+              ...
+              $FILE.transferTo($DEST);
+          - pattern: |
+              java.io.File $DEST = java.nio.file.Paths.get($DIR, $FILE.getOriginalFilename()).toFile();
+              ...
+              $FILE.transferTo($DEST);
+      - pattern-not: new File($DIR, org.apache.commons.io.FilenameUtils.getName($FILE.getOriginalFilename()))
+      - pattern-not: $FILE.transferTo(new File($DIR, org.apache.commons.io.FilenameUtils.getName($FILE.getOriginalFilename())))

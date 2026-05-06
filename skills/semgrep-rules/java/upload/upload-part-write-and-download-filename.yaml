@@ -1,0 +1,38 @@
+rules:
+  - id: java-upload-part-write-and-download-filename
+    message: >
+      Unsafe file handling: client-controlled filenames are used directly in
+      Part.write() destinations or in Content-Disposition download headers.
+      This can enable path traversal, overwriting files, or response header
+      injection. Normalize filenames with getFileName()/FilenameUtils.getName()
+      and strip CR/LF before setting download headers.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-113
+        - CWE-434
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: $PART.write($DIR + $PART.getSubmittedFileName())
+          - pattern: $PART.write($PART.getSubmittedFileName())
+          - pattern: $PART.write(java.nio.file.Paths.get($DIR, $PART.getSubmittedFileName()).toString())
+          - pattern: |
+              String $DEST = java.nio.file.Paths.get($DIR, $PART.getSubmittedFileName()).toString();
+              ...
+              $PART.write($DEST);
+          - pattern: |
+              String $DEST = $DIR + $PART.getSubmittedFileName();
+              ...
+              $PART.write($DEST);
+          - pattern: $RESP.setHeader("Content-Disposition", "attachment; filename=" + $NAME)
+          - pattern: $RESP.addHeader("Content-Disposition", "attachment; filename=" + $NAME)
+      - pattern-not: $PART.write(java.nio.file.Paths.get($DIR, java.nio.file.Paths.get($PART.getSubmittedFileName()).getFileName().toString()).toString())
+      - pattern-not: $PART.write(java.nio.file.Paths.get($DIR, org.apache.commons.io.FilenameUtils.getName($PART.getSubmittedFileName())).toString())
+      - pattern-not: $RESP.setHeader("Content-Disposition", "attachment; filename=report.csv")

@@ -1,0 +1,47 @@
+rules:
+  - id: javascript-xss-markdown-raw-render
+    message: >
+      Potential stored XSS via Markdown or rich text rendering. Rendering
+      Markdown or HTML-like stored content directly into innerHTML,
+      insertAdjacentHTML, or dangerouslySetInnerHTML can execute attacker
+      controlled payloads if raw HTML is allowed. Sanitize rendered output with
+      DOMPurify or disable raw HTML in the renderer.
+    metadata:
+      cwe: CWE-79
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+      references:
+        - https://owasp.org/www-community/attacks/xss/
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = marked($INPUT)
+          - pattern: $EL.innerHTML = marked.parse($INPUT)
+          - pattern: $EL.insertAdjacentHTML($POS, marked($INPUT))
+          - pattern: $EL.insertAdjacentHTML($POS, marked.parse($INPUT))
+          - pattern: |
+              <$COMP dangerouslySetInnerHTML={{__html: marked($INPUT)}} />
+          - pattern: |
+              <$COMP dangerouslySetInnerHTML={{__html: marked.parse($INPUT)}} />
+          - patterns:
+              - pattern-inside: |
+                  $MD = markdownit({..., html: true, ...})
+                  ...
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $MD.render($INPUT)
+                  - pattern: $EL.insertAdjacentHTML($POS, $MD.render($INPUT))
+                  - pattern: |
+                      <$COMP dangerouslySetInnerHTML={{__html: $MD.render($INPUT)}} />
+          - patterns:
+              - pattern-inside: |
+                  $MD = new MarkdownIt({..., html: true, ...})
+                  ...
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $MD.render($INPUT)
+                  - pattern: $EL.insertAdjacentHTML($POS, $MD.render($INPUT))
+                  - pattern: |
+                      <$COMP dangerouslySetInnerHTML={{__html: $MD.render($INPUT)}} />

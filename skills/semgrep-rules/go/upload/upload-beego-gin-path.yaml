@@ -1,0 +1,48 @@
+rules:
+  - id: go-upload-beego-gin-path
+    message: >
+      Unsafe file upload handling in Go frameworks: a client-supplied filename
+      is written to disk via Beego or a manual multipart/Gin save path without
+      stripping path segments. Use filepath.Base() and generate a random
+      server-side filename before saving uploads.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-434
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A02:2025 - Security Misconfiguration
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: $CTRL.SaveToFile(..., filepath.Join($DIR, $HDR.Filename))
+          - pattern: $CTRL.SaveToFile(..., path.Join($DIR, $HDR.Filename))
+          - pattern: |
+              $FILE, $HDR, $ERR := $REQ.FormFile(...)
+              ...
+              os.Create(filepath.Join($DIR, $HDR.Filename))
+          - pattern: |
+              $FILE, $HDR, $ERR := $REQ.FormFile(...)
+              ...
+              os.Create(path.Join($DIR, $HDR.Filename))
+          - pattern: |
+              $FILE, $HDR, $ERR := $REQ.FormFile(...)
+              ...
+              $DST, $ERR := os.Create(filepath.Join($DIR, $HDR.Filename))
+          - pattern: |
+              $FILE, $HDR, $ERR := $REQ.FormFile(...)
+              ...
+              $DST, $ERR := os.Create(path.Join($DIR, $HDR.Filename))
+      - pattern-not: $CTRL.SaveToFile(..., filepath.Join($DIR, filepath.Base($HDR.Filename)))
+      - pattern-not: $CTRL.SaveToFile(..., path.Join($DIR, filepath.Base($HDR.Filename)))
+      - pattern-not: |
+          $FILE, $HDR, $ERR := $REQ.FormFile(...)
+          ...
+          os.Create(filepath.Join($DIR, filepath.Base($HDR.Filename)))
+      - pattern-not: |
+          $FILE, $HDR, $ERR := $REQ.FormFile(...)
+          ...
+          $DST, $ERR := os.Create(filepath.Join($DIR, filepath.Base($HDR.Filename)))
