@@ -16,7 +16,7 @@ type ChatModel struct {
 	viewport        viewport.Model
 	parts           []DisplayPart
 	streaming       *strings.Builder
-	isStreaming      bool
+	isStreaming     bool
 	thinkingBuf     *strings.Builder
 	isThinking      bool
 	width           int
@@ -52,7 +52,11 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 		part.Time = time.Now()
 	}
 	m.parts = append(m.parts, part)
-	m.cursor = len(m.parts) - 1
+	idx := len(m.parts) - 1
+	m.cursor = idx
+	if shouldAutoExpandPart(part.Type) {
+		m.toolExpanded[idx] = true
+	}
 	m.refreshContent()
 	m.viewport.GotoBottom()
 }
@@ -178,7 +182,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
 				t := m.parts[m.cursor].Type
-				if t == PartTypeTool || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan {
+				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan {
 					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
 					m.refreshContent()
 					m.scrollToCursor()
@@ -253,6 +257,11 @@ func (m *ChatModel) ToggleToolVerbose() {
 func (m *ChatModel) SetParts(parts []DisplayPart) {
 	m.parts = parts
 	m.toolExpanded = make(map[int]bool)
+	for i, part := range parts {
+		if shouldAutoExpandPart(part.Type) {
+			m.toolExpanded[i] = true
+		}
+	}
 	m.refreshContent()
 	m.viewport.GotoBottom()
 }
@@ -301,6 +310,8 @@ func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 		return m.renderThinkingPart(part, maxWidth)
 	case PartTypeSummary:
 		return m.renderSummaryPart(part)
+	case PartTypeStepResult:
+		return m.renderStepResultPart(idx, part, maxWidth)
 	case PartTypeStepSummary:
 		return m.renderStepSummaryPart(idx, part, maxWidth)
 	case PartTypeFinalAnswer:
@@ -457,6 +468,64 @@ func (m *ChatModel) renderToolPart(idx int, part DisplayPart, maxWidth int) stri
 	return result
 }
 
+func (m *ChatModel) renderStepResultPart(idx int, part DisplayPart, maxWidth int) string {
+	sr := part.StepResult
+	if sr == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	icon := "▣"
+	color := assistantBorderColor
+	if strings.EqualFold(strings.TrimSpace(sr.Status), "failed") {
+		color = toolErrorColor
+	}
+
+	title := "step result"
+	if sr.StepName != "" {
+		title += ": " + sr.StepName
+	}
+	content := strings.TrimSpace(sr.DisplayResult)
+	if content == "" {
+		content = strings.TrimSpace(sr.Summary)
+	}
+	if content == "" {
+		content = strings.TrimSpace(sr.Error)
+	}
+
+	if !expanded {
+		summary := title
+		if content != "" {
+			summary += " — " + truncateDisplayWidth(content, 60)
+		}
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := icon + " " + title
+	if sr.Status != "" {
+		header += " (" + sr.Status + ")"
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(content, maxWidth-4))
+}
+
 func (m *ChatModel) renderStepSummaryPart(idx int, part DisplayPart, maxWidth int) string {
 	s := part.StepSummary
 	if s == nil {
@@ -570,6 +639,15 @@ func (m *ChatModel) renderFinalAnswerPart(idx int, part DisplayPart, maxWidth in
 		displayContent = prettyPrintJSON(displayContent)
 	}
 	return headerStyle.Render(header) + "\n" + style.Render(wrapText(displayContent, maxWidth-4))
+}
+
+func shouldAutoExpandPart(partType PartType) bool {
+	switch partType {
+	case PartTypeStepResult, PartTypeFinalAnswer:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) string {
@@ -771,4 +849,3 @@ func prettyPrintJSON(s string) string {
 	}
 	return string(pretty)
 }
-

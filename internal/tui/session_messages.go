@@ -317,6 +317,17 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					})
 				}
 			}
+		case "step_result":
+			if rp.Content != "" {
+				var sr StepResultPart
+				if json.Unmarshal([]byte(rp.Content), &sr) == nil && (sr.DisplayResult != "" || sr.Summary != "" || sr.Error != "") {
+					existing = append(existing, DisplayPart{
+						Type:       PartTypeStepResult,
+						Time:       rp.Time,
+						StepResult: &sr,
+					})
+				}
+			}
 		case "final_answer":
 			if rp.Content != "" {
 				existing = append(existing, DisplayPart{
@@ -502,7 +513,6 @@ func saveSessionWorkspaceState(baseDir, sessionID string, state *builtin_tools.W
 	data = append(data, '\n')
 	return os.WriteFile(filepath.Join(dir, "state.json"), data, 0o644)
 }
-
 
 func ensureSessionWorkspace(baseDir, sessionID string) error {
 	return os.MkdirAll(sessionWorkspaceDir(baseDir, sessionID), 0755)

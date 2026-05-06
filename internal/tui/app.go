@@ -15,6 +15,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"aster/internal/ai"
+	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/service"
 	tuicontext "aster/internal/tui/context"
@@ -63,11 +64,13 @@ type Model struct {
 	providerCfg     *ProviderState
 	pendingProvider *pendingProviderSetup
 
-	currentSessionID    string
-	sessionMeta         SessionMeta
-	focus               FocusTarget
-	runStartTime        time.Time
-	hadStreamDuringRun  bool
+	currentSessionID        string
+	sessionMeta             SessionMeta
+	focus                   FocusTarget
+	runStartTime            time.Time
+	hadStreamDuringRun      bool
+	hadFinalAnswerDuringRun bool
+	externalInterrupt       *builtin_tools.ExternalInterrupt
 
 	syncStore       *tuicontext.SyncStore
 	themeProvider   *tuicontext.ThemeProvider
@@ -117,6 +120,30 @@ func NewModel(
 		toastManager:    tuiui.NewToastManager(5),
 		spinner:         tuiui.NewSpinner("thinking..."),
 	}
+}
+
+func interruptNoticeText(info *builtin_tools.ExternalInterrupt) string {
+	if info == nil || info.Retryable {
+		return ""
+	}
+	message := strings.TrimSpace(info.UserMessage)
+	if message == "" {
+		return ""
+	}
+	if next := firstNonEmptyInterruptAction(info.SuggestedActions); next != "" {
+		return message + " 建议：" + next + "。"
+	}
+	return message
+}
+
+func firstNonEmptyInterruptAction(actions []string) string {
+	for _, item := range actions {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			return item
+		}
+	}
+	return ""
 }
 
 func (m Model) Init() tea.Cmd {
@@ -305,6 +332,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.SetEnabled(false)
 		m.agentRunning = true
 		m.hadStreamDuringRun = false
+		m.hadFinalAnswerDuringRun = false
+		m.externalInterrupt = nil
 		m.clearRetryState()
 		m.runStartTime = time.Now()
 		m.statusText = "thinking..."
@@ -336,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Agent failed: %s", msg.Result.Error)}})
 			m.statusText = "failed"
 		} else {
-			if !hadStream && !m.hadStreamDuringRun && msg.Result != nil && msg.Result.Result != "" {
+			if !hadStream && !m.hadStreamDuringRun && !m.hadFinalAnswerDuringRun && msg.Result != nil && msg.Result.Result != "" {
 				m.chat.AddPart(DisplayPart{
 					Type: PartTypeText,
 					Time: time.Now(),
@@ -347,6 +376,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.agentCtx.InitialHistory = ai.NormalizeMsgInfoSlice(msg.History)
 			}
 			m.statusText = "ready"
+		}
+		if notice := interruptNoticeText(m.externalInterrupt); notice != "" {
+			m.chat.AddPart(DisplayPart{
+				Type:   PartTypeSystem,
+				Time:   time.Now(),
+				System: &SystemPart{Content: notice},
+			})
 		}
 		// Run summary
 		success := msg.Err == nil && (msg.Result == nil || msg.Result.Success)
@@ -961,7 +997,7 @@ func (m Model) View() string {
 
 	inputStyle := lipgloss.NewStyle().
 		Width(chatWidth).
-		Height(inputHeight - 1).
+		Height(inputHeight-1).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderTop(true).
 		BorderForeground(inputBorderColor).
