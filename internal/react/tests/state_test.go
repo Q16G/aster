@@ -115,8 +115,8 @@ func TestStateTracker_UpdatePlan_ClearsReplanContext(t *testing.T) {
 	if snapshot.ReplanContext != nil {
 		t.Fatalf("expected replan context cleared after applying new plan, got %+v", snapshot.ReplanContext)
 	}
-	if snapshot.CurrentGoal != "新目标" {
-		t.Fatalf("expected current goal preserved, got %q", snapshot.CurrentGoal)
+	if snapshot.CurrentGoal != "第二步" {
+		t.Fatalf("expected current goal synced to next runnable step text, got %q", snapshot.CurrentGoal)
 	}
 	if snapshot.PlanVersion <= 0 {
 		t.Fatalf("expected plan version assigned, got %d", snapshot.PlanVersion)
