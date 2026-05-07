@@ -359,6 +359,13 @@ func (a *Agent) runStepSummaryPhase(ctx context.Context, iter int, runClient ai.
 		nextPhase = builtin_tools.AgentPhaseStep
 	}
 
+	// 只在重规划时更新 goal；非重规划时保持 EnsureCurrentStep 绑定的 step goal，
+	// 避免模型输出的 next_goal 覆盖当前 step 语义。
+	summaryGoal := ""
+	if replanContext != nil {
+		summaryGoal = nextGoal
+	}
+
 	snapshot = a.state.ApplyStepSummary(stepID, stepSummaryUpdate{
 		StatusSummary:       tmp.StatusSummary,
 		ShortSummary:        tmp.ShortSummary,
@@ -372,7 +379,7 @@ func (a *Agent) runStepSummaryPhase(ctx context.Context, iter int, runClient ai.
 		ResultFile:          tmp.ResultFile,
 		ContextKey:          tmp.ContextKey,
 		References:          tmp.References,
-		CurrentGoal:         nextGoal,
+		CurrentGoal:         summaryGoal,
 		Warnings:            replanWarnings,
 		Unresolved:          replanMissingItems,
 		ReplanContext:       replanContext,
