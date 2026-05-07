@@ -71,6 +71,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		toolName, _ := event.Payload["tool_name"].(string)
 		callID, _ := event.Payload["call_id"].(string)
 		isAgent, _ := event.Payload["is_agent"].(bool)
+		stackDepth := payloadInt(event.Payload, "stack_depth")
 		var args string
 		switch v := event.Payload["arguments"].(type) {
 		case string:
@@ -84,14 +85,28 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			Type: PartTypeTool,
 			Time: time.Now(),
 			Tool: &ToolPart{
-				Name:      toolName,
-				CallID:    callID,
-				Arguments: args,
-				State:     "running",
-				IsAgent:   isAgent,
+				Name:       toolName,
+				CallID:     callID,
+				Arguments:  args,
+				State:      "running",
+				IsAgent:    isAgent,
+				StackDepth: stackDepth,
 			},
 		})
-		m.statusText = fmt.Sprintf("calling %s...", toolName)
+		if isAgent {
+			m.chat.AddPart(DisplayPart{
+				Type: PartTypeSubAgent,
+				Time: time.Now(),
+				SubAgent: &SubAgentPart{
+					AgentName: toolName,
+					CallID:    callID,
+					Status:    "running",
+				},
+			})
+			m.statusText = fmt.Sprintf("agent: %s", toolName)
+		} else {
+			m.statusText = fmt.Sprintf("calling %s...", toolName)
+		}
 		m.persistPartWithCallID("tool_start", toolName, callID, args)
 
 	case react.EventTypeToolEnd:
@@ -99,19 +114,28 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		callID, _ := event.Payload["call_id"].(string)
 		result, _ := event.Payload["result"].(string)
 		errStr, _ := event.Payload["error"].(string)
+		isAgent, _ := event.Payload["is_agent"].(bool)
+		stackDepth := payloadInt(event.Payload, "stack_depth")
 		m.chat.UpdateToolByCallID(callID, func(t *ToolPart) {
 			if callID == "" && t.Name != toolName {
 				return
 			}
 			t.Result = result
 			t.Error = errStr
+			t.StackDepth = stackDepth
 			if errStr != "" {
 				t.State = "error"
 			} else {
 				t.State = "completed"
 			}
 			t.Duration = time.Since(m.chat.partTimeByCallID(callID, toolName))
+			if isAgent {
+				m.parseSubAgentResult(t, result)
+			}
 		})
+		if isAgent {
+			m.updateSubAgentByCallID(callID, result, errStr)
+		}
 		display := result
 		if errStr != "" {
 			display = "error: " + errStr
@@ -136,6 +160,13 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		if summary := strings.TrimSpace(payloadString(event.Payload, "status_summary")); summary != "" {
 			m.statusText = summary
 		}
+		if phase := payloadString(event.Payload, "phase"); phase != "" {
+			m.runtimePhase = phase
+		}
+		m.runtimeProgress = payloadInt(event.Payload, "progress")
+		m.runtimeGoal = payloadString(event.Payload, "current_goal")
+		m.runtimeWarnings = payloadStringSlice(event.Payload, "warnings")
+		m.refreshSidebarData()
 
 	case react.EventTypeRetry:
 		delayMS := payloadInt64(event.Payload, "delay_ms")
@@ -202,6 +233,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			})
 			planJSON, _ := json.Marshal(PlanPart{Explanation: explanation, Items: items})
 			m.persistPart("task_plan", "", string(planJSON))
+			m.refreshSidebarData()
 		}
 
 	case react.EventTypeTaskItem:
@@ -247,6 +279,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				persistName = step
 			}
 			m.persistPart("task_item", persistName, status)
+			m.refreshSidebarData()
 		}
 
 	case react.EventTypeLog:
@@ -545,4 +578,55 @@ func payloadStringSlice(p map[string]any, key string) []string {
 		return out
 	}
 	return nil
+}
+
+func (m *Model) parseSubAgentResult(t *ToolPart, result string) {
+	if result == "" {
+		return
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		return
+	}
+	if name, ok := parsed["agent_name"].(string); ok {
+		t.AgentName = name
+	}
+	if ns, ok := parsed["namespace"].(string); ok {
+		t.Namespace = ns
+	}
+	if s, ok := parsed["summary"].(string); ok {
+		t.Summary = s
+	}
+	if s, ok := parsed["status"].(string); ok && t.State == "completed" {
+		if s == "failed" {
+			t.State = "error"
+		}
+	}
+}
+
+func (m *Model) updateSubAgentByCallID(callID, result, errStr string) {
+	m.chat.UpdateSubAgentByCallID(callID, func(sa *SubAgentPart) {
+		if errStr != "" {
+			sa.Status = "failed"
+			sa.Summary = errStr
+			return
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+			sa.Status = "completed"
+			return
+		}
+		if name, ok := parsed["agent_name"].(string); ok {
+			sa.AgentName = name
+		}
+		if ns, ok := parsed["namespace"].(string); ok {
+			sa.Namespace = ns
+		}
+		if s, ok := parsed["status"].(string); ok {
+			sa.Status = s
+		}
+		if s, ok := parsed["summary"].(string); ok {
+			sa.Summary = s
+		}
+	})
 }

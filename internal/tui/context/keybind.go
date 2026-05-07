@@ -10,8 +10,9 @@ const (
 	KeyActionOpenAgents   KeyAction = "open_agents"
 	KeyActionOpenModels   KeyAction = "open_models"
 	KeyActionClearChat    KeyAction = "clear_chat"
-	KeyActionCycleFocus   KeyAction = "cycle_focus"
-	KeyActionEscape       KeyAction = "escape"
+	KeyActionCycleFocus      KeyAction = "cycle_focus"
+	KeyActionEscape          KeyAction = "escape"
+	KeyActionToggleSidebar   KeyAction = "toggle_sidebar"
 )
 
 type KeybindMap struct {
@@ -32,6 +33,7 @@ func DefaultKeybinds() KeybindMap {
 			"ctrl+l": KeyActionClearChat,
 			"tab":    KeyActionCycleFocus,
 			"esc":    KeyActionEscape,
+			"ctrl+b": KeyActionToggleSidebar,
 		},
 	}
 }

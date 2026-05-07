@@ -9,7 +9,6 @@ import (
 
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
-	tuicontext "aster/internal/tui/context"
 )
 
 func (m *Model) ensureSession() bool {
@@ -223,20 +222,11 @@ func (m *Model) rememberRecentModel(modelID string) {
 	if modelID == "" {
 		return
 	}
-	m.localProvider.Update(func(p tuicontext.LocalPreferences) tuicontext.LocalPreferences {
-		next := []string{modelID}
-		for _, existing := range p.RecentModelIDs {
-			if existing == modelID || strings.TrimSpace(existing) == "" {
-				continue
-			}
-			next = append(next, existing)
-			if len(next) >= 8 {
-				break
-			}
-		}
-		p.RecentModelIDs = next
-		return p
-	})
+	providerID := ""
+	if m.providerCfg != nil {
+		providerID = m.providerCfg.Name
+	}
+	m.localProvider.RememberModel(providerID, modelID)
 }
 
 func (m *Model) appendPart(part DisplayPart) {
@@ -338,6 +328,8 @@ func (m *Model) restoreSessionProvider(rec *SessionRecord) {
 				if cfgP.BaseURL != "" {
 					m.providerCfg.BaseURL = cfgP.BaseURL
 				}
+				m.providerCfg.Headers = cloneStringMap(cfgP.Headers)
+				m.providerCfg.PromptCache = cfgP.PromptCache.Clone()
 			}
 			m.providerCfg.APIKey = resolveAPIKey(bp, cfgKey)
 			resolved = true
@@ -345,6 +337,8 @@ func (m *Model) restoreSessionProvider(rec *SessionRecord) {
 			m.providerCfg.Name = rec.ProviderName
 			m.providerCfg.BaseURL = cfgP.BaseURL
 			m.providerCfg.APIKey = cfgP.APIKey
+			m.providerCfg.Headers = cloneStringMap(cfgP.Headers)
+			m.providerCfg.PromptCache = cfgP.PromptCache.Clone()
 			resolved = true
 		}
 		if resolved && m.agentCtx != nil && m.agentCtx.RebuildClient != nil {
