@@ -762,7 +762,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		return nil
 	}
 
-	tool, exists := a.tools[toolName]
+	tool, exists := a.GetTool(toolName)
 	if !exists || tool == nil {
 		a.AICallProxyWriteToolResult(callID, toolName, "", argsMap, "", "tool not found", false)
 		return nil

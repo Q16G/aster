@@ -87,7 +87,7 @@ func (c *Client) buildHTTPClient() *http.Client {
 }
 
 func (c *Client) Chat(ctx context.Context, info *ai.MsgInfo, tools ...*ai.FunctionTool) (string, error) {
-	choices, err := c.ChatEx(ctx, []*ai.MsgInfo{info}, tools...)
+	choices, err := c.ChatExWithOptions(ctx, []*ai.MsgInfo{info}, nil, tools...)
 	if err != nil {
 		return "", err
 	}
@@ -98,10 +98,29 @@ func (c *Client) Chat(ctx context.Context, info *ai.MsgInfo, tools ...*ai.Functi
 }
 
 func (c *Client) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
-	return c.Chat(ctx, ai.NewUserMsgInfo(text), tools...)
+	return c.ChatTextWithOptions(ctx, text, nil, tools...)
 }
 
 func (c *Client) ChatStream(ctx context.Context, infos []*ai.MsgInfo, handler ai.StreamHandler, tools ...*ai.FunctionTool) error {
+	return c.ChatStreamWithOptions(ctx, infos, nil, handler, tools...)
+}
+
+func (c *Client) ChatTextWithOptions(ctx context.Context, text string, options *ai.RequestOptions, tools ...*ai.FunctionTool) (string, error) {
+	return c.ChatWithOptions(ctx, ai.NewUserMsgInfo(text), options, tools...)
+}
+
+func (c *Client) ChatWithOptions(ctx context.Context, info *ai.MsgInfo, options *ai.RequestOptions, tools ...*ai.FunctionTool) (string, error) {
+	choices, err := c.ChatExWithOptions(ctx, []*ai.MsgInfo{info}, options, tools...)
+	if err != nil {
+		return "", err
+	}
+	if len(choices) == 0 {
+		return "", fmt.Errorf("empty response")
+	}
+	return extractContent(choices[0]), nil
+}
+
+func (c *Client) ChatStreamWithOptions(ctx context.Context, infos []*ai.MsgInfo, options *ai.RequestOptions, handler ai.StreamHandler, tools ...*ai.FunctionTool) error {
 	if c == nil {
 		return fmt.Errorf("client is nil")
 	}
@@ -136,7 +155,7 @@ func (c *Client) ChatStream(ctx context.Context, infos []*ai.MsgInfo, handler ai
 		httpClient: c.httpClient,
 	}
 
-	_, err := streamClient.ChatEx(ctx, infos, tools...)
+	_, err := streamClient.ChatExWithOptions(ctx, infos, options, tools...)
 	if lastUsage := streamClient.LastTokenUsage(); lastUsage != nil {
 		c.lastUsage = lastUsage
 	} else {
@@ -149,10 +168,14 @@ func (c *Client) ChatStream(ctx context.Context, infos []*ai.MsgInfo, handler ai
 }
 
 func (c *Client) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+	return c.ChatExWithOptions(ctx, infos, nil, tools...)
+}
+
+func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, options *ai.RequestOptions, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	reqBody := c.buildRequestBody(infos, tools)
+	reqBody := c.buildRequestBody(infos, tools, options)
 
 	var lastErr error
 	for attempt := 0; attempt <= c.config.MaxRetries; attempt++ {
@@ -228,7 +251,7 @@ func (c *Client) reportRetryAttempt(event RetryEvent, err error) {
 	)
 }
 
-func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool) map[string]any {
+func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool, options *ai.RequestOptions) map[string]any {
 	messages := make([]map[string]any, 0, len(infos))
 	for _, info := range infos {
 		msg := map[string]any{
@@ -281,6 +304,14 @@ func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool)
 			body[key] = value
 		}
 	}
+	if options := ai.NormalizeRequestOptions(options); options != nil && options.PromptCacheEnabled {
+		if options.PromptCacheKey != "" {
+			body["prompt_cache_key"] = options.PromptCacheKey
+		}
+		if options.PromptCacheRetention != "" {
+			body["prompt_cache_retention"] = options.PromptCacheRetention
+		}
+	}
 
 	if len(tools) > 0 {
 		toolDefs := make([]map[string]any, 0, len(tools))
@@ -319,6 +350,7 @@ func (c *Client) doRequest(ctx context.Context, reqBody map[string]any) ([]*ai.C
 	if c.config.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	}
+	applyRequestHeaders(req.Header, c.config.Headers)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -887,6 +919,19 @@ func extractContent(choice *ai.ChatChoices) string {
 	}
 }
 
+func applyRequestHeaders(dst http.Header, headers map[string]string) {
+	if len(headers) == 0 {
+		return
+	}
+	for key, value := range headers {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		dst.Set(key, value)
+	}
+}
+
 func (c *Client) Embedding(ctx context.Context, texts []string, model string) ([][]float32, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -936,6 +981,7 @@ func (c *Client) Embedding(ctx context.Context, texts []string, model string) ([
 		if c.config.APIKey != "" {
 			req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 		}
+		applyRequestHeaders(req.Header, c.config.Headers)
 		if debugHTTP {
 			log.Printf("[openai] embedding request packet:\n%s", formatDebugHTTPRequest(req, bodyBytes))
 		}

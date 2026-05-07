@@ -47,5 +47,3 @@
   "reply_hint": "string",
   "confidence": 0.0
 }
-
-nonce={{.NONCE}}

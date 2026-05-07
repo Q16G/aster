@@ -30,6 +30,7 @@ type Config struct {
 	TopP        *float64
 	MaxTokens   int
 	ExtraBody   map[string]any
+	Headers     map[string]string
 
 	HTTPClient    *http.Client
 	StreamFunc    StreamFunc
@@ -185,6 +186,20 @@ func WithExtraBody(extra map[string]any) Option {
 	}
 }
 
+func WithHeaders(headers map[string]string) Option {
+	return func(c *Config) {
+		if len(headers) == 0 {
+			return
+		}
+		if c.Headers == nil {
+			c.Headers = make(map[string]string, len(headers))
+		}
+		for key, value := range headers {
+			c.Headers[key] = value
+		}
+	}
+}
+
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Config) {
 		c.HTTPClient = client
@@ -229,5 +244,6 @@ func DefaultConfig() *Config {
 		RetryCodes:      append([]int(nil), defaultRetryCodes...),
 		Stream:          true,
 		ExtraBody:       map[string]any{},
+		Headers:         map[string]string{},
 	}
 }

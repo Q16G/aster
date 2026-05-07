@@ -171,11 +171,6 @@ workspace namespace: {{.WORKSPACE_NAMESPACE}}
 {{end}}
 {{end}}
 
-### 5.5 nonce
----
-{{.NONCE}}
----
-
 ## 6. 输出要求 (Output Requirements)
 - **语言要求**：使用简体中文。
 - **角色要求**：严格根据”Agent 指令”理解你当前这个 react-agent 的功能和角色，不要被固定成单一通用助手。

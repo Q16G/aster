@@ -41,5 +41,3 @@ Requirements:
 - Remove duplication, stale progress notes, and low-signal chatter.
 - Do not mention token limits or compaction mechanics unless they are directly relevant to the task itself.
 - Output only the summary text. No code fences. No JSON.
-
-nonce={{.NONCE}}

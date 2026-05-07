@@ -135,8 +135,10 @@ func (t *SubAgentTool) childMaxIterations() int {
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 	if len(requested) > 0 {
 		parentSet := make(map[string]bool)
-		for name := range t.parentAgent.tools {
-			parentSet[name] = true
+		if t.parentAgent != nil && t.parentAgent.tools != nil {
+			for _, name := range t.parentAgent.tools.Keys() {
+				parentSet[name] = true
+			}
 		}
 		var result []string
 		for _, name := range requested {
@@ -169,7 +171,7 @@ func (t *SubAgentTool) parentDomainToolNames() []string {
 		builtin_tools.SkillToolName:             true,
 	}
 	var names []string
-	for name := range t.parentAgent.tools {
+	for _, name := range t.parentAgent.tools.Keys() {
 		if platformTools[name] {
 			continue
 		}
