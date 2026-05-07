@@ -245,9 +245,10 @@ func TestExecute_DurableResume_ContinuesNextStepWithoutRepeatingCompleted(t *tes
 		t.Fatalf("expected step-1 artifact_id unchanged (no rerun), want=%q got=%q", step1ArtifactID, got)
 	}
 
-	// "继续" should not overwrite the old goal.
-	if snap := agent.State(); strings.TrimSpace(snap.CurrentGoal) != "old-goal" {
-		t.Fatalf("expected current_goal preserved on continuation, got %q", snap.CurrentGoal)
+	// EnsureCurrentStep syncs CurrentGoal to the executing step's text;
+	// after step-2 executes, goal should reflect the step objective, not the original input.
+	if snap := agent.State(); strings.TrimSpace(snap.CurrentGoal) != "S2" {
+		t.Fatalf("expected current_goal synced to step-2 text, got %q", snap.CurrentGoal)
 	}
 }
 

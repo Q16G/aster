@@ -285,8 +285,20 @@ func (t *StateTracker) EnsureCurrentStep() builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.ensureCurrentStepLocked()
+	t.syncGoalToCurrentStepLocked()
 	t.touchLocked()
 	return *t.state
+}
+
+func (t *StateTracker) syncGoalToCurrentStepLocked() {
+	step := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep()
+	if step == nil {
+		return
+	}
+	stepText := strings.TrimSpace(step.Step)
+	if stepText != "" {
+		t.state.CurrentGoal = stepText
+	}
 }
 
 func (t *StateTracker) MarkCurrentStepInProgress() builtin_tools.StateSnapshot {
@@ -359,6 +371,7 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	} else {
 		t.state.CurrentStepID = ""
 	}
+	t.syncGoalToCurrentStepLocked()
 	t.touchLocked()
 	return *t.state
 }
