@@ -168,8 +168,10 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 func (t *SkillTool) resolveToolNames(allowedTools []string) []string {
 	if len(allowedTools) > 0 {
 		parentSet := make(map[string]bool)
-		for name := range t.parentAgent.tools {
-			parentSet[name] = true
+		if t.parentAgent != nil && t.parentAgent.tools != nil {
+			for _, name := range t.parentAgent.tools.Keys() {
+				parentSet[name] = true
+			}
 		}
 		var result []string
 		for _, name := range allowedTools {

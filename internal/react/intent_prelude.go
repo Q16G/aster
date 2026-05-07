@@ -42,7 +42,7 @@ var intentRecognitionPrompt string
 var simpleReplyPrompt string
 
 var (
-	simpleIntentPattern = regexp.MustCompile(`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)\s*[!?？！。,.]*\s*$`)
+	simpleIntentPattern      = regexp.MustCompile(`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)\s*[!?？！。,.]*\s*$`)
 	looseSimpleIntentPattern = regexp.MustCompile(
 		`(?i)^\s*(你好|您好|嗨|哈喽|hello|hi|hey|thanks|thank\s+you|谢谢|感谢|在吗|在不在|ping|test|你是谁|你是什么|你能做什么|你会什么|你的功能|你的能力|who\s+are\s+you|what\s+can\s+you\s+do)` +
 			`[\s]*(agent|助手|吗|呢|啊|呀|\?|？|。|！|!)*\s*$`,
@@ -240,7 +240,6 @@ func (a *Agent) buildIntentRecognitionPrompt(input string) (string, error) {
 		UserInstruction: strings.TrimSpace(a.cfg.Instruction),
 		Input:           strings.TrimSpace(input),
 		RecentHistory:   recentHistoryItems(a.history, 6),
-		Nonce:           generateRandomString(8),
 	})
 }
 
@@ -257,7 +256,6 @@ func (a *Agent) buildSimpleReplyPrompt(decision *IntentDecision) (string, error)
 		IntentComplexity:    strings.TrimSpace(decision.Complexity),
 		MatchedCapabilities: decision.MatchedCapabilities,
 		ReplyHint:           strings.TrimSpace(decision.ReplyHint),
-		Nonce:               generateRandomString(8),
 	})
 }
 
@@ -290,7 +288,7 @@ func (a *Agent) runSimpleReplyPath(ctx context.Context, runClient ai.ChatClient,
 	msgs = append(msgs, ai.NewSystemMsgInfo(prompt))
 	msgs = append(msgs, a.history...)
 
-	choices, err := runClient.ChatEx(ctx, msgs)
+	choices, err := ai.ChatExWithOptions(ctx, runClient, msgs, &ai.RequestOptions{PromptFamily: promptFamilySimpleReply})
 	if err != nil {
 		a.emitRuntimeLog("warning", "simple reply failed, fallback to react run", snapshot, map[string]any{
 			"event": "simple_reply_failed",

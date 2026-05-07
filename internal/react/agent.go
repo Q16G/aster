@@ -10,6 +10,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/memory"
+	"aster/internal/utils"
 )
 
 var _ builtin_tools.ToolContext = (*Agent)(nil)
@@ -31,7 +32,7 @@ type HistoryChange struct {
 type Agent struct {
 	agentName     string
 	cfg           *AgentConfig
-	tools         map[string]Tool
+	tools         *utils.OrderMapx[string, Tool]
 	memory        *memory.TimelineMemory
 	promptManager PromptManager
 	state         *StateTracker
@@ -105,7 +106,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	agent := &Agent{
 		agentName:     name,
 		cfg:           cfg,
-		tools:         make(map[string]Tool),
+		tools:         utils.NewOrderMapx[string, Tool](),
 		promptManager: cfg.PromptManager,
 		state:         NewStateTracker(),
 		handoff:       &handoffState{},
@@ -449,7 +450,7 @@ func (a *Agent) registerTool(tool Tool) error {
 	if name == "" {
 		return fmt.Errorf("tool name is empty")
 	}
-	a.tools[name] = tool
+	a.tools.Set(name, tool)
 	return nil
 }
 
@@ -457,7 +458,7 @@ func (a *Agent) unregisterTool(name string) {
 	if a == nil || a.tools == nil {
 		return
 	}
-	delete(a.tools, name)
+	a.tools.Delete(strings.TrimSpace(name))
 }
 
 func (a *Agent) unregisterToolsByPrefix(prefix string) []string {
@@ -465,9 +466,9 @@ func (a *Agent) unregisterToolsByPrefix(prefix string) []string {
 		return nil
 	}
 	var removed []string
-	for name := range a.tools {
+	for _, name := range a.tools.Keys() {
 		if strings.HasPrefix(name, prefix) {
-			delete(a.tools, name)
+			a.tools.Delete(name)
 			removed = append(removed, name)
 		}
 	}
@@ -479,16 +480,20 @@ func (a *Agent) GetTool(name string) (Tool, bool) {
 	if a == nil || a.tools == nil {
 		return nil, false
 	}
-	tool, ok := a.tools[name]
+	tool, ok := a.tools.Get(strings.TrimSpace(name))
 	return tool, ok
 }
 
 // Tools 返回所有工具
 func (a *Agent) Tools() map[string]Tool {
-	if a == nil {
+	if a == nil || a.tools == nil {
 		return nil
 	}
-	return a.tools
+	out := make(map[string]Tool, a.tools.Len())
+	a.tools.ForEach(func(name string, tool Tool) {
+		out[name] = tool
+	})
+	return out
 }
 
 // ==================== ToolContext 接口实现 ====================

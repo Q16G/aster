@@ -77,7 +77,6 @@ func (a *Agent) BuildThinkActPrompt(extra string, taskContext *TaskContextData) 
 		Warnings:                snap.Warnings,
 		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
-		Nonce:                   generateRandomString(8),
 		HasOutputContract:       hasContract,
 		OutputContractName:      contractName,
 		OutputContractSchema:    contractSchema,

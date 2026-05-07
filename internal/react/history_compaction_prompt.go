@@ -31,14 +31,13 @@ func summarizeHistoryCompaction(ctx context.Context, client ai.ChatClient, manag
 	prompt, err := manager.BuildHistoryCompactionPrompt(HistoryCompactionPromptInput{
 		Instruction: instruction,
 		PrevSummary: prevSummary,
-		Nonce:       generateNonce(8),
 	})
 	if err != nil {
 		return "", fmt.Errorf("build history compaction prompt failed: %w", err)
 	}
 	request := NormalizeHistoryMsgInfos(msgs)
 	request = append(request, ai.NewUserMsgInfo(prompt))
-	choices, err := client.ChatEx(ctx, request)
+	choices, err := ai.ChatExWithOptions(ctx, client, request, &ai.RequestOptions{PromptFamily: promptFamilyHistoryCompaction})
 	if err != nil {
 		return "", err
 	}
