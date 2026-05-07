@@ -1,0 +1,38 @@
+rules:
+  - id: java-misc-idor-ownership-drop
+    message: >
+      Suspicious ownership drop: a method receives both an operator identity
+      parameter and a target object identifier, but the downstream query only
+      uses the target object identifier. Review whether tenant/account/operator
+      constraints were accidentally dropped before the mapper/repository call.
+    metadata:
+      cwe: CWE-639
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: LOW
+      needs_dataflow_confirmation: false
+      review_classification: Semantic review required
+    severity: WARNING
+    languages: [java]
+    patterns:
+      - pattern-inside: |
+          $RET $FUNC(..., $OWNER, ..., $TARGET, ...) {
+            ...
+          }
+      - pattern-either:
+          - pattern: return $MAPPER.$QUERY(..., $TARGET, ...);
+          - pattern: $RESULT = $MAPPER.$QUERY(..., $TARGET, ...);
+          - pattern: $MAPPER.$QUERY(..., $TARGET, ...);
+      - pattern-not: return $MAPPER.$QUERY(..., $OWNER, ...);
+      - pattern-not: $RESULT = $MAPPER.$QUERY(..., $OWNER, ...);
+      - pattern-not: $MAPPER.$QUERY(..., $OWNER, ...);
+      - metavariable-regex:
+          metavariable: $OWNER
+          regex: (?i).*(account|owner|tenantId|operator|principal|currentUser|loginUser|sessionUser|creatorId|ownerId|managerId).*
+      - metavariable-regex:
+          metavariable: $TARGET
+          regex: (?i).*(userId|resourceId|reportId|targetId|objectId|entityId|itemId|orderId|recordId|docId|patientId|customerId).*
+      - metavariable-regex:
+          metavariable: $QUERY
+          regex: (?i)(query|get|find|select|show|load|delete|update|modify|remove).*

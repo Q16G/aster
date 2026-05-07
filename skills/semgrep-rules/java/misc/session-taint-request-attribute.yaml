@@ -1,0 +1,31 @@
+rules:
+  - id: java-misc-session-taint-request-attribute
+    message: >
+      Potential trust boundary violation: data derived from a request
+      attribute is written into the HTTP session. If the attribute is
+      populated from user-controlled input in a filter, interceptor, decoder,
+      or middleware layer, the session may persist attacker-controlled
+      identity or permission data.
+    metadata:
+      cwe: CWE-501
+      owasp:
+        - A04:2021 - Insecure Design
+        - A06:2025 - Insecure Design
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: (HttpServletRequest $REQ).getAttribute(...)
+    pattern-propagators:
+      - pattern: $TO = $FROM.get(...);
+        from: $FROM
+        to: $TO
+    pattern-sinks:
+      - patterns:
+          - pattern: (HttpServletRequest $REQ).getSession(...).setAttribute($NAME, $VALUE);
+          - focus-metavariable: $VALUE
+    options:
+      interfile: true

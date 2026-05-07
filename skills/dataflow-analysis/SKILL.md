@@ -1,8 +1,8 @@
 ---
 name: dataflow-analysis
-description: 数据流分析指南 — 使用 SyntaxFlow MCP 工具进行 topdef/bottomUse/注解查找和数据流追踪
+description: 数据流分析与退化复核指南，使用 SyntaxFlow MCP 做 topdef/bottomUse/注解查找；当 SSA 不可用时，执行固定 fallback checklist。
 tags: code-audit,dataflow,syntaxflow,mcp
-when-to-use: 当需要对 semgrep 发现做数据流追踪确认，或进行跨函数/跨文件污点分析时
+when-to-use: 当需要对 semgrep 候选集做数据流确认，或需要分析 request -> session、cookie -> auth decision、owner -> mapper 等跨函数链路时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"
@@ -11,257 +11,213 @@ arguments:
   - lang
 ---
 
-# 数据流分析（SyntaxFlow MCP）
+# 数据流分析（SyntaxFlow MCP + Fallback）
 
 ## 目标
-通过 `syntaxflow` MCP Server 的 `ssa_compile` 和 `ssa_query` 工具，对代码进行数据流分析：**topdef**（定义溯源）、**bottomUse**（使用追踪）、**注解查找**。用于验证 semgrep 发现、追踪污点传播、分析鉴权缺失等。
 
-## 前置条件
-- `syntaxflow` MCP Server 已连接（通过 `/mcp` 检查状态）
-- 若未连接，通过 TUI 的 `/mcp` 命令连接，或确认 `yak` 已安装（`yak version`）
+这个 skill 的职责不是“看到污点就追一遍”，而是把 `sast-scan` 产出的下列线索做成**结构化确认**：
 
-## MCP 工具参考
+- request-derived value -> session write
+- cookie-derived value -> branch / auth decision
+- owner/operator arg -> service -> mapper/query
+- controller -> service -> repository / mapper 的权限或 ownership 丢失
 
-### ssa_compile — 编译源代码
+如果 `SyntaxFlow` 可用，则用 SSA 做 topdef / bottomUse。  
+如果不可用，则必须执行固定 fallback checklist，不允许只写“转人工审计”。
 
-将源代码编译为 SSA 中间表示，持久化到数据库，可复用于多次查询。
+## 何时使用
 
-**参数：**
+优先用于以下场景：
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `target` | string | 是 | 项目目录路径 |
-| `language` | string | 是 | 语言：`java`, `php`, `js`, `golang`, `yak`, `c`, `python` |
-| `program_name` | string | 否 | 自定义程序名（推荐设置，便于复用）。不填则自动生成 |
-| `base_program_name` | string | 否 | 增量编译：基于已有程序做差量编译，仅重编译变更文件 |
-| `re_compile` | boolean | 否 | 全量重编译：删除旧数据从头编译。注意：这不是增量编译！ |
+- `needs_dataflow_confirmation: true`
+- 规则命中了 `session`、`cookie`、`request attribute`
+- 怀疑存在 ownership / IDOR / authz 问题
+- 需要确认 controller/service/mapper 是否丢失操作者约束
 
-**使用模式：**
-1. **首次编译**：`target` + `language` + `program_name` → 返回 program_name
-2. **复用查询**：编译一次，后续直接用 program_name 做多次 ssa_query
-3. **增量编译**（代码改动后）：设置 `base_program_name` = 之前的 program_name → 返回新的 diff program_name
-4. **全量重编译**（罕见）：设置 `re_compile=true`
+## SSA 可用时的工作流
 
-**缓存机制**：若 program_name 已存在且源码未变化，自动命中缓存，不重复编译。
+### 1. 编译目标
 
-### ssa_query — 执行 SyntaxFlow 查询
+先确认 `syntaxflow` MCP 状态；若正常，编译目标项目：
 
-在已编译的 SSA 程序上执行 SyntaxFlow 数据流查询。
+- `ssa_compile(target, language, program_name)`
 
-**参数：**
+推荐把 `program_name` 命名成与项目或样本相关的稳定名字，便于复用查询。
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `program_name` | string | 是 | ssa_compile 返回的程序名 |
-| `rule` | string | 是 | SyntaxFlow 规则文本 |
+### 2. 使用通用查询模板
 
-**输出内容：**
-- Alert Variables：命中的告警变量及其值（文件位置、行号、上下文代码）
-- Other Variables：非告警捕获变量
-- Check Messages：断言检查消息
-- 每个值包含：字符串表示、文件路径、行列位置、周围代码上下文
+不要围绕单个项目字段名写查询。优先从以下通用模板出发。
 
-## SyntaxFlow DSL 语法
+#### 模板 A：request-derived value -> session
 
-### 核心操作符
+适用于：
 
-| 操作符 | 含义 | 示例 |
-|--------|------|------|
-| `.` | 成员访问/调用链 | `Runtime.getRuntime().exec()` |
-| `#->` | **topdef**（向上追踪定义来源） | `$var #-> as $source` |
-| `-->` | **bottomUse**（向下追踪使用点） | `$var --> as $usage` |
-| `?{}` | 条件过滤 | `*?{opcode: call}` |
-| `as $var` | 捕获到变量 | `exec(*) as $sink` |
-| `check $var then "msg"` | 断言非空 | `check $sink then "found injection"` |
-| `alert $var` | 标记为告警发现 | `alert $sink` |
+- `request.getParameter/getHeader/getCookies/getReader`
+- `request.getAttribute(...)`
+- filter / decoder / middleware 派生值
 
-### 三大核心能力
+查询目标：
 
-#### 1. topdef — 定义溯源（Use-Def 链）
-从变量使用处**向上**追踪到定义来源，判断数据是否用户可控。
+- 是否流向 `getSession().setAttribute(...)`
+- 是否经由 `HttpSession session = ...` 的别名 sink
 
-```syntaxflow
-// 追踪 exec() 参数的来源
-Runtime.getRuntime().exec(* #-> as $source) as $sink;
-check $sink then "found command execution";
-alert $source;
-```
+#### 模板 B：cookie-derived value -> branch/auth decision
 
-```syntaxflow
-// 追踪 SQL 查询参数来源
-*.execute(* #-> as $source) as $sink;
-check $sink then "found SQL execution";
-alert $source;
-```
+查询目标：
 
-#### 2. bottomUse — 使用追踪（Def-Use 链）
-从变量定义处**向下**追踪到所有使用点，判断数据流向哪些危险函数。
+- cookie 值是否参与 `if/else`、权限比对、身份相等判断
+- cookie 值之后是否进入管理操作、敏感 service 调用、对象创建/删除/更新
 
-```syntaxflow
-// 追踪 request.getParameter() 的去向
-*.getParameter(*) as $input --> as $usage;
-check $usage then "user input flows to";
-alert $usage;
-```
+#### 模板 C：owner/operator -> service -> mapper/query
 
-```syntaxflow
-// 追踪密码变量的使用
-$password --> as $usage;
-check $usage then "password variable used at";
-alert $usage;
-```
+查询目标：
 
-#### 3. 注解查找
-查找带有特定注解的方法/类，用于定位 HTTP 入口点。
+- 方法是否同时接收操作者身份参数和目标对象参数
+- service / mapper 调用是否丢弃 owner/operator 约束
+- 最终 query 是否只保留 target/resource ID
 
-```syntaxflow
-// 查找所有 Spring Controller 端点
-*?{.annotation.*Mapping} as $endpoints;
-check $endpoints then "found HTTP endpoint";
-alert $endpoints;
-```
+### 3. 对输出做判定
 
-```syntaxflow
-// 查找所有 @RequestMapping 方法
-*.annotation.RequestMapping as $mapping;
-$mapping... as $methods;
-alert $methods;
-```
+对每个链路给出之一：
 
-```syntaxflow
-// 查找缺少 @PreAuthorize 的 Controller 方法
-*?{.annotation.*Mapping && !.annotation.PreAuthorize} as $unprotected;
-check $unprotected then "endpoint without auth check";
-alert $unprotected;
-```
+- `Confirmed`
+- `Needs Review`
+- `False Positive`
 
-### 数据流递归配置
+并补充：
 
-SyntaxFlow 的数据流追踪（`#->` / `-->`）支持四种递归配置项，控制追踪行为：
+- source
+- intermediate vars
+- sink / query call
+- 是否仍需业务语义复核
 
-| 配置项 | 语义 | 数据流行为 | 典型场景 |
-|--------|------|-----------|---------|
-| `until` | 匹配到即停止流动 | 命中后停止 | 找到第一个常量来源就停下 |
-| `hook` | 对每个节点执行规则，不影响结果 | 始终继续 | 沿途收集辅助信息 |
-| `include` | 正向过滤：仅保留匹配的 Value | 匹配保留，其余丢弃 | 只保留经过安全检查的路径 |
-| `exclude` | 反向过滤：移除匹配的 Value | 匹配移除，其余保留 | 排除非常量值 |
+## Java Web 的固定查询主题
 
-**语法格式：**
-```syntaxflow
-// 单配置
-$var #{until: `*?{opcode: const}`}-> as $result
+对于 Java Web 项目，至少覆盖以下五类主题：
 
-// 多行配置（用 <<<TAG ... TAG 包裹）
-$var #{hook: <<<HOOK
-    *.fieldName as $fields
-HOOK
-}-> as $result
-```
+1. `request` / `request attribute` -> `session`
+2. `Cookie` -> branch / auth decision
+3. `controller(owner, target)` -> `service(owner, target)` -> `mapper(target)`
+4. `request.getAttribute()` -> permission `if` branch（filter 解密数据入权限判断）
+5. `service method params` -> `mapper XML #{}/$ {}` 绑定完整性
 
-**实战示例：**
+如果时间有限，也必须优先保证前三类，而不是随机追踪单个 sink。
 
-```syntaxflow
-// until — 追踪到常量来源即停止（硬编码凭据检测）
-$func(* #{until: `*?{opcode: const}`}-> ) as $hardcoded;
-check $hardcoded then "hardcoded value found";
-alert $hardcoded;
-```
+## SSA 查询模板（扩展）
 
-```syntaxflow
-// hook — 沿途收集中间变量
-$input #{hook: <<<HOOK
-    *.toString() as $conversions
-HOOK
-}-> as $final;
-alert $final;
-```
+以下模板是通用 SSA 查询的扩展。模板 A/B/C 见上文，以下是阶段2新增的 D/E/F。
 
-```syntaxflow
-// include — 只保留经过安全检查的路径
-$sink #{include: `* & $sanitized`}-> as $safe_paths;
-```
+### 模板 D：跨层 ownership 分析
 
-```syntaxflow
-// exclude — 排除常量值（只保留动态输入）
-$param #{exclude: `*?{opcode: const}`}-> as $dynamic_sources;
-check $dynamic_sources then "dynamic input found";
-alert $dynamic_sources;
-```
+适用于：Semgrep `idor-ownership-drop` 命中后的深度确认。
 
-四种配置可同时出现在一个递归块中组合使用。
+- 输入：controller 方法签名（含 operator 和 target 参数）
+- 查询步骤：
+  1. 从 controller 方法入口开始 `bottomUse` 追踪 operator 参数
+  2. 检查 operator 是否传递给 service 层方法
+  3. 检查 service 是否继续传递给 mapper/repository 方法
+  4. 检查最终 SQL/query 是否在 WHERE 中使用了 operator
+- 输出：operator 参数在每层边界的传递状态（`preserved` / `dropped` / `transformed`）
 
-## 典型工作流
+### 模板 E：session 注入认证绕过链路
 
-### 场景 1：验证 semgrep SQL 注入发现
+适用于：Semgrep `session-taint-*` 命中后的深度确认。
 
-1. **编译目标项目**
-   ```
-   ssa_compile(target="/path/to/project", language="java", program_name="myapp")
-   ```
+- 输入：`request.getAttribute()` 调用点或 filter 派生值
+- 查询步骤：
+  1. `topdef` 追溯 attribute 的来源（哪个 filter 设置的）
+  2. `bottomUse` 追踪该值是否进入 `session.setAttribute()`
+  3. 同时追踪该值是否进入鉴权判断分支（`if` / `equals`）
+  4. 如果进入 session，追踪后续哪些 handler 从 session 读取该值
+- 输出：完整污点链（filter -> attribute -> session/authz branch）
 
-2. **追踪 SQL 执行点的参数来源（topdef）**
-   ```
-   ssa_query(program_name="myapp", rule=`
-     *.executeQuery(* #-> as $source) as $sink;
-     *.execute(* #-> as $source) as $sink;
-     check $sink then "SQL execution found";
-     alert $source;
-   `)
-   ```
+### 模板 F：MyBatis 参数绑定完整性
 
-3. **判断**：若 $source 包含 `getParameter()`、`getHeader()` 等用户输入方法 → **Confirmed**；若 $source 全是常量 → **False Positive**
+适用于：Semgrep `mapper-missing-operator-constraint` 命中后的交叉确认。
 
-### 场景 2：鉴权缺失分析
+- 输入：service 方法及其参数列表
+- 查询步骤：
+  1. 枚举 service 方法的全部参数
+  2. 标注每个参数的语义角色（operator/target/other）
+  3. 追踪每个参数是否传递给 mapper/repository 调用
+  4. 对照 mapper XML 的 `#{}` / `${}` 使用情况
+- 输出：哪些 service 参数未进入最终 SQL 查询（可能的 ownership drop）
 
-1. **查找所有 HTTP 入口**
-   ```
-   ssa_query(program_name="myapp", rule=`
-     *?{.annotation.*Mapping} as $endpoints;
-     check $endpoints then "HTTP endpoint";
-     alert $endpoints;
-   `)
-   ```
+## SyntaxFlow 不可用时的 fallback（必须执行）
 
-2. **查找有鉴权注解的入口**
-   ```
-   ssa_query(program_name="myapp", rule=`
-     *?{.annotation.*Mapping && .annotation.PreAuthorize} as $protected;
-     alert $protected;
-   `)
-   ```
+当出现以下任一情况：
 
-3. **AI 比对**：不在 $protected 中但在 $endpoints 中的方法 → **Auth Missing**
+- `SyntaxFlow MCP` 未连接
+- `yak` 未安装
+- `ssa_compile` 失败
+- 语言暂不支持或编译结果明显不完整
 
-### 场景 3：敏感数据泄露追踪
+则必须执行 fallback，而不是直接结束：
 
-1. **追踪敏感字段的流向（bottomUse）**
-   ```
-   ssa_query(program_name="myapp", rule=`
-     *.getPassword() as $sensitive --> as $usage;
-     *.getSSN() as $sensitive --> as $usage;
-     check $usage then "sensitive data flows to";
-     alert $usage;
-   `)
-   ```
+### fallback step 1：入口盘点
 
-2. **判断**：若 $usage 包含 `response.write()`、`log.info()` 等输出方法 → **Confirmed Leak**
+用 `rg` 枚举：
 
-## AI 补充分析范围
+- controller / handler / route
+- login / auth / signin / authenticate
+- session / cookie / getAttribute / setAttribute
+- mapper / repository / query / find / select / load
 
-SyntaxFlow 提供数据流事实后，AI 负责以下非强 sink 点的智能判断：
+### fallback step 2：参数角色盘点
 
-| 分析类型 | AI 判断内容 | 依赖的 SyntaxFlow 输出 |
-|---------|-----------|---------------------|
-| 鉴权缺失 | HTTP 入口是否缺少认证/授权检查 | 注解查找 → 入口方法列表 |
-| 越权风险 | 用户 ID 参数是否直接用于数据查询 | topdef → 参数来源追踪 |
-| 敏感数据泄露 | 敏感字段是否暴露在响应中 | bottomUse → 数据流向追踪 |
-| 业务逻辑漏洞 | 条件分支是否存在绕过可能 | topdef + bottomUse 组合 |
-| 配置安全 | 安全相关配置项是否设置正确 | 注解查找 → 配置类定位 |
+对候选函数标出参数角色：
 
-## 输出判定
+- owner/operator/principal/account/tenant
+- target/object/resource/id
 
-对每个待确认的发现，给出以下判定之一：
-- **Confirmed** — 数据流验证通过，存在从 source 到 sink 的完整污点路径
-- **Auth Missing** — AI 鉴权分析发现入口缺少认证/授权
-- **False Positive** — 数据流证伪，source 为常量或经过有效清洗
-- **Needs Review** — 数据流不确定，需人工审查
+### fallback step 3：固定检查
+
+至少完成以下 checklist：
+
+- 是否存在 request-derived value 写入 session
+- 是否存在 cookie-derived value 参与权限判断
+- 是否存在登录函数语义反转线索
+- 是否存在 owner/operator 在下游 query 中丢失
+- 是否存在只依赖 body/query/cookie 而不依赖 server-side auth context 的权限判断
+
+### fallback step 4：输出声明
+
+报告中必须显式写出：
+
+- `ssa_available: false`
+- `fallback_used: true`
+- `fallback_checklist_completed: true`
+
+若某项未完成，也要明确写出未完成原因，而不是留空。
+
+## 输出要求
+
+每次调用该 skill，最终至少补出：
+
+- `ssa_available`
+- `fallback_used`
+- `fallback_checklist_completed`
+- `confirmed_flows`
+- `needs_review_flows`
+- `unresolved_gaps`
+
+每条流必须标注入口点（controller method + HTTP method + URL pattern）。当同一 sink 从多个入口点可达时，拆成多条流分别列出，每条标注各自的入口点。
+
+## 结果分类建议
+
+三个等级均须在输出中列出，不允许只报 Confirmed 而省略其他：
+
+- `Confirmed`
+  - 数据流或结构链已完整成立
+- `Needs Review`
+  - 数据流接近成立，但仍需业务语义判断
+- `False Positive`
+  - source 不可控、sink 不可达或已有明确防护
+
+全量输出的目的：让审核者能看到完整审计覆盖范围，并对边界 case 做二次判断。
+
+## 重要限制
+
+- 不要为单一样本项目的字段名定制 SSA 查询
+- 不要把“SSA 不可用”当成结束条件
+- 不要只围绕已有扫描命中追踪，必须补 owner/auth/session 这三类固定主题

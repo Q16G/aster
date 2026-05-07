@@ -12,7 +12,7 @@
 - **SyntaxFlow 数据流** — 通过 yak SSA 引擎进行 topdef/bottomUse 追踪验证
 - **MCP 协议** — stdio / SSE / Streamable HTTP，全局或按 Agent 挂载外部工具
 - **7 大 LLM Provider** — OpenAI、Anthropic、DeepSeek、Groq、OpenRouter、Together、Ollama
-- **24 个安全技能** — 按需注入 Agent 上下文，运行时动态启用/禁用
+- **26+ 个安全技能** — 按需注入 Agent 上下文，运行时动态启用/禁用
 - **终端 TUI** — Bubbletea 交互界面，会话管理、主题切换、快捷键操作
 
 ---
@@ -177,7 +177,7 @@ mcp_servers:
 
 | Agent | 定位 | 核心技能 |
 |-------|------|----------|
-| **code-audit** | 代码安全审计 — Semgrep SAST + SyntaxFlow 数据流 | `sast-scan`, `dataflow-analysis` |
+| **code-audit** | 代码安全审计 — 攻击面盘点 + 多介质 SAST + 数据流复核 | `security-code-analysis`, `sast-scan`, `dataflow-analysis` |
 | **pentest** | 渗透测试 — 浏览器自动化 + Web 漏洞检测 | `agent-browser`, SQL 注入/XSS/IDOR 等 12 项 |
 | **host-defense** | 主机防护 — 基线检查 + 入侵检测 + 应急响应 | `baseline-check`, `intrusion-detection`, `malware-detect` |
 

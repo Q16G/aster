@@ -14,7 +14,7 @@ rules:
       confidence: MEDIUM
       needs_dataflow_confirmation: true
     severity: WARNING
-    languages: [java]
+    languages: [generic]
     paths:
       include:
-        - "*.xml"
+        - "**/*.xml"

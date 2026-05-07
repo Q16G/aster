@@ -1,0 +1,56 @@
+rules:
+  - id: java-misc-cookie-used-for-authz
+    message: >
+      Potential client-controlled authorization: a value read from an HTTP
+      cookie is used to decide whether a sensitive operation is allowed. Use a
+      server-side session or security context instead of trusting account/role
+      identifiers from client cookies.
+    metadata:
+      cwe: CWE-565
+      owasp:
+        - A01:2021 - Broken Access Control
+        - A01:2025 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  Cookie[] $COOKIES = $REQ.getCookies();
+                  ...
+                  for (Cookie $COOKIE : $COOKIES) {
+                    ...
+                    if ($COOKIE.getName().equals($NAME)) {
+                      ...
+                      $COOKIE_VALUE = $COOKIE.getValue();
+                      ...
+                    }
+                  }
+                  ...
+              - pattern-either:
+                  - pattern: if ($ACCOUNT.equals($COOKIE_VALUE)) { ... }
+                  - pattern: if ($COOKIE_VALUE.equals($ACCOUNT)) { ... }
+                  - pattern: if ($ACCOUNT == $COOKIE_VALUE) { ... }
+          - patterns:
+              - pattern-inside: |
+                  Cookie[] $COOKIES = $REQ.getCookies();
+                  ...
+                  for (Cookie $COOKIE : $COOKIES) {
+                    ...
+                  }
+              - pattern-either:
+                  - pattern: if ($ACCOUNT.equals($COOKIE.getValue())) { ... }
+                  - pattern: if ($COOKIE.getValue().equals($ACCOUNT)) { ... }
+                  - pattern: if ($ACCOUNT == $COOKIE.getValue()) { ... }
+          - patterns:
+              - pattern: |
+                  $TYPE $FUNC(..., @CookieValue($NAME) $CTYPE $CVAR, ...) {
+                    ...
+                    if ($CVAR.equals(...)) { ... }
+                    ...
+                  }
+              - metavariable-regex:
+                  metavariable: $NAME
+                  regex: (?i).*(role|admin|account|userId|tenantId|permission|isAdmin|userType|authLevel|token).*
