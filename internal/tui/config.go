@@ -6,15 +6,18 @@ import (
 	"os"
 	"path/filepath"
 
+	"aster/internal/ai"
 	"aster/internal/mcp"
 
 	"gopkg.in/yaml.v3"
 )
 
 type ProviderConfig struct {
-	BaseURL      string `yaml:"base_url"`
-	APIKey       string `yaml:"api_key"`
-	DefaultModel string `yaml:"default_model"`
+	BaseURL      string                `yaml:"base_url"`
+	APIKey       string                `yaml:"api_key"`
+	DefaultModel string                `yaml:"default_model"`
+	Headers      map[string]string     `yaml:"headers,omitempty"`
+	PromptCache  *ai.PromptCacheConfig `yaml:"prompt_cache,omitempty"`
 }
 
 type AppConfig struct {
@@ -24,10 +27,12 @@ type AppConfig struct {
 }
 
 type ProviderState struct {
-	Name    string
-	BaseURL string
-	APIKey  string
-	ModelID string
+	Name        string
+	BaseURL     string
+	APIKey      string
+	ModelID     string
+	Headers     map[string]string
+	PromptCache *ai.PromptCacheConfig
 }
 
 const (
@@ -96,6 +101,12 @@ providers:
   #   base_url: https://api.anthropic.com/v1
   #   api_key: ${ANTHROPIC_API_KEY}
   #   default_model: claude-sonnet-4-20250514
+  #   headers:
+  #     anthropic-version: "2023-06-01"
+  #   prompt_cache:
+  #     enabled: true
+  #     retention: 5m
+  #     families: ["think_act"]
 
   # deepseek:
   #   base_url: https://api.deepseek.com/v1
@@ -383,7 +394,12 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 	if len(cfg.Providers) > 0 {
 		cleanCfg.Providers = make(map[string]*ProviderConfig, len(cfg.Providers))
 		for k, v := range cfg.Providers {
+			if v == nil {
+				continue
+			}
 			cp := *v
+			cp.Headers = cloneStringMap(v.Headers)
+			cp.PromptCache = v.PromptCache.Clone()
 			cleanCfg.Providers[k] = &cp
 		}
 	}
@@ -399,6 +415,20 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 }
 
 func (c *AppConfig) ResolveProvider(cliProvider, cliModel, cliBaseURL, cliAPIKey string) (providerName, baseURL, apiKey, model string) {
+	state := c.ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey)
+	if state == nil {
+		return "", "", "", ""
+	}
+	return state.Name, state.BaseURL, state.APIKey, state.ModelID
+}
+
+func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey string) *ProviderState {
+	var (
+		providerName string
+		baseURL      string
+		apiKey       string
+		model        string
+	)
 	providerName = firstNonEmpty(cliProvider, os.Getenv("ASTER_PROVIDER"), c.DefaultProvider, "openai")
 
 	var p *ProviderConfig
@@ -423,7 +453,14 @@ func (c *AppConfig) ResolveProvider(cliProvider, cliModel, cliBaseURL, cliAPIKey
 	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), p.BaseURL, bpBaseURL, "https://api.openai.com/v1")
 	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, p.APIKey)
 	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, bpDefaultModel, "gpt-4o")
-	return
+	return &ProviderState{
+		Name:        providerName,
+		BaseURL:     baseURL,
+		APIKey:      apiKey,
+		ModelID:     model,
+		Headers:     cloneStringMap(p.Headers),
+		PromptCache: p.PromptCache.Clone(),
+	}
 }
 
 func (c *AppConfig) ToMCPConfig() *mcp.Config {
@@ -443,6 +480,9 @@ func expandProviderEnv(cfg *AppConfig) {
 		}
 		p.BaseURL = expand(p.BaseURL)
 		p.APIKey = expand(p.APIKey)
+		for key, value := range p.Headers {
+			p.Headers[key] = expand(value)
+		}
 	}
 }
 
@@ -475,4 +515,15 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
 }

@@ -18,6 +18,7 @@ const (
 	PartTypeStepResult  PartType = "step_result"
 	PartTypeStepSummary PartType = "step_summary"
 	PartTypeFinalAnswer PartType = "final_answer"
+	PartTypeSubAgent   PartType = "sub_agent"
 )
 
 type DisplayPart struct {
@@ -34,6 +35,7 @@ type DisplayPart struct {
 	StepResult  *StepResultPart  `json:"step_result,omitempty"`
 	StepSummary *StepSummaryPart `json:"step_summary,omitempty"`
 	FinalAnswer *FinalAnswerPart `json:"final_answer,omitempty"`
+	SubAgent    *SubAgentPart    `json:"sub_agent,omitempty"`
 }
 
 type UserPart struct {
@@ -45,14 +47,19 @@ type TextPart struct {
 }
 
 type ToolPart struct {
-	Name      string        `json:"name"`
-	CallID    string        `json:"call_id,omitempty"`
-	Arguments string        `json:"args,omitempty"`
-	Result    string        `json:"result,omitempty"`
-	Error     string        `json:"error,omitempty"`
-	State     string        `json:"state"`
-	Duration  time.Duration `json:"duration,omitempty"`
-	IsAgent   bool          `json:"is_agent,omitempty"`
+	Name       string        `json:"name"`
+	CallID     string        `json:"call_id,omitempty"`
+	Arguments  string        `json:"args,omitempty"`
+	Result     string        `json:"result,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	State      string        `json:"state"`
+	Duration   time.Duration `json:"duration,omitempty"`
+	IsAgent    bool          `json:"is_agent,omitempty"`
+	StackDepth int           `json:"stack_depth,omitempty"`
+	AgentName  string        `json:"agent_name,omitempty"`
+	Namespace  string        `json:"namespace,omitempty"`
+	Summary    string        `json:"summary,omitempty"`
+	ChildRef   string        `json:"child_ref,omitempty"`
 }
 
 type PlanPart struct {
@@ -99,6 +106,16 @@ type StepSummaryPart struct {
 	OpenQuestions   []string `json:"open_questions,omitempty"`
 	ToolCallsDigest string   `json:"tool_calls_digest,omitempty"`
 	References      []string `json:"references,omitempty"`
+}
+
+type SubAgentPart struct {
+	AgentName string        `json:"agent_name"`
+	CallID    string        `json:"call_id,omitempty"`
+	Status    string        `json:"status"`
+	Summary   string        `json:"summary,omitempty"`
+	Namespace string        `json:"namespace,omitempty"`
+	ChildRef  string        `json:"child_ref,omitempty"`
+	Duration  time.Duration `json:"duration,omitempty"`
 }
 
 type FinalAnswerPart struct {
