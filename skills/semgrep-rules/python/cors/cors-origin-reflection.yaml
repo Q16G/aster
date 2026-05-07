@@ -1,0 +1,43 @@
+rules:
+  - id: python-cors-origin-reflection
+    message: >
+      CORS origin reflection: the response Access-Control-Allow-Origin header
+      is set directly from the request Origin header. This allows any origin
+      to make credentialed cross-origin requests, effectively bypassing the
+      same-origin policy. Use a strict allowlist of trusted origins instead
+      of reflecting the request origin.
+    metadata:
+      cwe: CWE-942
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A01:2021 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $ORIGIN = $REQ.META["HTTP_ORIGIN"]
+              ...
+              $RES["Access-Control-Allow-Origin"] = $ORIGIN
+          - pattern: |
+              $RES["Access-Control-Allow-Origin"] = $REQ.META["HTTP_ORIGIN"]
+          - pattern: |
+              $ORIGIN = $REQ.META.get("HTTP_ORIGIN", ...)
+              ...
+              $RES["Access-Control-Allow-Origin"] = $ORIGIN
+          - pattern: |
+              $RES["Access-Control-Allow-Origin"] = $REQ.META.get("HTTP_ORIGIN", ...)
+          - pattern: |
+              $ORIGIN = $REQ.headers.get("Origin", ...)
+              ...
+              $RES["Access-Control-Allow-Origin"] = $ORIGIN
+          - pattern: |
+              $RES["Access-Control-Allow-Origin"] = $REQ.headers.get("Origin", ...)
+          - pattern: |
+              $ORIGIN = $REQ.headers["Origin"]
+              ...
+              $RES["Access-Control-Allow-Origin"] = $ORIGIN
+          - pattern: |
+              $RES["Access-Control-Allow-Origin"] = $REQ.headers["Origin"]

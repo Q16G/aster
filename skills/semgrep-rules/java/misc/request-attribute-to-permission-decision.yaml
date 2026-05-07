@@ -1,0 +1,28 @@
+rules:
+  - id: java-misc-request-attribute-to-permission-decision
+    message: >
+      A value obtained from request.getAttribute() is used in a conditional
+      branch that gates a sensitive operation. If this attribute was set by
+      a filter from user-controlled input (e.g. decrypted request body),
+      an attacker may be able to influence permission decisions. Verify the
+      attribute origin and consider using a server-side session or security
+      context instead.
+    metadata:
+      cwe: CWE-807
+      owasp:
+        - A04:2021 - Insecure Design
+        - A01:2021 - Broken Access Control
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: (HttpServletRequest $REQ).getAttribute(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: if ($VALUE.equals(...)) { ... }
+              - pattern: if ($VALUE == $OTHER) { ... }
+              - pattern: if ($OTHER.equals($VALUE)) { ... }

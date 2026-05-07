@@ -1,8 +1,8 @@
 ---
 name: sast-scan
-description: 基于 Semgrep 的静态应用安全测试（SAST）- 530+ 条本地安全规则覆盖 6 大语言
+description: 基于 Semgrep 的静态应用安全测试（SAST），使用本地嵌入规则做多介质、多语言安全扫描，并输出覆盖声明与噪声分桶。
 tags: code-audit,sast,semgrep
-when-to-use: 当需要对代码进行静态安全扫描、发现已知漏洞模式、检测强 sink 点时
+when-to-use: 当需要对代码进行静态安全扫描、建立高价值漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"
@@ -13,23 +13,41 @@ arguments:
 
 # SAST 静态安全扫描（Semgrep）
 
-> **⚠️ 只使用本地规则扫描，不要使用 `--config auto`、`--config p/xxx` 等在线规则。所有规则已内置于本地。**
+> **只使用本地规则扫描**。不要使用 `--config auto`、`--config p/xxx` 等在线规则。所有规则已内置于本地。
+
+## 目标
+
+这个 skill 的职责不是“跑完 Semgrep 就结束”，而是：
+
+1. 建立**高价值候选集**
+2. 明确**实际扫描面**
+3. 把结果分成**高置信 / 需数据流确认 / 高噪声**
+4. 为后续 `dataflow-analysis` 和业务逻辑复核提供输入
+
+它偏向发现：
+
+- SQL 注入、命令执行、代码执行、路径穿越、文件上传、XSS、SSRF、硬编码密钥
+- MyBatis `${}`、模板原样输出、危险反序列化、危险脚本执行
+- Cookie/session/request-attribute 等信任边界问题的初筛线索
 
 ## 本地规则路径
 
-ASTER 内置了 530+ 条安全规则（自建 pattern 规则 + 社区 taint-mode 数据流规则 + 社区高质量 pattern 规则，已去除 LOW/LOW/LOW 审计规则及配置类/CSRF toggle/debug 检测等噪声规则），启动时已自动提取到以下固定目录：
+ASTER 启动时会把本地嵌入规则提取到：
 
-```
+```text
 ~/.aster/rules/
-├── java/          # Java: 反序列化(fastjson/jackson/xstream/hessian/kryo)、SQL注入、JNDI、SSTI、XSS、XXE、SSRF、认证、加密 + 社区 taint 规则
-├── go/            # Go: SQL注入(gorm/xorm)、命令注入、模板注入、反序列化、SSRF、认证、加密、竞态条件 + 社区 taint 规则
-├── python/        # Python: SQL注入(psycopg2/sqlite3/sqlalchemy/django)、SSTI(mako/tornado)、反序列化(pickle/jsonpickle/shelve)、SSRF(requests/httpx/aiohttp)、XSS + 社区 taint 规则
-├── javascript/    # JS/TS: SQL注入(knex/typeorm/sequelize)、SSTI(ejs/pug/handlebars)、反序列化(node-serialize/js-yaml)、原型污染(lodash)、XSS、SSRF + 社区 taint 规则
-├── php/           # PHP: SQL注入(mysqli/pdo)、文件包含(LFI/wrapper)、XXE(simplexml/dom)、SSTI(twig)、反序列化、XSS、SSRF + 社区 taint 规则
-└── c-cpp/         # C/C++: 缓冲区溢出(gets/sprintf/strcpy/memcpy/scanf)、命令注入(system/popen)、格式化字符串、内存安全 + 社区规则
+├── java/
+├── go/
+├── python/
+├── javascript/
+├── php/
+└── c-cpp/
 ```
 
-每个语言目录下包含 `community/` 子目录，存放从 Semgrep 官方仓库筛选的高质量安全规则（taint-mode 数据流追踪 + 高置信度 pattern 规则）。
+每个语言目录下同时包含：
+
+- 自建高价值规则
+- `community/` 子目录中的 Semgrep 社区高质量规则
 
 ## 扫描流程
 
@@ -39,84 +57,162 @@ ASTER 内置了 530+ 条安全规则（自建 pattern 规则 + 社区 taint-mode
 semgrep --version
 ```
 
-若未安装，引导用户：`brew install semgrep` 或 `pip install semgrep`
+若未安装，引导用户安装 `semgrep`。
 
-### 第二步：识别项目语言
+### 第二步：识别语言与框架信号
 
-扫描目录结构，根据文件扩展名和特征文件判断语言：
+优先通过目录与特征文件判断语言和框架，而不是只看扩展名：
 
-| 语言 | 特征文件 | 规则子目录 |
-|------|---------|-----------|
-| Java | pom.xml, build.gradle, *.java | `java/` |
-| Go | go.mod, go.sum | `go/` |
-| Python | requirements.txt, setup.py, *.py | `python/` |
-| JavaScript/TS | package.json, *.js, *.ts | `javascript/` |
-| PHP | composer.json, *.php | `php/` |
-| C/C++ | Makefile, CMakeLists.txt, *.c, *.h | `c-cpp/` |
+| 语言 | 特征文件 | 需要额外关注 |
+|------|---------|-------------|
+| Java | `pom.xml`、`build.gradle`、`*.java` | `mapper.xml`、`application*.yml`、`*.properties`、模板目录 |
+| Go | `go.mod` | `config/*.yaml`、模板、SQL 构造层 |
+| Python | `requirements*.txt`、`setup.py`、`pyproject.toml` | `settings.py`、模板、Jinja2/Flask/Django 配置 |
+| JS/TS | `package.json`、`*.js`、`*.ts` | 服务端模板、SSR、配置与中间件 |
+| PHP | `composer.json`、`*.php` | Blade/Twig/Smarty、配置与上传点 |
+| C/C++ | `Makefile`、`CMakeLists.txt` | 命令执行、内存安全、格式化字符串 |
 
-若用户通过 `--lang` 参数指定了语言，跳过自动检测。
+若用户通过 `--lang` 指定语言，可跳过自动检测，但仍要补做框架信号盘点。
 
-### 第三步：执行扫描
+### 第三步：构建扫描面
+
+不要把扫描面缩成“只有源码”。至少按语言保证以下介质进入扫描面：
+
+#### Java 默认扫描面
+
+- `*.java`
+- `**/mapper/**/*.xml`
+- `**/*.properties`
+- `**/*.yml`
+- `**/*.yaml`
+- 常见模板目录：`templates/`、`views/`、`WEB-INF/`
+
+#### Java 项目的强制要求
+
+若识别到任一信号：
+
+- `org.mybatis`
+- `mybatis-spring`
+- `mapper/` 目录
+- `Mapper.xml`
+
+则必须确认 XML mapper 已进入扫描面。  
+若 XML mapper 数为 `0`，不得给出“完整审计已完成”的结论，必须输出阻断性告警。
+
+### 第四步：执行扫描
+
+标准命令：
 
 ```bash
 semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout 600 --max-memory 4096
 ```
 
-示例（Java 项目）：
+建议额外排除明显无关目录：
+
 ```bash
-semgrep scan --config "$HOME/.aster/rules/java" /path/to/project --json --timeout 600 --max-memory 4096
+--exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
 ```
 
-多语言项目对每种语言分别执行：
-```bash
-semgrep scan --config "$HOME/.aster/rules/java" --config "$HOME/.aster/rules/go" /path/to/project --json --timeout 600
-```
+## 输出要求
 
-### 常用选项
+### 1. 覆盖声明（必须输出）
 
-- 排除目录：`--exclude vendor --exclude node_modules --exclude test --exclude .git`
-- 仅高危：`--severity ERROR`
-- 增量扫描：`--baseline-commit HEAD~1`
+报告里必须先写清本次扫到了什么，而不是直接开始列告警。至少包含：
 
-## 结果分析
+- 扫描目标
+- 识别语言
+- 规则来源
+- 扫描面统计
+  - Java 文件数
+  - XML mapper 数
+  - 配置文件数
+  - 模板文件数
+- 识别到的框架信号
+  - Spring
+  - MyBatis
+  - Thymeleaf
+  - Freemarker
+  - 其他显著框架
+- 扫描盲区 / 缺口
 
-### 1. 分级
-- **CRITICAL/ERROR** — 高置信度漏洞，需立即处理
-- **WARNING** — 中置信度，需人工确认
-- **INFO** — 低置信度或最佳实践建议
+### 2. 结果分桶（必须输出）
 
-### 2. 数据流确认标记
-检查 metadata 中 `needs_dataflow_confirmation` 字段：
-- `true` → 标记为"需要 SyntaxFlow 数据流确认"，在后续 `dataflow-analysis` 技能中做 topdef/bottomUse 追踪
-- `false` 或缺失 → 仅靠模式匹配即可判定
+所有结果必须分为三类：
 
-### 3. 逐条分析
-对每个发现：
-1. 读取命中位置的上下文代码（前后 5-10 行）
-2. 分析是否为真阳性（考虑框架特性、安全中间件、转义函数等）
-3. 解释漏洞原理和潜在影响
-4. 提供修复建议和安全编码示例
-5. 标记明确误报并说明原因
+- `high_confidence`
+  - 强 sink、直接危险 API、明确动态 SQL、明确危险配置
+- `needs_dataflow_confirmation`
+  - source/sink 已接近成立，但还需要 `dataflow-analysis`
+- `high_noise_patterns`
+  - 已知容易大批量误报的模式，如某些 SSTI/JNDI 审计规则
 
-## 输出报告格式
+默认主结论只先展示前两类。  
+高噪声桶单独列出，不允许它们挤占主结论。
 
-```
+### 3. 逐条分析规则
+
+对每条发现至少做以下判断：
+
+1. 是否真有用户可控输入
+2. 是否可达危险 sink / 动态 SQL / 权限决策
+3. 是否已有明确防护
+4. 该项属于哪类：
+   - `Confirmed by pattern`
+   - `Needs dataflow confirmation`
+   - `Semantic review required`
+5. 如果能从代码上下文判断该 sink 的 controller 入口点（方法名 + URL），注明入口点信息，方便下游按入口点汇总
+
+## Java 项目的特别要求
+
+对 Java Web 项目，除了常规 sink 规则，还必须额外注意：
+
+- `request.getAttribute(...)`、`Cookie`、`session` 参与权限或身份流转
+- `mapper.xml` 中 `${}`、动态条件、动态排序
+- controller/service/mapper 三层之间的参数一致性
+- 登录、鉴权、权限边界不一定会直接命中危险 API
+
+所以 Java 项目扫描结束后，若命中以下任一线索：
+
+- `needs_dataflow_confirmation`
+- `Cookie` 参与分支判断
+- `session` 写入身份字段
+- controller 参数同时包含 owner/operator 与 resource/target
+
+则应继续调用：
+
+- `dataflow-analysis`
+- 或 `business-logic-auth-review`
+
+## 推荐输出模板
+
+```text
 ## SAST 扫描报告
 
-### 摘要
+### 覆盖声明
 - 扫描目标：<target_path>
-- 检测语言：Java, Go, ...
-- 规则来源：本地规则（~/.aster/rules）
-- 发现总数：N（Critical: X, High: Y, Medium: Z, Low: W）
-- 需数据流确认：M 条
+- 检测语言：Java
+- 规则来源：本地规则（~/.aster/rules/java）
+- 框架信号：Spring, MyBatis, Thymeleaf
+- 扫描面：
+  - Java files: 128
+  - XML mappers: 14
+  - Config files: 9
+  - Templates: 6
+- 扫描缺口：<若有>
 
-### 发现列表（按严重程度排序）
+### 高置信结果
+- ...
 
-#### [CRITICAL] rule-id — 漏洞标题
-- 文件：path/to/file.java:42
-- CWE：CWE-89 (SQL Injection)
-- 代码片段：（高亮命中行）
-- 分析：（真阳性/疑似/误报 + 理由）
-- 修复建议：（代码示例）
-- 数据流确认：需要 / 不需要
+### 需要数据流确认
+- ...
+
+### 高噪声结果
+- ...
 ```
+
+## 禁止事项
+
+- 不要只报“发现多少条”，不说明扫描面
+- 不要把高噪声 SSTI/JNDI 直接混进主结论
+- 不要因为 `--lang java` 就只看 `*.java`，忽略 XML / 配置 / 模板
+- 不要在 XML mapper 没扫到时，仍宣称 SQL 注入已被完整覆盖

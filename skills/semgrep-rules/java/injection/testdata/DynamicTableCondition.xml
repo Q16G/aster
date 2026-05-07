@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.DynamicMapper">
+
+  <!-- ruleid: java-injection-mybatis-dynamic-table-or-condition -->
+  <select id="queryDynamicTable" resultType="map">
+    SELECT * FROM ${tableName} WHERE id = #{id}
+  </select>
+
+  <!-- ruleid: java-injection-mybatis-dynamic-table-or-condition -->
+  <select id="queryDynamicCondition" resultType="map">
+    SELECT * FROM users WHERE ${condition}
+  </select>
+
+  <!-- ruleid: java-injection-mybatis-dynamic-table-or-condition -->
+  <select id="queryDynamicGroupBy" resultType="map">
+    SELECT dept, COUNT(*) FROM users GROUP BY ${groupColumn}
+  </select>
+
+  <!-- ruleid: java-injection-mybatis-dynamic-table-or-condition -->
+  <select id="queryDynamicOrderBy" resultType="map">
+    SELECT * FROM users WHERE id = #{id} ORDER BY ${orderColumn}
+  </select>
+
+  <!-- ok: java-injection-mybatis-dynamic-table-or-condition -->
+  <select id="queryFullySafe" resultType="map">
+    SELECT * FROM users WHERE name = #{name} AND age = #{age}
+  </select>
+
+</mapper>

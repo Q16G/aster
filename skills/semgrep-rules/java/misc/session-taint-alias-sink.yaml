@@ -1,0 +1,37 @@
+rules:
+  - id: java-misc-session-taint-alias-sink
+    message: >
+      Potential trust boundary violation: data derived from a request
+      attribute is written into the HTTP session through an aliased
+      HttpSession object. Validate or re-derive identity and permission data
+      on the server side before persisting it into session state.
+    metadata:
+      cwe: CWE-501
+      owasp:
+        - A04:2021 - Insecure Design
+        - A06:2025 - Insecure Design
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: (HttpServletRequest $REQ).getAttribute(...)
+    pattern-propagators:
+      - pattern: $TO = $FROM.get(...);
+        from: $FROM
+        to: $TO
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  HttpSession $SESSION = (HttpServletRequest $REQ).getSession(...);
+                  ...
+              - pattern-inside: |
+                  javax.servlet.http.HttpSession $SESSION = (HttpServletRequest $REQ).getSession(...);
+                  ...
+          - pattern: $SESSION.setAttribute($NAME, $VALUE);
+          - focus-metavariable: $VALUE
+    options:
+      interfile: true
