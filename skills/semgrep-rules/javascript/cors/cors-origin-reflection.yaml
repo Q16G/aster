@@ -1,0 +1,42 @@
+rules:
+  - id: javascript-cors-origin-reflection
+    message: >
+      CORS origin reflection: the response Access-Control-Allow-Origin header
+      is set directly from the request Origin header. This allows any origin
+      to make credentialed cross-origin requests, effectively bypassing the
+      same-origin policy. Use a strict allowlist of trusted origins instead
+      of reflecting the request origin.
+    metadata:
+      cwe: CWE-942
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A01:2021 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $RES.set("Access-Control-Allow-Origin", $REQ.headers.origin)
+          - pattern: $RES.header("Access-Control-Allow-Origin", $REQ.headers.origin)
+          - pattern: $RES.setHeader("Access-Control-Allow-Origin", $REQ.headers.origin)
+          - pattern: |
+              $ORIGIN = $REQ.headers.origin;
+              ...
+              $RES.set("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $ORIGIN = $REQ.headers.origin;
+              ...
+              $RES.header("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $ORIGIN = $REQ.headers.origin;
+              ...
+              $RES.setHeader("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $ORIGIN = $REQ.get("Origin");
+              ...
+              $RES.set("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $ORIGIN = $REQ.get("Origin");
+              ...
+              $RES.header("Access-Control-Allow-Origin", $ORIGIN);

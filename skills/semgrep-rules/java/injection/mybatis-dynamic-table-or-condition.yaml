@@ -1,0 +1,25 @@
+rules:
+  - id: java-injection-mybatis-dynamic-table-or-condition
+    message: >
+      High-risk MyBatis dynamic SQL: a ${} interpolation is used in a
+      SQL statement. Any ${} usage in MyBatis XML is a potential SQL
+      injection vector — including ORDER BY, FROM, WHERE, GROUP BY, etc.
+      Use #{} parameterized binding or a whitelist approach.
+    metadata:
+      cwe: CWE-89
+      owasp:
+        - A03:2021 - Injection
+      confidence: HIGH
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "**/*.xml"
+    pattern-either:
+      - pattern-regex: "FROM\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "WHERE\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "WHERE[^<]*AND\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "GROUP\\s+BY\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "ORDER\\s+BY\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "HAVING\\s+\\$\\{[^}]+\\}"
+      - pattern-regex: "JOIN\\s+\\$\\{[^}]+\\}"

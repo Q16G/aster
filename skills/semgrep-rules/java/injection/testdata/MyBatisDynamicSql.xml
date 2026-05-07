@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapper namespace="demo.Mapper">
+  <select id="insecureOrder" resultType="demo.Row">
+    <!-- ruleid: java-injection-sql-injection-mybatis -->
+    SELECT * FROM demo_table ORDER BY ${sort}
+  </select>
+
+  <select id="insecureCondition" resultType="demo.Row">
+    <!-- ruleid: java-injection-sql-injection-mybatis -->
+    SELECT * FROM demo_table WHERE ${condition}
+  </select>
+
+  <select id="safeQuery" resultType="demo.Row">
+    <!-- ok: java-injection-sql-injection-mybatis -->
+    SELECT * FROM demo_table WHERE id = #{id}
+  </select>
+</mapper>

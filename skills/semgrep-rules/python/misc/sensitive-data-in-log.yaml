@@ -1,0 +1,28 @@
+rules:
+  - id: python-misc-sensitive-data-in-log
+    patterns:
+      - pattern-either:
+          - pattern: logging.$METHOD(..., $SENSITIVE, ...)
+          - pattern: logging.$METHOD(... + $SENSITIVE)
+          - pattern: $LOG.$METHOD(..., $SENSITIVE, ...)
+          - pattern: $LOG.$METHOD(... + $SENSITIVE)
+          - pattern: logging.$METHOD(f"...{$SENSITIVE}...")
+          - pattern: $LOG.$METHOD(f"...{$SENSITIVE}...")
+          - pattern: print(..., $SENSITIVE, ...)
+          - pattern: print(... + $SENSITIVE)
+      - metavariable-regex:
+          metavariable: $SENSITIVE
+          regex: (?i)^(?=[a-zA-Z_]).*(?:password|passwd|secret|token|credential|api_key|apiKey|private_key|privateKey|passphrase|access_key|accessKey|secret_key|secretKey)
+    message: >
+      Sensitive data may be written to log output. The variable '$SENSITIVE'
+      appears to contain sensitive information and is passed to a logging
+      call. This can expose credentials in log files, monitoring systems, or
+      error tracking tools. Remove sensitive data from log statements or
+      mask/redact it before logging.
+    metadata:
+      cwe: CWE-532
+      owasp: "A09:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: false
+    severity: WARNING
+    languages: [python]

@@ -183,16 +183,18 @@ instruction: |
 	"code-audit.yaml": `name: code-audit
 role: 代码安全审计专家，擅长静态分析、漏洞模式识别、数据流追踪和安全编码指导
 background: |
-  精通多种编程语言和框架的安全漏洞模式。使用 Semgrep 进行多通道 SAST 扫描
-  （本地嵌入规则 + 社区注册表 + OWASP），通过 SyntaxFlow MCP 进行
-  topdef/bottomUse 数据流追踪验证，结合 AI 补充鉴权缺失和业务逻辑分析，
-  给出精确的漏洞定位和修复建议。
+  精通多种编程语言和框架的安全漏洞模式。先盘点攻击面与权限边界，再执行
+  多介质 SAST 扫描（源码 + XML/配置/模板），对需要确认的链路使用
+  SyntaxFlow MCP 做 topdef/bottomUse 数据流验证，并按需补充业务逻辑与
+  认证授权复核，给出覆盖声明明确、分桶清晰的审计结论。
 policies:
   result_source: latest_step_result
   publish_contract: sast-findings
 skill_names:
+  - security-code-analysis
   - sast-scan
   - dataflow-analysis
+  - business-logic-auth-review
 tool_names:
   - list_files
   - read_file
@@ -218,6 +220,46 @@ output_contracts:
             }
           },
           "scan_target": { "type": "string", "description": "扫描目标路径或仓库" },
+          "assessment": {
+            "type": "object",
+            "description": "覆盖声明、噪声分桶与认证授权复核补充信息",
+            "properties": {
+              "coverage": {
+                "type": "object",
+                "properties": {
+                  "languages": { "type": "array", "items": { "type": "string" } },
+                  "framework_signals": { "type": "array", "items": { "type": "string" } },
+                  "java_files": { "type": "integer" },
+                  "xml_mappers": { "type": "integer" },
+                  "config_files": { "type": "integer" },
+                  "template_files": { "type": "integer" }
+                }
+              },
+              "high_noise_findings": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "scan_gaps": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "fallback_mode": {
+                "type": "object",
+                "properties": {
+                  "ssa_available": { "type": "boolean" },
+                  "fallback_used": { "type": "boolean" },
+                  "fallback_checklist_completed": { "type": "boolean" }
+                }
+              },
+              "authn_authz_review": {
+                "type": "object",
+                "properties": {
+                  "completed": { "type": "boolean" },
+                  "notes": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          },
           "findings": {
             "type": "array",
             "items": {
@@ -245,13 +287,20 @@ output_contracts:
         "total_findings": 3,
         "severity_counts": { "critical": 1, "high": 1, "medium": 1, "low": 0, "info": 0 },
         "scan_target": "./src",
+        "assessment": {
+          "coverage": { "languages": ["java"], "framework_signals": ["Spring", "MyBatis"], "java_files": 120, "xml_mappers": 8, "config_files": 6, "template_files": 4 },
+          "high_noise_findings": ["Thymeleaf SSTI", "JNDI audit"],
+          "scan_gaps": [],
+          "fallback_mode": { "ssa_available": true, "fallback_used": false, "fallback_checklist_completed": false },
+          "authn_authz_review": { "completed": true, "notes": ["management endpoints reviewed", "ownership checklist reviewed"] }
+        },
         "findings": [
           { "id": "F-001", "title": "SQL Injection", "severity": "critical", "file": "src/db/query.go", "line": 42, "rule_id": "go.lang.security.audit.sqli", "cwe": "CWE-89", "description": "用户输入直接拼接到 SQL 查询", "snippet": "db.Raw(\"SELECT * FROM users WHERE id=\" + input)", "recommendation": "使用参数化查询", "dataflow_verified": true }
         ]
       }
     summary_policy: |
       禁止压缩或省略 findings 列表；total_findings 和 severity_counts 必须原样保留。
-      long_summary 中必须逐条列出所有 finding 的 id、title、severity、file:line。
+      long_summary 中必须逐条列出所有 finding 的 id、title、severity、file:line，并说明 assessment 中的 coverage、scan_gaps、high_noise_findings 与 fallback_mode。
       若 findings 超过 30 条，可按 severity 分组呈现，但不得省略任何条目。
 `,
 

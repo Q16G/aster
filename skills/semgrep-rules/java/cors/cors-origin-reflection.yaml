@@ -1,0 +1,37 @@
+rules:
+  - id: java-cors-origin-reflection
+    message: >
+      CORS origin reflection: the response Access-Control-Allow-Origin header
+      is set directly from the request Origin header. This allows any origin
+      to make credentialed cross-origin requests, effectively bypassing the
+      same-origin policy. Use a strict allowlist of trusted origins instead
+      of reflecting the request origin.
+    metadata:
+      cwe: CWE-942
+      owasp:
+        - A05:2021 - Security Misconfiguration
+        - A01:2021 - Broken Access Control
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $ORIGIN = (HttpServletRequest $REQ).getHeader("Origin");
+              ...
+              (HttpServletResponse $RES).setHeader("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              (HttpServletResponse $RES).setHeader("Access-Control-Allow-Origin", (HttpServletRequest $REQ).getHeader("Origin"));
+          - pattern: |
+              $ORIGIN = $REQ.getHeader("Origin");
+              ...
+              $RES.setHeader("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $RES.setHeader("Access-Control-Allow-Origin", $REQ.getHeader("Origin"));
+          - pattern: |
+              $ORIGIN = $REQ.getHeader("Origin");
+              ...
+              $RES.addHeader("Access-Control-Allow-Origin", $ORIGIN);
+          - pattern: |
+              $RES.addHeader("Access-Control-Allow-Origin", $REQ.getHeader("Origin"));
