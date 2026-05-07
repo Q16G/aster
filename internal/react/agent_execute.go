@@ -512,18 +512,18 @@ func (a *Agent) resetRunMemory(extraText string, runClient ai.ChatClient) {
 }
 
 func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
-	if a == nil || len(a.tools) == 0 {
+	if a == nil || a.tools == nil || a.tools.Len() == 0 {
 		return nil, nil
 	}
-	tools := make([]*ai.FunctionTool, 0, len(a.tools))
-	allowed := make(map[string]struct{}, len(a.tools))
-	for _, tool := range a.tools {
+	tools := make([]*ai.FunctionTool, 0, a.tools.Len())
+	allowed := make(map[string]struct{}, a.tools.Len())
+	a.tools.ForEach(func(_ string, tool Tool) {
 		if tool == nil {
-			continue
+			return
 		}
 		name := strings.TrimSpace(tool.Name())
 		if !a.toolEnabledInPhase(name, phase) {
-			continue
+			return
 		}
 		allowed[name] = struct{}{}
 		tools = append(tools, &ai.FunctionTool{
@@ -534,7 +534,7 @@ func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.Functi
 				Parameters:  relaxToolParametersSchema(tool.Parameters()),
 			},
 		})
-	}
+	})
 	return tools, allowed
 }
 
@@ -621,15 +621,16 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 	msgs = append(msgs, systemMsg)
 	msgs = append(msgs, a.history...)
 	msgs = append(msgs, a.stepHistory...)
+	requestOptions := a.buildPromptRequestOptions(promptFamilyThinkAct, prompt, true, tools...)
 
 	if streamingClient, ok := runClient.(ai.StreamingChatClient); ok {
-		return a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, tools...)
+		return a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, requestOptions, tools...)
 	}
 
 	var choices []*ai.ChatChoices
 	var err error
 
-	choices, err = runClient.ChatEx(ctx, msgs, tools...)
+	choices, err = ai.ChatExWithOptions(ctx, runClient, msgs, requestOptions, tools...)
 
 	if err != nil {
 		return nil, err
@@ -643,10 +644,10 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		return &aiCallProxyResult{}, nil
 	}
 
-	return a.finalizeAIChoice(ctx, iter, runClient, choice, true)
+	return a.finalizeAIChoice(ctx, iter, runClient, choice, requestOptions, true)
 }
 
-func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if streamingClient == nil {
 		return &aiCallProxyResult{}, nil
 	}
@@ -658,7 +659,7 @@ func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.Ch
 		finishReason     string
 	)
 
-	err := streamingClient.ChatStream(ctx, msgs, func(delta *ai.StreamDelta, done bool) error {
+	err := ai.ChatStreamWithOptions(ctx, streamingClient, msgs, requestOptions, func(delta *ai.StreamDelta, done bool) error {
 		if done || delta == nil {
 			return nil
 		}
@@ -694,10 +695,10 @@ func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.Ch
 		Message:      msg,
 		Usage:        msg.Usage,
 		FinishReason: finishReason,
-	}, false)
+	}, requestOptions, false)
 }
 
-func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.ChatClient, choice *ai.ChatChoices, emitSummaryThink bool) (*aiCallProxyResult, error) {
+func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.ChatClient, choice *ai.ChatChoices, requestOptions *ai.RequestOptions, emitSummaryThink bool) (*aiCallProxyResult, error) {
 	if choice == nil || choice.Message == nil {
 		return &aiCallProxyResult{}, nil
 	}
@@ -722,9 +723,19 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.Cha
 		"reasoning_content": msg.ReasoningOutput,
 		"finish_reason":     choice.FinishReason,
 	}
+	if requestOptions != nil {
+		stepPayload["prompt_family"] = requestOptions.PromptFamily
+		stepPayload["cache_enabled"] = requestOptions.PromptCacheEnabled
+		if requestOptions.PromptCacheKeyHash != "" {
+			stepPayload["cache_key_hash"] = requestOptions.PromptCacheKeyHash
+		}
+	}
 	if len(stepUsage.Values) > 0 {
 		stepPayload["usage"] = stepUsage.Values
 		stepPayload["cost_usd"] = stepUsage.CostUSD
+		if msg.Usage != nil {
+			stepPayload["cache_hit"] = msg.Usage.CacheReadTokens > 0
+		}
 	}
 	if len(msg.ToolCalls) > 0 {
 		stepPayload["tool_calls"] = msg.ToolCalls

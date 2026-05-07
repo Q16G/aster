@@ -38,7 +38,6 @@ type ThinkActPromptInput struct {
 	Warnings                any
 	Unresolved              any
 	ExtraContext            string
-	Nonce                   string
 	HasOutputContract       bool
 	OutputContractName      string
 	OutputContractSchema    string
@@ -95,7 +94,6 @@ type IntentRecognitionPromptInput struct {
 	UserInstruction string
 	Input           string
 	RecentHistory   any
-	Nonce           string
 }
 
 type SimpleReplyPromptInput struct {
@@ -104,13 +102,11 @@ type SimpleReplyPromptInput struct {
 	IntentComplexity    string
 	MatchedCapabilities any
 	ReplyHint           string
-	Nonce               string
 }
 
 type HistoryCompactionPromptInput struct {
 	Instruction string
 	PrevSummary string
-	Nonce       string
 }
 
 type AgentHandoffPromptInput struct {
@@ -118,7 +114,6 @@ type AgentHandoffPromptInput struct {
 	AgentInstruction string
 	PrevSummary      string
 	Diff             string
-	Nonce            string
 }
 
 type PromptManager interface {
@@ -240,7 +235,6 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"WARNINGS":                      prettyJSON(input.Warnings),
 		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
-		"NONCE":                         strings.TrimSpace(input.Nonce),
 		"HAS_OUTPUT_CONTRACT":           input.HasOutputContract,
 		"OUTPUT_CONTRACT_NAME":          strings.TrimSpace(input.OutputContractName),
 		"OUTPUT_CONTRACT_SCHEMA":        strings.TrimSpace(input.OutputContractSchema),
@@ -333,7 +327,6 @@ func (m *defaultPromptManager) BuildIntentRecognitionPrompt(input IntentRecognit
 		"USER_INSTRUCTION": strings.TrimSpace(input.UserInstruction),
 		"INPUT":            strings.TrimSpace(input.Input),
 		"RECENT_HISTORY":   prettyJSON(input.RecentHistory),
-		"NONCE":            strings.TrimSpace(input.Nonce),
 	}); err != nil {
 		return "", err
 	}
@@ -351,7 +344,6 @@ func (m *defaultPromptManager) BuildSimpleReplyPrompt(input SimpleReplyPromptInp
 		"INTENT_COMPLEXITY":    strings.TrimSpace(input.IntentComplexity),
 		"MATCHED_CAPABILITIES": prettyJSON(input.MatchedCapabilities),
 		"REPLY_HINT":           strings.TrimSpace(input.ReplyHint),
-		"NONCE":                strings.TrimSpace(input.Nonce),
 	}); err != nil {
 		return "", err
 	}
@@ -366,7 +358,6 @@ func (m *defaultPromptManager) BuildHistoryCompactionPrompt(input HistoryCompact
 	if err := m.historyCompactionTmpl.Execute(buf, map[string]any{
 		"INSTRUCTION":  strings.TrimSpace(input.Instruction),
 		"PREV_SUMMARY": strings.TrimSpace(input.PrevSummary),
-		"NONCE":        strings.TrimSpace(input.Nonce),
 	}); err != nil {
 		return "", err
 	}
@@ -396,7 +387,6 @@ func (m *defaultPromptManager) BuildAgentHandoffPrompt(input AgentHandoffPromptI
 		"AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction),
 		"PREV_SUMMARY":      strings.TrimSpace(input.PrevSummary),
 		"DIFF":              strings.TrimSpace(input.Diff),
-		"NONCE":             strings.TrimSpace(input.Nonce),
 	}); err != nil {
 		return "", err
 	}

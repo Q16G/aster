@@ -2,9 +2,7 @@ package react
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -41,16 +39,9 @@ func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager Pr
 		AgentInstruction: agentInstruction,
 		PrevSummary:      prevSummary,
 		Diff:             diff,
-		Nonce:            generateNonce(8),
 	})
 	if err != nil {
 		return "", fmt.Errorf("build agent handoff prompt failed: %w", err)
 	}
-	return client.ChatText(ctx, prompt)
-}
-
-func generateNonce(n int) string {
-	b := make([]byte, n)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	return ai.ChatTextWithOptions(ctx, client, prompt, &ai.RequestOptions{PromptFamily: promptFamilyAgentHandoff})
 }

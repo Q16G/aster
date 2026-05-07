@@ -163,7 +163,7 @@ func RunWithRetry[T any](ctx context.Context, client ai.ChatClient, phase string
 	failures := make([]AttemptFailure, 0, cfg.RetryCount)
 	result := zero
 	for attempt := 1; attempt <= cfg.RetryCount; attempt++ {
-		rawResponse, err := client.ChatText(ctx, currentPrompt)
+		rawResponse, err := ai.ChatTextWithOptions(ctx, client, currentPrompt, &ai.RequestOptions{PromptFamily: phase})
 		rawResponse = strings.TrimSpace(rawResponse)
 		result.RawResponse = rawResponse
 		result.Attempts = attempt

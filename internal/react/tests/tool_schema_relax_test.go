@@ -52,6 +52,25 @@ func (t *rigidSchemaTool) Execute(_ context.Context, _ map[string]any) (string, 
 	return "ok", nil
 }
 
+type orderedTool struct {
+	name string
+}
+
+func (t *orderedTool) Name() string { return t.name }
+
+func (t *orderedTool) Description() string { return "ordered tool" }
+
+func (t *orderedTool) Parameters() any {
+	return map[string]any{
+		"type":       "object",
+		"properties": map[string]any{},
+	}
+}
+
+func (t *orderedTool) Execute(_ context.Context, _ map[string]any) (string, error) {
+	return "ok", nil
+}
+
 func containsRequired(list any, key string) bool {
 	switch typed := list.(type) {
 	case []string:
@@ -181,5 +200,44 @@ func TestBuildFunctionTools_RelaxesBuiltInUpdateCurrentStepSchema(t *testing.T) 
 	}
 	if params["additionalProperties"] != true {
 		t.Fatalf("expected additionalProperties=true, got %#v", params["additionalProperties"])
+	}
+}
+
+func TestBuildFunctionTools_FollowsRegistrationOrder(t *testing.T) {
+	agent, err := NewReActAgent(
+		"ordered-tools-test",
+		&stubChatClient{},
+		WithEmitter(NewDummyEmitter()),
+		WithTool(&orderedTool{name: "z-last"}),
+		WithTool(&orderedTool{name: "a-middle"}),
+		WithTool(&orderedTool{name: "m-final"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	tools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+	var names []string
+	for _, tool := range tools {
+		if tool == nil || tool.Function == nil {
+			continue
+		}
+		names = append(names, tool.Function.Name)
+	}
+
+	expected := []string{
+		builtin_tools.UpdateCurrentStepToolName,
+		builtin_tools.HumanConfirmToolName,
+		"z-last",
+		"a-middle",
+		"m-final",
+	}
+	if len(names) != len(expected) {
+		t.Fatalf("unexpected tool count: got %v want %v", names, expected)
+	}
+	for i, name := range expected {
+		if names[i] != name {
+			t.Fatalf("unexpected tool order at %d: got %v want %v", i, names, expected)
+		}
 	}
 }
