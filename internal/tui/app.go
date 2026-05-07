@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,6 +62,7 @@ type Model struct {
 	appCfg          *AppConfig
 	providerCfg     *ProviderState
 	pendingProvider *pendingProviderSetup
+	pendingPrompt   string
 
 	currentSessionID        string
 	sessionMeta             SessionMeta
@@ -71,6 +71,10 @@ type Model struct {
 	hadStreamDuringRun      bool
 	hadFinalAnswerDuringRun bool
 	externalInterrupt       *builtin_tools.ExternalInterrupt
+	runtimePhase            string
+	runtimeProgress         int
+	runtimeGoal             string
+	runtimeWarnings         []string
 
 	syncStore       *tuicontext.SyncStore
 	themeProvider   *tuicontext.ThemeProvider
@@ -157,6 +161,13 @@ func (m Model) Init() tea.Cmd {
 		}
 		m.footer.SetWorkdir(wd)
 	}
+
+	defaultProvider := ""
+	if m.providerCfg != nil {
+		defaultProvider = m.providerCfg.Name
+	}
+	m.localProvider.MigrateRecentModels(defaultProvider)
+
 	return tea.Batch(m.input.Focus(), m.refreshSidebarCmd())
 }
 
@@ -294,6 +305,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.focusCmd()
 				}
 				return m, nil
+			case tuicontext.KeyActionToggleSidebar:
+				m.toggleSidebar()
+				return m, nil
 			}
 		}
 
@@ -322,6 +336,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case UserSubmitMsg:
+		if m.isFirstTimeUser() {
+			ret, cmd := m.tryProviderGuardedSubmit(msg.Text)
+			if cmd != nil || ret != nil {
+				return ret, cmd
+			}
+		}
 		if !m.ensureSession() {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "Failed to create session. Please try again."}})
 			return m, m.input.Focus()
@@ -337,6 +357,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearRetryState()
 		m.runStartTime = time.Now()
 		m.statusText = "thinking..."
+		m.refreshSidebarData()
 		spinnerCmd := m.spinner.Start()
 		fileRefs := extractFileRefs(msg.Text)
 		if len(fileRefs) > 0 {
@@ -441,6 +462,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiui.SelectResultMsg:
 		m.dialogStack.Pop()
 		if msg.Cancelled {
+			if msg.DialogID == "provider-select" || msg.DialogID == "onboarding-model-select" {
+				m.pendingPrompt = ""
+			}
 			return m, nil
 		}
 		switch msg.DialogID {
@@ -454,6 +478,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "model-select":
 			if msg.Value != "" {
 				return m, func() tea.Msg { return ModelSwitchMsg{ModelID: msg.Value} }
+			}
+		case "onboarding-model-select":
+			if msg.Value != "" {
+				m.providerCfg.ModelID = msg.Value
+				if m.agentCtx != nil {
+					m.agentCtx.Definition.ModelID = msg.Value
+				}
+				m.rememberRecentModel(msg.Value)
+				m.persistSessionMeta()
+				m.refreshSidebarData()
+				m.statusText = fmt.Sprintf("model: %s", msg.Value)
+			}
+			if m.pendingPrompt != "" {
+				prompt := m.pendingPrompt
+				m.pendingPrompt = ""
+				return m, func() tea.Msg { return UserSubmitMsg{Text: prompt} }
 			}
 		case "session-select":
 			if msg.Value != "" {
@@ -569,6 +609,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		var baseURL, apiKey, model string
+		var headers map[string]string
+		var promptCache *ai.PromptCacheConfig
 
 		if bp, ok := GetBuiltinProvider(msg.Name); ok {
 			cfgP := m.appCfg.Providers[msg.Name]
@@ -589,11 +631,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if cfgP.DefaultModel != "" {
 					model = cfgP.DefaultModel
 				}
+				headers = cloneStringMap(cfgP.Headers)
+				promptCache = cfgP.PromptCache.Clone()
 			}
 		} else if p, ok := m.appCfg.Providers[msg.Name]; ok {
 			baseURL = p.BaseURL
 			apiKey = p.APIKey
 			model = p.DefaultModel
+			headers = cloneStringMap(p.Headers)
+			promptCache = p.PromptCache.Clone()
 		} else {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + msg.Name}})
 			return m, nil
@@ -603,6 +649,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.providerCfg.BaseURL = baseURL
 		m.providerCfg.APIKey = apiKey
 		m.providerCfg.ModelID = model
+		m.providerCfg.Headers = headers
+		m.providerCfg.PromptCache = promptCache
 
 		if m.agentCtx != nil {
 			m.agentCtx.Definition.ModelID = model
@@ -642,7 +690,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.rememberRecentModel(model)
 		m.persistSessionMeta()
+		m.refreshSidebarData()
 		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, model)
+
+		if m.pendingPrompt != "" {
+			return m.openModelSelectorAfterProviderSetup()
+		}
 		return m, nil
 
 	case StatusTextMsg:
@@ -659,7 +712,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.providerCfg != nil {
 			currentModelID = m.providerCfg.ModelID
 		}
-		recentIDs := m.localProvider.Get().RecentModelIDs
+		recentIDs := tuicontext.RecentModelIDs(m.localProvider.Get().RecentModels)
 		options := buildModelSelectOptions(msg.Models, currentModelID, recentIDs)
 		dialog := tuiui.NewSelectDialog("model-select", "Select Model", options)
 		m.dialogStack.Push(dialog, nil)
@@ -714,6 +767,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.rememberRecentModel(msg.ModelID)
 			m.persistSessionMeta()
+			m.refreshSidebarData()
 			m.statusText = fmt.Sprintf("model: %s", msg.ModelID)
 		}
 		return m, nil
@@ -737,6 +791,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) cycleFocus() {
 	switch m.focus {
 	case FocusInput:
+		if m.sidebarVisible() {
+			m.setFocus(FocusSidebar)
+		} else {
+			m.setFocus(FocusChat)
+		}
+	case FocusSidebar:
 		m.setFocus(FocusChat)
 	case FocusChat:
 		m.setFocus(FocusInput)
@@ -746,11 +806,11 @@ func (m *Model) cycleFocus() {
 }
 
 func (m *Model) setFocus(target FocusTarget) {
-	if target == FocusSidebar {
+	if target == FocusSidebar && !m.sidebarVisible() {
 		target = FocusChat
 	}
 	m.focus = target
-	m.sidebar.SetFocused(false)
+	m.sidebar.SetFocused(target == FocusSidebar)
 	m.chat.SetFocused(target == FocusChat)
 	m.input.SetEnabled(target == FocusInput)
 }
@@ -765,25 +825,8 @@ func (m *Model) focusCmd() tea.Cmd {
 // --- Sidebar ---
 
 func (m *Model) refreshSidebarData() {
-	if m.skillService != nil {
-		skills, _ := m.skillService.ListSkills(context.Background(), nil)
-		m.sidebar.SetSkills(skills)
-	}
-	if m.mcpManager != nil {
-		m.sidebar.SetMCPEntries(m.mcpManager.ServerEntries())
-	}
-
-	activeSkills := make(map[string]bool)
-	for _, name := range m.sessionMeta.ActiveSkillNames {
-		activeSkills[name] = true
-	}
-	m.sidebar.SetActiveSkillNames(activeSkills)
-
-	activeMCP := make(map[string]bool)
-	for _, name := range m.sessionMeta.ActiveMCPServers {
-		activeMCP[name] = true
-	}
-	m.sidebar.SetActiveMCPServers(activeMCP)
+	snap := m.buildSidebarSnapshot()
+	m.sidebar.SetSnapshot(snap)
 
 	if m.mcpManager != nil {
 		entries := m.mcpManager.ServerEntries()
@@ -798,6 +841,65 @@ func (m *Model) refreshSidebarData() {
 	}
 }
 
+func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
+	snap := SidebarSnapshot{
+		TokenCount:   "--",
+		CostEstimate: "--",
+		RunStatus:    "idle",
+	}
+
+	if m.currentSessionID != "" && m.store != nil {
+		if rec, err := m.store.Get(m.currentSessionID); err == nil {
+			snap.SessionTitle = rec.Title
+			snap.AgentName = rec.AgentName
+		}
+	}
+
+	if m.providerCfg != nil {
+		snap.ProviderName = m.providerCfg.Name
+		snap.ModelID = m.providerCfg.ModelID
+		snap.HasProvider = m.providerCfg.Name != ""
+	}
+
+	if m.agentRunning {
+		snap.RunStatus = "running"
+	}
+
+	if m.mcpManager != nil {
+		for _, e := range m.mcpManager.ServerEntries() {
+			if e == nil {
+				continue
+			}
+			active := false
+			for _, name := range m.sessionMeta.ActiveMCPServers {
+				if name == e.Name {
+					active = true
+					break
+				}
+			}
+			snap.MCPServers = append(snap.MCPServers, MCPStatusEntry{
+				Name:      e.Name,
+				Status:    string(e.Status),
+				ToolCount: e.ToolCount,
+				Active:    active,
+			})
+		}
+	}
+
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePlan && p.Plan != nil {
+			snap.PlanItems = p.Plan.Items
+		}
+	}
+
+	snap.ActiveSkills = m.sessionMeta.ActiveSkillNames
+	snap.ActiveMCPs = m.sessionMeta.ActiveMCPServers
+	snap.DismissedGettingStarted = m.localProvider.Get().DismissedGettingStarted
+	snap.Workdir = m.footer.Workdir()
+
+	return snap
+}
+
 func (m *Model) refreshSidebarCmd() tea.Cmd {
 	return func() tea.Msg { return RefreshSidebarMsg{} }
 }
@@ -805,7 +907,34 @@ func (m *Model) refreshSidebarCmd() tea.Cmd {
 // --- Layout ---
 
 func (m *Model) sidebarVisible() bool {
-	return false
+	mode := m.localProvider.Get().SidebarMode
+	switch mode {
+	case "hide":
+		return false
+	case "show":
+		return true
+	default:
+		return m.width >= 100
+	}
+}
+
+func (m *Model) toggleSidebar() {
+	pref := m.localProvider.Get()
+	switch pref.SidebarMode {
+	case "hide":
+		pref.SidebarMode = "show"
+	case "show":
+		pref.SidebarMode = "hide"
+	default:
+		if m.sidebarVisible() {
+			pref.SidebarMode = "hide"
+		} else {
+			pref.SidebarMode = "show"
+		}
+	}
+	m.localProvider.Set(pref)
+	m.updateLayout()
+	m.refreshSidebarData()
 }
 
 func (m *Model) inlineLoading() bool {
@@ -1056,6 +1185,7 @@ func (m Model) View() string {
 	}
 
 	m.footer.SetModeIndicator(string(m.currentPermissionMode()))
+	m.footer.SetSidebarShown(m.sidebarVisible())
 	m.footer.SetStatus(statusText, spinnerView, focusHint)
 	footerView := m.footer.View(th)
 

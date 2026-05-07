@@ -339,6 +339,20 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					},
 				})
 			}
+		case "sub_agent":
+			if rp.Content != "" {
+				var sa SubAgentPart
+				if json.Unmarshal([]byte(rp.Content), &sa) == nil && sa.AgentName != "" {
+					if sa.CallID == "" {
+						sa.CallID = rp.CallID
+					}
+					existing = append(existing, DisplayPart{
+						Type:     PartTypeSubAgent,
+						Time:     rp.Time,
+						SubAgent: &sa,
+					})
+				}
+			}
 		default:
 			if rp.Content != "" {
 				existing = append(existing, DisplayPart{

@@ -53,6 +53,7 @@ type FooterModel struct {
 	spinnerView   string
 	focusHint     string
 	modeIndicator string
+	sidebarShown  bool
 }
 
 func (f *FooterModel) SetWidth(w int) {
@@ -61,6 +62,10 @@ func (f *FooterModel) SetWidth(w int) {
 
 func (f *FooterModel) SetWorkdir(dir string) {
 	f.workdir = dir
+}
+
+func (f FooterModel) Workdir() string {
+	return f.workdir
 }
 
 func (f *FooterModel) SetMCPStatus(total, connected int) {
@@ -76,6 +81,10 @@ func (f *FooterModel) SetStatus(text, spinner, focus string) {
 
 func (f *FooterModel) SetModeIndicator(mode string) {
 	f.modeIndicator = strings.ToUpper(mode)
+}
+
+func (f *FooterModel) SetSidebarShown(shown bool) {
+	f.sidebarShown = shown
 }
 
 func truncateTail(s string, maxWidth int) string {
@@ -198,7 +207,7 @@ func (f FooterModel) renderStatus(th tuicontext.ThemeData) string {
 func (f FooterModel) renderMeta(th tuicontext.ThemeData, showMCP, showFocus bool) string {
 	var parts []string
 
-	if showMCP && f.mcpTotal > 0 {
+	if showMCP && f.mcpTotal > 0 && !f.sidebarShown {
 		var mcpText string
 		var mcpColor lipgloss.Color
 		if f.mcpConnected < f.mcpTotal {

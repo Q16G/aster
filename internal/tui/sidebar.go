@@ -4,43 +4,38 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
-	"aster/internal/mcp"
-	"aster/internal/service"
 )
-
-type SidebarTab int
-
-const (
-	TabSkills SidebarTab = iota
-	TabMCP
-	tabCount
-)
-
-var tabLabels = [tabCount]string{"Skills", "MCP"}
 
 type SidebarModel struct {
-	activeTab SidebarTab
-	focused   bool
-	cursor    int
-	width     int
-	height    int
-
-	skills           []*service.Skill
-	mcpEntries       []*mcp.MCPServerEntry
-	activeSkillNames map[string]bool
-	activeMCPServers map[string]bool
+	focused  bool
+	width    int
+	height   int
+	viewport viewport.Model
+	snapshot SidebarSnapshot
 }
 
 func NewSidebarModel() SidebarModel {
-	return SidebarModel{}
+	vp := viewport.New(0, 0)
+	return SidebarModel{viewport: vp}
 }
 
 func (m *SidebarModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
+	innerW := w - 3
+	if innerW < 1 {
+		innerW = 1
+	}
+	innerH := h - 2
+	if innerH < 1 {
+		innerH = 1
+	}
+	m.viewport.Width = innerW
+	m.viewport.Height = innerH
+	m.refreshView()
 }
 
 func (m *SidebarModel) SetFocused(focused bool) {
@@ -51,98 +46,18 @@ func (m SidebarModel) IsFocused() bool {
 	return m.focused
 }
 
-func (m *SidebarModel) SetSkills(skills []*service.Skill) {
-	m.skills = skills
-	m.clampCursor()
-}
-
-func (m *SidebarModel) SetMCPEntries(entries []*mcp.MCPServerEntry) {
-	m.mcpEntries = entries
-	m.clampCursor()
-}
-
-func (m *SidebarModel) SetActiveSkillNames(names map[string]bool) {
-	m.activeSkillNames = names
-}
-
-func (m *SidebarModel) SetActiveMCPServers(names map[string]bool) {
-	m.activeMCPServers = names
-}
-
-func (m *SidebarModel) clampCursor() {
-	max := m.itemCount() - 1
-	if max < 0 {
-		max = 0
-	}
-	if m.cursor > max {
-		m.cursor = max
-	}
-}
-
-func (m SidebarModel) itemCount() int {
-	switch m.activeTab {
-	case TabSkills:
-		return len(m.skills)
-	case TabMCP:
-		return len(m.mcpEntries)
-	}
-	return 0
+func (m *SidebarModel) SetSnapshot(snap SidebarSnapshot) {
+	m.snapshot = snap
+	m.refreshView()
 }
 
 func (m SidebarModel) Update(msg tea.Msg) (SidebarModel, tea.Cmd) {
 	if !m.focused {
 		return m, nil
 	}
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			max := m.itemCount() - 1
-			if max < 0 {
-				max = 0
-			}
-			if m.cursor < max {
-				m.cursor++
-			}
-		case "1":
-			m.activeTab = TabSkills
-			m.cursor = 0
-		case "2":
-			m.activeTab = TabMCP
-			m.cursor = 0
-		case "enter":
-			return m, m.handleEnter()
-		}
-	}
-	return m, nil
-}
-
-func (m SidebarModel) handleEnter() tea.Cmd {
-	switch m.activeTab {
-	case TabSkills:
-		if m.cursor < len(m.skills) {
-			skill := m.skills[m.cursor]
-			active := m.activeSkillNames[skill.Name]
-			return func() tea.Msg {
-				return SkillToggleMsg{Name: skill.Name, Enabled: !active}
-			}
-		}
-	case TabMCP:
-		if m.cursor < len(m.mcpEntries) {
-			entry := m.mcpEntries[m.cursor]
-			active := m.activeMCPServers[entry.Name]
-			name := entry.Name
-			return func() tea.Msg {
-				return MCPToggleMsg{Name: name, Connect: !active}
-			}
-		}
-	}
-	return nil
+	var cmd tea.Cmd
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
 }
 
 func (m SidebarModel) View() string {
@@ -150,29 +65,10 @@ func (m SidebarModel) View() string {
 		return ""
 	}
 
-	contentWidth := m.width - 3
-
 	borderColor := lipgloss.Color("240")
 	if m.focused {
 		borderColor = lipgloss.Color("62")
 	}
-
-	tabLine := m.renderTabs(contentWidth)
-
-	contentHeight := m.height - 2
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
-	var content string
-	switch m.activeTab {
-	case TabSkills:
-		content = m.renderSkills(contentWidth, contentHeight)
-	case TabMCP:
-		content = m.renderMCP(contentWidth, contentHeight)
-	}
-
-	body := lipgloss.JoinVertical(lipgloss.Left, tabLine, content)
 
 	containerStyle := lipgloss.NewStyle().
 		Width(m.width).
@@ -182,112 +78,258 @@ func (m SidebarModel) View() string {
 		BorderForeground(borderColor).
 		Padding(0, 1)
 
-	return containerStyle.Render(body)
+	return containerStyle.Render(m.viewport.View())
 }
 
-func (m SidebarModel) renderTabs(maxWidth int) string {
-	var parts []string
-	for i := SidebarTab(0); i < tabCount; i++ {
-		label := tabLabels[i]
-		if i == m.activeTab {
-			style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62"))
-			parts = append(parts, style.Render(label))
-		} else {
-			style := lipgloss.NewStyle().Faint(true)
-			parts = append(parts, style.Render(label))
-		}
+func (m *SidebarModel) refreshView() {
+	w := m.width - 3
+	if w < 1 {
+		w = 1
 	}
-	line := strings.Join(parts, " ")
-	if len(line) > maxWidth && maxWidth > 0 {
-		line = line[:maxWidth]
-	}
-	return line
+
+	var sb strings.Builder
+
+	m.renderIdentitySection(&sb, w)
+	m.renderContextSection(&sb, w)
+	m.renderMCPSection(&sb, w)
+	m.renderTodoSection(&sb, w)
+	m.renderFilesSection(&sb, w)
+	m.renderSkillsSection(&sb, w)
+	m.renderGettingStartedSection(&sb, w)
+	m.renderWorkdirSection(&sb, w)
+
+	m.viewport.SetContent(strings.TrimRight(sb.String(), "\n"))
 }
 
-func (m SidebarModel) renderSkills(w, h int) string {
-	if len(m.skills) == 0 {
-		return lipgloss.NewStyle().Faint(true).Render("(no skills)")
+var (
+	sectionHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	sectionDimStyle    = lipgloss.NewStyle().Faint(true)
+	sectionValueStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	sectionActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	sectionWarnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+)
+
+func sectionHeader(title string) string {
+	return sectionHeaderStyle.Render("▸ " + title)
+}
+
+func (m *SidebarModel) renderIdentitySection(sb *strings.Builder, w int) {
+	sb.WriteString(sectionHeader("Session"))
+	sb.WriteString("\n")
+
+	snap := m.snapshot
+
+	if snap.AgentName != "" {
+		sb.WriteString(sectionDimStyle.Render("  Agent: "))
+		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.AgentName, w-10)))
+		sb.WriteString("\n")
+	}
+	if snap.ProviderName != "" {
+		sb.WriteString(sectionDimStyle.Render("  Provider: "))
+		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.ProviderName, w-12)))
+		sb.WriteString("\n")
+	}
+	if snap.ModelID != "" {
+		sb.WriteString(sectionDimStyle.Render("  Model: "))
+		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.ModelID, w-10)))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
+}
+
+func (m *SidebarModel) renderContextSection(sb *strings.Builder, w int) {
+	sb.WriteString(sectionHeader("Context"))
+	sb.WriteString("\n")
+
+	snap := m.snapshot
+
+	sb.WriteString(sectionDimStyle.Render("  Status: "))
+	status := snap.RunStatus
+	if status == "" {
+		status = "idle"
+	}
+	if status == "running" {
+		sb.WriteString(sectionWarnStyle.Render(status))
+	} else {
+		sb.WriteString(sectionValueStyle.Render(status))
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString(sectionDimStyle.Render("  Tokens: "))
+	sb.WriteString(sectionValueStyle.Render(snap.TokenCount))
+	sb.WriteString("\n")
+
+	sb.WriteString(sectionDimStyle.Render("  Cost: "))
+	sb.WriteString(sectionValueStyle.Render(snap.CostEstimate))
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+}
+
+func (m *SidebarModel) renderMCPSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if len(snap.MCPServers) == 0 {
+		sb.WriteString(sectionHeader("MCP"))
+		sb.WriteString("\n")
+		sb.WriteString(sectionDimStyle.Render("  (no servers)"))
+		sb.WriteString("\n\n")
+		return
 	}
 
-	var lines []string
-	for i, s := range m.skills {
-		if i >= h {
-			break
+	connected := 0
+	for _, s := range snap.MCPServers {
+		if s.Status == "connected" {
+			connected++
 		}
-		name := s.Name
-		if len(name) > w-6 && w > 8 {
-			name = name[:w-8] + ".."
-		}
+	}
 
-		active := m.activeSkillNames[s.Name]
+	sb.WriteString(sectionHeader(fmt.Sprintf("MCP (%d/%d)", connected, len(snap.MCPServers))))
+	sb.WriteString("\n")
+
+	for _, s := range snap.MCPServers {
 		icon := "○"
-		if active {
+		color := lipgloss.Color("8")
+		switch s.Status {
+		case "connected":
 			icon = "●"
+			color = "10"
+		case "connecting":
+			icon = "◐"
+			color = "11"
+		case "error":
+			icon = "✗"
+			color = "9"
 		}
 
-		prefix := "  "
-		style := lipgloss.NewStyle()
-		if m.focused && i == m.cursor {
-			prefix = "> "
-			style = style.Bold(true).Foreground(lipgloss.Color("10"))
+		iconStyle := lipgloss.NewStyle().Foreground(color)
+		name := truncSidebar(s.Name, w-8)
+		detail := ""
+		if s.Status == "connected" {
+			detail = fmt.Sprintf(" (%d)", s.ToolCount)
 		}
-
-		enabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		if active {
-			enabledStyle = enabledStyle.Foreground(lipgloss.Color("10"))
-		}
-
-		lines = append(lines, style.Render(prefix)+enabledStyle.Render(icon)+" "+style.Render(name))
+		sb.WriteString("  " + iconStyle.Render(icon) + " " + name + detail + "\n")
 	}
-	return strings.Join(lines, "\n")
+	sb.WriteString("\n")
 }
 
-func (m SidebarModel) renderMCP(w, h int) string {
-	if len(m.mcpEntries) == 0 {
-		return lipgloss.NewStyle().Faint(true).Render("(no MCP servers)")
+func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if len(snap.PlanItems) == 0 {
+		return
 	}
 
-	var lines []string
-	for i, e := range m.mcpEntries {
-		if i >= h {
+	total := len(snap.PlanItems)
+	done := 0
+	for _, item := range snap.PlanItems {
+		if item.Status == "completed" {
+			done++
+		}
+	}
+
+	sb.WriteString(sectionHeader(fmt.Sprintf("Todo [%d/%d]", done, total)))
+	sb.WriteString("\n")
+
+	for _, item := range snap.PlanItems {
+		icon := "○"
+		style := sectionDimStyle
+		switch item.Status {
+		case "completed":
+			icon = "✓"
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+		case "in_progress":
+			icon = "▸"
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
+		case "failed":
+			icon = "✗"
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		}
+		step := truncSidebar(item.Step, w-6)
+		sb.WriteString(style.Render("  "+icon+" "+step) + "\n")
+	}
+	sb.WriteString("\n")
+}
+
+func (m *SidebarModel) renderFilesSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if len(snap.ModifiedFiles) == 0 {
+		return
+	}
+
+	sb.WriteString(sectionHeader(fmt.Sprintf("Files (%d)", len(snap.ModifiedFiles))))
+	sb.WriteString("\n")
+
+	maxShow := 15
+	for i, f := range snap.ModifiedFiles {
+		if i >= maxShow {
+			sb.WriteString(sectionDimStyle.Render(fmt.Sprintf("  ... +%d more", len(snap.ModifiedFiles)-maxShow)))
+			sb.WriteString("\n")
 			break
 		}
-		name := e.Name
-		if len(name) > w-6 && w > 8 {
-			name = name[:w-8] + ".."
-		}
-
-		active := m.activeMCPServers[e.Name]
-		var statusIcon string
-		var statusColor lipgloss.Color
-		if active && e.Status == mcp.MCPStatusConnected {
-			statusIcon = "●"
-			statusColor = "10"
-		} else if active && e.Status == mcp.MCPStatusConnecting {
-			statusIcon = "◐"
-			statusColor = "11"
-		} else if e.Status == mcp.MCPStatusError {
-			statusIcon = "✗"
-			statusColor = "9"
-		} else {
-			statusIcon = "○"
-			statusColor = "8"
-		}
-
-		prefix := "  "
-		style := lipgloss.NewStyle()
-		if m.focused && i == m.cursor {
-			prefix = "> "
-			style = style.Bold(true).Foreground(lipgloss.Color("10"))
-		}
-
-		iconStyle := lipgloss.NewStyle().Foreground(statusColor)
-		detail := ""
-		if e.Status == mcp.MCPStatusConnected {
-			detail = fmt.Sprintf(" (%d)", e.ToolCount)
-		}
-
-		lines = append(lines, style.Render(prefix)+iconStyle.Render(statusIcon)+" "+style.Render(name+detail))
+		sb.WriteString("  " + truncSidebar(f, w-4) + "\n")
 	}
-	return strings.Join(lines, "\n")
+	sb.WriteString("\n")
+}
+
+func (m *SidebarModel) renderSkillsSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if len(snap.ActiveSkills) == 0 && len(snap.ActiveMCPs) == 0 {
+		return
+	}
+
+	sb.WriteString(sectionHeader("Active"))
+	sb.WriteString("\n")
+
+	for _, name := range snap.ActiveSkills {
+		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncSidebar(name, w-6) + "\n")
+	}
+	for _, name := range snap.ActiveMCPs {
+		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncSidebar(name, w-6) + " " + sectionDimStyle.Render("(mcp)") + "\n")
+	}
+	sb.WriteString("\n")
+}
+
+func (m *SidebarModel) renderGettingStartedSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if snap.HasProvider || snap.DismissedGettingStarted {
+		return
+	}
+
+	sb.WriteString(sectionHeader("Getting Started"))
+	sb.WriteString("\n")
+	sb.WriteString(sectionWarnStyle.Render("  No provider configured."))
+	sb.WriteString("\n")
+	sb.WriteString(sectionDimStyle.Render("  Use /provider to set up."))
+	sb.WriteString("\n\n")
+}
+
+func (m *SidebarModel) renderWorkdirSection(sb *strings.Builder, w int) {
+	snap := m.snapshot
+	if snap.Workdir == "" && snap.Version == "" {
+		return
+	}
+
+	sb.WriteString(sectionHeader("Info"))
+	sb.WriteString("\n")
+	if snap.Workdir != "" {
+		sb.WriteString(sectionDimStyle.Render("  Dir: "))
+		sb.WriteString(truncSidebar(snap.Workdir, w-8))
+		sb.WriteString("\n")
+	}
+	if snap.Version != "" {
+		sb.WriteString(sectionDimStyle.Render("  Ver: "))
+		sb.WriteString(snap.Version)
+		sb.WriteString("\n")
+	}
+}
+
+func truncSidebar(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if len(s) <= maxWidth {
+		return s
+	}
+	if maxWidth <= 2 {
+		return s[:maxWidth]
+	}
+	return s[:maxWidth-2] + ".."
 }

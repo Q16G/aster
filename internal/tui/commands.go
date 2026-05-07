@@ -26,6 +26,7 @@ var slashCommands = []tuiui.CommandEntry{
 	{Name: "/verbose", Description: "Toggle tool call detail"},
 	{Name: "/mode", Description: "Switch bash permission mode (yolo/manual/ai)"},
 	{Name: "/theme", Description: "Switch theme"},
+	{Name: "/sidebar", Description: "Toggle sidebar (show/hide/auto)"},
 	{Name: "/help", Description: "Show help"},
 	{Name: "/exit", Description: "Quit application"},
 }
@@ -41,6 +42,7 @@ const helpText = `Available commands:
   /verbose               — Toggle tool call detail level
   /mode [yolo|manual|ai] — Switch bash permission mode
   /theme                 — Toggle dark/light theme
+  /sidebar [show|hide|auto] — Toggle or set sidebar mode
   /help                  — Show this help
 
 Shortcuts:
@@ -51,6 +53,7 @@ Shortcuts:
   Ctrl+K         — Open agent selector
   Ctrl+M         — Open model selector
   Ctrl+L         — Clear chat
+  Ctrl+B         — Toggle sidebar
   Ctrl+C         — Cancel agent (running) / Quit (idle, double-press)`
 
 func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
@@ -94,6 +97,8 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "/mode":
 		return m.cmdMode(parts[1:])
+	case "/sidebar":
+		return m.cmdSidebar(parts[1:])
 	case "/theme":
 		if len(parts) > 1 {
 			if parts[1] == "toggle" {
@@ -232,6 +237,7 @@ func (m *Model) openProviderSelector() (tea.Model, tea.Cmd) {
 func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model, tea.Cmd) {
 	if msg.Cancelled {
 		m.pendingProvider = nil
+		m.pendingPrompt = ""
 		return m, nil
 	}
 
@@ -241,6 +247,7 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 		apiKey := strings.TrimSpace(msg.Value)
 		if apiKey == "" {
 			m.pendingProvider = nil
+			m.pendingPrompt = ""
 			return m, nil
 		}
 
@@ -725,6 +732,26 @@ func (m *Model) applyPermissionMode(mode builtin_tools.PermissionMode) (tea.Mode
 		toastLevel = tuiui.ToastWarning
 	}
 	return m, m.toastManager.Push(fmt.Sprintf("bash mode: %s", mode), toastLevel, 3*time.Second)
+}
+
+func (m *Model) cmdSidebar(args []string) (tea.Model, tea.Cmd) {
+	if len(args) == 0 {
+		m.toggleSidebar()
+		return m, nil
+	}
+	mode := strings.ToLower(strings.TrimSpace(args[0]))
+	switch mode {
+	case "show", "hide", "auto":
+		pref := m.localProvider.Get()
+		pref.SidebarMode = mode
+		m.localProvider.Set(pref)
+		m.updateLayout()
+		m.refreshSidebarData()
+		m.statusText = fmt.Sprintf("sidebar: %s", mode)
+	default:
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /sidebar [show|hide|auto]"}})
+	}
+	return m, nil
 }
 
 func parsePermissionModeArg(arg string) (builtin_tools.PermissionMode, bool) {

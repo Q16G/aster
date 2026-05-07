@@ -117,6 +117,9 @@ func (m *ChatModel) UpdateLastTool(fn func(*ToolPart)) {
 	for i := len(m.parts) - 1; i >= 0; i-- {
 		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
 			fn(m.parts[i].Tool)
+			if m.parts[i].Tool.State == "error" {
+				m.toolExpanded[i] = true
+			}
 			m.refreshContent()
 			return
 		}
@@ -131,6 +134,21 @@ func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
 	for i := len(m.parts) - 1; i >= 0; i-- {
 		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil && m.parts[i].Tool.CallID == callID {
 			fn(m.parts[i].Tool)
+			if m.parts[i].Tool.State == "error" {
+				m.toolExpanded[i] = true
+			}
+			m.refreshContent()
+			return
+		}
+	}
+}
+
+func (m *ChatModel) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)) {
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
+			fn(m.parts[i].SubAgent)
+			toolTime := m.partTimeByCallID(callID, "")
+			m.parts[i].SubAgent.Duration = time.Since(toolTime)
 			m.refreshContent()
 			return
 		}
@@ -182,7 +200,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
 				t := m.parts[m.cursor].Type
-				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan {
+				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
 					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
 					m.refreshContent()
 					m.scrollToCursor()
@@ -202,19 +220,36 @@ func (m ChatModel) View() string {
 
 func (m *ChatModel) refreshContent() {
 	var sb strings.Builder
-	m.partLineOffsets = make([]int, 0, len(m.parts))
+	m.partLineOffsets = make([]int, len(m.parts))
 	lineCount := 0
 
-	for i, part := range m.parts {
-		m.partLineOffsets = append(m.partLineOffsets, lineCount)
-		rendered := m.renderPart(i, part)
-		if rendered == "" {
-			continue
+	turns := groupPartsIntoTurns(m.parts)
+
+	for ti, turn := range turns {
+		if ti > 0 {
+			sep := m.renderTurnSeparator()
+			sb.WriteString(sep)
+			sb.WriteString("\n")
+			lineCount += strings.Count(sep, "\n") + 1
 		}
-		sb.WriteString(rendered)
-		sb.WriteString("\n")
-		lineCount += strings.Count(rendered, "\n") + 1
+
+		switch turn.Type {
+		case TurnTypeUser:
+			for _, ip := range turn.Parts {
+				m.partLineOffsets[ip.Index] = lineCount
+				rendered := m.renderPart(ip.Index, ip.Part)
+				if rendered == "" {
+					continue
+				}
+				sb.WriteString(rendered)
+				sb.WriteString("\n")
+				lineCount += strings.Count(rendered, "\n") + 1
+			}
+		case TurnTypeAssistant:
+			m.renderAssistantTurn(&sb, turn.Parts, &lineCount)
+		}
 	}
+
 	if m.isThinking {
 		sb.WriteString(m.renderThinkingStream())
 		sb.WriteString("\n")
@@ -227,6 +262,64 @@ func (m *ChatModel) refreshContent() {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
 	m.viewport.SetContent(sb.String())
+}
+
+func (m *ChatModel) renderAssistantTurn(sb *strings.Builder, parts []IndexedPart, lineCount *int) {
+	maxWidth := m.width - 4
+	if maxWidth < 10 {
+		maxWidth = 10
+	}
+
+	i := 0
+	for i < len(parts) {
+		ip := parts[i]
+
+		if ip.Part.Type == PartTypeText && ip.Part.Text != nil {
+			mergedContent, count := mergeTextRun(parts, i)
+			for j := 0; j < count; j++ {
+				m.partLineOffsets[parts[i+j].Index] = *lineCount
+			}
+			rendered := m.renderMergedTextBlock(mergedContent, maxWidth)
+			if rendered != "" {
+				sb.WriteString(rendered)
+				sb.WriteString("\n")
+				*lineCount += strings.Count(rendered, "\n") + 1
+			}
+			i += count
+			continue
+		}
+
+		m.partLineOffsets[ip.Index] = *lineCount
+		rendered := m.renderPart(ip.Index, ip.Part)
+		if rendered != "" {
+			sb.WriteString(rendered)
+			sb.WriteString("\n")
+			*lineCount += strings.Count(rendered, "\n") + 1
+		}
+		i++
+	}
+}
+
+func (m *ChatModel) renderMergedTextBlock(content string, maxWidth int) string {
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(assistantBorderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return style.Render(wrapText(content, maxWidth-4))
+}
+
+func (m *ChatModel) renderTurnSeparator() string {
+	maxWidth := m.width - 4
+	if maxWidth < 10 {
+		maxWidth = 10
+	}
+	w := maxWidth
+	if w > 60 {
+		w = 60
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true).Render(strings.Repeat("─", w))
 }
 
 func (m *ChatModel) scrollToCursor() {
@@ -316,6 +409,8 @@ func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 		return m.renderStepSummaryPart(idx, part, maxWidth)
 	case PartTypeFinalAnswer:
 		return m.renderFinalAnswerPart(idx, part, maxWidth)
+	case PartTypeSubAgent:
+		return m.renderSubAgentPart(idx, part, maxWidth)
 	default:
 		return ""
 	}
@@ -384,6 +479,12 @@ func (m *ChatModel) renderThinkingStream() string {
 
 	content := wrapText("Thinking: "+m.thinkingBuf.String(), maxWidth-4) + "▌"
 	return style.Render(content)
+}
+
+func (m *ChatModel) renderSubAgentPart(idx int, part DisplayPart, maxWidth int) string {
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+	return renderSubAgentCard(part.SubAgent, maxWidth, expanded, selected)
 }
 
 func (m *ChatModel) renderToolPart(idx int, part DisplayPart, maxWidth int) string {
@@ -596,54 +697,25 @@ func (m *ChatModel) renderFinalAnswerPart(idx int, part DisplayPart, maxWidth in
 	if fa == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
-	selected := m.focused && idx == m.cursor
-
-	icon := "★"
-	color := assistantBorderColor
-
-	if !expanded {
-		summary := "answer"
-		if fa.Source == "step_result" {
-			summary += ": " + summarizeStepResultForCollapsed(fa.Content, 60)
-		} else {
-			summary += ": " + truncateDisplayWidth(fa.Content, 60)
-		}
-		style := lipgloss.NewStyle().Foreground(color)
-		if selected {
-			style = style.Bold(true)
-		}
-		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
-		return style.Render(line)
-	}
-
-	borderColor := color
-	if selected {
-		borderColor = lipgloss.Color("15")
-	}
-	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
-	header := icon + " answer"
-	if fa.Source != "" {
-		header += " (" + fa.Source + ")"
-	}
-
-	style := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderLeft(true).
-		BorderForeground(borderColor).
-		PaddingLeft(1).
-		Width(maxWidth)
 
 	displayContent := fa.Content
 	if fa.Source == "step_result" {
 		displayContent = prettyPrintJSON(displayContent)
 	}
-	return headerStyle.Render(header) + "\n" + style.Render(wrapText(displayContent, maxWidth-4))
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(assistantBorderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+
+	return style.Render(wrapText(displayContent, maxWidth-4))
 }
 
 func shouldAutoExpandPart(partType PartType) bool {
 	switch partType {
-	case PartTypeStepResult, PartTypeFinalAnswer:
+	case PartTypeStepResult:
 		return true
 	default:
 		return false
