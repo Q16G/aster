@@ -14,6 +14,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"aster/internal/ai"
+	aiusage "aster/internal/ai/usage"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/service"
@@ -30,6 +31,17 @@ const (
 	FocusSidebar
 	FocusChat
 )
+
+type renderTickMsg struct{}
+type sessionRestoreMsg struct{}
+
+const renderInterval = 33 * time.Millisecond
+
+func renderTickCmd() tea.Cmd {
+	return tea.Tick(renderInterval, func(time.Time) tea.Msg {
+		return renderTickMsg{}
+	})
+}
 
 type pendingProviderSetup struct {
 	ProviderID string
@@ -50,6 +62,7 @@ type Model struct {
 	chat            ChatModel
 	input           InputModel
 	sidebar         SidebarModel
+	thinkingPanel   ThinkingPanelModel
 	agentCtx        *AgentExecContext
 	humanBridge     *HumanInputBridge
 	agentRunning    bool
@@ -75,6 +88,17 @@ type Model struct {
 	runtimeProgress         int
 	runtimeGoal             string
 	runtimeWarnings         []string
+	renderScheduled         bool
+	sessionRestoredOnce     bool
+
+	layoutChatWidth    int
+	layoutChatHeight   int
+	layoutMainHeight   int
+	layoutInputHeight  int
+	layoutContentWidth int
+
+	sessionUsage ai.TokenUsage
+	sessionCost  float64
 
 	syncStore       *tuicontext.SyncStore
 	themeProvider   *tuicontext.ThemeProvider
@@ -100,11 +124,12 @@ func NewModel(
 	providerCfg *ProviderState,
 	syncStore *tuicontext.SyncStore,
 ) Model {
-	return Model{
+	m := Model{
 		store:           store,
 		chat:            NewChatModel(),
 		input:           NewInputModel(),
 		sidebar:         NewSidebarModel(),
+		thinkingPanel:   NewThinkingPanelModel(),
 		agentCtx:        agentCtx,
 		humanBridge:     humanBridge,
 		profileRegistry: profileRegistry,
@@ -124,6 +149,7 @@ func NewModel(
 		toastManager:    tuiui.NewToastManager(5),
 		spinner:         tuiui.NewSpinner("thinking..."),
 	}
+	return m
 }
 
 func interruptNoticeText(info *builtin_tools.ExternalInterrupt) string {
@@ -168,7 +194,7 @@ func (m Model) Init() tea.Cmd {
 	}
 	m.localProvider.MigrateRecentModels(defaultProvider)
 
-	return tea.Batch(m.input.Focus(), m.refreshSidebarCmd())
+	return tea.Batch(m.input.Focus(), m.refreshSidebarCmd(), func() tea.Msg { return sessionRestoreMsg{} })
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -179,6 +205,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.updateLayout()
+		return m, nil
+
+	case tea.MouseMsg:
+		// Mouse support is enabled by default (see cmd/aster/main.go), but we only
+		// act on wheel events to avoid focus surprises.
+		me := tea.MouseEvent(msg)
+		if me.IsWheel() {
+			var cmd tea.Cmd
+			m.chat, cmd = m.chat.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Let the rest of the model (spinner/toasts/etc) update as usual.
+
+	case sessionRestoreMsg:
+		if !m.sessionRestoredOnce {
+			m.sessionRestoredOnce = true
+			m.restoreLatestSession()
+			m.updateLayout()
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -354,6 +401,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hadStreamDuringRun = false
 		m.hadFinalAnswerDuringRun = false
 		m.externalInterrupt = nil
+		m.thinkingPanel.Reset()
 		m.clearRetryState()
 		m.runStartTime = time.Now()
 		m.statusText = "thinking..."
@@ -369,11 +417,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentEventMsg:
 		m.handleAgentEvent(msg.Event)
+		if !m.renderScheduled && (m.chat.IsDirty() || m.thinkingPanel.IsDirty()) {
+			m.renderScheduled = true
+			return m, renderTickCmd()
+		}
+		return m, nil
+
+	case renderTickMsg:
+		m.renderScheduled = false
+		m.chat.FlushRender()
+		m.thinkingPanel.FlushRender()
 		return m, nil
 
 	case AgentDoneMsg:
+		m.thinkingPanel.Hide()
+		m.updateLayout()
 		m.chat.FlushThinking()
 		hadStream := m.flushStreamAndPersist()
+		m.chat.FlushRender()
+		m.renderScheduled = false
 		m.clearRetryState()
 		m.dialogStack.Clear()
 		m.agentRunning = false
@@ -396,6 +458,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.agentCtx != nil {
 				m.agentCtx.InitialHistory = ai.NormalizeMsgInfoSlice(msg.History)
 			}
+			m.recalcUsageFromHistory(msg.History)
 			m.statusText = "ready"
 		}
 		if notice := interruptNoticeText(m.externalInterrupt); notice != "" {
@@ -608,54 +671,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		var baseURL, apiKey, model string
-		var headers map[string]string
-		var promptCache *ai.PromptCacheConfig
-
-		if bp, ok := GetBuiltinProvider(msg.Name); ok {
-			cfgP := m.appCfg.Providers[msg.Name]
-			apiKey = resolveAPIKey(bp, "")
-			if cfgP != nil {
-				apiKey = resolveAPIKey(bp, cfgP.APIKey)
-			}
-			if apiKey == "" && bp.APIKeyEnvVar != "" {
-				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)}})
-				return m, nil
-			}
-			baseURL = bp.BaseURL
-			model = bp.DefaultModel
-			if cfgP != nil {
-				if cfgP.BaseURL != "" {
-					baseURL = cfgP.BaseURL
-				}
-				if cfgP.DefaultModel != "" {
-					model = cfgP.DefaultModel
-				}
-				headers = cloneStringMap(cfgP.Headers)
-				promptCache = cfgP.PromptCache.Clone()
-			}
-		} else if p, ok := m.appCfg.Providers[msg.Name]; ok {
-			baseURL = p.BaseURL
-			apiKey = p.APIKey
-			model = p.DefaultModel
-			headers = cloneStringMap(p.Headers)
-			promptCache = p.PromptCache.Clone()
-		} else {
+		state := m.appCfg.ResolveProviderState(msg.Name, "", "", "")
+		if state == nil {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + msg.Name}})
 			return m, nil
 		}
+		if bp, ok := GetBuiltinProvider(msg.Name); ok && state.APIKey == "" && bp.APIKeyEnvVar != "" {
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)}})
+			return m, nil
+		}
 
-		m.providerCfg.Name = msg.Name
-		m.providerCfg.BaseURL = baseURL
-		m.providerCfg.APIKey = apiKey
-		m.providerCfg.ModelID = model
-		m.providerCfg.Headers = headers
-		m.providerCfg.PromptCache = promptCache
+		*m.providerCfg = *state
 
 		if m.agentCtx != nil {
-			m.agentCtx.Definition.ModelID = model
+			m.agentCtx.Definition.ModelID = state.ModelID
 			if m.agentCtx.RebuildClient != nil {
-				m.agentCtx.RebuildClient(baseURL, apiKey, model)
+				m.agentCtx.RebuildClient(m.providerCfg)
 			}
 		}
 
@@ -683,15 +714,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if _, exists := m.appCfg.Providers[msg.Name]; !exists {
 			m.appCfg.Providers[msg.Name] = &ProviderConfig{
-				BaseURL:      baseURL,
-				DefaultModel: model,
+				BaseURL:      state.BaseURL,
+				DefaultModel: state.ModelID,
 			}
 		}
 
-		m.rememberRecentModel(model)
+		m.rememberRecentModel(state.ModelID)
 		m.persistSessionMeta()
 		m.refreshSidebarData()
-		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, model)
+		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, state.ModelID)
 
 		if m.pendingPrompt != "" {
 			return m.openModelSelectorAfterProviderSetup()
@@ -843,8 +874,8 @@ func (m *Model) refreshSidebarData() {
 
 func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	snap := SidebarSnapshot{
-		TokenCount:   "--",
-		CostEstimate: "--",
+		TokenCount:   m.formatTokenCount(),
+		CostEstimate: m.formatCostEstimate(),
 		RunStatus:    "idle",
 	}
 
@@ -898,6 +929,61 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	snap.Workdir = m.footer.Workdir()
 
 	return snap
+}
+
+func (m *Model) formatTokenCount() string {
+	total := m.sessionUsage.ContextCountTokens()
+	if total == 0 {
+		return "--"
+	}
+	switch {
+	case total >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(total)/1_000_000)
+	case total >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(total)/1_000)
+	default:
+		return strconv.Itoa(total)
+	}
+}
+
+func (m *Model) formatCostEstimate() string {
+	if m.sessionCost <= 0 {
+		return "--"
+	}
+	if m.sessionCost < 0.01 {
+		return fmt.Sprintf("$%.4f", m.sessionCost)
+	}
+	return fmt.Sprintf("$%.2f", m.sessionCost)
+}
+
+func (m *Model) recalcUsageFromHistory(history []*ai.MsgInfo) {
+	var merged ai.TokenUsage
+	for _, msg := range history {
+		if msg == nil || msg.Usage == nil {
+			continue
+		}
+		merged.InputTokens += msg.Usage.InputTokens
+		merged.OutputTokens += msg.Usage.OutputTokens
+		merged.ReasoningTokens += msg.Usage.ReasoningTokens
+		merged.CacheReadTokens += msg.Usage.CacheReadTokens
+		merged.CacheWriteTokens += msg.Usage.CacheWriteTokens
+	}
+	merged.NormalizeInPlace()
+	m.sessionUsage = merged
+
+	pricing := aiusage.PricingModel{}
+	if m.agentCtx != nil && m.agentCtx.Factory != nil {
+		if client := m.agentCtx.Factory.DefaultClient(); client != nil {
+			type pricingProvider interface {
+				UsagePricingModel() aiusage.PricingModel
+			}
+			if pp, ok := client.(pricingProvider); ok {
+				pricing = pp.UsagePricingModel()
+			}
+		}
+	}
+	result := aiusage.Summarize(pricing, &merged)
+	m.sessionCost = result.Cost
 }
 
 func (m *Model) refreshSidebarCmd() tea.Cmd {
@@ -1025,6 +1111,9 @@ func truncateDisplayWidth(s string, maxWidth int) string {
 }
 
 func (m *Model) updateLayout() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
 	footerHeight := 1
 	inputHeight := 3
 
@@ -1044,16 +1133,29 @@ func (m *Model) updateLayout() {
 	}
 
 	pickerHeight := m.pickerHeight(chatWidth)
-	chatHeight := mainHeight - inputHeight - pickerHeight
+	panelHeight := m.thinkingPanel.Height()
+	chatHeight := mainHeight - inputHeight - pickerHeight - panelHeight
 	if chatHeight < 1 {
 		chatHeight = 1
 	}
 
+	contentWidth := chatWidth - 2
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	m.layoutChatWidth = chatWidth
+	m.layoutChatHeight = chatHeight
+	m.layoutMainHeight = mainHeight
+	m.layoutInputHeight = inputHeight
+	m.layoutContentWidth = contentWidth
+
 	if m.sidebarVisible() {
 		m.sidebar.SetSize(sidebarWidth, mainHeight)
 	}
-	m.chat.SetSize(chatWidth-2, chatHeight)
-	m.input.SetWidth(chatWidth - 2)
+	m.chat.SetSize(contentWidth, chatHeight)
+	m.thinkingPanel.SetWidth(contentWidth)
+	m.input.SetWidth(contentWidth)
 	m.footer.SetWidth(m.width)
 	m.dialogStack.SetSize(m.width, m.height)
 }
@@ -1071,36 +1173,11 @@ func (m Model) View() string {
 
 	th := m.themeProvider.Get()
 
-	footerHeight := 1
-	inputHeight := 3
-
-	sbWidth := 0
-	if m.sidebarVisible() {
-		sbWidth = sidebarWidth + 1
-	}
-
-	chatWidth := m.width - sbWidth
-	if chatWidth < 1 {
-		chatWidth = 1
-	}
-
-	mainHeight := m.height - footerHeight
-	if mainHeight < 1 {
-		mainHeight = 1
-	}
-
-	pickerHeight := m.pickerHeight(chatWidth)
-	chatHeight := mainHeight - inputHeight - pickerHeight
-	if chatHeight < 1 {
-		chatHeight = 1
-	}
-
-	chatContentWidth := chatWidth - 2
-	if chatContentWidth < 1 {
-		chatContentWidth = 1
-	}
-
-	m.chat.SetSize(chatContentWidth, chatHeight)
+	chatWidth := m.layoutChatWidth
+	chatHeight := m.layoutChatHeight
+	mainHeight := m.layoutMainHeight
+	inputHeight := m.layoutInputHeight
+	chatContentWidth := m.layoutContentWidth
 
 	chatBorderColor := th.BorderColor
 	if m.focus == FocusChat {
@@ -1132,7 +1209,6 @@ func (m Model) View() string {
 		BorderForeground(inputBorderColor).
 		Padding(0, 1)
 
-	m.input.SetWidth(chatWidth - 2)
 	inlineLoading := m.inlineLoading()
 	var inputContent string
 	if inlineLoading {
@@ -1155,15 +1231,23 @@ func (m Model) View() string {
 	}
 
 	var leftPane string
+	panelView := m.thinkingPanel.View()
 	if pickerView != "" {
-		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, pickerView, inputView)
+		if panelView != "" {
+			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, panelView, pickerView, inputView)
+		} else {
+			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, pickerView, inputView)
+		}
 	} else {
-		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
+		if panelView != "" {
+			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, panelView, inputView)
+		} else {
+			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
+		}
 	}
 
 	var mainArea string
 	if m.sidebarVisible() {
-		m.sidebar.SetSize(sidebarWidth, mainHeight)
 		sidebarView := m.sidebar.View()
 		mainArea = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, sidebarView)
 	} else {

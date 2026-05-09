@@ -102,30 +102,14 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	bootstrapEmitter := react.NewEmitter("bootstrap", "bootstrap", bridge.EmitterFunc())
 	retryCallback := newRetryCallback(bootstrapEmitter)
 
-	providerCfg := &tui.ProviderState{}
-	providerCfg.Name, providerCfg.BaseURL, providerCfg.APIKey, providerCfg.ModelID = appCfg.ResolveProvider(flagProvider, flagModel, flagBaseURL, flagAPIKey)
+	providerCfg := appCfg.ResolveProviderState(flagProvider, flagModel, flagBaseURL, flagAPIKey)
+	if providerCfg == nil {
+		providerCfg = &tui.ProviderState{}
+	}
 
-	aiClient := openai.NewClient(
-		openai.WithURL(providerCfg.BaseURL),
-		openai.WithURLAutoComplete(true),
-		openai.WithAPIKey(providerCfg.APIKey),
-		openai.WithModel(providerCfg.ModelID),
-		openai.WithStream(true),
-		openai.WithRetryCallback(retryCallback),
-	)
-
+	aiClient := newProviderClient(providerCfg, retryCallback, "")
 	clientFactory := ai.NewSimpleClientFactory(aiClient, func(mid string) ai.ChatClient {
-		if mid == "" {
-			mid = providerCfg.ModelID
-		}
-		return openai.NewClient(
-			openai.WithURL(providerCfg.BaseURL),
-			openai.WithURLAutoComplete(true),
-			openai.WithAPIKey(providerCfg.APIKey),
-			openai.WithModel(mid),
-			openai.WithStream(true),
-			openai.WithRetryCallback(retryCallback),
-		)
+		return newProviderClient(providerCfg, retryCallback, mid)
 	})
 
 	projectRoot, err := os.Getwd()
@@ -187,27 +171,10 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Definition:  defaultDef,
 		MCPManager:  mcpManager,
 		ProjectRoot: projectRoot,
-		RebuildClient: func(baseURL, apiKey, model string) {
-			newClient := openai.NewClient(
-				openai.WithURL(baseURL),
-				openai.WithURLAutoComplete(true),
-				openai.WithAPIKey(apiKey),
-				openai.WithModel(model),
-				openai.WithStream(true),
-				openai.WithRetryCallback(retryCallback),
-			)
+		RebuildClient: func(provider *tui.ProviderState) {
+			newClient := newProviderClient(provider, retryCallback, "")
 			newFactory := ai.NewSimpleClientFactory(newClient, func(mid string) ai.ChatClient {
-				if mid == "" {
-					mid = model
-				}
-				return openai.NewClient(
-					openai.WithURL(baseURL),
-					openai.WithURLAutoComplete(true),
-					openai.WithAPIKey(apiKey),
-					openai.WithModel(mid),
-					openai.WithStream(true),
-					openai.WithRetryCallback(retryCallback),
-				)
+				return newProviderClient(provider, retryCallback, mid)
 			})
 			factory.UpdateDefaultClient(newClient)
 			factory.UpdateClientFactory(newFactory)
@@ -216,7 +183,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, appCfg, providerCfg, syncStore)
 
-	p := tea.NewProgram(&appModel)
+	opts := []tea.ProgramOption{
+		tea.WithAltScreen(),
+		// Enable wheel/trackpad scrolling inside the chat viewport by default.
+		// Note: mouse mode can interfere with some terminals' text selection.
+		tea.WithMouseCellMotion(),
+	}
+	p := tea.NewProgram(&appModel, opts...)
 
 	syncStore.SetFlushCallback(func(events []any) {
 		tuiEvents := make([]tui.TuiEvent, 0, len(events))
@@ -246,4 +219,27 @@ func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 	return func(event openai.RetryEvent) {
 		emitter.EmitRetry(event.Attempt, event.MaxAttempts, event.Delay, event.Next, event.Message, event.RetryAfter)
 	}
+}
+
+func newProviderClient(provider *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) *openai.Client {
+	if provider == nil {
+		provider = &tui.ProviderState{}
+	}
+	modelID := modelOverride
+	if modelID == "" {
+		modelID = provider.ModelID
+	}
+
+	opts := []openai.Option{
+		openai.WithURL(provider.BaseURL),
+		openai.WithURLAutoComplete(true),
+		openai.WithAPIKey(provider.APIKey),
+		openai.WithModel(modelID),
+		openai.WithStream(true),
+		openai.WithRetryCallback(retryCallback),
+	}
+	if provider.Proxy != "" {
+		opts = append(opts, openai.WithProxy(provider.Proxy))
+	}
+	return openai.NewClient(opts...)
 }

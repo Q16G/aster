@@ -1,0 +1,16 @@
+{
+  "slug": "thinking-eventid-review",
+  "title": "Thinking EventID 方案评审",
+  "subtitle": "方向正确，但需要把根因叙述与 session reset 边界再对齐一次",
+  "status": "completed",
+  "status_label": "已完成",
+  "generated_at": "2026-05-08T07:07:19Z",
+  "repo_root": "/Users/qinchenkai/go/sastx",
+  "plan_dir": "/Users/qinchenkai/go/sastx/docs/exec-plans/active/2026-05-08-thinking-eventid-review",
+  "workspace_dir": "/Users/qinchenkai/go/sastx/.",
+  "evidence_dir": "/Users/qinchenkai/go/sastx/docs/exec-plans/active/2026-05-08-thinking-eventid-review/evidence",
+  "published_dir": "/Users/qinchenkai/go/sastx/.ai/task-newspaper/reports/thinking-eventid-review",
+  "report_entry": "index.html",
+  "evidence_files_count": 4,
+  "evidence_images_count": 0
+}

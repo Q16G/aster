@@ -27,7 +27,7 @@
 - **原则 8**：`next_goal` 仅在 `should_replan=true` 时填写；不要把“等待用户输入”写进 `next_goal`。
 - **原则 9**：只输出一个 JSON 对象，不要输出任何额外文字、Markdown、代码块或注释。
 - **原则 10**：关键信息要去重、去噪，但不要因为固定条目上限而丢失真实重要事实。
-- **原则 11**：从 `STEP_WINDOW`（含 `RawTimelineDiff`）和 `TIMELINE_DIFF` 中识别所有工具调用，提取为 `tool_calls_digest` 数组。每条格式：`"[工具名] 关键参数摘要 → 结果要点"`。上限 20 条，去重，按调用时序排列。
+- **原则 11**：从 `STEP_WINDOW`（含 `RawTimelineDiff`）和 `TIMELINE_DIFF` 中识别所有工具调用，提取为 `tool_calls_digest` 数组。每条格式：`"[工具名] 关键参数摘要 → 结果要点"`。不设固定条目上限，但要求高密度：同工具连续调用可合并为一条（如 `[read_file] x3: a.go, b.go, c.go → 均为 handler 实现`），参数和结果只保留决策相关的关键信息，去重，按调用时序排列。
 - **原则 12（结果保全策略）**：当 `raw_outcome.result` 包含结构化数据（如 JSON 对象、长列表、枚举项）时，`step_long_summary` 和 `key_facts` 必须保留聚合总数字段、分布统计字段和关键集合字段的完整条目，不得将 N 条明细条目改写为纯叙述性摘要。若当前 step 绑定了 Summary Policy，优先按 Policy 指定的保全规则执行。
 
 ## 5. 用户输入 (User Input)

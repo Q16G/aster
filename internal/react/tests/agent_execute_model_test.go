@@ -112,6 +112,7 @@ func (c *executeModelTestClient) ModelContextInfo() ai.ModelContextInfo {
 	return c.modelContext
 }
 
+
 type executeModelTestFactory struct {
 	clients map[string]ai.ChatClient
 	calls   []string
@@ -1169,7 +1170,7 @@ func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testi
 	}
 }
 
-func TestExecute_WritesReducerLogsWhenStepWindowExceedsBudget(t *testing.T) {
+func TestExecute_WritesStepSummaryLogsWhenStepCompletes(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := runtimelog.SetOutput(&buf)
 	t.Cleanup(func() {
@@ -1189,9 +1190,6 @@ func TestExecute_WritesReducerLogsWhenStepWindowExceedsBudget(t *testing.T) {
 						"result":         largeResult,
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"压缩完成","window_summary":"窗口已压缩","new_facts":["f1","f2"],"important_changes":["c1"],"references":["artifacts/runtime/r/steps/s/result.json"],"artifact_changes":["summary.md"],"open_questions":[],"noise_removed":["n1"]}`,
 			},
 			{
 				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
@@ -1397,18 +1395,12 @@ func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
 					}),
 				},
 			},
-			{
-				content: ``,
-			},
-			{
-				content: ``,
-			},
-			{
-				content: ``,
-			},
-			{
-				content: `{"is_complete":true,"status":"failed","reason":"step summary failed","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"step summary failed","references":[]}`,
-			},
+			{content: ``},
+			{content: ``},
+			{content: ``},
+			{content: ``},
+			{content: ``},
+			{content: ``},
 		},
 	}
 
@@ -1447,6 +1439,61 @@ func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
 	}
 	if !strings.Contains(out, "\"raw_response_length\":0") {
 		t.Fatalf("expected raw_response_length=0 in step summary raw response log, got %s", out)
+	}
+	if client.calls != 7 {
+		t.Fatalf("expected 7 model calls (1 step + 3 step_summary + 3 final_answer), got %d", client.calls)
+	}
+}
+
+func TestExecute_StepSummaryDefaultInnerRetryRemainsThree(t *testing.T) {
+	var buf bytes.Buffer
+	prevWriter := runtimelog.SetOutput(&buf)
+	t.Cleanup(func() {
+		runtimelog.SetOutput(prevWriter)
+	})
+
+	baseClient := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "ok",
+						"display_result": "step ok",
+						"result":         "step ok",
+					}),
+				},
+			},
+			{content: ``},
+			{content: ``},
+			{content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`},
+		},
+	}
+	agent, err := NewReActAgent(
+		"model-agent",
+		baseClient,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected successful run result, got %#v", runResult)
 	}
 }
 

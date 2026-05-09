@@ -54,7 +54,12 @@ Shortcuts:
   Ctrl+M         — Open model selector
   Ctrl+L         — Clear chat
   Ctrl+B         — Toggle sidebar
-  Ctrl+C         — Cancel agent (running) / Quit (idle, double-press)`
+  Ctrl+C         — Cancel agent (running) / Quit (idle, double-press)
+
+Scrolling:
+  In AltScreen mode the terminal scrollback won't contain the full chat history.
+  Use Tab to focus chat and PageUp/PageDown to scroll.
+  Trackpad/mouse-wheel scrolling is enabled by default. If selection feels odd, try Shift+Drag to select text.`
 
 func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	parts := strings.Fields(cmd)

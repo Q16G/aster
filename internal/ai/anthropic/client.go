@@ -214,6 +214,14 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
+// MaxRetries returns the configured retry count for diagnostics and orchestration.
+func (c *Client) MaxRetries() int {
+	if c == nil || c.config == nil {
+		return 0
+	}
+	return c.config.MaxRetries
+}
+
 func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool, options *ai.RequestOptions) map[string]any {
 	options = ai.NormalizeRequestOptions(options)
 	systemBlocks, messages := splitMessages(infos, options)

@@ -94,39 +94,18 @@ func (a *Agent) lookupFinalAnswerOutputContract(snapshot builtin_tools.StateSnap
 	if a == nil || a.cfg == nil {
 		return nil
 	}
-
-	candidates := make([]string, 0, len(snapshot.Plan)+2)
+	// Explicit publish contract always wins, regardless of step outcome existence.
 	if name := strings.TrimSpace(a.currentPublishContract); name != "" {
-		candidates = append(candidates, name)
-	}
-	if currentStep := snapshot.CurrentStep(); currentStep != nil {
-		if name := strings.TrimSpace(currentStep.OutputContractRef); name != "" {
-			candidates = append(candidates, name)
+		if c := a.cfg.LookupOutputContract(name); c != nil {
+			return c
 		}
 	}
-	for _, item := range snapshot.Plan {
-		if item == nil {
-			continue
-		}
-		if name := strings.TrimSpace(item.OutputContractRef); name != "" {
-			candidates = append(candidates, name)
-		}
+	// Fall back to shared plan-based selection (last eligible contract step).
+	match := resolveContractStep(snapshot.Plan, snapshot.StepOutcomes, "")
+	if match == nil {
+		return nil
 	}
-
-	seen := make(map[string]struct{}, len(candidates))
-	for _, name := range candidates {
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		if contract := a.cfg.LookupOutputContract(name); contract != nil {
-			return contract
-		}
-	}
-	return nil
+	return a.cfg.LookupOutputContract(match.ContractRef)
 }
 
 func (a *Agent) BuildReducerPrompt(payload map[string]any) (string, error) {

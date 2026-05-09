@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"aster/internal/ai"
 	"aster/internal/mcp"
@@ -18,6 +19,7 @@ type ProviderConfig struct {
 	DefaultModel string                `yaml:"default_model"`
 	Headers      map[string]string     `yaml:"headers,omitempty"`
 	PromptCache  *ai.PromptCacheConfig `yaml:"prompt_cache,omitempty"`
+	Env          map[string]string     `yaml:"env,omitempty"`
 }
 
 type AppConfig struct {
@@ -33,6 +35,8 @@ type ProviderState struct {
 	ModelID     string
 	Headers     map[string]string
 	PromptCache *ai.PromptCacheConfig
+	Env         map[string]string
+	Proxy       string
 }
 
 const (
@@ -96,11 +100,15 @@ providers:
     base_url: https://api.openai.com/v1
     api_key: ${OPENAI_API_KEY}
     default_model: gpt-4o
+  # env:
+  #   HTTPS_PROXY: http://127.0.0.1:7890
 
   # anthropic:
   #   base_url: https://api.anthropic.com/v1
   #   api_key: ${ANTHROPIC_API_KEY}
   #   default_model: claude-sonnet-4-20250514
+  #   env:
+  #     HTTPS_PROXY: ${ASTER_PROXY}
   #   headers:
   #     anthropic-version: "2023-06-01"
   #   prompt_cache:
@@ -411,6 +419,10 @@ tool_names:
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
+	return loadConfig(path, true)
+}
+
+func loadConfig(path string, expand bool) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -424,13 +436,15 @@ func LoadConfig(path string) (*AppConfig, error) {
 		return nil, fmt.Errorf("parse config %q: %w", path, err)
 	}
 
-	expandProviderEnv(&cfg)
-	populateMCPNames(&cfg)
+	if expand {
+		expandProviderEnv(&cfg)
+	}
+	populateMCPNames(&cfg, expand)
 	return &cfg, nil
 }
 
 func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
-	cfg, err := LoadConfig(path)
+	cfg, err := loadConfig(path, false)
 	if err != nil {
 		return fmt.Errorf("load existing config: %w", err)
 	}
@@ -449,6 +463,7 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 			cp := *v
 			cp.Headers = cloneStringMap(v.Headers)
 			cp.PromptCache = v.PromptCache.Clone()
+			cp.Env = cloneStringMap(v.Env)
 			cleanCfg.Providers[k] = &cp
 		}
 	}
@@ -499,16 +514,24 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 		p = &ProviderConfig{}
 	}
 
-	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), p.BaseURL, bpBaseURL, "https://api.openai.com/v1")
-	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, p.APIKey)
+	resolvedEnv := expandProviderEnvMap(p.Env)
+	headers := cloneStringMap(p.Headers)
+	for key, value := range headers {
+		headers[key] = expandProviderValue(value, resolvedEnv)
+	}
+
+	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), expandProviderValue(p.BaseURL, resolvedEnv), bpBaseURL, "https://api.openai.com/v1")
+	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, expandProviderValue(p.APIKey, resolvedEnv))
 	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, bpDefaultModel, "gpt-4o")
 	return &ProviderState{
 		Name:        providerName,
 		BaseURL:     baseURL,
 		APIKey:      apiKey,
 		ModelID:     model,
-		Headers:     cloneStringMap(p.Headers),
+		Headers:     headers,
 		PromptCache: p.PromptCache.Clone(),
+		Env:         resolvedEnv,
+		Proxy:       providerProxyFromEnv(resolvedEnv),
 	}
 }
 
@@ -520,29 +543,29 @@ func (c *AppConfig) ToMCPConfig() *mcp.Config {
 }
 
 func expandProviderEnv(cfg *AppConfig) {
-	expand := func(s string) string {
-		return os.Expand(s, os.Getenv)
-	}
 	for _, p := range cfg.Providers {
 		if p == nil {
 			continue
 		}
-		p.BaseURL = expand(p.BaseURL)
-		p.APIKey = expand(p.APIKey)
+		p.Env = expandProviderEnvMap(p.Env)
+		p.BaseURL = expandProviderValue(p.BaseURL, p.Env)
+		p.APIKey = expandProviderValue(p.APIKey, p.Env)
 		for key, value := range p.Headers {
-			p.Headers[key] = expand(value)
+			p.Headers[key] = expandProviderValue(value, p.Env)
 		}
 	}
 }
 
-func populateMCPNames(cfg *AppConfig) {
+func populateMCPNames(cfg *AppConfig, expandHeaders bool) {
 	for name, sc := range cfg.MCPServers {
 		if sc == nil {
 			delete(cfg.MCPServers, name)
 			continue
 		}
 		sc.Name = name
-		expandMCPHeaders(sc)
+		if expandHeaders {
+			expandMCPHeaders(sc)
+		}
 	}
 }
 
@@ -575,4 +598,71 @@ func cloneStringMap(src map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func expandProviderEnvMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+
+	raw := cloneStringMap(src)
+	resolved := make(map[string]string, len(raw))
+	visiting := make(map[string]bool, len(raw))
+
+	var resolveKey func(string) string
+	resolveKey = func(key string) string {
+		if value, ok := resolved[key]; ok {
+			return value
+		}
+		rawValue, ok := raw[key]
+		if !ok {
+			return os.Getenv(key)
+		}
+		if visiting[key] {
+			return rawValue
+		}
+		visiting[key] = true
+		expanded := os.Expand(rawValue, func(inner string) string {
+			if _, ok := raw[inner]; ok {
+				return resolveKey(inner)
+			}
+			return os.Getenv(inner)
+		})
+		visiting[key] = false
+		resolved[key] = expanded
+		return expanded
+	}
+
+	for key := range raw {
+		resolved[key] = resolveKey(key)
+	}
+	return resolved
+}
+
+func expandProviderValue(value string, env map[string]string) string {
+	if value == "" {
+		return ""
+	}
+	return os.Expand(value, func(key string) string {
+		if val, ok := env[key]; ok {
+			return val
+		}
+		return os.Getenv(key)
+	})
+}
+
+func providerProxyFromEnv(env map[string]string) string {
+	for _, key := range []string{
+		"HTTPS_PROXY",
+		"https_proxy",
+		"HTTP_PROXY",
+		"http_proxy",
+		"ALL_PROXY",
+		"all_proxy",
+	} {
+		if value := strings.TrimSpace(env[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }

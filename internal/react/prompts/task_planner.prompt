@@ -36,7 +36,7 @@
 - **原则 4**：`needs_planning=true` 适用于明显包含 3 个及以上子任务、需要先调研再实施再验证、涉及多文件/多模块/多阶段依赖、需要测试或风险控制的任务；若输入已包含 `<TASK_ITEMS>` / `<EXECUTION_LINE>` 且仍需继续推进，通常也应为 `true`。
 - **原则 5**：只在 `needs_planning=true` 时填写 `plan`；否则 `plan` 必须为空数组 `[]`。
 - **原则 6**：计划步数建议 3-8 步；若输入已包含 `<TASK_ITEMS>`，优先保持连续性，仅在末尾追加必要步骤（一般不超过 3 条新增），不要为满足步数硬凑。
-- **原则 7**：每个 plan item 都必须包含 `id`、`step`、`status`、`depends_on`；当某个 step 是正式结果 step（需要按领域 schema 输出结构化结果）时，可额外填写 `output_contract_ref` 指向已定义的 contract 名称。大多数探索性 step 不需要 contract。
+- **原则 7**：每个 plan item 都必须包含 `id`、`step`、`status`、`depends_on`；当输入中包含 `<OUTPUT_CONTRACTS>` 且指定了 `publish_contract` 时，**必须**在最终输出结构化结果的 step 上设置 `output_contract_ref` 为该 contract 名称，这是 runtime 提取任务产物的必要条件。未指定 `publish_contract` 时，`output_contract_ref` 为可选字段，大多数探索性 step 不需要。
 - **原则 8**：`status` 只允许使用 `pending`、`in_progress`、`completed`、`failed`，且新计划默认使用 `pending`。
 - **原则 9**：`depends_on` 只能引用前面已出现的任务，整个 plan 必须是无环依赖图。
 - **原则 10**：不要输出子步骤、备注列表或额外字段；不要反问用户，基于现有输入做最合理判断。
@@ -83,7 +83,7 @@
           },
           "output_contract_ref": {
             "type": "string",
-            "description": "引用已定义的 output contract 名称。仅当此 step 是正式结果 step 时填写；探索性 step 留空。"
+            "description": "引用已定义的 output contract 名称。当输入包含 <OUTPUT_CONTRACTS> 时，最终结果 step 必须填写此字段。"
           }
         }
       }

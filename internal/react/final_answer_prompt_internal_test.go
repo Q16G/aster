@@ -43,6 +43,10 @@ func TestBuildFinalAnswerPrompt_IncludesSummaryPolicyForSASTFindings(t *testing.
 		{ID: "step-1", Step: "执行安全审计", Status: builtin_tools.PlanStepPending, OutputContractRef: "sast-findings"},
 	}, "", false)
 	agent.EnsureCurrentStep()
+	agent.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
+		Status: builtin_tools.PlanStepCompleted,
+		Result: `{"total_findings":3}`,
+	})
 
 	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         "running",
@@ -70,5 +74,96 @@ func TestBuildFinalAnswerPrompt_IncludesSummaryPolicyForSASTFindings(t *testing.
 	}
 	if !strings.Contains(prompt, "执行摘要") || !strings.Contains(prompt, "漏洞详情") {
 		t.Fatalf("expected prompt to include markdown report sections, got:\n%s", prompt)
+	}
+}
+
+func TestLookupFinalAnswerOutputContract_ExplicitPublishContractWithoutOutcome(t *testing.T) {
+	agent, err := NewReActAgent(
+		"prompt-agent",
+		noopFinalAnswerPromptClient{},
+		WithEmitter(NewDummyEmitter()),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	agent.cfg.OutputContracts = map[string]*builtin_tools.OutputContract{
+		"sast-findings": {
+			Name:          "sast-findings",
+			SummaryPolicy: "keep all findings",
+		},
+	}
+	agent.currentPublishContract = "sast-findings"
+	agent.UpdatePlan([]*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "audit", Status: builtin_tools.PlanStepPending, OutputContractRef: "sast-findings"},
+	}, "", false)
+	agent.EnsureCurrentStep()
+
+	snap := agent.State()
+	contract := agent.lookupFinalAnswerOutputContract(snap)
+	if contract == nil {
+		t.Fatal("explicit publishContract must resolve even without step outcomes")
+	}
+	if contract.Name != "sast-findings" {
+		t.Fatalf("expected sast-findings, got %q", contract.Name)
+	}
+}
+
+func TestBuildFinalAnswerPrompt_MultiContractPicksLastEligible(t *testing.T) {
+	agent, err := NewReActAgent(
+		"prompt-agent",
+		noopFinalAnswerPromptClient{},
+		WithEmitter(NewDummyEmitter()),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	agent.cfg.OutputContracts = map[string]*builtin_tools.OutputContract{
+		"contract-a": {
+			Name:          "contract-a",
+			SummaryPolicy: "policy-a-detail",
+		},
+		"contract-b": {
+			Name:          "contract-b",
+			SummaryPolicy: "policy-b-detail",
+		},
+	}
+	agent.UpdatePlan([]*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "first step", Status: builtin_tools.PlanStepPending, OutputContractRef: "contract-a"},
+		{ID: "step-2", Step: "second step", Status: builtin_tools.PlanStepPending, OutputContractRef: "contract-b"},
+	}, "", false)
+
+	// step-1: ensure → complete → summary clears CurrentStepID
+	agent.EnsureCurrentStep()
+	agent.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
+		Status: builtin_tools.PlanStepCompleted,
+		Result: `{"from":"step-1"}`,
+	})
+	agent.state.ApplyStepSummary("step-1", stepSummaryUpdate{ShortSummary: "done"})
+
+	// step-2: ensure → complete → summary clears CurrentStepID
+	agent.EnsureCurrentStep()
+	agent.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
+		Status: builtin_tools.PlanStepCompleted,
+		Result: `{"from":"step-2"}`,
+	})
+	agent.state.ApplyStepSummary("step-2", stepSummaryUpdate{ShortSummary: "done"})
+
+	snap := agent.State()
+	contract := agent.lookupFinalAnswerOutputContract(snap)
+	if contract == nil {
+		t.Fatal("expected a contract, got nil")
+	}
+	if contract.Name != "contract-b" {
+		t.Fatalf("expected contract-b (last eligible), got %q", contract.Name)
+	}
+
+	result, ok, _ := latestNonEmptyStepResultWithPlan(snap.StepOutcomes, snap.Plan, "")
+	if !ok {
+		t.Fatal("expected a result from latestNonEmptyStepResultWithPlan")
+	}
+	if result != `{"from":"step-2"}` {
+		t.Fatalf("expected result from step-2, got %q", result)
 	}
 }
