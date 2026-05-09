@@ -1,0 +1,6 @@
+ok  	aster/internal/tui	0.520s
+ok  	aster/internal/tui/context	(cached)
+ok  	aster/internal/tui/ui	0.598s
+?   	aster/internal/tui/util	[no test files]
+ok  	aster/internal/react	(cached)
+ok  	aster/internal/react/tests	(cached)

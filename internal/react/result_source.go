@@ -38,55 +38,76 @@ func truncateForHistory(text string, source string) string {
 	return strings.TrimSpace(string(runes[:historyMaxRunes])) + "\n\n…(完整结果已持久化到 artifact 文件)"
 }
 
-func latestNonEmptyStepResult(outcomes []*builtin_tools.StepOutcome) (string, bool) {
-	return latestNonEmptyStepResultWithPlan(outcomes, nil, "")
+type contractStepMatch struct {
+	ContractRef string
+	Outcome     *builtin_tools.StepOutcome
 }
 
-func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, plan []*builtin_tools.PlanItem, publishContract string) (string, bool) {
-	publishContract = strings.TrimSpace(publishContract)
-
-	outcomeByStepID := make(map[string]*builtin_tools.StepOutcome, len(outcomes))
+func buildEligibleOutcomeMap(outcomes []*builtin_tools.StepOutcome) map[string]*builtin_tools.StepOutcome {
+	m := make(map[string]*builtin_tools.StepOutcome, len(outcomes))
 	for _, o := range outcomes {
 		if !stepOutcomeEligibleForResultSource(o) {
 			continue
 		}
 		sid := strings.TrimSpace(o.StepID)
-		if prev, ok := outcomeByStepID[sid]; !ok || o.UpdatedAt.After(prev.UpdatedAt) {
-			outcomeByStepID[sid] = o
+		if prev, ok := m[sid]; !ok || o.UpdatedAt.After(prev.UpdatedAt) {
+			m[sid] = o
 		}
 	}
+	return m
+}
 
-	// If a publish contract is specified, only match steps referencing that exact contract.
+// resolveContractStep selects the best contract step from the plan.
+//  1. If publishContract is specified, pick the last step referencing that contract
+//     with an eligible outcome. Returns nil if no match — never falls through to
+//     a different contract.
+//  2. If publishContract is empty, pick the last step with any OutputContractRef
+//     and an eligible outcome.
+func resolveContractStep(plan []*builtin_tools.PlanItem, outcomes []*builtin_tools.StepOutcome, publishContract string) *contractStepMatch {
+	publishContract = strings.TrimSpace(publishContract)
+	outcomeByStepID := buildEligibleOutcomeMap(outcomes)
+
 	if publishContract != "" {
-		var bestTarget *builtin_tools.StepOutcome
+		var best *contractStepMatch
 		for _, item := range plan {
 			if item == nil || strings.TrimSpace(item.OutputContractRef) != publishContract {
 				continue
 			}
 			if o, ok := outcomeByStepID[strings.TrimSpace(item.ID)]; ok {
-				bestTarget = o
+				best = &contractStepMatch{ContractRef: publishContract, Outcome: o}
 			}
 		}
-		if bestTarget != nil {
-			return strings.TrimSpace(bestTarget.Result), true
-		}
+		return best
 	}
 
-	// No publish contract, or no match: pick the last contract step by plan position.
-	var bestContract *builtin_tools.StepOutcome
+	var best *contractStepMatch
 	for _, item := range plan {
-		if item == nil || strings.TrimSpace(item.OutputContractRef) == "" {
+		if item == nil {
+			continue
+		}
+		ref := strings.TrimSpace(item.OutputContractRef)
+		if ref == "" {
 			continue
 		}
 		if o, ok := outcomeByStepID[strings.TrimSpace(item.ID)]; ok {
-			bestContract = o
+			best = &contractStepMatch{ContractRef: ref, Outcome: o}
 		}
 	}
-	if bestContract != nil {
-		return strings.TrimSpace(bestContract.Result), true
-	}
+	return best
+}
 
-	// Fallback: latest non-empty result by time.
+func latestNonEmptyStepResult(outcomes []*builtin_tools.StepOutcome) (string, bool) {
+	result, ok, _ := latestNonEmptyStepResultWithPlan(outcomes, nil, "")
+	return result, ok
+}
+
+func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, plan []*builtin_tools.PlanItem, publishContract string) (string, bool, bool) {
+	if match := resolveContractStep(plan, outcomes, publishContract); match != nil {
+		return strings.TrimSpace(match.Outcome.Result), true, false
+	}
+	degraded := strings.TrimSpace(publishContract) != ""
+
+	outcomeByStepID := buildEligibleOutcomeMap(outcomes)
 	var latestAny *builtin_tools.StepOutcome
 	for _, o := range outcomeByStepID {
 		if latestAny == nil || o.UpdatedAt.After(latestAny.UpdatedAt) {
@@ -94,9 +115,9 @@ func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, pla
 		}
 	}
 	if latestAny != nil {
-		return strings.TrimSpace(latestAny.Result), true
+		return strings.TrimSpace(latestAny.Result), true, degraded
 	}
-	return "", false
+	return "", false, degraded
 }
 
 func stepOutcomeEligibleForResultSource(outcome *builtin_tools.StepOutcome) bool {

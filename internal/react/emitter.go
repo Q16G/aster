@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // EventType 事件类型
@@ -40,6 +42,7 @@ type AgentOutputEvent struct {
 	AgentID   string         `json:"agent_id,omitempty"`
 	AgentName string         `json:"agent_name,omitempty"`
 	NodeID    string         `json:"node_id,omitempty"`
+	EventID   string         `json:"event_id,omitempty"`
 	Iteration int            `json:"iteration,omitempty"`
 	SeqID     uint64         `json:"seq_id,omitempty"`
 	Timestamp int64          `json:"timestamp"`
@@ -62,6 +65,7 @@ type Emitter struct {
 	baseEmitter    BaseEmitterFunc
 	processorStack []EventProcessor
 	seqID          *atomic.Uint64
+	thinkSessionID string
 }
 
 // NewEmitter 创建事件发射器
@@ -148,11 +152,34 @@ func (e *Emitter) EmitJSON(eventType EventType, nodeID string, payload map[strin
 	})
 }
 
+func (e *Emitter) EnsureThinkSessionID() string {
+	if e == nil {
+		return ""
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.thinkSessionID == "" {
+		e.thinkSessionID = uuid.NewString()
+	}
+	return e.thinkSessionID
+}
+
+func (e *Emitter) ResetThinkSessionID() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	e.thinkSessionID = ""
+	e.mu.Unlock()
+}
+
 // EmitThink 发射思考事件
 func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string) {
+	eventID := e.EnsureThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeThink,
 		NodeID:    "think",
+		EventID:   eventID,
 		Iteration: iteration,
 		Payload: map[string]any{
 			"content":           content,
@@ -162,9 +189,13 @@ func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, 
 			"finish_reason":     finishReason,
 		},
 	})
+	if strings.TrimSpace(finishReason) != "" {
+		e.ResetThinkSessionID()
+	}
 }
 
 func (e *Emitter) EmitStream(iteration int, delta string) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStream,
 		NodeID:    "stream",
@@ -174,6 +205,7 @@ func (e *Emitter) EmitStream(iteration int, delta string) {
 }
 
 func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStepFinish,
 		NodeID:    "step_finish",
@@ -184,6 +216,7 @@ func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
 
 // EmitToolStart 发射工具开始事件
 func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolStart,
 		NodeID:    "tool:" + call.Name,
@@ -200,6 +233,7 @@ func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
 
 // EmitToolEnd 发射工具结束事件
 func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolEnd,
 		NodeID:    "tool:" + result.Name,
@@ -217,6 +251,7 @@ func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
 
 // EmitStateChange 发射状态变更事件
 func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStateChange,
 		NodeID:    "state",
@@ -241,6 +276,7 @@ func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
 
 // EmitHumanRequest 发射人工请求事件
 func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeHumanRequest,
 		NodeID:    "human_request",
@@ -255,6 +291,7 @@ func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question str
 
 // EmitTaskPlan 发射任务计划事件
 func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation string) {
+	e.ResetThinkSessionID()
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeTaskPlan,
 		NodeID: "task_plan",
@@ -266,6 +303,7 @@ func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation strin
 }
 
 func (e *Emitter) EmitTaskItem(item *builtin_tools.PlanItem, prevStatus builtin_tools.PlanStepStatus, index int, explanation string) {
+	e.ResetThinkSessionID()
 	if item == nil {
 		return
 	}
@@ -380,6 +418,7 @@ func (e *Emitter) EmitError(message string) {
 }
 
 func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome *builtin_tools.StepOutcome) {
+	e.ResetThinkSessionID()
 	if outcome == nil {
 		return
 	}
@@ -400,6 +439,7 @@ func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome 
 }
 
 func (e *Emitter) EmitFinalAnswerResult(answer *builtin_tools.FinalAnswer) {
+	e.ResetThinkSessionID()
 	if answer == nil || strings.TrimSpace(answer.Content) == "" {
 		return
 	}

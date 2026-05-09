@@ -1,0 +1,4 @@
+git-diff-stat.txt
+git-diff.patch
+go-build.txt
+go-test-tui-react.txt

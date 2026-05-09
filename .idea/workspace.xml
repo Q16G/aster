@@ -4,7 +4,38 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c646d98-514d-4bd4-8d78-f579659f0779" name="Changes" comment="" />
+    <list default="true" id="6c646d98-514d-4bd4-8d78-f579659f0779" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/aster/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/aster/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/ai/anthropic/client.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/ai/anthropic/client.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/memory/timeline_memory.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/memory/timeline_memory.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/agent.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/agent.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/agent_execute.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/agent_execute.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/agent_factory.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/agent_factory.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/context_budget.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/context_budget.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/emitter.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/emitter.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/final_answer_prompt_internal_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/final_answer_prompt_internal_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/phase_prompt.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/phase_prompt.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/phase_prompt_build.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/phase_prompt_build.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/prompts/step_summary.prompt" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/prompts/step_summary.prompt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/prompts/task_planner.prompt" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/prompts/task_planner.prompt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/result_source.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/result_source.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/result_source_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/result_source_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/runtime_scheduler.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/runtime_scheduler.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/structured_output.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/structured_output.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/react/tests/agent_execute_model_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/react/tests/agent_execute_model_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/structuredoutput/retry.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/structuredoutput/retry.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/agent_cmd.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/agent_cmd.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/app.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/app.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/chat.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/chat.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/config.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/display_part.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/display_part.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/event_handlers.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/event_handlers.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/session_lifecycle.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/session_lifecycle.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/tui/ui/selectdialog.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/tui/ui/selectdialog.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -25,28 +56,28 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginOnboardingV2&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginStorageMigration&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/qinchenkai/go/sastx&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.GoLinterPluginOnboardingV2": "true",
+    "RunOnceActivity.GoLinterPluginStorageMigration": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.go.formatter.settings.were.checked": "true",
+    "RunOnceActivity.go.modules.go.list.on.any.changes.was.set": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "feat/tui-statusline-and-readme-rewrite",
+    "go.sdk.automatically.set": "true",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/qinchenkai/go/sastx",
+    "node.js.detected.package.eslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "to.speed.mode.migration.done": "true"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -67,6 +98,17 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VgoProject">
     <integration-enabled>false</integration-enabled>

@@ -199,6 +199,10 @@ func (f *AgentFactory) resolveAIClient(modelID string) ai.ChatClient {
 	return f.defaultAIClient
 }
 
+func (f *AgentFactory) DefaultClient() ai.ChatClient {
+	return f.defaultAIClient
+}
+
 func (f *AgentFactory) UpdateDefaultClient(client ai.ChatClient) {
 	f.defaultAIClient = client
 }

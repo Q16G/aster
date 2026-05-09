@@ -1,0 +1,5 @@
+ internal/react/emitter.go      | 40 +++++++++++++++++++++++++++++++++++++
+ internal/tui/chat.go           | 45 ++++++++++++++++++++++++++++++++++++++++--
+ internal/tui/display_part.go   |  1 +
+ internal/tui/event_handlers.go | 24 ++++++++++++++++++++--
+ 4 files changed, 106 insertions(+), 4 deletions(-)
