@@ -53,6 +53,8 @@ providers:
     base_url: https://api.openai.com/v1
     api_key: sk-your-key
     default_model: gpt-4o
+    # env:
+    #   HTTPS_PROXY: http://127.0.0.1:7890
 ```
 
 ### 运行
@@ -113,6 +115,10 @@ providers:
     base_url: <url>              # API 端点
     api_key: <key|${ENV_VAR}>    # 密钥，支持环境变量引用
     default_model: <model_id>    # 该 Provider 的默认模型
+    env:                         # Provider 级环境配置（可选）
+      HTTPS_PROXY: <proxy_url>   # 常用于代理；也可作为本 Provider 的变量源
+    headers:                     # 额外请求头（可选）
+      X-Foo: bar
 
 mcp_servers:
   <name>:
@@ -126,6 +132,25 @@ mcp_servers:
     env:                         # 额外环境变量（可选）
       KEY: value
     resident: false              # 是否常驻连接（默认 false）
+```
+
+`providers.<name>.env` 不会修改整个进程的全局环境，而是作为该 Provider 的局部环境源使用：
+
+- 可被同一 Provider 下的 `api_key`、`base_url`、`headers` 中的 `${VAR}` 引用。
+- 会自动识别 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`，并映射到该 Provider 的 HTTP client 代理配置。
+
+示例：
+
+```yaml
+default_provider: openai
+
+providers:
+  openai:
+    env:
+      OPENAI_TOKEN: ${OPENAI_API_KEY}
+      HTTPS_PROXY: http://127.0.0.1:7890
+    api_key: ${OPENAI_TOKEN}
+    default_model: gpt-4o
 ```
 
 ### 内置 Provider

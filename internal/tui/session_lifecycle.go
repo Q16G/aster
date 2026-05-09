@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 )
@@ -18,7 +19,22 @@ func (m *Model) ensureSession() bool {
 	if m.store == nil {
 		return false
 	}
+	if m.restoreLatestSession() {
+		return true
+	}
 	return m.newSession()
+}
+
+func (m *Model) restoreLatestSession() bool {
+	if m.store == nil {
+		return false
+	}
+	sessions, err := m.store.List()
+	if err != nil || len(sessions) == 0 {
+		return false
+	}
+	m.switchSession(sessions[0].ID)
+	return m.currentSessionID != ""
 }
 
 func (m *Model) newSession() bool {
@@ -53,6 +69,8 @@ func (m *Model) newSession() bool {
 		m.agentCtx.InitialHistory = nil
 		m.agentCtx.InitialState = builtin_tools.StateSnapshot{}
 	}
+	m.sessionUsage = ai.TokenUsage{}
+	m.sessionCost = 0
 	m.chat = NewChatModel()
 	m.restoreToolVerbose()
 	m.updateLayout()
@@ -82,14 +100,12 @@ func (m *Model) switchSession(idOrPrefix string) {
 			m.bindSessionToAgent()
 
 			parts, err := loadSessionDisplayParts(m.store.BaseDir(), s.ID)
-			if err != nil {
-				m.chat = NewChatModel()
-			} else {
-				m.chat = NewChatModel()
-				m.chat.SetParts(parts)
-			}
+			m.chat = NewChatModel()
 			m.restoreToolVerbose()
 			m.updateLayout()
+			if err == nil && len(parts) > 0 {
+				m.chat.SetParts(parts)
+			}
 
 			if s.AgentName != "" && m.profileRegistry != nil {
 				if def, ok := m.profileRegistry.Get(s.AgentName); ok {
@@ -103,8 +119,11 @@ func (m *Model) switchSession(idOrPrefix string) {
 				history, histErr := loadSessionAIHistory(m.store.BaseDir(), s.ID)
 				if histErr == nil {
 					m.agentCtx.InitialHistory = history
+					m.recalcUsageFromHistory(history)
 				} else {
 					m.agentCtx.InitialHistory = nil
+					m.sessionUsage = ai.TokenUsage{}
+					m.sessionCost = 0
 				}
 			}
 
@@ -317,36 +336,14 @@ func (m *Model) restoreSessionProvider(rec *SessionRecord) {
 		return
 	}
 	if rec.ProviderName != "" {
-		resolved := false
-		cfgP := m.appCfg.Providers[rec.ProviderName]
-		if bp, ok := GetBuiltinProvider(rec.ProviderName); ok {
-			m.providerCfg.Name = rec.ProviderName
-			m.providerCfg.BaseURL = bp.BaseURL
-			cfgKey := ""
-			if cfgP != nil {
-				cfgKey = cfgP.APIKey
-				if cfgP.BaseURL != "" {
-					m.providerCfg.BaseURL = cfgP.BaseURL
-				}
-				m.providerCfg.Headers = cloneStringMap(cfgP.Headers)
-				m.providerCfg.PromptCache = cfgP.PromptCache.Clone()
+		if state := m.appCfg.ResolveProviderState(rec.ProviderName, rec.ModelID, "", ""); state != nil {
+			*m.providerCfg = *state
+			if m.agentCtx != nil {
+				m.agentCtx.Definition.ModelID = m.providerCfg.ModelID
 			}
-			m.providerCfg.APIKey = resolveAPIKey(bp, cfgKey)
-			resolved = true
-		} else if cfgP != nil {
-			m.providerCfg.Name = rec.ProviderName
-			m.providerCfg.BaseURL = cfgP.BaseURL
-			m.providerCfg.APIKey = cfgP.APIKey
-			m.providerCfg.Headers = cloneStringMap(cfgP.Headers)
-			m.providerCfg.PromptCache = cfgP.PromptCache.Clone()
-			resolved = true
-		}
-		if resolved && m.agentCtx != nil && m.agentCtx.RebuildClient != nil {
-			modelID := rec.ModelID
-			if modelID == "" {
-				modelID = m.providerCfg.ModelID
+			if m.agentCtx != nil && m.agentCtx.RebuildClient != nil {
+				m.agentCtx.RebuildClient(m.providerCfg)
 			}
-			m.agentCtx.RebuildClient(m.providerCfg.BaseURL, m.providerCfg.APIKey, modelID)
 		}
 	}
 	if rec.ModelID != "" {

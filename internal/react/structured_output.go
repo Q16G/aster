@@ -44,7 +44,23 @@ func (a *Agent) structuredOutputLogger(snapshot builtin_tools.StateSnapshot) str
 	}
 }
 
+func (a *Agent) buildStructuredOutputStreamHandler() ai.StreamHandler {
+	return func(delta *ai.StreamDelta, done bool) error {
+		if done || delta == nil {
+			return nil
+		}
+		if delta.ReasoningContent != "" || delta.FinishReason != "" {
+			a.emitter.EmitThink(0, "", delta.ReasoningContent, "", nil, delta.FinishReason)
+		} else if delta.Content != "" {
+			a.emitter.EmitThink(0, "", delta.Content, "", nil, "")
+		}
+		return nil
+	}
+}
+
 func runStructuredOutputWithRetry[T any](a *Agent, ctx context.Context, snapshot builtin_tools.StateSnapshot, client ai.ChatClient, phase string, prompt string, parse structuredoutput.ParseFunc[T]) (structuredoutput.Result[T], error) {
 	retryCtx := structuredoutput.WithLogger(ctx, a.structuredOutputLogger(snapshot))
-	return structuredoutput.RunWithRetry(retryCtx, client, phase, prompt, a.resolveStructuredOutputConfig(nil), parse)
+	cfg := a.resolveStructuredOutputConfig(nil)
+	cfg.StreamHandler = a.buildStructuredOutputStreamHandler()
+	return structuredoutput.RunWithRetry(retryCtx, client, phase, prompt, cfg, parse)
 }

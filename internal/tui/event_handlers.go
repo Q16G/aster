@@ -145,7 +145,11 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeThink:
 		m.flushStreamAndPersist()
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
-			m.chat.AppendThinking(thinkDelta)
+			if m.isStructuredOutputPhase() {
+				m.thinkingPanel.UpdateLastEntry("thinking...")
+			} else {
+				m.chat.AppendThinkingWithEventID(thinkDelta, event.EventID)
+			}
 		}
 		m.statusText = "thinking..."
 
@@ -153,15 +157,50 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.flushStreamAndPersist()
 		current := payloadInt(event.Payload, "current")
 		max := payloadInt(event.Payload, "max")
-		m.statusText = fmt.Sprintf("iteration %d/%d", current, max)
+		iterText := fmt.Sprintf("iteration %d/%d", current, max)
+		m.statusText = iterText
+		m.thinkingPanel.PushEntry("iteration", iterText)
 
 	case react.EventTypeStateChange:
 		m.externalInterrupt = payloadExternalInterrupt(event.Payload)
-		if summary := strings.TrimSpace(payloadString(event.Payload, "status_summary")); summary != "" {
-			m.statusText = summary
+		statusSummary := strings.TrimSpace(payloadString(event.Payload, "status_summary"))
+		if statusSummary != "" {
+			m.statusText = statusSummary
 		}
 		if phase := payloadString(event.Payload, "phase"); phase != "" {
 			m.runtimePhase = phase
+			phaseStatus := ""
+			switch phase {
+			case "step_summary":
+				phaseStatus = "summarizing step..."
+			case "final_answer":
+				phaseStatus = "composing answer..."
+			case "plan":
+				phaseStatus = "planning..."
+			case "step":
+				phaseStatus = "executing step..."
+			}
+			switch phase {
+			case "step_summary", "final_answer":
+				m.thinkingPanel.Show(phase)
+				if statusSummary != "" {
+					m.thinkingPanel.PushEntry(phase, statusSummary)
+				} else if phaseStatus != "" {
+					m.thinkingPanel.PushEntry(phase, phaseStatus)
+				}
+				m.updateLayout()
+			default:
+				if phaseStatus != "" {
+					m.thinkingPanel.PushEntry(phase, phaseStatus)
+				}
+				if m.thinkingPanel.visible {
+					m.thinkingPanel.Hide()
+					m.updateLayout()
+				}
+			}
+			if statusSummary == "" {
+				m.statusText = phaseStatus
+			}
 		}
 		m.runtimeProgress = payloadInt(event.Payload, "progress")
 		m.runtimeGoal = payloadString(event.Payload, "current_goal")
@@ -333,6 +372,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		// handled by HumanInputBridge
 
 	case react.EventTypeStepSummaryResult:
+		m.thinkingPanel.PushEntry("step_summary", "step summary completed")
+		m.thinkingPanel.Hide()
+		m.updateLayout()
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist()
 		stepID := payloadString(event.Payload, "step_id")
@@ -372,6 +414,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		}
 
 	case react.EventTypeFinalAnswerResult:
+		m.thinkingPanel.PushEntry("final_answer", "answer delivered")
+		m.thinkingPanel.Hide()
+		m.updateLayout()
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist()
 		m.hadFinalAnswerDuringRun = true
@@ -394,6 +439,14 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeStepFinish, react.EventTypeHistoryCompacted:
 		// no-op
 	}
+}
+
+func (m *Model) isStructuredOutputPhase() bool {
+	switch m.runtimePhase {
+	case "step_summary", "final_answer":
+		return true
+	}
+	return false
 }
 
 func payloadExternalInterrupt(payload map[string]any) *builtin_tools.ExternalInterrupt {

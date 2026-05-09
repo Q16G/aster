@@ -287,6 +287,16 @@ func (tm *TimelineMemory) GetMemoryByType(itemType TimelineItemType) []*Timeline
 	return result
 }
 
+// TryCompressAsync 异步尝试压缩旧记忆
+func (tm *TimelineMemory) TryCompressAsync() {
+	if tm == nil || !tm.ShouldCompress() {
+		return
+	}
+	go func() {
+		_ = tm.CompressOldMemories()
+	}()
+}
+
 // Clear 清空所有记忆
 func (tm *TimelineMemory) Clear() {
 	tm.items = utils.NewOrderMapx[string, *TimelineItem]()

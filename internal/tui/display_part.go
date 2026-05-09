@@ -79,6 +79,7 @@ type SystemPart struct {
 
 type ThinkingPart struct {
 	Content string `json:"content"`
+	EventID string `json:"event_id,omitempty"`
 }
 
 type SummaryPart struct {

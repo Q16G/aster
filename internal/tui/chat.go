@@ -13,33 +13,40 @@ import (
 )
 
 type ChatModel struct {
-	viewport        viewport.Model
-	parts           []DisplayPart
-	streaming       *strings.Builder
-	isStreaming     bool
-	thinkingBuf     *strings.Builder
-	isThinking      bool
-	width           int
-	height          int
-	toolVerbose     bool
-	toolExpanded    map[int]bool
-	cursor          int
-	focused         bool
-	partLineOffsets []int
+	viewport         viewport.Model
+	parts            []DisplayPart
+	streaming        *strings.Builder
+	isStreaming      bool
+	thinkingBuf      *strings.Builder
+	thinkingEventID  string
+	isThinking       bool
+	width            int
+	height           int
+	toolVerbose      bool
+	toolExpanded     map[int]bool
+	cursor           int
+	focused          bool
+	partLineOffsets  []int
+	contentDirty     bool
+	autoFollowBottom bool
 }
 
 func NewChatModel() ChatModel {
 	vp := viewport.New(0, 0)
 	vp.SetContent("")
 	return ChatModel{
-		viewport:     vp,
-		streaming:    &strings.Builder{},
-		thinkingBuf:  &strings.Builder{},
-		toolExpanded: make(map[int]bool),
+		viewport:         vp,
+		streaming:        &strings.Builder{},
+		thinkingBuf:      &strings.Builder{},
+		toolExpanded:     make(map[int]bool),
+		autoFollowBottom: true,
 	}
 }
 
 func (m *ChatModel) SetSize(w, h int) {
+	if m.width == w && m.height == h {
+		return
+	}
 	m.width = w
 	m.height = h
 	m.viewport.Width = w
@@ -58,7 +65,10 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 		m.toolExpanded[idx] = true
 	}
 	m.refreshContent()
-	m.viewport.GotoBottom()
+	if m.autoFollowBottom {
+		m.viewport.GotoBottom()
+	}
+	m.syncAutoFollowFromViewport()
 }
 
 func (m *ChatModel) StreamContent() string {
@@ -68,8 +78,7 @@ func (m *ChatModel) StreamContent() string {
 func (m *ChatModel) AppendStream(delta string) {
 	m.streaming.WriteString(delta)
 	m.isStreaming = true
-	m.refreshContent()
-	m.viewport.GotoBottom()
+	m.markDirty()
 }
 
 func (m *ChatModel) FlushStream() bool {
@@ -84,16 +93,34 @@ func (m *ChatModel) FlushStream() bool {
 		flushed = true
 	}
 	m.isStreaming = false
-	m.refreshContent()
-	m.viewport.GotoBottom()
+	m.markDirty()
 	return flushed
 }
 
 func (m *ChatModel) AppendThinking(delta string) {
+	m.AppendThinkingWithEventID(delta, "")
+}
+
+func (m *ChatModel) AppendThinkingWithEventID(delta string, eventID string) {
+	if eventID != "" && m.thinkingEventID != "" && eventID != m.thinkingEventID {
+		m.FlushThinking()
+	}
+
+	if eventID != "" && !m.isThinking && m.thinkingBuf.Len() == 0 {
+		for i := len(m.parts) - 1; i >= 0; i-- {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.EventID == eventID {
+				m.parts[i].Thinking.Content += delta
+				m.thinkingEventID = eventID
+				m.markDirty()
+				return
+			}
+		}
+	}
+
+	m.thinkingEventID = eventID
 	m.thinkingBuf.WriteString(delta)
 	m.isThinking = true
-	m.refreshContent()
-	m.viewport.GotoBottom()
+	m.markDirty()
 }
 
 func (m *ChatModel) FlushThinking() bool {
@@ -101,16 +128,58 @@ func (m *ChatModel) FlushThinking() bool {
 		m.isThinking = false
 		return false
 	}
+	content := m.thinkingBuf.String()
+	eventID := m.thinkingEventID
+
+	if eventID != "" {
+		for i := len(m.parts) - 1; i >= 0; i-- {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.EventID == eventID {
+				m.parts[i].Thinking.Content += content
+				m.thinkingBuf.Reset()
+				m.thinkingEventID = ""
+				m.isThinking = false
+				m.markDirty()
+				return true
+			}
+		}
+	}
+
 	m.parts = append(m.parts, DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     time.Now(),
-		Thinking: &ThinkingPart{Content: m.thinkingBuf.String()},
+		Thinking: &ThinkingPart{Content: content, EventID: eventID},
 	})
 	m.thinkingBuf.Reset()
+	m.thinkingEventID = ""
 	m.isThinking = false
-	m.refreshContent()
-	m.viewport.GotoBottom()
+	m.markDirty()
 	return true
+}
+
+func (m *ChatModel) markDirty() {
+	m.contentDirty = true
+}
+
+func (m *ChatModel) IsDirty() bool {
+	return m.contentDirty
+}
+
+func (m *ChatModel) FlushRender() bool {
+	if !m.contentDirty {
+		return false
+	}
+	followBottom := m.autoFollowBottom
+	m.contentDirty = false
+	m.refreshContent()
+	if followBottom {
+		m.viewport.GotoBottom()
+	}
+	m.syncAutoFollowFromViewport()
+	return true
+}
+
+func (m *ChatModel) syncAutoFollowFromViewport() {
+	m.autoFollowBottom = m.viewport.AtBottom()
 }
 
 func (m *ChatModel) UpdateLastTool(fn func(*ToolPart)) {
@@ -189,6 +258,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			}
 			m.refreshContent()
 			m.scrollToCursor()
+			m.syncAutoFollowFromViewport()
 			return m, nil
 		case "down", "j":
 			if m.cursor < len(m.parts)-1 {
@@ -196,6 +266,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			}
 			m.refreshContent()
 			m.scrollToCursor()
+			m.syncAutoFollowFromViewport()
 			return m, nil
 		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
@@ -204,6 +275,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
 					m.refreshContent()
 					m.scrollToCursor()
+					m.syncAutoFollowFromViewport()
 					return m, nil
 				}
 			}
@@ -211,6 +283,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
+	m.syncAutoFollowFromViewport()
 	return m, cmd
 }
 
@@ -357,6 +430,7 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 	}
 	m.refreshContent()
 	m.viewport.GotoBottom()
+	m.autoFollowBottom = true
 }
 
 func (m *ChatModel) Parts() []DisplayPart {
@@ -863,16 +937,24 @@ func wrapText(s string, maxWidth int) string {
 	lines := strings.Split(s, "\n")
 	var result []string
 	for _, line := range lines {
-		if len(line) <= maxWidth {
+		if runewidth.StringWidth(line) <= maxWidth {
 			result = append(result, line)
 			continue
 		}
-		for len(line) > maxWidth {
-			result = append(result, line[:maxWidth])
-			line = line[maxWidth:]
+		var current strings.Builder
+		currentWidth := 0
+		for _, r := range line {
+			rw := runewidth.RuneWidth(r)
+			if currentWidth+rw > maxWidth {
+				result = append(result, current.String())
+				current.Reset()
+				currentWidth = 0
+			}
+			current.WriteRune(r)
+			currentWidth += rw
 		}
-		if line != "" {
-			result = append(result, line)
+		if current.Len() > 0 {
+			result = append(result, current.String())
 		}
 	}
 	return strings.Join(result, "\n")

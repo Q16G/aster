@@ -83,6 +83,38 @@ func (s *SelectDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 				}
 			}
 			return s, nil
+		case "pgup", "ctrl+u":
+			step := max(1, (s.height-10)/2)
+			for i := 0; i < step; i++ {
+				moved := false
+				for next := s.cursor - 1; next >= 0; next-- {
+					if !s.options[s.filtered[next]].Disabled {
+						s.cursor = next
+						moved = true
+						break
+					}
+				}
+				if !moved {
+					break
+				}
+			}
+			return s, nil
+		case "pgdown", "ctrl+d":
+			step := max(1, (s.height-10)/2)
+			for i := 0; i < step; i++ {
+				moved := false
+				for next := s.cursor + 1; next < len(s.filtered); next++ {
+					if !s.options[s.filtered[next]].Disabled {
+						s.cursor = next
+						moved = true
+						break
+					}
+				}
+				if !moved {
+					break
+				}
+			}
+			return s, nil
 		case "enter":
 			if len(s.filtered) > 0 && s.cursor < len(s.filtered) {
 				idx := s.filtered[s.cursor]
@@ -170,8 +202,11 @@ func (s *SelectDialog) View() string {
 		maxVisible = 1
 	}
 	start := 0
-	if s.cursor >= maxVisible {
-		start = s.cursor - maxVisible + 1
+	if s.cursor > maxVisible/2 {
+		start = s.cursor - maxVisible/2
+	}
+	if start+maxVisible > len(s.filtered) {
+		start = max(0, len(s.filtered)-maxVisible)
 	}
 	end := min(start+maxVisible, len(s.filtered))
 

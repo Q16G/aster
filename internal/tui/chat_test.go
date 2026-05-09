@@ -1,0 +1,249 @@
+package tui
+
+import (
+	"fmt"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestFlushThinking_AllowsAdjacentIdentical(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinking("thinking about X")
+	if !m.FlushThinking() {
+		t.Fatal("first FlushThinking should return true")
+	}
+
+	m.AppendThinking("thinking about X")
+	if !m.FlushThinking() {
+		t.Fatal("second FlushThinking with identical content should return true")
+	}
+
+	count := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 thinking parts, got %d", count)
+	}
+}
+
+func TestFlushThinking_AllowsDifferentContent(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinking("first thought")
+	if !m.FlushThinking() {
+		t.Fatal("first FlushThinking should return true")
+	}
+
+	m.AppendThinking("second thought")
+	if !m.FlushThinking() {
+		t.Fatal("second FlushThinking with different content should return true")
+	}
+
+	count := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 thinking parts, got %d", count)
+	}
+}
+
+func TestFlushThinking_EmptyBuffer(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	if m.FlushThinking() {
+		t.Fatal("FlushThinking on empty buffer should return false")
+	}
+	if len(m.parts) != 0 {
+		t.Fatalf("expected 0 parts, got %d", len(m.parts))
+	}
+}
+
+func TestFlushThinking_MergesSameEventID(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinkingWithEventID("first ", "session-1")
+	m.FlushThinking()
+	m.AppendThinkingWithEventID("second", "session-1")
+	m.FlushThinking()
+
+	count := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			count++
+			if p.Thinking.Content != "first second" {
+				t.Fatalf("expected merged content 'first second', got %q", p.Thinking.Content)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 merged thinking part, got %d", count)
+	}
+}
+
+func TestFlushThinking_SeparatesDifferentEventIDs(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinkingWithEventID("thought A", "session-1")
+	m.FlushThinking()
+	m.AppendThinkingWithEventID("thought B", "session-2")
+	m.FlushThinking()
+
+	count := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 separate thinking parts, got %d", count)
+	}
+}
+
+func TestAppendThinkingWithEventID_SessionSwitch(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinkingWithEventID("old ", "session-1")
+	m.AppendThinkingWithEventID("new", "session-2")
+
+	count := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			count++
+			if p.Thinking.Content != "old " {
+				t.Fatalf("expected flushed content 'old ', got %q", p.Thinking.Content)
+			}
+			if p.Thinking.EventID != "session-1" {
+				t.Fatalf("expected event ID 'session-1', got %q", p.Thinking.EventID)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 flushed part from old session, got %d", count)
+	}
+	if !m.isThinking {
+		t.Fatal("should still be thinking with new session")
+	}
+}
+
+func TestAppendThinkingWithEventID_ResumeAfterFlush(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AppendThinkingWithEventID("part1 ", "session-1")
+	m.FlushThinking()
+
+	m.AppendThinkingWithEventID("part2", "session-1")
+
+	thinkingParts := 0
+	for _, p := range m.parts {
+		if p.Type == PartTypeThinking {
+			thinkingParts++
+			if p.Thinking.Content != "part1 part2" {
+				t.Fatalf("expected 'part1 part2', got %q", p.Thinking.Content)
+			}
+		}
+	}
+	if thinkingParts != 1 {
+		t.Fatalf("expected 1 thinking part (resumed via existing), got %d", thinkingParts)
+	}
+}
+
+func TestFlushRender_DoesNotSnapBackAfterUserScrollsUp(t *testing.T) {
+	m := newScrollableChatModel(t)
+	if !m.viewport.AtBottom() {
+		t.Fatal("expected seeded chat to start at bottom")
+	}
+
+	m = scrollChatUpUntilNotBottom(t, m)
+	scrolledOffset := m.viewport.YOffset
+	if m.autoFollowBottom {
+		t.Fatal("expected auto-follow to be disabled after scrolling away from bottom")
+	}
+
+	m.AppendStream("more streaming output")
+	if !m.FlushRender() {
+		t.Fatal("expected FlushRender to render pending stream content")
+	}
+
+	if m.viewport.YOffset != scrolledOffset {
+		t.Fatalf("expected viewport offset to stay at %d after render, got %d", scrolledOffset, m.viewport.YOffset)
+	}
+	if m.viewport.AtBottom() {
+		t.Fatal("expected viewport to remain away from bottom after render")
+	}
+	if m.autoFollowBottom {
+		t.Fatal("expected auto-follow to remain disabled after render")
+	}
+}
+
+func TestFlushRender_ResumesAutoFollowAfterReturningToBottom(t *testing.T) {
+	m := newScrollableChatModel(t)
+	m = scrollChatUpUntilNotBottom(t, m)
+
+	m.viewport.GotoBottom()
+	m.syncAutoFollowFromViewport()
+	if !m.viewport.AtBottom() {
+		t.Fatal("expected viewport to be at bottom before follow-up render")
+	}
+	if !m.autoFollowBottom {
+		t.Fatal("expected auto-follow to be re-enabled at bottom")
+	}
+
+	m.AppendThinking("fresh thought at bottom")
+	if !m.FlushRender() {
+		t.Fatal("expected FlushRender to render pending thinking content")
+	}
+
+	if !m.viewport.AtBottom() {
+		t.Fatal("expected viewport to remain at bottom after render")
+	}
+	if !m.autoFollowBottom {
+		t.Fatal("expected auto-follow to stay enabled after render")
+	}
+}
+
+func newScrollableChatModel(t *testing.T) ChatModel {
+	t.Helper()
+
+	m := NewChatModel()
+	m.SetSize(40, 6)
+	for i := 0; i < 16; i++ {
+		m.AddPart(DisplayPart{
+			Type: PartTypeText,
+			Text: &TextPart{
+				Content: fmt.Sprintf("assistant line %02d with enough content to keep the viewport scrollable", i),
+			},
+		})
+	}
+	return m
+}
+
+func scrollChatUpUntilNotBottom(t *testing.T, m ChatModel) ChatModel {
+	t.Helper()
+
+	for i := 0; i < 32 && m.viewport.AtBottom(); i++ {
+		var cmd tea.Cmd
+		m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		if cmd != nil {
+			t.Fatal("expected no async command from chat update")
+		}
+	}
+	if m.viewport.AtBottom() {
+		t.Fatal("expected viewport to leave bottom after scrolling up")
+	}
+	return m
+}
