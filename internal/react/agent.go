@@ -58,7 +58,9 @@ type Agent struct {
 	currentFinalAnswerPublish *FinalAnswerPublishConfig
 	workspaceRuntime          builtin_tools.WorkspaceRuntime
 	currentIntent             *IntentDecision
-	finishMu                  sync.Mutex
+	runClientMu               sync.RWMutex
+	currentRunClientVal       ai.ChatClient
+	finishMu sync.Mutex
 	finishHooks               []func()
 	historyHookMu             sync.RWMutex
 	historyChangeHook         func(change *HistoryChange)
@@ -160,6 +162,15 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	var memOpts []memory.TimelineOption
 	if cfg.MemoryTriggerBytes >= 0 {
 		memOpts = append(memOpts, memory.WithTriggerBytes(cfg.MemoryTriggerBytes))
+	} else {
+		budget := resolveContextBudget(aiClient)
+		triggerTokens := budget.TriggerTokens
+		if triggerTokens <= 0 {
+			triggerTokens = budget.UsableInputTokens
+		}
+		if triggerTokens > 0 {
+			memOpts = append(memOpts, memory.WithTriggerBytes(triggerTokens*defaultCharsPerToken))
+		}
 	}
 	if cfg.MemoryKeepLastItems >= 0 {
 		memOpts = append(memOpts, memory.WithKeepLastItems(cfg.MemoryKeepLastItems))
@@ -211,7 +222,24 @@ func dedupToolsByName(tools []Tool) []Tool {
 	return out
 }
 
-// Name 返回 Agent 名称
+func (a *Agent) setCurrentRunClient(c ai.ChatClient) {
+	a.runClientMu.Lock()
+	defer a.runClientMu.Unlock()
+	a.currentRunClientVal = c
+}
+
+func (a *Agent) getCurrentRunClient() ai.ChatClient {
+	a.runClientMu.RLock()
+	defer a.runClientMu.RUnlock()
+	if a.currentRunClientVal != nil {
+		return a.currentRunClientVal
+	}
+	if a.cfg != nil {
+		return a.cfg.AIClient
+	}
+	return nil
+}
+
 func (a *Agent) Name() string {
 	if a == nil {
 		return ""
@@ -616,4 +644,5 @@ func (a *Agent) AddMemoryAssistantOutput(content string) {
 		return
 	}
 	_ = a.memory.AddItem(generateRandomString(8), memory.NewAssistantOutputItem(content))
+	a.memory.TryCompressAsync()
 }

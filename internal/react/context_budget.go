@@ -3,9 +3,11 @@ package react
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"aster/internal/ai"
+	"github.com/tiktoken-go/tokenizer"
 )
 
 const (
@@ -138,7 +140,7 @@ func resolveContextBudget(client ai.ChatClient) ContextBudget {
 	}
 
 	budget.UsableInputTokens = usable
-	budget.TriggerTokens = usable
+	budget.TriggerTokens = int(float64(usable) * 0.6)
 	if budget.TriggerTokens < 1 {
 		budget.TriggerTokens = usable
 	}
@@ -205,18 +207,46 @@ func estimateSummaryTokens(summary string) int {
 	return estimateStringTokens(HistoryCompactionRequestText) + estimateStringTokens(summary)
 }
 
-// estimateStringTokens 基于 rune 计数估算 token 数。
-// 对混合中英文内容比 len(s)/4 更准确：CJK 字符 1 rune ≈ 1 token，ASCII 约 4 char ≈ 1 token，
-// 取 runeCount/2 作为折中，偏向安全侧（宁早触发 compaction）。
-func estimateStringTokens(s string) int {
+var (
+	bpeEncoder     tokenizer.Codec
+	bpeEncoderOnce sync.Once
+)
+
+func getBPEEncoder() tokenizer.Codec {
+	bpeEncoderOnce.Do(func() {
+		enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+		if err == nil {
+			bpeEncoder = enc
+		}
+	})
+	return bpeEncoder
+}
+
+func countTokens(s string) int {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0
 	}
+	enc := getBPEEncoder()
+	if enc == nil {
+		return fallbackEstimateTokens(s)
+	}
+	ids, _, _ := enc.Encode(s)
+	if len(ids) == 0 {
+		return fallbackEstimateTokens(s)
+	}
+	return len(ids)
+}
+
+func fallbackEstimateTokens(s string) int {
 	runeCount := utf8.RuneCountInString(s)
 	tokens := (runeCount + 1) / 2
 	if tokens < 1 {
 		return 1
 	}
 	return tokens
+}
+
+func estimateStringTokens(s string) int {
+	return countTokens(s)
 }

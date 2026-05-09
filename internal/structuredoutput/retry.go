@@ -12,8 +12,9 @@ import (
 const DefaultRetryCount = 3
 
 type Config struct {
-	RetryCount          int  `json:"retry_count,omitempty"`
-	LogErrorsToTerminal bool `json:"log_errors_to_terminal,omitempty"`
+	RetryCount          int              `json:"retry_count,omitempty"`
+	LogErrorsToTerminal bool             `json:"log_errors_to_terminal,omitempty"`
+	StreamHandler       ai.StreamHandler `json:"-"`
 }
 
 func DefaultConfig() Config {
@@ -24,7 +25,7 @@ func DefaultConfig() Config {
 }
 
 func NormalizeConfig(cfg Config) Config {
-	if cfg == (Config{}) {
+	if cfg.RetryCount == 0 && !cfg.LogErrorsToTerminal && cfg.StreamHandler == nil {
 		return DefaultConfig()
 	}
 	if cfg.RetryCount <= 0 {
@@ -163,7 +164,20 @@ func RunWithRetry[T any](ctx context.Context, client ai.ChatClient, phase string
 	failures := make([]AttemptFailure, 0, cfg.RetryCount)
 	result := zero
 	for attempt := 1; attempt <= cfg.RetryCount; attempt++ {
-		rawResponse, err := ai.ChatTextWithOptions(ctx, client, currentPrompt, &ai.RequestOptions{PromptFamily: phase})
+		var rawResponse string
+		var err error
+		if cfg.StreamHandler != nil {
+			if sc, ok := client.(ai.StreamingChatClient); ok {
+				rawResponse, err = chatTextStreaming(ctx, sc, currentPrompt,
+					&ai.RequestOptions{PromptFamily: phase}, cfg.StreamHandler)
+			} else {
+				rawResponse, err = ai.ChatTextWithOptions(ctx, client, currentPrompt,
+					&ai.RequestOptions{PromptFamily: phase})
+			}
+		} else {
+			rawResponse, err = ai.ChatTextWithOptions(ctx, client, currentPrompt,
+				&ai.RequestOptions{PromptFamily: phase})
+		}
 		rawResponse = strings.TrimSpace(rawResponse)
 		result.RawResponse = rawResponse
 		result.Attempts = attempt
@@ -232,6 +246,29 @@ func RunWithRetry[T any](ctx context.Context, client ai.ChatClient, phase string
 		ResponseExcerpt: responseText,
 	})
 	return result, exhausted
+}
+
+func chatTextStreaming(ctx context.Context, client ai.StreamingChatClient,
+	prompt string, options *ai.RequestOptions, handler ai.StreamHandler) (string, error) {
+	msgs := []*ai.MsgInfo{ai.NewUserMsgInfo(prompt)}
+	var contentBuf strings.Builder
+	err := ai.ChatStreamWithOptions(ctx, client, msgs, options,
+		func(delta *ai.StreamDelta, done bool) error {
+			if done {
+				return handler(nil, true)
+			}
+			if delta == nil {
+				return nil
+			}
+			if delta.Content != "" {
+				contentBuf.WriteString(delta.Content)
+			}
+			if delta.ReasoningContent != "" || delta.FinishReason != "" || delta.Content != "" {
+				return handler(delta, false)
+			}
+			return nil
+		})
+	return contentBuf.String(), err
 }
 
 func buildAttemptFailure(attempt int, err error, rawResponse string) AttemptFailure {

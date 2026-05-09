@@ -211,6 +211,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	if resolveErr != nil {
 		return nil, fmt.Errorf("resolve ai client failed: %w", resolveErr)
 	}
+	a.setCurrentRunClient(runClient)
 
 	runBudget := resolveContextBudget(runClient)
 	if compressor, ok := a.cfg.HistoryCompressor.(*AIHistoryCompressor); ok && compressor != nil {
@@ -285,7 +286,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.frozenLineageByStep = nil
 	a.stepBaselineAt = time.Time{}
 	a.stepBaselineStepID = ""
-	a.resetRunMemory(extraText, runClient)
+	a.resetRunMemory(ctx, extraText, runClient)
 
 	userMsg := ai.NewUserMsgInfo(input)
 	a.history = append(a.history, userMsg)
@@ -422,7 +423,13 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		runtimeForcedFail := snapshot.Status == builtin_tools.TaskStatusFailed &&
 			strings.TrimSpace(snapshot.Error) != ""
 		if !runtimeForcedFail && snapshot.ExternalInterrupt == nil {
-			if result, ok := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok {
+			if result, ok, degraded := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok {
+				if degraded {
+					a.emitRuntimeLog("warning", "publish contract fallback: no plan step matched contract, using latest step result", snapshot, map[string]any{
+						"event":            "publish_contract_fallback",
+						"publish_contract": a.currentPublishContract,
+					})
+				}
 				return &builtin_tools.RunResult{Success: true, Result: result}
 			}
 		}
@@ -483,7 +490,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 	}
 }
 
-func (a *Agent) resetRunMemory(extraText string, runClient ai.ChatClient) {
+func (a *Agent) resetRunMemory(ctx context.Context, extraText string, runClient ai.ChatClient) {
 	if a == nil {
 		return
 	}
@@ -491,6 +498,15 @@ func (a *Agent) resetRunMemory(extraText string, runClient ai.ChatClient) {
 	if a.cfg != nil {
 		if a.cfg.MemoryTriggerBytes >= 0 {
 			memOpts = append(memOpts, memory.WithTriggerBytes(a.cfg.MemoryTriggerBytes))
+		} else if runClient != nil {
+			budget := resolveContextBudget(runClient)
+			triggerTokens := budget.TriggerTokens
+			if triggerTokens <= 0 {
+				triggerTokens = budget.UsableInputTokens
+			}
+			if triggerTokens > 0 {
+				memOpts = append(memOpts, memory.WithTriggerBytes(triggerTokens*defaultCharsPerToken))
+			}
 		}
 		if a.cfg.MemoryKeepLastItems >= 0 {
 			memOpts = append(memOpts, memory.WithKeepLastItems(a.cfg.MemoryKeepLastItems))
@@ -500,7 +516,7 @@ func (a *Agent) resetRunMemory(extraText string, runClient ai.ChatClient) {
 		}
 	}
 	a.memory = memory.NewTimeLine(
-		context.Background(),
+		ctx,
 		runClient,
 		func() string { return strings.TrimSpace(extraText) },
 		memOpts...,
@@ -860,12 +876,12 @@ func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string,
 	// Step phase: tool results are step-local transcript and should not be persisted to long-term ai.history.
 	a.stepHistory = append(a.stepHistory, toolResultMsg)
 
-	// 写入记忆
 	if a.memory != nil {
 		_ = a.memory.AddItem(
 			generateRandomString(8),
 			memory.NewToolCallItem(callID, toolName, description, args, result, errText),
 		)
+		a.memory.TryCompressAsync()
 	}
 }
 

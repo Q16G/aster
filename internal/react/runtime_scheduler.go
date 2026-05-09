@@ -170,6 +170,8 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		ExtraContext:       strings.TrimSpace(extraText),
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
+		PublishContract:    strings.TrimSpace(a.currentPublishContract),
+		OutputContracts:    a.cfg.OutputContracts,
 	})
 	if input == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -246,6 +248,8 @@ type PlannerInputOptions struct {
 	ExtraContext       string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
+	PublishContract    string
+	OutputContracts    map[string]*builtin_tools.OutputContract
 }
 
 type plannerStepOutcomeView struct {
@@ -494,6 +498,21 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, intent *Inte
 			builder.WriteString("</INTENT_CONTEXT>")
 		}
 	}
+
+	if opts.PublishContract != "" {
+		builder.WriteString("\n\n<OUTPUT_CONTRACTS>\n")
+		builder.WriteString(fmt.Sprintf("publish_contract: %s\n", opts.PublishContract))
+		if c, ok := opts.OutputContracts[opts.PublishContract]; ok && c != nil {
+			if c.Schema != "" {
+				builder.WriteString(fmt.Sprintf("schema:\n%s\n", c.Schema))
+			}
+			if c.Example != "" {
+				builder.WriteString(fmt.Sprintf("example:\n%s\n", c.Example))
+			}
+		}
+		builder.WriteString("</OUTPUT_CONTRACTS>\n")
+	}
+
 	return builder.String()
 }
 
