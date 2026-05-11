@@ -9,6 +9,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/memory"
+	"aster/internal/react/persistv2"
 	"aster/internal/utils"
 )
 
@@ -43,6 +44,9 @@ type Agent struct {
 	stepHistoryPhase          builtin_tools.AgentPhase
 	stepHistoryPlanVer        int
 	currentRunID              string
+	// V2 persistence: session-scoped event store + per-turn correlation id.
+	v2Store      *persistv2.Store
+	currentTurnID string
 	handoff                   *handoffState
 	emitter                   *Emitter
 	workspaceSessionID        string

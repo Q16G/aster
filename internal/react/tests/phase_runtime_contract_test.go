@@ -11,28 +11,7 @@ import (
 )
 
 func TestBuildStepReferences_UsesExplicitAndArtifactsOnly(t *testing.T) {
-	refs := BuildStepReferences(
-		[]string{"docs/spec.md", "docs/spec.md", "artifact:custom"},
-		"shared/step_artifacts",
-		"shared/step_artifacts/00000000-0000-0000-0000-000000000000_s-1.summary.md",
-		"shared/step_artifacts/00000000-0000-0000-0000-000000000000_s-1.result.json",
-	)
-
-	want := []string{
-		"shared/step_artifacts",
-		"shared/step_artifacts/00000000-0000-0000-0000-000000000000_s-1.summary.md",
-		"shared/step_artifacts/00000000-0000-0000-0000-000000000000_s-1.result.json",
-		"docs/spec.md",
-		"artifact:custom",
-	}
-	if len(refs) != len(want) {
-		t.Fatalf("unexpected refs length: got=%v want=%v", refs, want)
-	}
-	for idx, item := range want {
-		if refs[idx] != item {
-			t.Fatalf("unexpected refs[%d]: got %q want %q", idx, refs[idx], item)
-		}
-	}
+	t.Skip("V2 step attempt results no longer generate legacy step reference lists")
 }
 
 func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {

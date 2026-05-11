@@ -38,24 +38,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if rawOutcome == nil {
 		return fmt.Errorf("step_replan phase missing step outcome step_id=%s", stepID)
 	}
-
-	writer, err := newArtifactWriter(a.workspaceRuntime)
-	if err != nil {
-		return err
-	}
-
-	artifactPlan, err := writer.PlanStepArtifactRel(snapshot.PlanVersion, stepID, stepID)
-	if err != nil {
-		return err
-	}
 	artifactDir := ""
-	if artifactPlan != nil {
-		artifactDir = strings.TrimSpace(artifactPlan.ArtifactDir)
-	}
 
 	// Fast path: step completed + no open questions → skip LLM
 	if rawOutcome.Status == builtin_tools.StepOutcomeCompleted && len(rawOutcome.OpenQuestions) == 0 {
-		return a.applyReplanResult(stepID, nil, nil, snapshot, writer, artifactPlan, artifactDir)
+		return a.applyReplanResult(stepID, nil, nil, snapshot, artifactDir)
 	}
 
 	// LLM replan decision
@@ -99,10 +86,10 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		}
 	}
 
-	return a.applyReplanResult(stepID, &modelOut, replanContext, snapshot, writer, artifactPlan, artifactDir)
+	return a.applyReplanResult(stepID, &modelOut, replanContext, snapshot, artifactDir)
 }
 
-func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput, replanContext *builtin_tools.ReplanContext, snapshot builtin_tools.StateSnapshot, writer *artifactWriter, artifactPlan *stepArtifactPlan, artifactDir string) error {
+func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput, replanContext *builtin_tools.ReplanContext, snapshot builtin_tools.StateSnapshot, artifactDir string) error {
 	current := snapshot.CurrentStep()
 
 	nextPhase := builtin_tools.AgentPhaseFinalAnswer
@@ -127,15 +114,6 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 
-	// Persist artifacts
-	if writer != nil && artifactPlan != nil && rawOutcome != nil && current != nil {
-		if _, err := writer.PersistStepArtifacts(snapshot, a.workspaceSessionID, a.Name(), current, rawOutcome, nil, artifactPlan); err != nil {
-			a.emitRuntimeLog("warning", "persist step artifacts failed", snapshot, map[string]any{
-				"error": err.Error(),
-			})
-		}
-	}
-
 	snapshot = a.state.ApplyStepReplan(stepID, stepReplanUpdate{
 		ArtifactDir:   artifactDir,
 		CurrentGoal:   summaryGoal,
@@ -144,9 +122,6 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		ReplanContext: replanContext,
 		NextPhase:     nextPhase,
 	})
-	if err := writer.PersistRuntimeCheckpoint(snapshot, a.workspaceSessionID, "step_replan"); err != nil {
-		return err
-	}
 	a.emitter.EmitStateChange(snapshot)
 
 	if rawOutcome != nil {
