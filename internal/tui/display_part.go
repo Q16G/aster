@@ -17,8 +17,9 @@ const (
 	PartTypeSummary     PartType = "summary"
 	PartTypeStepResult  PartType = "step_result"
 	PartTypeStepSummary PartType = "step_summary"
+	PartTypeStepReplan  PartType = "step_replan"
 	PartTypeFinalAnswer PartType = "final_answer"
-	PartTypeSubAgent   PartType = "sub_agent"
+	PartTypeSubAgent    PartType = "sub_agent"
 )
 
 type DisplayPart struct {
@@ -34,6 +35,7 @@ type DisplayPart struct {
 	Summary     *SummaryPart     `json:"summary,omitempty"`
 	StepResult  *StepResultPart  `json:"step_result,omitempty"`
 	StepSummary *StepSummaryPart `json:"step_summary,omitempty"`
+	StepReplan  *StepReplanPart  `json:"step_replan,omitempty"`
 	FinalAnswer *FinalAnswerPart `json:"final_answer,omitempty"`
 	SubAgent    *SubAgentPart    `json:"sub_agent,omitempty"`
 }
@@ -107,6 +109,16 @@ type StepSummaryPart struct {
 	OpenQuestions   []string `json:"open_questions,omitempty"`
 	ToolCallsDigest string   `json:"tool_calls_digest,omitempty"`
 	References      []string `json:"references,omitempty"`
+}
+
+type StepReplanPart struct {
+	StepID       string   `json:"step_id,omitempty"`
+	StepName     string   `json:"step_name,omitempty"`
+	ShouldReplan bool     `json:"should_replan"`
+	ReplanReason string   `json:"replan_reason,omitempty"`
+	NextGoal     string   `json:"next_goal,omitempty"`
+	MissingItems []string `json:"missing_items,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
 }
 
 type SubAgentPart struct {

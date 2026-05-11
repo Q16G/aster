@@ -61,8 +61,41 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 					"type": "string",
 				},
 			},
+			"status_summary": map[string]any{
+				"type":        "string",
+				"description": "一句话状态总结，概括当前 step 的完成情况",
+			},
+			"short_summary": map[string]any{
+				"type":        "string",
+				"description": "2-4 句短总结，包含关键结论和结果",
+			},
+			"long_summary": map[string]any{
+				"type":        "string",
+				"description": "较完整的长总结，保留关键事实和结构化数据",
+			},
+			"key_facts": map[string]any{
+				"type":        "array",
+				"description": "关键事实数组，每条为一个独立的事实陈述",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+			"open_questions": map[string]any{
+				"type":        "array",
+				"description": "未决问题数组，记录信息不足或需要后续确认的事项",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+			"tool_calls_digest": map[string]any{
+				"type":        "array",
+				"description": "本 step 工具调用摘要数组，每条格式：[工具名] 关键参数摘要 → 结果要点",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
 		},
-		"required":             []string{"status"},
+		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts", "open_questions", "tool_calls_digest"},
 		"additionalProperties": false,
 	}
 }
@@ -87,6 +120,12 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	}
 	errText := ToolRuntimeValue(args["error"])
 	references := normalizeToolStringSlice(args["references"])
+	statusSummary := ToolRuntimeValue(args["status_summary"])
+	shortSummary := ToolRuntimeValue(args["short_summary"])
+	longSummary := ToolRuntimeValue(args["long_summary"])
+	keyFacts := normalizeToolStringSlice(args["key_facts"])
+	openQuestions := normalizeToolStringSlice(args["open_questions"])
+	toolCallsDigest := normalizeToolStringSlice(args["tool_calls_digest"])
 
 	prev := t.ctx.Snapshot()
 	target := prev.CurrentStep()
@@ -105,12 +144,18 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	artifactDir, summaryFile, resultFile := resolveStepArtifactPaths(prev.PlanVersion, strings.TrimSpace(target.ID))
 
 	snapshot := t.ctx.UpdateCurrentStep(CurrentStepUpdate{
-		Status:        status,
-		Summary:       summary,
-		DisplayResult: displayResult,
-		Result:        result,
-		Error:         errText,
-		References:    references,
+		Status:          status,
+		Summary:         summary,
+		DisplayResult:   displayResult,
+		Result:          result,
+		Error:           errText,
+		References:      references,
+		StatusSummary:   statusSummary,
+		ShortSummary:    shortSummary,
+		LongSummary:     longSummary,
+		KeyFacts:        keyFacts,
+		OpenQuestions:   openQuestions,
+		ToolCallsDigest: toolCallsDigest,
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
 	EmitToolRuntimeInfo(ctx, "step result ready", map[string]any{

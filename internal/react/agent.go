@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
@@ -45,10 +44,7 @@ type Agent struct {
 	stepHistoryPlanVer        int
 	currentRunID              string
 	handoff                   *handoffState
-	stepDiffer                *memory.TimelineMemoryDiffer
 	emitter                   *Emitter
-	stepBaselineAt            time.Time
-	stepBaselineStepID        string
 	workspaceSessionID        string
 	workspaceRootDir          string
 	workspaceNamespace        string
@@ -57,10 +53,9 @@ type Agent struct {
 	currentPublishContract    string
 	currentFinalAnswerPublish *FinalAnswerPublishConfig
 	workspaceRuntime          builtin_tools.WorkspaceRuntime
-	currentIntent             *IntentDecision
 	runClientMu               sync.RWMutex
 	currentRunClientVal       ai.ChatClient
-	finishMu sync.Mutex
+	finishMu                  sync.Mutex
 	finishHooks               []func()
 	historyHookMu             sync.RWMutex
 	historyChangeHook         func(change *HistoryChange)

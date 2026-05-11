@@ -441,6 +441,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentRunning = false
 		m.spinner.Stop()
 		m.input.SetEnabled(true)
+		history := ai.NormalizeMsgInfoSlice(msg.History)
+		if len(history) > 0 {
+			if m.agentCtx != nil {
+				m.agentCtx.InitialHistory = history
+			}
+			m.recalcUsageFromHistory(history)
+		}
 		if msg.Err != nil {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Error: %v", msg.Err)}})
 			m.statusText = "error"
@@ -455,10 +462,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Text: &TextPart{Content: msg.Result.Result},
 				})
 			}
-			if m.agentCtx != nil {
-				m.agentCtx.InitialHistory = ai.NormalizeMsgInfoSlice(msg.History)
-			}
-			m.recalcUsageFromHistory(msg.History)
 			m.statusText = "ready"
 		}
 		if notice := interruptNoticeText(m.externalInterrupt); notice != "" {

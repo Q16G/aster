@@ -24,26 +24,6 @@ func TestPromptManager_BuildersDoNotRenderNonce(t *testing.T) {
 			},
 		},
 		{
-			name: "intent_recognition",
-			build: func() (string, error) {
-				return manager.BuildIntentRecognitionPrompt(IntentRecognitionPromptInput{
-					UserInstruction: "你是测试代理",
-					Input:           "请帮我分析代码",
-				})
-			},
-		},
-		{
-			name: "simple_reply",
-			build: func() (string, error) {
-				return manager.BuildSimpleReplyPrompt(SimpleReplyPromptInput{
-					UserInstruction:  "你是测试代理",
-					IntentSummary:    "简单问答",
-					IntentComplexity: "simple",
-					ReplyHint:        "直接回答",
-				})
-			},
-		},
-		{
 			name: "history_compaction",
 			build: func() (string, error) {
 				return manager.BuildHistoryCompactionPrompt(HistoryCompactionPromptInput{

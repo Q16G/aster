@@ -10,13 +10,6 @@ import (
 	. "aster/internal/react"
 )
 
-func TestComputeStepWindowTokenBudget_UsesUsableInputBudgetTenPercent(t *testing.T) {
-	budget := ComputeStepWindowTokenBudget(ContextBudget{UsableInputTokens: 12345})
-	if budget != 1234 {
-		t.Fatalf("expected 10%% of usable input tokens, got %d", budget)
-	}
-}
-
 func TestBuildStepReferences_UsesExplicitAndArtifactsOnly(t *testing.T) {
 	refs := BuildStepReferences(
 		[]string{"docs/spec.md", "docs/spec.md", "artifact:custom"},
@@ -42,36 +35,29 @@ func TestBuildStepReferences_UsesExplicitAndArtifactsOnly(t *testing.T) {
 	}
 }
 
-func TestBuildStepSummaryPrompt_UsesSemanticBlocks(t *testing.T) {
+func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	agent, err := NewReActAgent("prompt-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepSummaryPrompt(map[string]any{
-		"input_timeline": []string{"input"},
-		"current_goal":   "继续推进",
-		"current_step":   map[string]any{"id": "step-1", "step": "执行"},
-		"task_plan":      []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
-		"raw_outcome":    map[string]any{"summary": "done"},
-		"step_window":    map[string]any{"budget_tokens": 4000},
-		"timeline_diff":  "New Facts:\n- ok",
-		"references":     []string{"docs/spec.md"},
-		"artifacts":      map[string]any{"summary_file": "shared/step_artifacts/00000000-0000-0000-0000-000000000000_s-1.summary.md"},
-		"warnings":       []string{"warn-1"},
-		"unresolved":     []string{"missing-1"},
+	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		"current_goal":  "继续推进",
+		"current_step":  map[string]any{"id": "step-1", "step": "执行"},
+		"step_outcome":  `{"summary":"done","status":"completed"}`,
+		"task_plan":     []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
+		"step_outcomes": []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":      []string{"warn-1"},
+		"unresolved":    []string{"missing-1"},
 	})
 	if err != nil {
-		t.Fatalf("buildStepSummaryPrompt failed: %v", err)
+		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
 
-	for _, marker := range []string{"<CURRENT_GOAL>", "<CURRENT_STEP>", "<TASK_PLAN>", "<RAW_OUTCOME>", "<STEP_WINDOW>", "<TIMELINE_DIFF>", "<REFERENCES>", "<ARTIFACTS>", "<WARNINGS>", "<UNRESOLVED>"} {
+	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP", "TASK_PLAN", "STEP_OUTCOME"} {
 		if !strings.Contains(prompt, marker) {
-			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
+			t.Fatalf("expected marker %s in prompt, got:\n%s", marker, prompt)
 		}
-	}
-	if strings.Contains(prompt, "FULL_INPUT_JSON") {
-		t.Fatalf("prompt should not include FULL_INPUT_JSON placeholder")
 	}
 }
 

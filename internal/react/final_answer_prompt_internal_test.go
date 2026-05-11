@@ -137,18 +137,20 @@ func TestBuildFinalAnswerPrompt_MultiContractPicksLastEligible(t *testing.T) {
 	// step-1: ensure → complete → summary clears CurrentStepID
 	agent.EnsureCurrentStep()
 	agent.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
-		Status: builtin_tools.PlanStepCompleted,
-		Result: `{"from":"step-1"}`,
+		Status:       builtin_tools.PlanStepCompleted,
+		Result:       `{"from":"step-1"}`,
+		ShortSummary: "done",
 	})
-	agent.state.ApplyStepSummary("step-1", stepSummaryUpdate{ShortSummary: "done"})
+	agent.state.ApplyStepReplan("step-1", stepReplanUpdate{})
 
-	// step-2: ensure → complete → summary clears CurrentStepID
+	// step-2: ensure → complete → replan clears CurrentStepID
 	agent.EnsureCurrentStep()
 	agent.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
-		Status: builtin_tools.PlanStepCompleted,
-		Result: `{"from":"step-2"}`,
+		Status:       builtin_tools.PlanStepCompleted,
+		Result:       `{"from":"step-2"}`,
+		ShortSummary: "done",
 	})
-	agent.state.ApplyStepSummary("step-2", stepSummaryUpdate{ShortSummary: "done"})
+	agent.state.ApplyStepReplan("step-2", stepReplanUpdate{})
 
 	snap := agent.State()
 	contract := agent.lookupFinalAnswerOutputContract(snap)
@@ -165,5 +167,47 @@ func TestBuildFinalAnswerPrompt_MultiContractPicksLastEligible(t *testing.T) {
 	}
 	if result != `{"from":"step-2"}` {
 		t.Fatalf("expected result from step-2, got %q", result)
+	}
+}
+
+func TestBuildFinalAnswerPrompt_PreservesResultFromSharedStepView(t *testing.T) {
+	agent, err := NewReActAgent(
+		"prompt-agent",
+		noopFinalAnswerPromptClient{},
+		WithEmitter(NewDummyEmitter()),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	plan := []*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "生成结果"},
+	}
+	stepOutcomes := []*builtin_tools.StepOutcome{
+		{
+			StepID:       "step-1",
+			Status:       builtin_tools.StepOutcomeCompleted,
+			ShortSummary: "摘要很短",
+			Result:       "result-only-payload",
+		},
+	}
+
+	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		"status":         "running",
+		"state_error":    "",
+		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("请输出最终答案")},
+		"show_plan":      false,
+		"plan":           plan,
+		"plan_version":   1,
+		"step_outcomes":  collectAllStepContextViews(plan, stepOutcomes),
+		"warnings":       []string{},
+		"unresolved":     []string{},
+	})
+	if err != nil {
+		t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
+	}
+
+	if !strings.Contains(prompt, `"result":"result-only-payload"`) {
+		t.Fatalf("expected prompt to retain result in STEP_OUTCOMES, got:\n%s", prompt)
 	}
 }
