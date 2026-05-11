@@ -26,30 +26,13 @@ func (a *Agent) defaultOnHandoff(ctx context.Context, handoffTo string) string {
 	}
 
 	current := strings.TrimSpace(a.handoff.summary)
-	if a.handoff.differ == nil || a.cfg == nil || a.cfg.AIClient == nil {
-		return current
-	}
-
-	diff, err := a.handoff.differ.PeekDiff()
-	if err != nil {
-		return current
-	}
-	diff = strings.TrimSpace(diff)
-	if diff == "" {
-		return current
-	}
-
-	next, err := summarizeAgentHandoff(ctx, a.cfg.AIClient, a.promptManager, strings.TrimSpace(handoffTo), strings.TrimSpace(a.cfg.Instruction), current, diff)
-	if err != nil {
-		return current
-	}
-	next = strings.TrimSpace(next)
-	if next == "" {
+	snapshot := a.state.Snapshot()
+	next := renderCompletedStepHandoffContext(snapshot.Plan, snapshot.StepOutcomes)
+	if strings.TrimSpace(next) == "" {
 		return current
 	}
 
 	a.handoff.summary = next
-	a.handoff.differ.SetBaseline()
 	return next
 }
 

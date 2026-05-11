@@ -372,6 +372,7 @@ func (w *artifactWriter) PersistRuntimeCheckpoint(snapshot builtin_tools.StateSn
 func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID string, explanation string, latestFinalSeq int) planCurrentCheckpoint {
 	return planCurrentCheckpoint{
 		SessionID:        strings.TrimSpace(sessionID),
+		Phase:            snapshot.Phase,
 		PlanVersion:      snapshot.PlanVersion,
 		CurrentStepID:    strings.TrimSpace(snapshot.CurrentStepID),
 		Status:           snapshot.Status,
@@ -421,18 +422,17 @@ func (w *artifactWriter) writePlanHistoryCheckpoint(checkpoint planCurrentCheckp
 }
 
 type stepSummaryTemplateData struct {
-	StepID              string
-	Step                string
-	Status              string
-	UpdatedAt           string
-	StatusSummary       string
-	ShortSummary        string
-	LongSummary         string
-	KeyFacts            []string
-	OpenQuestions       []string
-	References          []string
-	ToolCallsDigest     []string
-	TimelineDiffSummary string
+	StepID          string
+	Step            string
+	Status          string
+	UpdatedAt       string
+	StatusSummary   string
+	ShortSummary    string
+	LongSummary     string
+	KeyFacts        []string
+	OpenQuestions   []string
+	References      []string
+	ToolCallsDigest []string
 }
 
 type stepArtifactRecord struct {
@@ -481,18 +481,17 @@ func (w *artifactWriter) PersistStepArtifacts(snapshot builtin_tools.StateSnapsh
 		return nil, fmt.Errorf("step summary template is nil")
 	}
 	data := stepSummaryTemplateData{
-		StepID:              strings.TrimSpace(outcome.StepID),
-		Step:                strings.TrimSpace(planItem.Step),
-		Status:              strings.TrimSpace(string(outcome.Status)),
-		UpdatedAt:           outcome.UpdatedAt.Format(time.RFC3339),
-		StatusSummary:       strings.TrimSpace(outcome.StatusSummary),
-		ShortSummary:        strings.TrimSpace(outcome.ShortSummary),
-		LongSummary:         strings.TrimSpace(outcome.LongSummary),
-		KeyFacts:            outcome.KeyFacts,
-		OpenQuestions:       outcome.OpenQuestions,
-		References:          outcome.References,
-		ToolCallsDigest:     outcome.ToolCallsDigest,
-		TimelineDiffSummary: strings.TrimSpace(outcome.TimelineDiffSummary),
+		StepID:          strings.TrimSpace(outcome.StepID),
+		Step:            strings.TrimSpace(planItem.Step),
+		Status:          strings.TrimSpace(string(outcome.Status)),
+		UpdatedAt:       outcome.UpdatedAt.Format(time.RFC3339),
+		StatusSummary:   strings.TrimSpace(outcome.StatusSummary),
+		ShortSummary:    strings.TrimSpace(outcome.ShortSummary),
+		LongSummary:     strings.TrimSpace(outcome.LongSummary),
+		KeyFacts:        outcome.KeyFacts,
+		OpenQuestions:   outcome.OpenQuestions,
+		References:      outcome.References,
+		ToolCallsDigest: outcome.ToolCallsDigest,
 	}
 	if err := w.stepTmpl.Execute(&md, data); err != nil {
 		return nil, fmt.Errorf("render step summary template failed: %w", err)
@@ -525,7 +524,6 @@ func (w *artifactWriter) PersistStepArtifacts(snapshot builtin_tools.StateSnapsh
 			"summary_file":   summaryFile,
 			"result_file":    resultFile,
 			"context_key":    strings.TrimSpace(outcome.ContextKey),
-			"timeline_diff":  strings.TrimSpace(outcome.TimelineDiffSummary),
 			"status_summary": strings.TrimSpace(outcome.StatusSummary),
 			"short_summary":  strings.TrimSpace(outcome.ShortSummary),
 			"long_summary":   strings.TrimSpace(outcome.LongSummary),
@@ -846,4 +844,21 @@ func sanitizeArtifactNamespace(namespace string) string {
 	}
 	// Keep it best-effort: caller should provide a pre-sanitized relative namespace.
 	return namespace
+}
+
+func BuildStepReferences(explicit []string, artifactDir string, summaryFile string, resultFile string) []string {
+	refs := make([]string, 0, len(explicit)+3)
+	add := func(items ...string) {
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			refs = append(refs, item)
+		}
+	}
+
+	add(artifactDir, summaryFile, resultFile)
+	add(explicit...)
+	return normalizeStringSlice(refs)
 }

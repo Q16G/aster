@@ -112,7 +112,6 @@ func (c *executeModelTestClient) ModelContextInfo() ai.ModelContextInfo {
 	return c.modelContext
 }
 
-
 type executeModelTestFactory struct {
 	clients map[string]ai.ChatClient
 	calls   []string
@@ -155,11 +154,7 @@ func TestExecute_UsesConfiguredModel(t *testing.T) {
 				},
 			},
 			{
-				// step_summary phase
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
-				// final_answer phase
+				// final_answer phase (step_replan fast path skips LLM)
 				content: `{"is_complete":true,"status":"completed","reason":"所有步骤已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"primary-final-answer","references":[]}`,
 			},
 		},
@@ -187,7 +182,7 @@ func TestExecute_UsesConfiguredModel(t *testing.T) {
 		WithMaxIterations(5),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -230,9 +225,6 @@ func TestExecute_ProducesFinalAnswerFromFinalAnswerPhase(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
 			},
 		},
@@ -246,7 +238,7 @@ func TestExecute_ProducesFinalAnswerFromFinalAnswerPhase(t *testing.T) {
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -282,9 +274,6 @@ func TestExecute_ReturnsPublishedOutputWhenPublishConfigEnabled(t *testing.T) {
 						"result":         "step ok",
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"human-final-answer","references":[],"published_output":` + published + `}`,
@@ -345,9 +334,6 @@ func TestExecute_PublishConfigFailsWhenPublishedOutputMissing(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				// published_output missing
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
 			},
@@ -404,9 +390,6 @@ func TestExecute_AllowsUnknownTopLevelFieldsInFinalAnswer(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"plain-final-answer","references":[],"extra_field":"keep-compatible"}`,
 			},
 		},
@@ -420,7 +403,7 @@ func TestExecute_AllowsUnknownTopLevelFieldsInFinalAnswer(t *testing.T) {
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -455,9 +438,6 @@ func TestExecute_ReturnsLatestStepResultWhenConfigured(t *testing.T) {
 						"result":         "canonical-step-result",
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
@@ -496,7 +476,7 @@ func TestExecute_ReturnsLatestStepResultWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestExecute_LatestStepResultModeFailsWhenStepResultMissing(t *testing.T) {
+func TestExecute_LatestStepResultModeFallsToFinalAnswerWhenStepResultMissing(t *testing.T) {
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -508,9 +488,6 @@ func TestExecute_LatestStepResultModeFailsWhenStepResultMissing(t *testing.T) {
 						"result":         "",
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
@@ -526,7 +503,7 @@ func TestExecute_LatestStepResultModeFailsWhenStepResultMissing(t *testing.T) {
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -541,11 +518,11 @@ func TestExecute_LatestStepResultModeFailsWhenStepResultMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
-	if runResult == nil || runResult.Success {
-		t.Fatalf("expected failure run result when step result missing, got %#v", runResult)
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success with final_answer fallback when step result missing, got %#v", runResult)
 	}
-	if !strings.Contains(runResult.Error, "update_current_step.result") {
-		t.Fatalf("expected explicit latest_step_result error, got %q", runResult.Error)
+	if runResult.Result != "human-final-answer" {
+		t.Fatalf("expected final_answer content as fallback result, got %q", runResult.Result)
 	}
 }
 
@@ -561,9 +538,6 @@ func TestExecute_LatestStepResultModeSucceedsEvenWhenFinalAnswerSaysFailed(t *te
 						"result":         `{"total_findings":3,"findings":[{"id":"vuln-1"}]}`,
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"扫描完成，发现3个漏洞。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"failed","reason":"发现安全漏洞","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"发现漏洞","references":[]}`,
@@ -618,9 +592,6 @@ func TestExecute_LatestStepResultModeKeepsMarkdownFinalAnswerForDisplay(t *testi
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"审计完成","step_long_summary":"已生成结构化审计结果。","key_facts":["report ready"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"审计完成","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":` + strconv.Quote(markdownReport) + `,"references":[]}`,
 			},
 		},
@@ -634,7 +605,7 @@ func TestExecute_LatestStepResultModeKeepsMarkdownFinalAnswerForDisplay(t *testi
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行安全审计", Status: builtin_tools.PlanStepPending},
 				},
@@ -766,11 +737,7 @@ func TestExecute_LatestStepResultModeCanceledReturnsError(t *testing.T) {
 					}),
 				},
 			},
-			// call 2 — step_summary phase (after cancel, scheduler detects ctx.Err before reaching here)
-			{
-				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"完成。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			// call 3 — final_answer phase (may or may not be reached depending on cancel timing)
+			// call 2 — final_answer phase (step_replan fast path skips LLM; may not be reached if canceled)
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
@@ -890,17 +857,11 @@ func TestExecute_LatestStepResultModeExternalInterruptKeepsReadableFinalAnswer(t
 					}),
 				},
 			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"扫描完成","step_long_summary":"扫描完成，发现 3 个漏洞。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
-				content: `{"is_complete":false,"status":"running","reason":"还需要继续验证","should_replan":true,"next_goal":"继续验证","missing_items":["syntaxflow"],"warnings":[],"user_message":"继续执行","references":[]}`,
-			},
 		},
 	}
 	client := &errorOnCallClient{
 		inner:   inner,
-		errorAt: 3,
+		errorAt: 2,
 		err: &openai.HTTPError{
 			StatusCode: 429,
 			Body:       `{"error":{"message":"Error from provider: insufficient quota","code":"insufficient_quota","type":"insufficient_quota"}}`,
@@ -973,9 +934,6 @@ func TestExecute_WritesPhaseLogsToTerminal(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
 			},
 		},
@@ -989,7 +947,7 @@ func TestExecute_WritesPhaseLogsToTerminal(t *testing.T) {
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -1008,11 +966,8 @@ func TestExecute_WritesPhaseLogsToTerminal(t *testing.T) {
 	if !strings.Contains(out, "\"event\":\"phase_selected\"") {
 		t.Fatalf("expected phase_selected terminal log, got %s", out)
 	}
-	if !strings.Contains(out, "\"event\":\"step_window_computed\"") {
-		t.Fatalf("expected step_window_computed terminal log, got %s", out)
-	}
-	if strings.Contains(out, "\"event\":\"step_reducer_started\"") {
-		t.Fatalf("did not expect step_reducer_started for small step window, got %s", out)
+	if !strings.Contains(out, "\"event\":\"step_replan_completed\"") {
+		t.Fatalf("expected step_replan_completed terminal log, got %s", out)
 	}
 	if !strings.Contains(out, "\"event\":\"final_assessment_written\"") {
 		t.Fatalf("expected final_assessment_written terminal log, got %s", out)
@@ -1052,9 +1007,6 @@ func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
 						"result":         "step ok",
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
@@ -1122,9 +1074,6 @@ func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testi
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
 		},
@@ -1170,7 +1119,7 @@ func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testi
 	}
 }
 
-func TestExecute_WritesStepSummaryLogsWhenStepCompletes(t *testing.T) {
+func TestExecute_WritesStepReplanLogsWhenStepCompletes(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := runtimelog.SetOutput(&buf)
 	t.Cleanup(func() {
@@ -1190,9 +1139,6 @@ func TestExecute_WritesStepSummaryLogsWhenStepCompletes(t *testing.T) {
 						"result":         largeResult,
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
@@ -1224,14 +1170,8 @@ func TestExecute_WritesStepSummaryLogsWhenStepCompletes(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "\"event\":\"step_reducer_started\"") {
-		t.Fatalf("expected step_reducer_started log, got %s", out)
-	}
-	if !strings.Contains(out, "\"event\":\"step_reducer_completed\"") {
-		t.Fatalf("expected step_reducer_completed log, got %s", out)
-	}
-	if !strings.Contains(out, "\"event\":\"step_artifacts_written\"") {
-		t.Fatalf("expected step_artifacts_written log, got %s", out)
+	if !strings.Contains(out, "\"event\":\"step_replan_completed\"") {
+		t.Fatalf("expected step_replan_completed log, got %s", out)
 	}
 }
 
@@ -1266,9 +1206,6 @@ func TestExecute_WritesFinalAnswerFallbackLogWhenModelReturnsPlainText(t *testin
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `plain text final answer`,
 			},
 		},
@@ -1281,7 +1218,7 @@ func TestExecute_WritesFinalAnswerFallbackLogWhenModelReturnsPlainText(t *testin
 		WithMaxIterations(5),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -1306,8 +1243,8 @@ func TestExecute_WritesFinalAnswerFallbackLogWhenModelReturnsPlainText(t *testin
 	if !strings.Contains(out, "\"event\":\"final_answer_model_raw_response\"") {
 		t.Fatalf("expected final_answer_model_raw_response log, got %s", out)
 	}
-	if !strings.Contains(out, "\"raw_response\":\"plain text final answer\"") {
-		t.Fatalf("expected raw response logged for final answer fallback, got %s", out)
+	if !strings.Contains(out, "\"raw_response_length\":23") {
+		t.Fatalf("expected raw_response_length logged for final answer fallback, got %s", out)
 	}
 }
 
@@ -1331,9 +1268,6 @@ func TestExecute_WritesFinalAnswerRequestAndEmptyResponseLogs(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: ``,
 			},
 		},
@@ -1346,7 +1280,7 @@ func TestExecute_WritesFinalAnswerRequestAndEmptyResponseLogs(t *testing.T) {
 		WithMaxIterations(5),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -1376,7 +1310,7 @@ func TestExecute_WritesFinalAnswerRequestAndEmptyResponseLogs(t *testing.T) {
 	}
 }
 
-func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
+func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := runtimelog.SetOutput(&buf)
 	t.Cleanup(func() {
@@ -1392,6 +1326,7 @@ func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
+						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
@@ -1411,7 +1346,7 @@ func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
 		WithMaxIterations(5),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -1431,21 +1366,18 @@ func TestExecute_WritesStepSummaryEmptyResponseLog(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "\"event\":\"step_summary_model_raw_response\"") {
-		t.Fatalf("expected step_summary_model_raw_response log, got %s", out)
+	if !strings.Contains(out, "\"structured_output_phase\":\"step_replan\"") {
+		t.Fatalf("expected step_replan structured output phase in logs, got %s", out)
 	}
-	if !strings.Contains(out, "\"mode\":\"parse_failed\"") {
-		t.Fatalf("expected parse_failed mode in step summary raw response log, got %s", out)
-	}
-	if !strings.Contains(out, "\"raw_response_length\":0") {
-		t.Fatalf("expected raw_response_length=0 in step summary raw response log, got %s", out)
+	if !strings.Contains(out, "\"event\":\"structured_retry_attempt_failed\"") {
+		t.Fatalf("expected structured_retry_attempt_failed log, got %s", out)
 	}
 	if client.calls != 7 {
-		t.Fatalf("expected 7 model calls (1 step + 3 step_summary + 3 final_answer), got %d", client.calls)
+		t.Fatalf("expected 7 model calls (1 step + 3 step_replan + 3 final_answer), got %d", client.calls)
 	}
 }
 
-func TestExecute_StepSummaryDefaultInnerRetryRemainsThree(t *testing.T) {
+func TestExecute_StepReplanDefaultInnerRetryRemainsThree(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := runtimelog.SetOutput(&buf)
 	t.Cleanup(func() {
@@ -1461,12 +1393,13 @@ func TestExecute_StepSummaryDefaultInnerRetryRemainsThree(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
+						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
 			{content: ``},
 			{content: ``},
-			{content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
 			{content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`},
 		},
 	}
@@ -1509,7 +1442,7 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"失败","step_short_summary":"该 step 失败","step_long_summary":"该 step 失败。","key_facts":["step failed"],"open_questions":[]}`,
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"failed","reason":"关键步骤失败且无需重规划。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"final answer for failure","references":[]}`,
@@ -1547,7 +1480,7 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 	}
 }
 
-func TestExecute_StepSummaryContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
+func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -1562,11 +1495,7 @@ func TestExecute_StepSummaryContinuesToNextStepWithoutFinalAnswer(t *testing.T) 
 				},
 			},
 			{
-				// step_summary for step-1
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
-				// step-2 (should run before final_answer)
+				// step-2 (step_replan fast path for step-1 skips LLM, proceeds to next step)
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
 						"status":         "completed",
@@ -1577,11 +1506,7 @@ func TestExecute_StepSummaryContinuesToNextStepWithoutFinalAnswer(t *testing.T) 
 				},
 			},
 			{
-				// step_summary for step-2
-				content: `{"status_summary":"完成","step_short_summary":"完成第二步","step_long_summary":"完成第二个 step。","key_facts":["f2"],"open_questions":[]}`,
-			},
-			{
-				// final_answer (only after no runnable steps remain)
+				// final_answer (step_replan fast path for step-2 skips LLM, then no more runnable steps)
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"two-steps-done","references":[]}`,
 			},
 		},
@@ -1617,8 +1542,8 @@ func TestExecute_StepSummaryContinuesToNextStepWithoutFinalAnswer(t *testing.T) 
 	if strings.TrimSpace(runResult.Result) != "two-steps-done" {
 		t.Fatalf("expected final answer result, got %q", runResult.Result)
 	}
-	if client.calls != 5 {
-		t.Fatalf("expected 5 model calls (step+summary+step+summary+final), got %d", client.calls)
+	if client.calls != 3 {
+		t.Fatalf("expected 3 model calls (step+step+final), got %d", client.calls)
 	}
 }
 
@@ -1658,11 +1583,12 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"summary":        "ok1",
 						"display_result": "step1 ok",
 						"result":         "step1 ok",
+						"open_questions": []string{"新增验证缺口需要确认"},
 					}),
 				},
 			},
 			{
-				content: `{"status_summary":"发现计划缺口","step_short_summary":"需要补计划","step_long_summary":"当前 step 已暴露出新的验证缺口，需要改写后续步骤。","key_facts":["f1"],"open_questions":[],"should_replan":true,"replan_reason":"旧计划未覆盖新增验证缺口","next_goal":"围绕新缺口补齐验证","missing_items":["missing-1"],"warnings":["warn-1"]}`,
+				content: `{"should_replan":true,"replan_reason":"旧计划未覆盖新增验证缺口","next_goal":"围绕新缺口补齐验证","missing_items":["missing-1"],"warnings":["warn-1"]}`,
 			},
 			{
 				toolCalls: []*ai.FunctionTool{
@@ -1673,9 +1599,6 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"result":         "step2 ok",
 					}),
 				},
-			},
-			{
-				content: `{"status_summary":"完成","step_short_summary":"补齐新步骤","step_long_summary":"完成重规划后的补齐步骤。","key_facts":["f2"],"open_questions":[]}`,
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"replanned-done","references":[]}`,
@@ -1705,8 +1628,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if strings.TrimSpace(runResult.Result) != "replanned-done" {
 		t.Fatalf("expected replanned final answer result, got %q", runResult.Result)
 	}
-	if client.calls != 5 {
-		t.Fatalf("expected 5 model calls (step+summary+step+summary+final), got %d", client.calls)
+	if client.calls != 4 {
+		t.Fatalf("expected 4 model calls (step+replan+step+final), got %d", client.calls)
 	}
 	if planner.calls != 2 {
 		t.Fatalf("expected planner called twice, got %d", planner.calls)
@@ -1714,7 +1637,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if len(planner.inputs) < 2 || !strings.Contains(planner.inputs[1], "<REPLAN_CONTEXT>") {
 		t.Fatalf("expected second planner input to include replan context, got %q", strings.Join(planner.inputs, "\n---\n"))
 	}
-	if !strings.Contains(planner.inputs[1], "\"reason\": \"旧计划未覆盖新增验证缺口\"") {
+	if !strings.Contains(planner.inputs[1], "\"reason\":\"旧计划未覆盖新增验证缺口\"") {
 		t.Fatalf("expected second planner input to include replan reason, got %q", planner.inputs[1])
 	}
 
@@ -1758,6 +1681,27 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	}
 	if got := taskPlanExplanations[len(taskPlanExplanations)-1]; got != "旧计划未覆盖新增验证缺口" {
 		t.Fatalf("expected replanned task_plan explanation to use replan reason, got %q", got)
+	}
+
+	var stepReplanEvent *AgentOutputEvent
+	for _, event := range emittedEvents {
+		if event == nil || event.Type != EventTypeStepReplanResult {
+			continue
+		}
+		stepReplanEvent = event
+		break
+	}
+	if stepReplanEvent == nil {
+		t.Fatal("expected step_replan_result event")
+	}
+	if got, _ := stepReplanEvent.Payload["should_replan"].(bool); !got {
+		t.Fatalf("expected should_replan=true, got %#v", stepReplanEvent.Payload)
+	}
+	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["replan_reason"])); got != "旧计划未覆盖新增验证缺口" {
+		t.Fatalf("expected replan reason in event, got %#v", stepReplanEvent.Payload)
+	}
+	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["next_goal"])); got != "围绕新缺口补齐验证" {
+		t.Fatalf("expected next goal in event, got %#v", stepReplanEvent.Payload)
 	}
 }
 
@@ -1842,7 +1786,7 @@ func TestPlannerInputFromSnapshotUsesInputTimeline(t *testing.T) {
 			{Content: "first-input", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
 			{Content: "second-input", CreatedAt: time.Date(2026, 4, 3, 10, 1, 0, 0, time.UTC)},
 		},
-	}, nil, PlannerInputOptions{})
+	}, PlannerInputOptions{})
 	if !strings.Contains(text, "用户输入时间线") {
 		t.Fatalf("expected planner input to include timeline header, got %q", text)
 	}
@@ -1854,7 +1798,7 @@ func TestPlannerInputFromSnapshotUsesInputTimeline(t *testing.T) {
 func TestPlannerInputFromSnapshotRejectsEmptyTimeline(t *testing.T) {
 	text := PlannerInputFromSnapshot(builtin_tools.StateSnapshot{
 		CurrentGoal: "only-latest-goal",
-	}, nil, PlannerInputOptions{})
+	}, PlannerInputOptions{})
 	if text != "" {
 		t.Fatalf("expected empty planner input when timeline is empty, got %q", text)
 	}

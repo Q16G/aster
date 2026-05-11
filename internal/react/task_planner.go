@@ -53,7 +53,7 @@ func (p *DefaultTaskPlanner) Plan(ctx context.Context, input string) (*builtin_t
 	if err != nil {
 		return nil, fmt.Errorf("build task plan prompt failed: %w", err)
 	}
-	retryResult, err := structuredoutput.RunWithRetry(ctx, p.aiClient, "planner", prompt, structuredoutput.DefaultConfig(), parseTaskPlannerResult)
+	retryResult, err := structuredoutput.RunWithRetry(ctx, p.aiClient, "planner", prompt, structuredoutput.Config{}, parseTaskPlannerResult)
 	if err == nil {
 		return &retryResult.Value, nil
 	}

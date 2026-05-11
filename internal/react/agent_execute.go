@@ -25,8 +25,9 @@ type ExecuteConfig struct {
 	runID                      string
 	workspaceRuntime           builtin_tools.WorkspaceRuntime
 	initialState               *builtin_tools.StateSnapshot
-	skipIntentPrelude          bool
 	resumeExecutionIntent      bool
+	forceColdStart             bool
+	resumeOnly                 bool
 	resultSource               ResultSource
 	publishContract            string
 	finalAnswerPublish         *FinalAnswerPublishConfig
@@ -109,18 +110,8 @@ func WithInitialStateBootstrap(snapshot builtin_tools.StateSnapshot) ExecuteOpti
 	}
 }
 
-func WithSkipIntentPrelude() ExecuteOption {
-	return func(cfg *ExecuteConfig) {
-		if cfg == nil {
-			return
-		}
-		cfg.skipIntentPrelude = true
-	}
-}
-
 // WithResumeExecutionIntent signals the runtime that the caller intends to continue a previous
-// execution (if durable checkpoints exist in the workspace). This is especially useful for
-// sub-agent calls where the input may be a repeated prompt rather than an explicit "继续".
+// execution (if durable checkpoints exist in the workspace).
 func WithResumeExecutionIntent() ExecuteOption {
 	return func(cfg *ExecuteConfig) {
 		if cfg == nil {
@@ -128,6 +119,30 @@ func WithResumeExecutionIntent() ExecuteOption {
 		}
 		cfg.resumeExecutionIntent = true
 	}
+}
+
+func WithForceColdStart() ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.forceColdStart = true
+	}
+}
+
+func WithResumeOnly() ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.resumeOnly = true
+	}
+}
+
+// WithSkipIntentPrelude is kept for backward compatibility; it's now a no-op
+// since the Intent Prelude system has been removed.
+func WithSkipIntentPrelude() ExecuteOption {
+	return func(cfg *ExecuteConfig) {}
 }
 
 func WithResultSource(source ResultSource) ExecuteOption {
@@ -242,81 +257,48 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.currentResultSource = normalizeResultSource(cfg.resultSource)
 	a.currentPublishContract = strings.TrimSpace(cfg.publishContract)
 	a.currentFinalAnswerPublish = normalizeFinalAnswerPublishConfig(cfg.finalAnswerPublish)
-	a.currentIntent = nil
 
-	// Durable resume probe happens before Reset(): if the caller is trying to "继续",
-	// we hydrate execution state from durable checkpoints instead of clearing it first.
-	// For new tasks (no resume intent), we keep the old behavior: cold start each Execute.
+	// Resume decision: explicit caller intent + checkpoint data, no input text parsing.
 	probe, _ := probeDurableResume(a.workspaceRootDir, a.workspaceNamespace)
-	decision := decideResumeDecision(input, cfg.resumeExecutionIntent, probe)
+	resume := cfg.resumeExecutionIntent && probe.HasCheckpoint && !cfg.forceColdStart
+
 	if a.state != nil {
-		switch decision {
-		case resumeDecisionReturnFinal,
-			resumeDecisionResumeCurrentStep,
-			resumeDecisionResumeNextStep,
-			resumeDecisionResumeFinalAnswer,
-			resumeDecisionReplanWithContext:
-			rehydrated := applyResumeDecisionToSnapshot(probe.Snapshot, decision)
+		if resume {
+			rehydrated := rehydrateFromProbe(probe)
 			_ = a.state.Replace(rehydrated)
-		case resumeDecisionResumeSessionOnly:
-			rehydrated := probe.Snapshot
-			rehydrated.Phase = builtin_tools.AgentPhasePlan
-			rehydrated.Status = builtin_tools.TaskStatusRunning
-			rehydrated.Error = ""
-			rehydrated.CurrentStepID = ""
-			rehydrated.Plan = nil
-			rehydrated.PlanVersion++
-			rehydrated.NeedsPlanning = true
-			rehydrated.FinalAnswer = nil
-			rehydrated.ReplanContext = nil
-			_ = a.state.Replace(rehydrated)
-		default:
+		} else {
 			a.state.Reset()
 		}
-
-		// Append input timeline: "继续" should not overwrite an existing current_goal.
-		// If there is no prior goal (cold start), treat it as a normal input.
-		if isContinuationInput(input) && strings.TrimSpace(a.state.Snapshot().CurrentGoal) != "" {
-			_ = a.state.AppendInputTimelineWithoutGoal(input)
-		} else {
-			_ = a.state.AppendInputTimeline(input)
-		}
+		_ = a.state.AppendInputTimeline(input)
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
-	a.stepBaselineAt = time.Time{}
-	a.stepBaselineStepID = ""
 	a.resetRunMemory(ctx, extraText, runClient)
 
 	userMsg := ai.NewUserMsgInfo(input)
 	a.history = append(a.history, userMsg)
 	a.notifyHistoryAppend(userMsg)
 
-	// If we already have a deliverable final checkpoint and the caller intends to resume,
-	// short-circuit without entering the scheduler (no model/tool calls).
-	if decision == resumeDecisionReturnFinal && a.state != nil {
-		snapshot := a.state.Snapshot()
-		if snapshot.FinalAnswer != nil {
-			finalText := strings.TrimSpace(snapshot.FinalAnswer.Content)
+	// Terminal short-circuit: only when explicitly resumeOnly and the checkpoint has a deliverable final.
+	// Use probe.Snapshot (which preserves the original completed status) instead of the
+	// rehydrated state snapshot — rehydrateFromProbe resets status to Running for the
+	// general resume path, but the return_final shortcut must honour the original terminal
+	// status so that finalizeResult returns success.
+	if resume && cfg.resumeOnly && probe.DeliverableFinal && a.state != nil {
+		probeSnapshot := probe.Snapshot
+		if probeSnapshot.FinalAnswer != nil {
+			finalText := strings.TrimSpace(probeSnapshot.FinalAnswer.Content)
 			if finalText == "" {
-				finalText = strings.TrimSpace(snapshot.FinalAnswer.PublishedOutput)
+				finalText = strings.TrimSpace(probeSnapshot.FinalAnswer.PublishedOutput)
 			}
 			if finalText != "" {
-				historyText := truncateForHistory(finalText, strings.TrimSpace(snapshot.FinalAnswer.Source))
+				historyText := truncateForHistory(finalText, strings.TrimSpace(probeSnapshot.FinalAnswer.Source))
 				msg := ai.NewAIMsgInfo(historyText)
 				a.history = append(a.history, msg)
 				a.notifyHistoryAppend(msg)
 			}
 		}
-		return a.finalizeResult(snapshot), nil
-	}
-
-	if !cfg.skipIntentPrelude {
-		intentDecision := a.runIntentPrelude(ctx, runClient, input)
-		a.currentIntent = intentDecision
-		if intentDecision.Mode == IntentModeSimpleReply {
-			return a.runSimpleReplyPath(ctx, runClient, intentDecision)
-		}
+		return a.finalizeResult(probeSnapshot), nil
 	}
 
 	runResult, err := a.runSchedulerLoop(ctx, runClient, extraText, taskContext, maxIterations)
@@ -434,10 +416,10 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 			}
 		}
 		if snapshot.Status == builtin_tools.TaskStatusCompleted && snapshot.ExternalInterrupt == nil {
-			return &builtin_tools.RunResult{
-				Success: false,
-				Error:   "result_source=latest_step_result requires non-empty update_current_step.result, but none was produced",
-			}
+			a.emitRuntimeLog("warning", "result_source=latest_step_result: no step result produced, falling through to final_answer", snapshot, map[string]any{
+				"event":            "step_result_missing_fallback",
+				"publish_contract": a.currentPublishContract,
+			})
 		}
 	}
 
@@ -524,7 +506,6 @@ func (a *Agent) resetRunMemory(ctx context.Context, extraText string, runClient 
 	a.handoff = &handoffState{
 		differ: memory.NewTimelineMemoryDiffer(a.memory),
 	}
-	a.stepDiffer = memory.NewTimelineMemoryDiffer(a.memory)
 }
 
 func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {

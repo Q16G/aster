@@ -12,20 +12,25 @@ import (
 func TestExecute_SingleStepFastClose(t *testing.T) {
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
-			{content: `{"mode":"react_run","intent_summary":"简单总结","complexity":"simple","matched_capabilities":[],"reply_hint":"","confidence":0.9}`},
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "c1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":         "completed",
-						"summary":        "这是总结内容",
-						"display_result": "这是总结内容",
-						"result":         "这是总结内容",
+						"status":            "completed",
+						"summary":           "这是总结内容",
+						"display_result":    "这是总结内容",
+						"result":            "这是总结内容",
+						"status_summary":    "已完成总结",
+						"short_summary":     "这是总结内容",
+						"long_summary":      "这是总结内容",
+						"key_facts":         []string{"完成总结"},
+						"open_questions":    []string{},
+						"tool_calls_digest": []string{},
 					}),
 				},
 			},
 		},
 	}
-	planner := &intentPreludeCapturePlanner{
+	planner := &executeModelStaticPlanner{
 		result: &builtin_tools.TaskPlannerResult{
 			NeedsPlanning: false,
 			Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "总结", Status: builtin_tools.PlanStepPending}},
@@ -42,7 +47,7 @@ func TestExecute_SingleStepFastClose(t *testing.T) {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
 
-	result, err := agent.Execute(context.Background(), "请做个��单总结")
+	result, err := agent.Execute(context.Background(), "请做个简单总结")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -52,11 +57,8 @@ func TestExecute_SingleStepFastClose(t *testing.T) {
 	if result.Result != "这是总结内容" {
 		t.Fatalf("unexpected result: %q", result.Result)
 	}
-	if len(planner.inputs) != 0 {
-		t.Fatalf("expected planner bypassed, got %d calls", len(planner.inputs))
-	}
-	if client.calls != 2 {
-		t.Fatalf("expected 2 model calls (intent + step), got %d", client.calls)
+	if client.calls != 1 {
+		t.Fatalf("expected 1 model call (step only, no intent), got %d", client.calls)
 	}
 	snap := agent.State()
 	if snap.FinalAnswer == nil {
@@ -76,20 +78,25 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "c1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":         "completed",
-						"summary":        "sub result",
-						"display_result": "sub result",
-						"result":         "sub result",
+						"status":            "completed",
+						"summary":           "sub result",
+						"display_result":    "sub result",
+						"result":            "sub result",
+						"status_summary":    "ok",
+						"short_summary":     "sub result",
+						"long_summary":      "sub result",
+						"key_facts":         []string{},
+						"open_questions":    []string{},
+						"tool_calls_digest": []string{},
 					}),
 				},
 			},
-			{content: `{"status_summary":"ok","step_short_summary":"ok","step_long_summary":"ok","key_facts":[],"open_questions":[]}`},
 			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"sub-final","references":[]}`},
 		},
 	}
-	planner := &intentPreludeCapturePlanner{
+	planner := &executeModelStaticPlanner{
 		result: &builtin_tools.TaskPlannerResult{
-			NeedsPlanning: false,
+			NeedsPlanning: true,
 			Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "sub task", Status: builtin_tools.PlanStepPending}},
 		},
 	}
@@ -104,7 +111,7 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
 
-	result, err := agent.Execute(context.Background(), "执行子任务", WithSkipIntentPrelude())
+	result, err := agent.Execute(context.Background(), "执行子任务")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -114,8 +121,8 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 	if result.Result != "sub-final" {
 		t.Fatalf("expected sub-final, got %q", result.Result)
 	}
-	if client.calls != 3 {
-		t.Fatalf("expected 3 model calls for sub-agent (no fast close), got %d", client.calls)
+	if client.calls != 2 {
+		t.Fatalf("expected 2 model calls (step + final_answer), got %d", client.calls)
 	}
 }
 
@@ -124,20 +131,25 @@ func TestExecute_FastCloseLatestStepResultKeepsDisplayResultForFinalAnswer(t *te
 	stepResult := `{"report_location":"shared/security_audit_report.md"}`
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
-			{content: `{"mode":"react_run","intent_summary":"简单审计总结","complexity":"simple","matched_capabilities":[],"reply_hint":"","confidence":0.9}`},
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "c1", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":         "completed",
-						"summary":        "已生成审计报告",
-						"display_result": stepDisplay,
-						"result":         stepResult,
+						"status":            "completed",
+						"summary":           "已生成审计报告",
+						"display_result":    stepDisplay,
+						"result":            stepResult,
+						"status_summary":    "已生成审计报告",
+						"short_summary":     "已生成审计报告",
+						"long_summary":      "已生成 Markdown 审计报告",
+						"key_facts":         []string{"审计报告已生成"},
+						"open_questions":    []string{},
+						"tool_calls_digest": []string{},
 					}),
 				},
 			},
 		},
 	}
-	planner := &intentPreludeCapturePlanner{
+	planner := &executeModelStaticPlanner{
 		result: &builtin_tools.TaskPlannerResult{
 			NeedsPlanning: false,
 			Plan:          []*builtin_tools.PlanItem{{ID: "s1", Step: "输出结果", Status: builtin_tools.PlanStepPending}},

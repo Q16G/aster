@@ -401,7 +401,7 @@ func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate)
 	// summary 完成后再由 runtime 选择下一步。
 	t.upsertStepOutcomeLocked(step, update)
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
-	t.state.Phase = builtin_tools.AgentPhaseStepSummary
+	t.state.Phase = builtin_tools.AgentPhaseStepReplan
 	t.touchLocked()
 	return *t.state
 }
@@ -461,7 +461,7 @@ func (t *StateTracker) UpdateTaskStatus(update builtin_tools.TaskStatusUpdate) b
 	return *t.state
 }
 
-func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate) builtin_tools.StateSnapshot {
+func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -471,10 +471,6 @@ func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate)
 		return *t.state
 	}
 
-	update.StatusSummary = strings.TrimSpace(update.StatusSummary)
-	update.ShortSummary = strings.TrimSpace(update.ShortSummary)
-	update.LongSummary = strings.TrimSpace(update.LongSummary)
-	update.TimelineDiffSummary = strings.TrimSpace(update.TimelineDiffSummary)
 	update.ArtifactDir = strings.TrimSpace(update.ArtifactDir)
 	update.SummaryFile = strings.TrimSpace(update.SummaryFile)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
@@ -485,7 +481,6 @@ func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate)
 	update.Unresolved = normalizeReferences(update.Unresolved)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
-	// 更新 step outcome
 	for _, outcome := range t.state.StepOutcomes {
 		if outcome == nil {
 			continue
@@ -493,13 +488,6 @@ func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate)
 		if strings.TrimSpace(outcome.StepID) != stepID {
 			continue
 		}
-		outcome.StatusSummary = update.StatusSummary
-		outcome.ShortSummary = update.ShortSummary
-		outcome.LongSummary = update.LongSummary
-		outcome.KeyFacts = cloneStringSliceOrNil(update.KeyFacts)
-		outcome.OpenQuestions = cloneStringSliceOrNil(update.OpenQuestions)
-		outcome.ToolCallsDigest = cloneStringSliceOrNil(update.ToolCallsDigest)
-		outcome.TimelineDiffSummary = update.TimelineDiffSummary
 		outcome.ArtifactDir = update.ArtifactDir
 		outcome.SummaryFile = update.SummaryFile
 		outcome.ResultFile = update.ResultFile
@@ -509,7 +497,7 @@ func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate)
 		break
 	}
 
-	// step_summary 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
+	// step replan 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
 	if strings.TrimSpace(t.state.CurrentStepID) == stepID {
 		t.state.CurrentStepID = ""
 	}
@@ -533,15 +521,7 @@ func (t *StateTracker) ApplyStepSummary(stepID string, update stepSummaryUpdate)
 	return *t.state
 }
 
-type stepSummaryUpdate struct {
-	StatusSummary       string
-	ShortSummary        string
-	LongSummary         string
-	KeyFacts            []string
-	OpenQuestions       []string
-	ToolCallsDigest     []string
-	TimelineDiffSummary string
-
+type stepReplanUpdate struct {
 	ArtifactDir string
 	SummaryFile string
 	ResultFile  string
@@ -783,19 +763,31 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.Result = update.Result
 		outcome.Error = update.Error
 		outcome.References = normalizeReferences(append(outcome.References, update.References...))
+		outcome.StatusSummary = update.StatusSummary
+		outcome.ShortSummary = update.ShortSummary
+		outcome.LongSummary = update.LongSummary
+		outcome.KeyFacts = update.KeyFacts
+		outcome.OpenQuestions = update.OpenQuestions
+		outcome.ToolCallsDigest = update.ToolCallsDigest
 		outcome.UpdatedAt = time.Now()
 		return
 	}
 
 	t.state.StepOutcomes = append(t.state.StepOutcomes, &builtin_tools.StepOutcome{
-		StepID:        stepID,
-		Status:        status,
-		Summary:       update.Summary,
-		DisplayResult: update.DisplayResult,
-		Result:        update.Result,
-		Error:         update.Error,
-		References:    update.References,
-		UpdatedAt:     time.Now(),
+		StepID:          stepID,
+		Status:          status,
+		Summary:         update.Summary,
+		DisplayResult:   update.DisplayResult,
+		Result:          update.Result,
+		Error:           update.Error,
+		References:      update.References,
+		StatusSummary:   update.StatusSummary,
+		ShortSummary:    update.ShortSummary,
+		LongSummary:     update.LongSummary,
+		KeyFacts:        update.KeyFacts,
+		OpenQuestions:   update.OpenQuestions,
+		ToolCallsDigest: update.ToolCallsDigest,
+		UpdatedAt:       time.Now(),
 	})
 }
 

@@ -45,7 +45,7 @@ type AgentPhase string
 const (
 	AgentPhaseStep        AgentPhase = "step"
 	AgentPhasePlan        AgentPhase = "plan"
-	AgentPhaseStepSummary AgentPhase = "step_summary"
+	AgentPhaseStepReplan  AgentPhase = "step_replan"
 	AgentPhaseFinalAnswer AgentPhase = "final_answer"
 )
 
@@ -153,14 +153,13 @@ type StepOutcome struct {
 	// References: 显式证据引用与 artifact-first 回填结果
 	References []string `json:"references,omitempty"`
 
-	// ==================== B. Summary 生成层（step_summary phase 提交） ====================
-	StatusSummary       string   `json:"status_summary,omitempty"`
-	ShortSummary        string   `json:"short_summary,omitempty"`
-	LongSummary         string   `json:"long_summary,omitempty"`
-	KeyFacts            []string `json:"key_facts,omitempty"`
-	OpenQuestions       []string `json:"open_questions,omitempty"`
-	ToolCallsDigest     []string `json:"tool_calls_digest,omitempty"`
-	TimelineDiffSummary string   `json:"timeline_diff_summary,omitempty"`
+	// ==================== B. Summary 生成层（update_current_step 工具提交，必填） ====================
+	StatusSummary   string   `json:"status_summary,omitempty"`
+	ShortSummary    string   `json:"short_summary,omitempty"`
+	LongSummary     string   `json:"long_summary,omitempty"`
+	KeyFacts        []string `json:"key_facts,omitempty"`
+	OpenQuestions   []string `json:"open_questions,omitempty"`
+	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
 
 	// ==================== C. Artifact 索引层（artifact writer 回填） ====================
 	ArtifactDir string `json:"artifact_dir,omitempty"`
@@ -213,6 +212,13 @@ type CurrentStepUpdate struct {
 	Result        string         `json:"result,omitempty"`
 	Error         string         `json:"error,omitempty"`
 	References    []string       `json:"references,omitempty"`
+
+	StatusSummary   string   `json:"status_summary"`
+	ShortSummary    string   `json:"short_summary"`
+	LongSummary     string   `json:"long_summary"`
+	KeyFacts        []string `json:"key_facts"`
+	OpenQuestions   []string `json:"open_questions"`
+	ToolCallsDigest []string `json:"tool_calls_digest"`
 }
 
 type ReplanContext struct {
