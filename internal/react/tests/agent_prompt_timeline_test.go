@@ -35,7 +35,7 @@ func TestPlannerInputFromSnapshot_UsesTimeline(t *testing.T) {
 		},
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, nil, PlannerInputOptions{})
+	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
 	if !strings.Contains(got, "用户输入时间线") {
 		t.Fatalf("expected planner input header, got %s", got)
 	}
@@ -47,7 +47,7 @@ func TestPlannerInputFromSnapshot_UsesTimeline(t *testing.T) {
 func TestPlannerInputFromSnapshot_EmptyWithoutTimeline(t *testing.T) {
 	got := PlannerInputFromSnapshot(builtin_tools.StateSnapshot{
 		CurrentGoal: "latest goal",
-	}, nil, PlannerInputOptions{})
+	}, PlannerInputOptions{})
 	if got != "" {
 		t.Fatalf("expected empty planner input without timeline, got %s", got)
 	}
@@ -64,7 +64,7 @@ func TestPlannerInputFromSnapshot_IncludesUserInstructionAndHandoffContext(t *te
 		ExtraContext:    "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, nil, opts)
+	got := PlannerInputFromSnapshot(snapshot, opts)
 	for _, marker := range []string{
 		"<USER_INSTRUCTION>",
 		"data_flow_analysis_agent",
@@ -105,14 +105,14 @@ func TestPlannerInputFromSnapshot_IncludesTaskItemsAndExecutionLine(t *testing.T
 		},
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, nil, PlannerInputOptions{})
+	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
 	for _, marker := range []string{
 		"<TASK_ITEMS>",
-		"\"id\": \"step-1\"",
+		"\"id\":\"step-1\"",
 		"</TASK_ITEMS>",
 		"<EXECUTION_LINE>",
-		"\"step_id\": \"step-1\"",
-		"\"short_summary\": \"已完成证据收集\"",
+		"\"step_id\":\"step-1\"",
+		"\"short_summary\":\"已完成证据收集\"",
 		"</EXECUTION_LINE>",
 	} {
 		if !strings.Contains(got, marker) {
@@ -140,13 +140,13 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 		},
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, nil, PlannerInputOptions{})
+	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
 	for _, marker := range []string{
 		"<REPLAN_CONTEXT>",
-		"\"source_step_id\": \"step-1\"",
-		"\"reason\": \"旧计划未覆盖新增缺口\"",
-		"\"next_goal\": \"围绕新缺口重排计划\"",
-		"\"replace_pending\": true",
+		"\"source_step_id\":\"step-1\"",
+		"\"reason\":\"旧计划未覆盖新增缺口\"",
+		"\"next_goal\":\"围绕新缺口重排计划\"",
+		"\"replace_pending\":true",
 		"</REPLAN_CONTEXT>",
 	} {
 		if !strings.Contains(got, marker) {
@@ -186,15 +186,15 @@ func TestPlannerInputFromSnapshot_IncludesWorkspaceStepContexts(t *testing.T) {
 		},
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, nil, PlannerInputOptions{
+	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		WorkspaceRootDir:   workspaceRoot,
 		WorkspaceNamespace: "agents/dfa",
 	})
 	for _, marker := range []string{
 		"<WORKSPACE_STEP_CONTEXTS>",
-		"\"workspace_namespace\": \"agents/dfa\"",
-		"\"context_key\": \"ctx-1\"",
-		"\"namespace\": \"agents/dfa\"",
+		"\"workspace_namespace\":\"agents/dfa\"",
+		"\"context_key\":\"ctx-1\"",
+		"\"namespace\":\"agents/dfa\"",
 		"flow_evidence",
 		"</WORKSPACE_STEP_CONTEXTS>",
 	} {

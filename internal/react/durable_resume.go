@@ -12,18 +12,6 @@ import (
 	"aster/internal/builtin_tools"
 )
 
-type resumeDecision string
-
-const (
-	resumeDecisionReturnFinal       resumeDecision = "return_final"
-	resumeDecisionResumeSessionOnly resumeDecision = "resume_session_only"
-	resumeDecisionResumeCurrentStep resumeDecision = "resume_current_step"
-	resumeDecisionResumeNextStep    resumeDecision = "resume_next_step"
-	resumeDecisionResumeFinalAnswer resumeDecision = "resume_final_answer"
-	resumeDecisionReplanWithContext resumeDecision = "replan_with_context"
-	resumeDecisionColdStart         resumeDecision = "cold_start"
-)
-
 type durableResumeProbe struct {
 	HasCheckpoint bool
 
@@ -245,6 +233,11 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 
 	// 3) plan/current.json (durable skeleton)
 	if planCurrent != nil {
+		if snapshot.Phase == "" || snapshot.Phase == builtin_tools.AgentPhasePlan {
+			if planCurrent.Phase != "" {
+				snapshot.Phase = planCurrent.Phase
+			}
+		}
 		if len(snapshot.Plan) == 0 && len(planCurrent.Plan) > 0 {
 			snapshot.Plan = planCurrent.Plan
 		}
@@ -348,7 +341,15 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 
 		// Phase/progress hints: the resume decision gate will finalize, but keep a sane default.
 		snapshot.Progress = builtin_tools.PlanProgress(snapshot.Plan)
-		if strings.TrimSpace(snapshot.CurrentStepID) != "" {
+		if snapshot.ReplanContext != nil {
+			// When a replan context is pending, the plan phase must run first
+			// so the planner can incorporate the replan directives before
+			// the scheduler advances to the next step.
+			snapshot.Phase = builtin_tools.AgentPhasePlan
+			if strings.TrimSpace(string(snapshot.Status)) == "" || snapshot.Status == builtin_tools.TaskStatusPreparing {
+				snapshot.Status = builtin_tools.TaskStatusRunning
+			}
+		} else if strings.TrimSpace(snapshot.CurrentStepID) != "" {
 			snapshot.Phase = builtin_tools.AgentPhaseStep
 			if strings.TrimSpace(string(snapshot.Status)) == "" || snapshot.Status == builtin_tools.TaskStatusPreparing {
 				snapshot.Status = builtin_tools.TaskStatusRunning
@@ -480,12 +481,11 @@ func stepOutcomeFromResultArtifact(artifact *stepResultArtifact) *builtin_tools.
 		Error:         strings.TrimSpace(artifact.Raw.Error),
 		References:    normalizeReferences(artifact.References),
 
-		StatusSummary:       strings.TrimSpace(artifact.Raw.StatusSummary),
-		ShortSummary:        strings.TrimSpace(artifact.Raw.ShortSummary),
-		LongSummary:         strings.TrimSpace(artifact.Raw.LongSummary),
-		KeyFacts:            cloneStringSliceOrNil(artifact.Raw.KeyFacts),
-		OpenQuestions:       cloneStringSliceOrNil(artifact.Raw.OpenQuestions),
-		TimelineDiffSummary: strings.TrimSpace(artifact.Raw.TimelineDiff),
+		StatusSummary: strings.TrimSpace(artifact.Raw.StatusSummary),
+		ShortSummary:  strings.TrimSpace(artifact.Raw.ShortSummary),
+		LongSummary:   strings.TrimSpace(artifact.Raw.LongSummary),
+		KeyFacts:      cloneStringSliceOrNil(artifact.Raw.KeyFacts),
+		OpenQuestions: cloneStringSliceOrNil(artifact.Raw.OpenQuestions),
 
 		ArtifactDir: strings.TrimSpace(artifact.Raw.ArtifactDir),
 		SummaryFile: strings.TrimSpace(artifact.Raw.SummaryFile),
@@ -573,65 +573,22 @@ func isDeliverableFinal(snapshot builtin_tools.StateSnapshot) bool {
 	return false
 }
 
-func decideResumeDecision(input string, explicitResume bool, probe durableResumeProbe) resumeDecision {
-	input = strings.TrimSpace(input)
-	wantsResume := explicitResume || isContinuationInput(input)
-
-	if !wantsResume {
-		if probe.HasCheckpoint {
-			return resumeDecisionResumeSessionOnly
-		}
-		return resumeDecisionColdStart
+func rehydrateFromProbe(probe durableResumeProbe) builtin_tools.StateSnapshot {
+	snapshot := probe.Snapshot
+	if snapshot.Phase == "" {
+		snapshot.Phase = inferPhaseFromProbe(probe)
 	}
-
-	if probe.DeliverableFinal {
-		return resumeDecisionReturnFinal
-	}
-	if probe.Snapshot.ReplanContext != nil {
-		return resumeDecisionReplanWithContext
-	}
-	if strings.TrimSpace(probe.InProgressStepID) != "" {
-		return resumeDecisionResumeCurrentStep
-	}
-	if strings.TrimSpace(probe.NextRunnableStepID) != "" {
-		return resumeDecisionResumeNextStep
-	}
-	if probe.AllStepsCompleted && probe.PlanValid {
-		return resumeDecisionResumeFinalAnswer
-	}
-	if probe.HasCheckpoint && (!probe.PlanValid || len(probe.Snapshot.Plan) == 0) {
-		return resumeDecisionReplanWithContext
-	}
-	if probe.HasCheckpoint {
-		// Durable data exists but no runnable step: prefer replan with context over a cold start.
-		return resumeDecisionReplanWithContext
-	}
-	return resumeDecisionColdStart
+	snapshot.Status = builtin_tools.TaskStatusRunning
+	snapshot.Error = ""
+	return snapshot
 }
 
-func applyResumeDecisionToSnapshot(snapshot builtin_tools.StateSnapshot, decision resumeDecision) builtin_tools.StateSnapshot {
-	switch decision {
-	case resumeDecisionReturnFinal:
-		// Keep as-is.
-		return snapshot
-	case resumeDecisionResumeCurrentStep, resumeDecisionResumeNextStep:
-		snapshot.Status = builtin_tools.TaskStatusRunning
-		snapshot.Phase = builtin_tools.AgentPhaseStep
-		snapshot.Error = ""
-		return snapshot
-	case resumeDecisionResumeFinalAnswer:
-		snapshot.Status = builtin_tools.TaskStatusRunning
-		snapshot.Phase = builtin_tools.AgentPhaseFinalAnswer
-		snapshot.Error = ""
-		snapshot.CurrentStepID = ""
-		return snapshot
-	case resumeDecisionReplanWithContext:
-		snapshot.Status = builtin_tools.TaskStatusRunning
-		snapshot.Phase = builtin_tools.AgentPhasePlan
-		snapshot.Error = ""
-		snapshot.CurrentStepID = ""
-		return snapshot
-	default:
-		return snapshot
+func inferPhaseFromProbe(probe durableResumeProbe) builtin_tools.AgentPhase {
+	if probe.AllStepsCompleted && probe.PlanValid {
+		return builtin_tools.AgentPhaseFinalAnswer
 	}
+	if probe.InProgressStepID != "" || probe.NextRunnableStepID != "" {
+		return builtin_tools.AgentPhaseStep
+	}
+	return builtin_tools.AgentPhasePlan
 }

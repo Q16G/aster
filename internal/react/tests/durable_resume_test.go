@@ -53,9 +53,6 @@ func TestExecute_DurableResume_ReturnFinalWithoutModel(t *testing.T) {
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"final-answer-1","references":[]}`,
 			},
 		},
@@ -69,7 +66,7 @@ func TestExecute_DurableResume_ReturnFinalWithoutModel(t *testing.T) {
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
+				NeedsPlanning: true,
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
 				},
@@ -109,7 +106,8 @@ func TestExecute_DurableResume_ReturnFinalWithoutModel(t *testing.T) {
 
 	resumeResult, err := resumeAgent.Execute(context.Background(), "继续",
 		WithWorkspaceSession(sessionID, workspaceRoot),
-		WithSkipIntentPrelude(),
+		WithResumeExecutionIntent(),
+		WithResumeOnly(),
 	)
 	if err != nil {
 		t.Fatalf("resume Execute failed: %v", err)
@@ -200,9 +198,6 @@ func TestExecute_DurableResume_ContinuesNextStepWithoutRepeatingCompleted(t *tes
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成 step2","step_long_summary":"完成 step2。","key_facts":["f2"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"final-answer-2","references":[]}`,
 			},
 		},
@@ -222,7 +217,7 @@ func TestExecute_DurableResume_ContinuesNextStepWithoutRepeatingCompleted(t *tes
 
 	runResult, err := agent.Execute(context.Background(), "继续",
 		WithWorkspaceSession(sessionID, workspaceRoot),
-		WithSkipIntentPrelude(),
+		WithResumeExecutionIntent(),
 	)
 	if err != nil {
 		t.Fatalf("Execute(resume) failed: %v", err)
@@ -327,9 +322,6 @@ func TestExecute_DurableResume_ReplansBeforeRunningOldPendingStep(t *testing.T) 
 				},
 			},
 			{
-				content: `{"status_summary":"完成","step_short_summary":"完成补齐步骤","step_long_summary":"恢复后先重规划，再完成新步骤。","key_facts":["f2"],"open_questions":[]}`,
-			},
-			{
 				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"resumed-replanned-done","references":[]}`,
 			},
 		},
@@ -349,7 +341,7 @@ func TestExecute_DurableResume_ReplansBeforeRunningOldPendingStep(t *testing.T) 
 
 	runResult, err := agent.Execute(context.Background(), "继续",
 		WithWorkspaceSession(sessionID, workspaceRoot),
-		WithSkipIntentPrelude(),
+		WithResumeExecutionIntent(),
 	)
 	if err != nil {
 		t.Fatalf("Execute(resume) failed: %v", err)
@@ -366,7 +358,7 @@ func TestExecute_DurableResume_ReplansBeforeRunningOldPendingStep(t *testing.T) 
 	if len(planner.inputs) != 1 || !strings.Contains(planner.inputs[0], "<REPLAN_CONTEXT>") {
 		t.Fatalf("expected resume planner input to include replan context, got %+v", planner.inputs)
 	}
-	if !strings.Contains(planner.inputs[0], "\"reason\": \"旧计划未覆盖新增缺口\"") {
+	if !strings.Contains(planner.inputs[0], "\"reason\":\"旧计划未覆盖新增缺口\"") {
 		t.Fatalf("expected resume planner input to include replan reason, got %q", planner.inputs[0])
 	}
 

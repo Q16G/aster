@@ -317,6 +317,17 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					})
 				}
 			}
+		case "step_replan":
+			if rp.Content != "" {
+				var sr StepReplanPart
+				if json.Unmarshal([]byte(rp.Content), &sr) == nil {
+					existing = append(existing, DisplayPart{
+						Type:       PartTypeStepReplan,
+						Time:       rp.Time,
+						StepReplan: &sr,
+					})
+				}
+			}
 		case "step_result":
 			if rp.Content != "" {
 				var sr StepResultPart

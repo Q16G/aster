@@ -121,8 +121,8 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
 	_ = ctx
 	_ = tools
-	if strings.Contains(text, "`step_summary`") {
-		return `{"status_summary":"完成","step_short_summary":"完成一步","step_long_summary":"完成该 step。","key_facts":["f1"],"open_questions":[]}`, nil
+	if strings.Contains(text, "step_replan") || strings.Contains(text, "`step_replan`") {
+		return `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`, nil
 	}
 	if strings.Contains(text, "`final_answer`") {
 		return `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`, nil

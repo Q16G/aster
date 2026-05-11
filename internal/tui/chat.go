@@ -481,6 +481,8 @@ func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 		return m.renderStepResultPart(idx, part, maxWidth)
 	case PartTypeStepSummary:
 		return m.renderStepSummaryPart(idx, part, maxWidth)
+	case PartTypeStepReplan:
+		return m.renderStepReplanPart(idx, part, maxWidth)
 	case PartTypeFinalAnswer:
 		return m.renderFinalAnswerPart(idx, part, maxWidth)
 	case PartTypeSubAgent:
@@ -754,6 +756,87 @@ func (m *ChatModel) renderStepSummaryPart(idx int, part DisplayPart, maxWidth in
 		body.WriteString("\n\nOpen Questions:")
 		for _, q := range s.OpenQuestions {
 			body.WriteString("\n  ? " + q)
+		}
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(body.String(), maxWidth-4))
+}
+
+func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int) string {
+	r := part.StepReplan
+	if r == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	icon := "↻"
+	color := toolCompletedColor
+	if r.ShouldReplan {
+		color = lipgloss.Color("11")
+	}
+
+	summaryText := strings.TrimSpace(r.ReplanReason)
+	if summaryText == "" {
+		if r.ShouldReplan {
+			summaryText = "需要重规划"
+		} else {
+			summaryText = "继续当前计划"
+		}
+	}
+
+	if !expanded {
+		summary := "step_replan"
+		if r.StepName != "" {
+			summary += ": " + r.StepName
+		}
+		summary += " — " + truncateDisplayWidth(summaryText, 60)
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := icon + " step_replan"
+	if r.StepName != "" {
+		header += ": " + r.StepName
+	}
+
+	var body strings.Builder
+	if r.ShouldReplan {
+		body.WriteString("Decision: replan required")
+	} else {
+		body.WriteString("Decision: continue current plan")
+	}
+	if r.ReplanReason != "" {
+		body.WriteString("\n\nReason:\n" + r.ReplanReason)
+	}
+	if r.NextGoal != "" {
+		body.WriteString("\n\nNext Goal:\n" + r.NextGoal)
+	}
+	if len(r.MissingItems) > 0 {
+		body.WriteString("\n\nMissing Items:")
+		for _, item := range r.MissingItems {
+			body.WriteString("\n  • " + item)
+		}
+	}
+	if len(r.Warnings) > 0 {
+		body.WriteString("\n\nWarnings:")
+		for _, warning := range r.Warnings {
+			body.WriteString("\n  • " + warning)
 		}
 	}
 
