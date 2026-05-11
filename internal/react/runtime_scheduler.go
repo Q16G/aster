@@ -2,6 +2,7 @@ package react
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,14 +10,23 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/react/persistv2"
 	"aster/internal/runtimelog"
 	"aster/internal/structuredoutput"
+
+	"github.com/google/uuid"
 )
 
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
 	for iter := 1; iter <= maxIterations; iter++ {
 		if ctx != nil && ctx.Err() != nil {
 			snapshot := a.state.Snapshot()
+			if a.v2Store != nil && errors.Is(context.Cause(ctx), ErrTurnAbortRequested) {
+				_, _ = a.v2Store.AppendEvent(&persistv2.Event{
+					Type:   "TURN_ABORT_REQUESTED",
+					TurnID: strings.TrimSpace(a.currentTurnID),
+				})
+			}
 			a.emitRuntimeLog("warning", "scheduler context canceled", snapshot, map[string]any{
 				"event": "scheduler_context_canceled",
 				"error": ctx.Err().Error(),
@@ -53,6 +63,14 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 		switch phase {
 		case builtin_tools.AgentPhasePlan:
 			if err := a.runPlanPhase(ctx, extraText, taskContext); err != nil {
+				if tri, ok := isTurnInterruptRaised(err); ok {
+					return &builtin_tools.RunResult{
+						Success:          false,
+						TurnID:           strings.TrimSpace(a.currentTurnID),
+						TurnStatus:       string(persistv2.TurnStatusInterrupted),
+						PendingInterrupt: tri.Pending(),
+					}, nil
+				}
 				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
@@ -62,6 +80,14 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			}
 		case builtin_tools.AgentPhaseStep:
 			if err := a.runStepPhase(ctx, iter, runClient, extraText, taskContext); err != nil {
+				if tri, ok := isTurnInterruptRaised(err); ok {
+					return &builtin_tools.RunResult{
+						Success:          false,
+						TurnID:           strings.TrimSpace(a.currentTurnID),
+						TurnStatus:       string(persistv2.TurnStatusInterrupted),
+						PendingInterrupt: tri.Pending(),
+					}, nil
+				}
 				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
@@ -71,6 +97,14 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			}
 		case builtin_tools.AgentPhaseStepReplan:
 			if err := a.runStepReplanPhase(ctx, iter, runClient); err != nil {
+				if tri, ok := isTurnInterruptRaised(err); ok {
+					return &builtin_tools.RunResult{
+						Success:          false,
+						TurnID:           strings.TrimSpace(a.currentTurnID),
+						TurnStatus:       string(persistv2.TurnStatusInterrupted),
+						PendingInterrupt: tri.Pending(),
+					}, nil
+				}
 				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
@@ -755,6 +789,77 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		Arguments:  builtin_tools.CloneAnyMap(argsMap),
 	})
 
+	// Durable human-in-the-loop: raise a persisted interrupt and end the current turn.
+	// This must be crash-safe and resume-safe; we snapshot the runtime state + step transcript
+	// before unwinding the scheduler.
+	//
+	// Important: We intentionally do NOT generate a tool-result message here. The outstanding
+	// tool_call_id is completed only when the user resolves the interrupt.
+	if toolName == builtin_tools.HumanConfirmToolName {
+		question, inputType, options, ctxMap := parseHumanConfirmArgs(argsMap)
+		interruptID := "interrupt-" + uuid.NewString()
+
+		if a.v2Store != nil {
+			ev, _ := a.v2Store.AppendEvent(&persistv2.Event{
+				Type:        "INTERRUPT_RAISED",
+				TurnID:      strings.TrimSpace(a.currentTurnID),
+				InterruptID: interruptID,
+				Payload: map[string]any{
+					"question":     question,
+					"input_type":   inputType,
+					"options":      options,
+					"context":      ctxMap,
+					"tool_call_id": callID,
+				},
+			})
+
+			snap, _ := a.v2Store.LoadSnapshot()
+			if snap != nil && ev != nil {
+				_ = persistv2.ReduceSnapshot(snap, ev)
+				if raw, err := json.Marshal(a.state.Snapshot()); err == nil && len(raw) > 0 {
+					if ref, berr := a.v2Store.WriteBlob(raw); berr == nil && ref != "" {
+						snap.RuntimeStateBlobRef = ref
+					}
+				}
+				if raw, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory)); err == nil && len(raw) > 0 {
+					if ref, berr := a.v2Store.WriteBlob(raw); berr == nil && ref != "" {
+						snap.StepHistoryBlobRef = ref
+					}
+				}
+				_ = a.v2Store.SaveSnapshotAtomic(snap)
+			}
+		}
+
+		waitSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
+			Task:     "等待人工确认",
+			Status:   builtin_tools.TaskStatusWaiting,
+			Message:  firstNonEmpty(question, "等待人工输入"),
+			Progress: -1,
+		})
+		a.emitter.EmitStateChange(waitSnap)
+
+		// Mark the tool call as "waiting" in UI so it does not stay spinning forever.
+		a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
+			ID:         callID,
+			Name:       toolName,
+			IsAgent:    isAgent,
+			StackDepth: stackDepth,
+			Result:     "WAITING_FOR_HUMAN",
+			Error:      "",
+		})
+
+		return &turnInterruptRaised{
+			pending: &builtin_tools.PendingInterrupt{
+				InterruptID: interruptID,
+				Question:    question,
+				InputType:   inputType,
+				Options:     options,
+				Context:     ctxMap,
+			},
+			toolCall: tc,
+		}
+	}
+
 	callCtx := ctx
 	if isAgent {
 		callCtx = WithNextAgentCallInfo(ctx, strings.TrimSpace(a.cfg.AgentID), strings.TrimSpace(a.agentName))
@@ -811,6 +916,18 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 			explanation = builtin_tools.ToolRuntimeValue(argsMap["display_result"])
 		}
 		emitTaskItemDiffs(a.emitter, prevPlan, nextSnapshot.Plan, nextSnapshot.CurrentStepID, explanation)
+
+		stepID := strings.TrimSpace(prevSnapshot.CurrentStepID)
+		stepName := ""
+		if current := prevSnapshot.CurrentStep(); current != nil {
+			if stepID == "" {
+				stepID = strings.TrimSpace(current.ID)
+			}
+			stepName = strings.TrimSpace(current.Step)
+		}
+		outcome := findOutcome(nextSnapshot.StepOutcomes, stepID)
+		status := builtin_tools.PlanStepStatus(builtin_tools.ToolRuntimeValue(argsMap["status"]))
+		a.writeV2StepAttemptResult(stepID, stepName, callID, status, outcome)
 	}
 	return nil
 }

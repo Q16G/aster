@@ -26,7 +26,7 @@ type AgentExecContext struct {
 	InitialHistory []*ai.MsgInfo
 	RebuildClient  func(provider *ProviderState)
 	cancelMu       sync.Mutex
-	cancelFunc     context.CancelFunc
+	cancelFunc     context.CancelCauseFunc
 }
 
 func (c *AgentExecContext) ExecuteCmd(input string) tea.Cmd {
@@ -35,6 +35,14 @@ func (c *AgentExecContext) ExecuteCmd(input string) tea.Cmd {
 
 func (c *AgentExecContext) ExecuteCmdWithExtra(input, extraText string) tea.Cmd {
 	return func() tea.Msg { return c.executeInternal(input, extraText) }
+}
+
+func (c *AgentExecContext) ResolveInterruptCmd(interruptID, answer string) tea.Cmd {
+	return func() tea.Msg { return c.executeInterruptInternal(interruptID, answer, false) }
+}
+
+func (c *AgentExecContext) CancelInterruptCmd(interruptID string) tea.Cmd {
+	return func() tea.Msg { return c.executeInterruptInternal(interruptID, "", true) }
 }
 
 func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
@@ -70,7 +78,7 @@ func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
 	if len(c.InitialHistory) > 0 {
 		agent.SetHistory(ai.NormalizeMsgInfoSlice(c.InitialHistory))
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
 	c.cancelMu.Lock()
 	c.cancelFunc = cancel
 	c.cancelMu.Unlock()
@@ -83,6 +91,9 @@ func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
 	} else if c.ProjectRoot != "" {
 		execOpts = append(execOpts, react.WithWorkspaceSession("", c.ProjectRoot))
 	}
+	// Default-on resume intent (Codex/OpenCode mental model): the engine decides whether a
+	// previous execution can be continued based on V2 snapshot/events.
+	execOpts = append(execOpts, react.WithResumeExecutionIntent())
 	execOpts = append(execOpts, react.WithExecuteRunID(runID))
 	if len(c.InitialState.ActiveSkillNames) > 0 || len(c.InitialState.ActiveMCPServers) > 0 {
 		execOpts = append(execOpts, react.WithInitialStateBootstrap(c.InitialState))
@@ -103,11 +114,91 @@ func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
 	return AgentDoneMsg{Result: result, RunID: runID, History: history, Err: err}
 }
 
+func (c *AgentExecContext) executeInterruptInternal(interruptID, answer string, cancel bool) tea.Msg {
+	def := c.Definition
+	if def.Policies.AllowBash && def.Policies.BashPermissionContext != nil {
+		if def.Policies.BashPermissionContext.PermCtx != nil && c.ProjectRoot != "" {
+			copied := *def.Policies.BashPermissionContext
+			copiedCtx := *copied.PermCtx
+			copiedCtx.ProjectPath = c.ProjectRoot
+			copied.PermCtx = &copiedCtx
+			def.Policies.BashPermissionContext = &copied
+		}
+	}
+
+	runID := fmt.Sprintf("tui-%d", time.Now().UnixNano())
+	if c.SessionID != "" && c.SessionDir != "" {
+		baseDir := filepath.Dir(c.SessionDir)
+		_ = appendSessionRunEvent(baseDir, c.SessionID, persistedRunEvent{
+			RunID: runID,
+			Event: "started",
+			Input: "interrupt:" + interruptID,
+			Time:  time.Now(),
+		})
+	}
+
+	c.ensureSessionMCPConnections()
+
+	agent, err := c.Factory.Build(def)
+	if err != nil {
+		c.persistSessionRunArtifacts(runID, nil, err, nil)
+		return AgentDoneMsg{RunID: runID, Err: err}
+	}
+	if len(c.InitialHistory) > 0 {
+		agent.SetHistory(ai.NormalizeMsgInfoSlice(c.InitialHistory))
+	}
+	ctx, cancelFn := context.WithCancelCause(context.Background())
+	c.cancelMu.Lock()
+	c.cancelFunc = cancelFn
+	c.cancelMu.Unlock()
+	defer c.Cancel()
+
+	var execOpts []react.ExecuteOption
+	if c.SessionID != "" && c.SessionDir != "" {
+		workspaceRoot := c.SessionDir + "/workspace"
+		execOpts = append(execOpts, react.WithWorkspaceSession(c.SessionID, workspaceRoot))
+	} else if c.ProjectRoot != "" {
+		execOpts = append(execOpts, react.WithWorkspaceSession("", c.ProjectRoot))
+	}
+	execOpts = append(execOpts, react.WithResumeExecutionIntent())
+	execOpts = append(execOpts, react.WithExecuteRunID(runID))
+	if len(c.InitialState.ActiveSkillNames) > 0 || len(c.InitialState.ActiveMCPServers) > 0 {
+		execOpts = append(execOpts, react.WithInitialStateBootstrap(c.InitialState))
+	}
+	if def.Policies.ResultSource != "" {
+		execOpts = append(execOpts, react.WithResultSource(def.Policies.ResultSource))
+	}
+	if def.Policies.PublishContract != "" {
+		execOpts = append(execOpts, react.WithPublishContract(def.Policies.PublishContract))
+	}
+	if cancel {
+		execOpts = append(execOpts, react.WithInterruptCancel(interruptID, "user_cancelled"))
+	} else {
+		execOpts = append(execOpts, react.WithInterruptResolution(interruptID, answer))
+	}
+
+	result, execErr := agent.Execute(ctx, "", execOpts...)
+	history := agent.History()
+	c.persistSessionRunArtifacts(runID, result, execErr, history)
+	return AgentDoneMsg{Result: result, RunID: runID, History: history, Err: execErr}
+}
+
 func (c *AgentExecContext) Cancel() {
 	c.cancelMu.Lock()
 	defer c.cancelMu.Unlock()
 	if c.cancelFunc != nil {
-		c.cancelFunc()
+		c.cancelFunc(nil)
+		c.cancelFunc = nil
+	}
+}
+
+// CancelTurn requests abort of the current in-flight turn (Ctrl+C semantics).
+// It is not a session termination.
+func (c *AgentExecContext) CancelTurn() {
+	c.cancelMu.Lock()
+	defer c.cancelMu.Unlock()
+	if c.cancelFunc != nil {
+		c.cancelFunc(react.ErrTurnAbortRequested)
 		c.cancelFunc = nil
 	}
 }
