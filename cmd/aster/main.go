@@ -241,5 +241,11 @@ func newProviderClient(provider *tui.ProviderState, retryCallback openai.RetryCa
 	if provider.Proxy != "" {
 		opts = append(opts, openai.WithProxy(provider.Proxy))
 	}
+	if provider.SupportsVision != nil {
+		opts = append(opts, openai.WithSupportsVision(*provider.SupportsVision))
+	}
+	if provider.SupportsAudio != nil {
+		opts = append(opts, openai.WithSupportsAudio(*provider.SupportsAudio))
+	}
 	return openai.NewClient(opts...)
 }
