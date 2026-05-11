@@ -39,6 +39,9 @@ type Config struct {
 	// InsecureSkipVerify 是否跳过 TLS 证书校验（默认 false）
 	InsecureSkipVerify bool
 
+	SupportsVision *bool
+	SupportsAudio  *bool
+
 	// UsagePricing stores model pricing metadata for cost computation.
 	UsagePricing aiusage.PricingModel
 }
@@ -221,6 +224,18 @@ func WithRetryCallback(fn RetryCallback) Option {
 func WithInsecureSkipVerify(skip bool) Option {
 	return func(c *Config) {
 		c.InsecureSkipVerify = skip
+	}
+}
+
+func WithSupportsVision(v bool) Option {
+	return func(c *Config) {
+		c.SupportsVision = &v
+	}
+}
+
+func WithSupportsAudio(v bool) Option {
+	return func(c *Config) {
+		c.SupportsAudio = &v
 	}
 }
 

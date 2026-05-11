@@ -26,6 +26,8 @@ type ContextBudget struct {
 	UsableInputTokens   int
 	TriggerTokens       int
 	OutputCapTokens     int
+	SupportsVision      bool
+	SupportsAudio       bool
 }
 
 type knownModelTokenProfile struct {
@@ -35,26 +37,32 @@ type knownModelTokenProfile struct {
 	ContextWindowTokens int
 	InputTokenLimit     int
 	OutputTokenLimit    int
+	SupportsVision      *bool
+	SupportsAudio       *bool
 }
 
 var knownModelTokenProfiles = []knownModelTokenProfile{
-	{Name: "gpt-5.2", Family: "gpt", MatchPatterns: []string{"gpt-5.2"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000},
-	{Name: "gpt-5.1", Family: "gpt", MatchPatterns: []string{"gpt-5.1"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000},
-	{Name: "gpt-5-mini", Family: "gpt", MatchPatterns: []string{"gpt-5-mini"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000},
-	{Name: "gpt-5-nano", Family: "gpt", MatchPatterns: []string{"gpt-5-nano"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000},
-	{Name: "gpt-5", Family: "gpt", MatchPatterns: []string{"gpt-5"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000},
-	{Name: "gpt-4.1-mini", Family: "gpt", MatchPatterns: []string{"gpt-4.1-mini"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768},
-	{Name: "gpt-4.1-nano", Family: "gpt", MatchPatterns: []string{"gpt-4.1-nano"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768},
-	{Name: "gpt-4.1", Family: "gpt", MatchPatterns: []string{"gpt-4.1"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768},
-	{Name: "gpt-4o-mini", Family: "gpt", MatchPatterns: []string{"gpt-4o-mini"}, ContextWindowTokens: 128000, OutputTokenLimit: 16384},
-	{Name: "gpt-4o", Family: "gpt", MatchPatterns: []string{"gpt-4o"}, ContextWindowTokens: 128000, OutputTokenLimit: 16384},
-	{Name: "deepseek-reasoner", Family: "deepseek", MatchPatterns: []string{"deepseek-reasoner", "deepseek-r1"}, ContextWindowTokens: 128000, OutputTokenLimit: 65536},
-	{Name: "deepseek-chat", Family: "deepseek", MatchPatterns: []string{"deepseek-chat"}, ContextWindowTokens: 128000, OutputTokenLimit: 8192},
+	{Name: "gpt-5.2", Family: "gpt", MatchPatterns: []string{"gpt-5.2"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	{Name: "gpt-5.1", Family: "gpt", MatchPatterns: []string{"gpt-5.1"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	{Name: "gpt-5-mini", Family: "gpt", MatchPatterns: []string{"gpt-5-mini"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	{Name: "gpt-5-nano", Family: "gpt", MatchPatterns: []string{"gpt-5-nano"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000, SupportsVision: ai.BoolPtr(true)},
+	{Name: "gpt-5", Family: "gpt", MatchPatterns: []string{"gpt-5"}, ContextWindowTokens: 400000, OutputTokenLimit: 128000, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	{Name: "gpt-4.1-mini", Family: "gpt", MatchPatterns: []string{"gpt-4.1-mini"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768, SupportsVision: ai.BoolPtr(true)},
+	{Name: "gpt-4.1-nano", Family: "gpt", MatchPatterns: []string{"gpt-4.1-nano"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768, SupportsVision: ai.BoolPtr(true)},
+	{Name: "gpt-4.1", Family: "gpt", MatchPatterns: []string{"gpt-4.1"}, ContextWindowTokens: 1000000, OutputTokenLimit: 32768, SupportsVision: ai.BoolPtr(true)},
+	{Name: "gpt-4o-mini", Family: "gpt", MatchPatterns: []string{"gpt-4o-mini"}, ContextWindowTokens: 128000, OutputTokenLimit: 16384, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	{Name: "gpt-4o", Family: "gpt", MatchPatterns: []string{"gpt-4o"}, ContextWindowTokens: 128000, OutputTokenLimit: 16384, SupportsVision: ai.BoolPtr(true), SupportsAudio: ai.BoolPtr(true)},
+	// DeepSeek V4 (preview): 1M context, 384K max output.
+	// NOTE: `deepseek-chat` / `deepseek-reasoner` are legacy names and currently map to V4-Flash non-thinking / thinking mode.
+	{Name: "deepseek-v4-pro", Family: "deepseek", MatchPatterns: []string{"deepseek-v4-pro"}, ContextWindowTokens: 1000000, OutputTokenLimit: 384000},
+	{Name: "deepseek-v4-flash", Family: "deepseek", MatchPatterns: []string{"deepseek-v4-flash"}, ContextWindowTokens: 1000000, OutputTokenLimit: 384000},
+	{Name: "deepseek-reasoner", Family: "deepseek", MatchPatterns: []string{"deepseek-reasoner", "deepseek-r1"}, ContextWindowTokens: 1000000, OutputTokenLimit: 384000},
+	{Name: "deepseek-chat", Family: "deepseek", MatchPatterns: []string{"deepseek-chat"}, ContextWindowTokens: 1000000, OutputTokenLimit: 384000},
 	{Name: "deepseek-v3.2", Family: "deepseek", MatchPatterns: []string{"deepseek-v3.2", "deepseek-v3"}, ContextWindowTokens: 128000, OutputTokenLimit: 65536},
 	{Name: "glm-4.7", Family: "chatglm", MatchPatterns: []string{"glm-4.7", "chatglm-4.7"}, ContextWindowTokens: 204800, OutputTokenLimit: 131072},
 	{Name: "glm-4.6", Family: "chatglm", MatchPatterns: []string{"glm-4.6", "chatglm-4.6"}, ContextWindowTokens: 204800, OutputTokenLimit: 131072},
+	{Name: "glm-4.5v", Family: "chatglm", MatchPatterns: []string{"glm-4.5v", "chatglm-4v"}, ContextWindowTokens: 64000, OutputTokenLimit: 16384, SupportsVision: ai.BoolPtr(true)},
 	{Name: "glm-4.5", Family: "chatglm", MatchPatterns: []string{"glm-4.5", "chatglm-4.5", "chatglm4"}, ContextWindowTokens: 131072, OutputTokenLimit: 98304},
-	{Name: "glm-4.5v", Family: "chatglm", MatchPatterns: []string{"glm-4.5v", "chatglm-4v"}, ContextWindowTokens: 64000, OutputTokenLimit: 16384},
 	{Name: "chatglm3", Family: "chatglm", MatchPatterns: []string{"chatglm3", "chatglm-3"}, ContextWindowTokens: 32768, OutputTokenLimit: 8192},
 	{Name: "chatglm", Family: "chatglm", MatchPatterns: []string{"chatglm"}, ContextWindowTokens: 131072, OutputTokenLimit: 32768},
 }
@@ -63,7 +71,9 @@ func resolveContextBudget(client ai.ChatClient) ContextBudget {
 	budget := ContextBudget{
 		ModelName: "unknown",
 	}
-	hasExplicitModelContext := false
+	hasExplicitTokenBudget := false
+	hasExplicitVision := false
+	hasExplicitAudio := false
 
 	if provider, ok := client.(ai.ModelContextProvider); ok {
 		info := provider.ModelContextInfo().Normalize()
@@ -72,21 +82,28 @@ func resolveContextBudget(client ai.ChatClient) ContextBudget {
 		}
 		if info.ContextWindowTokens > 0 {
 			budget.ContextWindowTokens = info.ContextWindowTokens
-			hasExplicitModelContext = true
+			hasExplicitTokenBudget = true
 		}
 		if info.InputTokenLimit > 0 {
 			budget.InputTokenLimit = info.InputTokenLimit
-			hasExplicitModelContext = true
+			hasExplicitTokenBudget = true
 		}
 		if info.OutputTokenLimit > 0 {
 			budget.OutputTokenLimit = info.OutputTokenLimit
-			hasExplicitModelContext = true
+			hasExplicitTokenBudget = true
+		}
+		if info.SupportsVision != nil {
+			budget.SupportsVision = *info.SupportsVision
+			hasExplicitVision = true
+		}
+		if info.SupportsAudio != nil {
+			budget.SupportsAudio = *info.SupportsAudio
+			hasExplicitAudio = true
 		}
 	}
 
-	// 模型显式配置优先：仅在模型未提供任何上下文预算时，才使用内置模型档位兜底推断。
-	if !hasExplicitModelContext {
-		if inferred, ok := inferKnownModelContext(budget.ModelName); ok {
+	if inferred, ok := inferKnownModelContext(budget.ModelName); ok {
+		if !hasExplicitTokenBudget {
 			if budget.ContextWindowTokens <= 0 {
 				budget.ContextWindowTokens = inferred.ContextWindowTokens
 			}
@@ -96,6 +113,12 @@ func resolveContextBudget(client ai.ChatClient) ContextBudget {
 			if budget.OutputTokenLimit <= 0 {
 				budget.OutputTokenLimit = inferred.OutputTokenLimit
 			}
+		}
+		if !hasExplicitVision && inferred.SupportsVision != nil {
+			budget.SupportsVision = *inferred.SupportsVision
+		}
+		if !hasExplicitAudio && inferred.SupportsAudio != nil {
+			budget.SupportsAudio = *inferred.SupportsAudio
 		}
 	}
 
@@ -156,12 +179,21 @@ func inferKnownModelContext(modelName string) (ai.ModelContextInfo, bool) {
 	for _, profile := range knownModelTokenProfiles {
 		for _, pattern := range profile.MatchPatterns {
 			if strings.Contains(name, strings.ToLower(strings.TrimSpace(pattern))) {
-				return ai.ModelContextInfo{
+				info := ai.ModelContextInfo{
 					ModelName:           strings.TrimSpace(modelName),
 					ContextWindowTokens: profile.ContextWindowTokens,
 					InputTokenLimit:     profile.InputTokenLimit,
 					OutputTokenLimit:    profile.OutputTokenLimit,
-				}.Normalize(), true
+				}
+				if profile.SupportsVision != nil {
+					v := *profile.SupportsVision
+					info.SupportsVision = &v
+				}
+				if profile.SupportsAudio != nil {
+					v := *profile.SupportsAudio
+					info.SupportsAudio = &v
+				}
+				return info.Normalize(), true
 			}
 		}
 	}
@@ -249,4 +281,12 @@ func fallbackEstimateTokens(s string) int {
 
 func estimateStringTokens(s string) int {
 	return countTokens(s)
+}
+
+func ModelSupportsVision(client ai.ChatClient) bool {
+	return resolveContextBudget(client).SupportsVision
+}
+
+func ModelSupportsAudio(client ai.ChatClient) bool {
+	return resolveContextBudget(client).SupportsAudio
 }
