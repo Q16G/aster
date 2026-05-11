@@ -3,7 +3,6 @@ package react
 import (
 	"aster/internal/jsonextractor"
 	"crypto/rand"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -57,27 +56,4 @@ func buildJSONCandidates(content string) []string {
 		add(content)
 	}
 	return candidates
-}
-
-var continuationInputPattern = regexp.MustCompile(`(?i)^\s*(继续(一下|吧)?|请继续|接着来?|接着|继续上次|继续刚才|continue|resume|go\s+on|carry\s+on|keep\s+going)\b`)
-
-func isContinuationInput(input string) bool {
-	trimmed := strings.TrimSpace(input)
-	if trimmed == "" {
-		return false
-	}
-	lower := strings.ToLower(trimmed)
-	if strings.HasPrefix(trimmed, "继续") || strings.HasPrefix(trimmed, "接着") {
-		return true
-	}
-	switch {
-	case strings.HasPrefix(lower, "continue"),
-		strings.HasPrefix(lower, "resume"),
-		strings.HasPrefix(lower, "go on"),
-		strings.HasPrefix(lower, "carry on"),
-		strings.HasPrefix(lower, "keep going"):
-		return true
-	default:
-	}
-	return continuationInputPattern.MatchString(trimmed)
 }
