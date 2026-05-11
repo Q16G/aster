@@ -14,12 +14,14 @@ import (
 )
 
 type ProviderConfig struct {
-	BaseURL      string                `yaml:"base_url"`
-	APIKey       string                `yaml:"api_key"`
-	DefaultModel string                `yaml:"default_model"`
-	Headers      map[string]string     `yaml:"headers,omitempty"`
-	PromptCache  *ai.PromptCacheConfig `yaml:"prompt_cache,omitempty"`
-	Env          map[string]string     `yaml:"env,omitempty"`
+	BaseURL        string                `yaml:"base_url"`
+	APIKey         string                `yaml:"api_key"`
+	DefaultModel   string                `yaml:"default_model"`
+	Headers        map[string]string     `yaml:"headers,omitempty"`
+	PromptCache    *ai.PromptCacheConfig `yaml:"prompt_cache,omitempty"`
+	Env            map[string]string     `yaml:"env,omitempty"`
+	SupportsVision *bool                 `yaml:"supports_vision,omitempty"`
+	SupportsAudio  *bool                 `yaml:"supports_audio,omitempty"`
 }
 
 type AppConfig struct {
@@ -29,14 +31,16 @@ type AppConfig struct {
 }
 
 type ProviderState struct {
-	Name        string
-	BaseURL     string
-	APIKey      string
-	ModelID     string
-	Headers     map[string]string
-	PromptCache *ai.PromptCacheConfig
-	Env         map[string]string
-	Proxy       string
+	Name           string
+	BaseURL        string
+	APIKey         string
+	ModelID        string
+	Headers        map[string]string
+	PromptCache    *ai.PromptCacheConfig
+	Env            map[string]string
+	Proxy          string
+	SupportsVision *bool
+	SupportsAudio  *bool
 }
 
 const (
@@ -524,14 +528,16 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, expandProviderValue(p.APIKey, resolvedEnv))
 	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, bpDefaultModel, "gpt-4o")
 	return &ProviderState{
-		Name:        providerName,
-		BaseURL:     baseURL,
-		APIKey:      apiKey,
-		ModelID:     model,
-		Headers:     headers,
-		PromptCache: p.PromptCache.Clone(),
-		Env:         resolvedEnv,
-		Proxy:       providerProxyFromEnv(resolvedEnv),
+		Name:           providerName,
+		BaseURL:        baseURL,
+		APIKey:         apiKey,
+		ModelID:        model,
+		Headers:        headers,
+		PromptCache:    p.PromptCache.Clone(),
+		Env:            resolvedEnv,
+		Proxy:          providerProxyFromEnv(resolvedEnv),
+		SupportsVision: p.SupportsVision,
+		SupportsAudio:  p.SupportsAudio,
 	}
 }
 

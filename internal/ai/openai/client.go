@@ -1144,5 +1144,7 @@ func (c *Client) ModelContextInfo() ai.ModelContextInfo {
 		ContextWindowTokens: c.config.ContextWindowTokens,
 		InputTokenLimit:     c.config.InputTokenLimit,
 		OutputTokenLimit:    c.config.OutputTokenLimit,
+		SupportsVision:      c.config.SupportsVision,
+		SupportsAudio:       c.config.SupportsAudio,
 	}.Normalize()
 }
