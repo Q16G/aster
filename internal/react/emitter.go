@@ -33,6 +33,7 @@ const (
 	EventTypeStepFinish        EventType = "step_finish"
 	EventTypeHistoryCompacted  EventType = "history_compacted"
 	EventTypeStepSummaryResult EventType = "step_summary_result"
+	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
 )
 
@@ -434,6 +435,26 @@ func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome 
 			"open_questions":    outcome.OpenQuestions,
 			"tool_calls_digest": strings.Join(outcome.ToolCallsDigest, "\n"),
 			"references":        outcome.References,
+		},
+	})
+}
+
+func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *stepReplanModelOutput) {
+	e.ResetThinkSessionID()
+	if result == nil {
+		return
+	}
+	e.Emit(&AgentOutputEvent{
+		Type:   EventTypeStepReplanResult,
+		NodeID: "step_replan_result",
+		Payload: map[string]any{
+			"step_id":       strings.TrimSpace(stepID),
+			"step_name":     strings.TrimSpace(stepName),
+			"should_replan": result.ShouldReplan,
+			"replan_reason": strings.TrimSpace(result.ReplanReason),
+			"next_goal":     strings.TrimSpace(result.NextGoal),
+			"missing_items": normalizeStringSlice(result.MissingItems),
+			"warnings":      normalizeStringSlice(result.Warnings),
 		},
 	})
 }

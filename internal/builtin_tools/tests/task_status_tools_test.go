@@ -67,17 +67,21 @@ func (f *fakeToolContext) UpdateCurrentStep(update CurrentStepUpdate) StateSnaps
 		return f.Snapshot()
 	}
 	target.Status = update.Status
-	// 对齐 runtime：update_current_step 后进入 step_summary phase，并保留 current_step_id
-	// 供后续 step_summary 使用。
-	f.snapshot.Phase = AgentPhaseStepSummary
+	f.snapshot.Phase = AgentPhaseStepReplan
 	f.snapshot.StepOutcomes = append(f.snapshot.StepOutcomes, &StepOutcome{
-		StepID:        target.ID,
-		UpdatedAt:     time.Now(),
-		Summary:       update.Summary,
-		DisplayResult: update.DisplayResult,
-		Result:        update.Result,
-		Error:         update.Error,
-		References:    update.References,
+		StepID:          target.ID,
+		UpdatedAt:       time.Now(),
+		Summary:         update.Summary,
+		DisplayResult:   update.DisplayResult,
+		Result:          update.Result,
+		Error:           update.Error,
+		References:      update.References,
+		StatusSummary:   update.StatusSummary,
+		ShortSummary:    update.ShortSummary,
+		LongSummary:     update.LongSummary,
+		KeyFacts:        update.KeyFacts,
+		OpenQuestions:   update.OpenQuestions,
+		ToolCallsDigest: update.ToolCallsDigest,
 	})
 	return f.Snapshot()
 }

@@ -23,6 +23,7 @@ const (
 	TuiEventHistoryCompacted
 	TuiEventHumanRequest
 	TuiEventStepSummaryResult
+	TuiEventStepReplanResult
 	TuiEventFinalAnswerResult
 	// UI-specific events
 	TuiEventToast
@@ -38,25 +39,26 @@ type TuiEvent struct {
 }
 
 var reactToTuiMap = map[react.EventType]TuiEventType{
-	react.EventTypeStream:           TuiEventAgentStream,
-	react.EventTypeResult:           TuiEventAgentResult,
-	react.EventTypeToolStart:        TuiEventToolStart,
-	react.EventTypeToolEnd:          TuiEventToolEnd,
-	react.EventTypeToolUpdate:       TuiEventToolUpdate,
-	react.EventTypeThink:            TuiEventThink,
-	react.EventTypeIteration:        TuiEventIteration,
-	react.EventTypeStateChange:      TuiEventStateChange,
-	react.EventTypeRetry:            TuiEventRetry,
-	react.EventTypeAgentEnter:       TuiEventAgentEnter,
-	react.EventTypeAgentExit:        TuiEventAgentExit,
-	react.EventTypeTaskPlan:         TuiEventTaskPlan,
-	react.EventTypeTaskItem:         TuiEventTaskItem,
-	react.EventTypeLog:              TuiEventLog,
-	react.EventTypeStepFinish:       TuiEventStepFinish,
-	react.EventTypeHistoryCompacted: TuiEventHistoryCompacted,
-	react.EventTypeHumanRequest:         TuiEventHumanRequest,
-	react.EventTypeStepSummaryResult:    TuiEventStepSummaryResult,
-	react.EventTypeFinalAnswerResult:    TuiEventFinalAnswerResult,
+	react.EventTypeStream:            TuiEventAgentStream,
+	react.EventTypeResult:            TuiEventAgentResult,
+	react.EventTypeToolStart:         TuiEventToolStart,
+	react.EventTypeToolEnd:           TuiEventToolEnd,
+	react.EventTypeToolUpdate:        TuiEventToolUpdate,
+	react.EventTypeThink:             TuiEventThink,
+	react.EventTypeIteration:         TuiEventIteration,
+	react.EventTypeStateChange:       TuiEventStateChange,
+	react.EventTypeRetry:             TuiEventRetry,
+	react.EventTypeAgentEnter:        TuiEventAgentEnter,
+	react.EventTypeAgentExit:         TuiEventAgentExit,
+	react.EventTypeTaskPlan:          TuiEventTaskPlan,
+	react.EventTypeTaskItem:          TuiEventTaskItem,
+	react.EventTypeLog:               TuiEventLog,
+	react.EventTypeStepFinish:        TuiEventStepFinish,
+	react.EventTypeHistoryCompacted:  TuiEventHistoryCompacted,
+	react.EventTypeHumanRequest:      TuiEventHumanRequest,
+	react.EventTypeStepSummaryResult: TuiEventStepSummaryResult,
+	react.EventTypeStepReplanResult:  TuiEventStepReplanResult,
+	react.EventTypeFinalAnswerResult: TuiEventFinalAnswerResult,
 }
 
 func MapReactEvent(e *react.AgentOutputEvent) TuiEvent {

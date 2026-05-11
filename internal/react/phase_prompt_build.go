@@ -8,39 +8,18 @@ import (
 	"aster/internal/builtin_tools"
 )
 
-func (a *Agent) BuildStepSummaryPrompt(payload map[string]any) (string, error) {
+func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 	if a == nil || a.promptManager == nil {
-		return "", fmt.Errorf("step summary prompt manager is nil")
+		return "", fmt.Errorf("step replan prompt manager is nil")
 	}
-
-	var hasSummaryPolicy bool
-	var summaryPolicyName, summaryPolicyDetail string
-	if a.cfg != nil {
-		snap := a.state.Snapshot()
-		if currentStep := snap.CurrentStep(); currentStep != nil && currentStep.OutputContractRef != "" {
-			if c := a.cfg.LookupOutputContract(currentStep.OutputContractRef); c != nil && c.SummaryPolicy != "" {
-				hasSummaryPolicy = true
-				summaryPolicyName = c.Name
-				summaryPolicyDetail = c.SummaryPolicy
-			}
-		}
-	}
-
-	return a.promptManager.BuildStepSummaryPrompt(StepSummaryPromptInput{
-		InputTimeline:       payload["input_timeline"],
-		CurrentGoal:         payload["current_goal"],
-		CurrentStep:         payload["current_step"],
-		TaskPlan:            payload["task_plan"],
-		RawOutcome:          payload["raw_outcome"],
-		StepWindow:          payload["step_window"],
-		TimelineDiff:        payload["timeline_diff"],
-		References:          payload["references"],
-		Artifacts:           payload["artifacts"],
-		Warnings:            payload["warnings"],
-		Unresolved:          payload["unresolved"],
-		HasSummaryPolicy:    hasSummaryPolicy,
-		SummaryPolicyName:   summaryPolicyName,
-		SummaryPolicyDetail: summaryPolicyDetail,
+	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:  payload["current_goal"],
+		CurrentStep:  payload["current_step"],
+		StepOutcome:  payload["step_outcome"],
+		TaskPlan:     payload["task_plan"],
+		StepOutcomes: payload["step_outcomes"],
+		Warnings:     payload["warnings"],
+		Unresolved:   payload["unresolved"],
 	})
 }
 
@@ -94,13 +73,11 @@ func (a *Agent) lookupFinalAnswerOutputContract(snapshot builtin_tools.StateSnap
 	if a == nil || a.cfg == nil {
 		return nil
 	}
-	// Explicit publish contract always wins, regardless of step outcome existence.
 	if name := strings.TrimSpace(a.currentPublishContract); name != "" {
 		if c := a.cfg.LookupOutputContract(name); c != nil {
 			return c
 		}
 	}
-	// Fall back to shared plan-based selection (last eligible contract step).
 	match := resolveContractStep(snapshot.Plan, snapshot.StepOutcomes, "")
 	if match == nil {
 		return nil
@@ -108,23 +85,8 @@ func (a *Agent) lookupFinalAnswerOutputContract(snapshot builtin_tools.StateSnap
 	return a.cfg.LookupOutputContract(match.ContractRef)
 }
 
-func (a *Agent) BuildReducerPrompt(payload map[string]any) (string, error) {
-	if a == nil || a.promptManager == nil {
-		return "", fmt.Errorf("reducer prompt manager is nil")
-	}
-	return a.promptManager.BuildReducerPrompt(ReducerPromptInput{
-		StepID:          payload["step_id"],
-		InputTimeline:   payload["input_timeline"],
-		CurrentStep:     payload["current_step"],
-		RawTimelineDiff: payload["raw_timeline_diff"],
-		DiffSummaryHint: payload["diff_summary_hint"],
-		References:      payload["references"],
-		Artifacts:       payload["artifacts"],
-	})
-}
-
 func prettyJSON(value any) string {
-	raw, err := json.MarshalIndent(value, "", "  ")
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return "null"
 	}

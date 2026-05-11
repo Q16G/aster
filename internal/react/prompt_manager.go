@@ -44,21 +44,14 @@ type ThinkActPromptInput struct {
 	OutputContractExample   string
 }
 
-type StepSummaryPromptInput struct {
-	InputTimeline       any
-	CurrentGoal         any
-	CurrentStep         any
-	TaskPlan            any
-	RawOutcome          any
-	StepWindow          any
-	TimelineDiff        any
-	References          any
-	Artifacts           any
-	Warnings            any
-	Unresolved          any
-	HasSummaryPolicy    bool
-	SummaryPolicyName   string
-	SummaryPolicyDetail string
+type StepReplanPromptInput struct {
+	CurrentGoal  any
+	CurrentStep  any
+	StepOutcome  any
+	TaskPlan     any
+	StepOutcomes any
+	Warnings     any
+	Unresolved   any
 }
 
 type FinalAnswerPromptInput struct {
@@ -80,30 +73,6 @@ type FinalAnswerPromptInput struct {
 	PublishedOutputExample  string
 }
 
-type ReducerPromptInput struct {
-	StepID          any
-	InputTimeline   any
-	CurrentStep     any
-	RawTimelineDiff any
-	DiffSummaryHint any
-	References      any
-	Artifacts       any
-}
-
-type IntentRecognitionPromptInput struct {
-	UserInstruction string
-	Input           string
-	RecentHistory   any
-}
-
-type SimpleReplyPromptInput struct {
-	UserInstruction     string
-	IntentSummary       string
-	IntentComplexity    string
-	MatchedCapabilities any
-	ReplyHint           string
-}
-
 type HistoryCompactionPromptInput struct {
 	Instruction string
 	PrevSummary string
@@ -116,28 +85,28 @@ type AgentHandoffPromptInput struct {
 	Diff             string
 }
 
+type StepOutcomesReducerPromptInput struct {
+	StepOutcomes string
+}
+
 type PromptManager interface {
 	BuildThinkActPrompt(input ThinkActPromptInput) (string, error)
-	BuildStepSummaryPrompt(input StepSummaryPromptInput) (string, error)
+	BuildStepReplanPrompt(input StepReplanPromptInput) (string, error)
 	BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (string, error)
-	BuildReducerPrompt(input ReducerPromptInput) (string, error)
-	BuildIntentRecognitionPrompt(input IntentRecognitionPromptInput) (string, error)
-	BuildSimpleReplyPrompt(input SimpleReplyPromptInput) (string, error)
 	BuildHistoryCompactionPrompt(input HistoryCompactionPromptInput) (string, error)
 	BuildTaskPlannerPrompt(input string) (string, error)
 	BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error)
+	BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error)
 }
 
 type defaultPromptManager struct {
-	thinkActTmpl          *template.Template
-	stepSummaryTmpl       *template.Template
-	finalAnswerTmpl       *template.Template
-	reducerTmpl           *template.Template
-	intentRecognitionTmpl *template.Template
-	simpleReplyTmpl       *template.Template
-	historyCompactionTmpl *template.Template
-	taskPlannerTmpl       *template.Template
-	agentHandoffTmpl      *template.Template
+	thinkActTmpl              *template.Template
+	stepReplanTmpl            *template.Template
+	finalAnswerTmpl           *template.Template
+	historyCompactionTmpl     *template.Template
+	taskPlannerTmpl           *template.Template
+	agentHandoffTmpl          *template.Template
+	stepOutcomesReducerTmpl   *template.Template
 }
 
 func newDefaultPromptManager() (PromptManager, error) {
@@ -145,25 +114,13 @@ func newDefaultPromptManager() (PromptManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse think_act prompt failed: %w", err)
 	}
-	stepSummaryTmpl, err := template.New("step_summary").Parse(stepSummaryPrompt)
+	stepReplanTmpl, err := template.New("step_replan").Parse(stepReplanPrompt)
 	if err != nil {
-		return nil, fmt.Errorf("parse step_summary prompt failed: %w", err)
+		return nil, fmt.Errorf("parse step_replan prompt failed: %w", err)
 	}
 	finalAnswerTmpl, err := template.New("final_answer").Parse(finalAnswerPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("parse final_answer prompt failed: %w", err)
-	}
-	reducerTmpl, err := template.New("reducer").Parse(reducerPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse reducer prompt failed: %w", err)
-	}
-	intentRecognitionTmpl, err := template.New("intent_recognition").Parse(intentRecognitionPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse intent_recognition prompt failed: %w", err)
-	}
-	simpleReplyTmpl, err := template.New("simple_reply").Parse(simpleReplyPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse simple_reply prompt failed: %w", err)
 	}
 	historyCompactionTmpl, err := template.New("history_compaction").Parse(historyCompactionPrompt)
 	if err != nil {
@@ -177,16 +134,18 @@ func newDefaultPromptManager() (PromptManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse agent_handoff prompt failed: %w", err)
 	}
+	stepOutcomesReducerTmpl, err := template.New("step_outcomes_reducer").Parse(stepOutcomesReducerPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("parse step_outcomes_reducer prompt failed: %w", err)
+	}
 	return &defaultPromptManager{
-		thinkActTmpl:          thinkActTmpl,
-		stepSummaryTmpl:       stepSummaryTmpl,
-		finalAnswerTmpl:       finalAnswerTmpl,
-		reducerTmpl:           reducerTmpl,
-		intentRecognitionTmpl: intentRecognitionTmpl,
-		simpleReplyTmpl:       simpleReplyTmpl,
-		historyCompactionTmpl: historyCompactionTmpl,
-		taskPlannerTmpl:       taskPlannerTmpl,
-		agentHandoffTmpl:      agentHandoffTmpl,
+		thinkActTmpl:            thinkActTmpl,
+		stepReplanTmpl:          stepReplanTmpl,
+		finalAnswerTmpl:         finalAnswerTmpl,
+		historyCompactionTmpl:   historyCompactionTmpl,
+		taskPlannerTmpl:         taskPlannerTmpl,
+		agentHandoffTmpl:        agentHandoffTmpl,
+		stepOutcomesReducerTmpl: stepOutcomesReducerTmpl,
 	}, nil
 }
 
@@ -245,26 +204,19 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 	return buf.String(), nil
 }
 
-func (m *defaultPromptManager) BuildStepSummaryPrompt(input StepSummaryPromptInput) (string, error) {
-	if m == nil || m.stepSummaryTmpl == nil {
-		return "", fmt.Errorf("step summary template is nil")
+func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput) (string, error) {
+	if m == nil || m.stepReplanTmpl == nil {
+		return "", fmt.Errorf("step replan template is nil")
 	}
 	buf := bytes.NewBuffer(nil)
-	if err := m.stepSummaryTmpl.Execute(buf, map[string]any{
-		"INPUT_TIMELINE":        prettyJSON(input.InputTimeline),
-		"CURRENT_GOAL":          prettyJSON(input.CurrentGoal),
-		"CURRENT_STEP":          prettyJSON(input.CurrentStep),
-		"TASK_PLAN":             prettyJSON(input.TaskPlan),
-		"RAW_OUTCOME":           prettyJSON(input.RawOutcome),
-		"STEP_WINDOW":           prettyJSON(input.StepWindow),
-		"TIMELINE_DIFF":         prettyJSON(input.TimelineDiff),
-		"REFERENCES":            prettyJSON(input.References),
-		"ARTIFACTS":             prettyJSON(input.Artifacts),
-		"WARNINGS":              prettyJSON(input.Warnings),
-		"UNRESOLVED":            prettyJSON(input.Unresolved),
-		"HAS_SUMMARY_POLICY":    input.HasSummaryPolicy,
-		"SUMMARY_POLICY_NAME":   strings.TrimSpace(input.SummaryPolicyName),
-		"SUMMARY_POLICY_DETAIL": strings.TrimSpace(input.SummaryPolicyDetail),
+	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
+		"CURRENT_GOAL":  prettyJSON(input.CurrentGoal),
+		"CURRENT_STEP":  prettyJSON(input.CurrentStep),
+		"STEP_OUTCOME":  prettyJSON(input.StepOutcome),
+		"TASK_PLAN":     prettyJSON(input.TaskPlan),
+		"STEP_OUTCOMES": prettyJSON(input.StepOutcomes),
+		"WARNINGS":      prettyJSON(input.Warnings),
+		"UNRESOLVED":    prettyJSON(input.Unresolved),
 	}); err != nil {
 		return "", err
 	}
@@ -293,57 +245,6 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"PUBLISHED_OUTPUT_NAME":     strings.TrimSpace(input.PublishedOutputName),
 		"PUBLISHED_OUTPUT_SCHEMA":   strings.TrimSpace(input.PublishedOutputSchema),
 		"PUBLISHED_OUTPUT_EXAMPLE":  strings.TrimSpace(input.PublishedOutputExample),
-	}); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildReducerPrompt(input ReducerPromptInput) (string, error) {
-	if m == nil || m.reducerTmpl == nil {
-		return "", fmt.Errorf("reducer template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.reducerTmpl.Execute(buf, map[string]any{
-		"STEP_ID":           prettyJSON(input.StepID),
-		"INPUT_TIMELINE":    prettyJSON(input.InputTimeline),
-		"CURRENT_STEP":      prettyJSON(input.CurrentStep),
-		"RAW_TIMELINE_DIFF": prettyJSON(input.RawTimelineDiff),
-		"DIFF_SUMMARY_HINT": prettyJSON(input.DiffSummaryHint),
-		"REFERENCES":        prettyJSON(input.References),
-		"ARTIFACTS":         prettyJSON(input.Artifacts),
-	}); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildIntentRecognitionPrompt(input IntentRecognitionPromptInput) (string, error) {
-	if m == nil || m.intentRecognitionTmpl == nil {
-		return "", fmt.Errorf("intent recognition template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.intentRecognitionTmpl.Execute(buf, map[string]any{
-		"USER_INSTRUCTION": strings.TrimSpace(input.UserInstruction),
-		"INPUT":            strings.TrimSpace(input.Input),
-		"RECENT_HISTORY":   prettyJSON(input.RecentHistory),
-	}); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildSimpleReplyPrompt(input SimpleReplyPromptInput) (string, error) {
-	if m == nil || m.simpleReplyTmpl == nil {
-		return "", fmt.Errorf("simple reply template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.simpleReplyTmpl.Execute(buf, map[string]any{
-		"USER_INSTRUCTION":     strings.TrimSpace(input.UserInstruction),
-		"INTENT_SUMMARY":       strings.TrimSpace(input.IntentSummary),
-		"INTENT_COMPLEXITY":    strings.TrimSpace(input.IntentComplexity),
-		"MATCHED_CAPABILITIES": prettyJSON(input.MatchedCapabilities),
-		"REPLY_HINT":           strings.TrimSpace(input.ReplyHint),
 	}); err != nil {
 		return "", err
 	}
@@ -387,6 +288,19 @@ func (m *defaultPromptManager) BuildAgentHandoffPrompt(input AgentHandoffPromptI
 		"AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction),
 		"PREV_SUMMARY":      strings.TrimSpace(input.PrevSummary),
 		"DIFF":              strings.TrimSpace(input.Diff),
+	}); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func (m *defaultPromptManager) BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error) {
+	if m == nil || m.stepOutcomesReducerTmpl == nil {
+		return "", fmt.Errorf("step outcomes reducer template is nil")
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := m.stepOutcomesReducerTmpl.Execute(buf, map[string]any{
+		"STEP_OUTCOMES": strings.TrimSpace(input.StepOutcomes),
 	}); err != nil {
 		return "", err
 	}

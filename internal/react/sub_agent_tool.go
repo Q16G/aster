@@ -48,7 +48,7 @@ func (t *SubAgentTool) Parameters() any {
 			},
 			"context": map[string]any{
 				"type":        "string",
-				"description": "可选：传递给子 Agent 的额外上下文信息。",
+				"description": "可选：传递给子 Agent 的显式上下文信息，优先于系统自动注入的交接上下文。",
 			},
 		},
 		"required":             []string{"instruction"},
@@ -71,7 +71,8 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		return "", fmt.Errorf("instruction is required")
 	}
 	toolNames := argx.StringSlice(args["tools"])
-	extraContext := argx.OptionalText(args, "context")
+	explicitContext := argx.OptionalText(args, "context")
+	handoffContext := argx.OptionalText(args, "__handoff_context__")
 
 	callID := runtime.CallID
 	if callID == "" {
@@ -88,12 +89,8 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		},
 	}
 
-	if extraContext != "" {
-		childDef.Context = []TaskContextEntry{{
-			Label:       "委派上下文",
-			Value:       extraContext,
-			Description: "父 Agent 传递的额外上下文",
-		}}
+	if contextEntries := buildSubAgentContextEntries(explicitContext, handoffContext); len(contextEntries) > 0 {
+		childDef.Context = contextEntries
 	}
 
 	if t.parentAgent.cfg != nil && t.parentAgent.cfg.BashTool != nil {
@@ -126,6 +123,28 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 	}
 
 	return formatSubAgentResult(childName, namespace, result), nil
+}
+
+func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskContextEntry {
+	explicitContext = strings.TrimSpace(explicitContext)
+	handoffContext = strings.TrimSpace(handoffContext)
+
+	entries := make([]TaskContextEntry, 0, 2)
+	if explicitContext != "" {
+		entries = append(entries, TaskContextEntry{
+			Label:       "委派上下文",
+			Value:       explicitContext,
+			Description: "父 Agent 传递的显式上下文；若与交接上下文冲突，以此为准",
+		})
+	}
+	if handoffContext != "" && handoffContext != explicitContext {
+		entries = append(entries, TaskContextEntry{
+			Label:       "交接上下文",
+			Value:       handoffContext,
+			Description: "父 Agent 自动注入的已完成步骤与摘要上下文，仅作补充；若与显式上下文冲突，以显式上下文为准",
+		})
+	}
+	return entries
 }
 
 func (t *SubAgentTool) childMaxIterations() int {

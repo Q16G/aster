@@ -37,6 +37,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		react.EventTypeTaskItem,
 		react.EventTypeAgentEnter,
 		react.EventTypeAgentExit,
+		react.EventTypeStepReplanResult,
 		react.EventTypeStepSummaryResult,
 		react.EventTypeFinalAnswerResult:
 		m.clearRetryState()
@@ -145,7 +146,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeThink:
 		m.flushStreamAndPersist()
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
-			if m.isStructuredOutputPhase() {
+			if m.runtimePhase == "step_replan" {
+				m.thinkingPanel.UpdateLastEntry(formatStepReplanPanelText(thinkDelta))
+			} else if m.isStructuredOutputPhase() {
 				m.thinkingPanel.UpdateLastEntry("thinking...")
 			} else {
 				m.chat.AppendThinkingWithEventID(thinkDelta, event.EventID)
@@ -171,6 +174,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.runtimePhase = phase
 			phaseStatus := ""
 			switch phase {
+			case "step_replan":
+				phaseStatus = "evaluating plan..."
 			case "step_summary":
 				phaseStatus = "summarizing step..."
 			case "final_answer":
@@ -181,7 +186,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				phaseStatus = "executing step..."
 			}
 			switch phase {
-			case "step_summary", "final_answer":
+			case "step_replan", "step_summary", "final_answer":
 				m.thinkingPanel.Show(phase)
 				if statusSummary != "" {
 					m.thinkingPanel.PushEntry(phase, statusSummary)
@@ -413,6 +418,36 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.persistPart("step_summary", stepID, string(partJSON))
 		}
 
+	case react.EventTypeStepReplanResult:
+		stepID := payloadString(event.Payload, "step_id")
+		stepName := payloadString(event.Payload, "step_name")
+		shouldReplan := payloadBool(event.Payload, "should_replan")
+		replanReason := payloadString(event.Payload, "replan_reason")
+		nextGoal := payloadString(event.Payload, "next_goal")
+		missingItems := payloadStringSlice(event.Payload, "missing_items")
+		warnings := payloadStringSlice(event.Payload, "warnings")
+		if shouldReplan {
+			m.thinkingPanel.PushEntry("step_replan", "replan requested")
+		} else {
+			m.thinkingPanel.PushEntry("step_replan", "continue current plan")
+		}
+		part := StepReplanPart{
+			StepID:       stepID,
+			StepName:     stepName,
+			ShouldReplan: shouldReplan,
+			ReplanReason: replanReason,
+			NextGoal:     nextGoal,
+			MissingItems: missingItems,
+			Warnings:     warnings,
+		}
+		m.chat.AddPart(DisplayPart{
+			Type:       PartTypeStepReplan,
+			Time:       time.Now(),
+			StepReplan: &part,
+		})
+		partJSON, _ := json.Marshal(part)
+		m.persistPart("step_replan", stepID, string(partJSON))
+
 	case react.EventTypeFinalAnswerResult:
 		m.thinkingPanel.PushEntry("final_answer", "answer delivered")
 		m.thinkingPanel.Hide()
@@ -443,10 +478,18 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 func (m *Model) isStructuredOutputPhase() bool {
 	switch m.runtimePhase {
-	case "step_summary", "final_answer":
+	case "step_replan", "step_summary", "final_answer":
 		return true
 	}
 	return false
+}
+
+func formatStepReplanPanelText(raw string) string {
+	text := strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
+	if text == "" {
+		return "thinking..."
+	}
+	return truncateDisplayWidth(text, 80)
 }
 
 func payloadExternalInterrupt(payload map[string]any) *builtin_tools.ExternalInterrupt {

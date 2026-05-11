@@ -129,6 +129,8 @@ func (m ThinkingPanelModel) View() string {
 
 	phaseLabel := m.phase
 	switch phaseLabel {
+	case "step_replan":
+		phaseLabel = "Step Replan"
 	case "step_summary":
 		phaseLabel = "Step Summary"
 	case "final_answer":

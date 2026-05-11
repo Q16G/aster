@@ -13,6 +13,7 @@ import (
 // used for both write and resume load.
 type planCurrentCheckpoint struct {
 	SessionID        string                         `json:"session_id,omitempty"`
+	Phase            builtin_tools.AgentPhase       `json:"phase,omitempty"`
 	PlanVersion      int                            `json:"plan_version,omitempty"`
 	CurrentStepID    string                         `json:"current_step_id,omitempty"`
 	Status           builtin_tools.TaskStatus       `json:"status,omitempty"`

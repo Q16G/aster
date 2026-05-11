@@ -46,6 +46,12 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	errText := strings.TrimSpace(snapshot.Error)
 	externalInterrupt := builtin_tools.CloneExternalInterrupt(snapshot.ExternalInterrupt)
 
+	stepOutcomes := snapshot.StepOutcomes
+	if reduced, err := a.reduceStepOutcomesIfNeeded(ctx, runClient, stepOutcomes); err == nil {
+		stepOutcomes = reduced
+	}
+	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, stepOutcomes)
+
 	payload := map[string]any{
 		"status":             stateStatus,
 		"state_error":        strings.TrimSpace(snapshot.Error),
@@ -54,7 +60,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"show_plan":          snapshot.NeedsPlanning,
 		"plan":               snapshot.Plan,
 		"plan_version":       snapshot.PlanVersion,
-		"step_outcomes":      snapshot.StepOutcomes,
+		"step_outcomes":      stepOutcomeViews,
 		"external_interrupt": externalInterrupt,
 		"replan_context":     snapshot.ReplanContext,
 		"active_skill_names": snapshot.ActiveSkillNames,
@@ -106,7 +112,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			runtimelog.LogJSON("info", map[string]any{
 				"event":              "final_answer_model_request",
 				"phase":              "final_answer",
-				"raw_request":        prompt,
 				"raw_request_length": len(prompt),
 			})
 			var retryResult structuredoutput.Result[FinalAnswerModelOutput]
@@ -119,7 +124,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					"event":               "final_answer_model_raw_response",
 					"phase":               "final_answer",
 					"mode":                "success",
-					"raw_response":        rawResponse,
 					"raw_response_length": len(rawResponse),
 				})
 				modelOut = retryResult.Value
@@ -132,7 +136,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 							"phase":               "final_answer",
 							"mode":                "publish_contract_parse_failed",
 							"error":               strings.TrimSpace(runErr.Error()),
-							"raw_response":        rawResponse,
 							"raw_response_length": len(rawResponse),
 						})
 						a.emitRuntimeLog("error", "final answer publish contract parse failed", snapshot, map[string]any{
@@ -147,7 +150,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 						"phase":               "final_answer",
 						"mode":                "fallback_text",
 						"error":               strings.TrimSpace(runErr.Error()),
-						"raw_response":        rawResponse,
 						"raw_response_length": len(rawResponse),
 					})
 					a.emitRuntimeLog("warning", "final answer model fell back to plain text", snapshot, map[string]any{
@@ -170,7 +172,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 						"phase":               "final_answer",
 						"mode":                "parse_failed",
 						"error":               strings.TrimSpace(runErr.Error()),
-						"raw_response":        rawResponse,
 						"raw_response_length": len(rawResponse),
 					})
 					a.emitRuntimeLog("error", "final answer model json parse failed", snapshot, map[string]any{
@@ -424,4 +425,99 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (a *Agent) canFastCloseFinalAnswer(snapshot builtin_tools.StateSnapshot, ctx context.Context) bool {
+	if snapshot.NeedsPlanning {
+		return false
+	}
+	if snapshot.ExternalInterrupt != nil {
+		return false
+	}
+	if a.requiresPublishedOutput() {
+		return false
+	}
+	if contract := a.lookupFinalAnswerOutputContract(snapshot); contract != nil && strings.TrimSpace(contract.SummaryPolicy) != "" {
+		return false
+	}
+	if len(snapshot.Plan) != 1 {
+		return false
+	}
+	if snapshot.Plan[0] == nil || snapshot.Plan[0].Status != builtin_tools.PlanStepCompleted {
+		return false
+	}
+	if snapshot.ReplanContext != nil {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
+	return true
+}
+
+func (a *Agent) fastCloseFinalAnswer(
+	snapshot builtin_tools.StateSnapshot,
+	writer *artifactWriter,
+	assessedPayload map[string]any,
+) (builtin_tools.StateSnapshot, error) {
+	stepID := ""
+	if len(snapshot.Plan) == 1 && snapshot.Plan[0] != nil {
+		stepID = strings.TrimSpace(snapshot.Plan[0].ID)
+	}
+	finalText := ""
+	if stepID != "" {
+		if outcome := findOutcome(snapshot.StepOutcomes, stepID); outcome != nil {
+			if c := strings.TrimSpace(outcome.DisplayResult); c != "" {
+				finalText = c
+			} else if c := strings.TrimSpace(outcome.Summary); c != "" {
+				finalText = c
+			}
+		}
+	}
+	if finalText == "" {
+		finalText = "任务已完成。"
+	}
+
+	finalAnswerSource := "fast_close"
+
+	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
+		NextPhase:          builtin_tools.AgentPhaseFinalAnswer,
+		Status:             builtin_tools.TaskStatusCompleted,
+		FinalAnswerContent: finalText,
+		FinalAnswerSource:  finalAnswerSource,
+	})
+	a.emitter.EmitStateChange(snapshot)
+	if snapshot.FinalAnswer != nil {
+		a.emitter.EmitFinalAnswerResult(snapshot.FinalAnswer)
+	}
+
+	assessmentPayload := map[string]any{
+		"session_id":     strings.TrimSpace(a.workspaceSessionID),
+		"plan_version":   snapshot.PlanVersion,
+		"assessed_state": assessedPayload,
+		"assessment": FinalAnswerModelOutput{
+			IsComplete:  true,
+			Status:      string(builtin_tools.TaskStatusCompleted),
+			Reason:      "single step fast close",
+			UserMessage: finalText,
+		},
+	}
+	_, err := writer.PersistFinalArtifacts(snapshot, a.workspaceSessionID, assessmentPayload, finalText)
+	if err != nil {
+		return snapshot, err
+	}
+
+	if strings.TrimSpace(finalText) != "" {
+		historyText := truncateForHistory(finalText, finalAnswerSource)
+		msg := ai.NewAIMsgInfo(historyText)
+		a.history = append(a.history, msg)
+		a.notifyHistoryReplace()
+		a.AddMemoryAssistantOutput(historyText)
+	}
+
+	a.emitRuntimeLog("info", "final answer fast closed", snapshot, map[string]any{
+		"event":          "final_answer_fast_closed",
+		"content_length": len(finalText),
+	})
+	return snapshot, nil
 }

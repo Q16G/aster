@@ -69,8 +69,8 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 				a.emitter.EmitIteration(iter, maxIterations, "terminal")
 				return a.finalizeResult(snapshot), nil
 			}
-		case builtin_tools.AgentPhaseStepSummary:
-			if err := a.runStepSummaryPhase(ctx, iter, runClient); err != nil {
+		case builtin_tools.AgentPhaseStepReplan:
+			if err := a.runStepReplanPhase(ctx, iter, runClient); err != nil {
 				a.prepareTerminalInterrupt(err)
 				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 				a.syncStepHistoryLayer(a.state.Snapshot())
@@ -121,7 +121,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
 	switch snapshot.Phase {
-	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepSummary, builtin_tools.AgentPhaseFinalAnswer:
+	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan, builtin_tools.AgentPhaseFinalAnswer:
 		return snapshot.Phase
 	default:
 		return builtin_tools.AgentPhasePlan
@@ -144,28 +144,8 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 
 	snapshot = a.state.Snapshot()
 
-	if a.shouldBypassPlanner(snapshot) {
-		stepText := strings.TrimSpace(snapshot.CurrentGoal)
-		if stepText == "" {
-			if latest := snapshot.LatestInput(); latest != nil {
-				stepText = strings.TrimSpace(latest.Content)
-			}
-		}
-		if stepText != "" {
-			items := []*builtin_tools.PlanItem{{
-				ID: "fast-1", Step: stepText, Status: builtin_tools.PlanStepPending,
-			}}
-			snapshot = a.ApplyPlanAndEmit(ctx, items, "planner bypassed: non-complex intent", false)
-			a.emitRuntimeLog("info", "planner bypassed for simple intent", snapshot, map[string]any{
-				"event":      "planner_bypassed",
-				"plan_count": 1,
-			})
-			return nil
-		}
-	}
-
 	snapshot = a.state.Snapshot()
-	input := PlannerInputFromSnapshot(snapshot, a.currentIntent, PlannerInputOptions{
+	input := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		UserInstruction:    strings.TrimSpace(a.cfg.Instruction),
 		ExtraContext:       strings.TrimSpace(extraText),
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
@@ -182,6 +162,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 	}
 
 	plannerCtx := structuredoutput.WithLogger(ctx, a.structuredOutputLogger(snapshot))
+	cfg := a.resolveStructuredOutputConfig(nil)
+	cfg.StreamHandler = a.buildStructuredOutputStreamHandler()
+	plannerCtx = structuredoutput.WithConfig(plannerCtx, cfg)
 	res, err := planner.Plan(plannerCtx, input)
 	if err != nil {
 		return err
@@ -280,7 +263,7 @@ type plannerStepContextView struct {
 	InheritedContextKeys []string `json:"inherited_context_keys,omitempty"`
 }
 
-func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, intent *IntentDecision, opts PlannerInputOptions) string {
+func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts PlannerInputOptions) string {
 	if len(snapshot.InputTimeline) == 0 {
 		return ""
 	}
@@ -481,24 +464,6 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, intent *Inte
 		}
 	}
 
-	if intent != nil {
-		intentSummary := strings.TrimSpace(intent.IntentSummary)
-		routeMode := strings.TrimSpace(string(intent.Mode))
-		if intentSummary != "" || routeMode != "" || len(intent.MatchedCapabilities) > 0 {
-			builder.WriteString("\n\n<INTENT_CONTEXT>\n意图增强上下文：\n")
-			if routeMode != "" {
-				builder.WriteString("- route_mode: " + routeMode + "\n")
-			}
-			if intentSummary != "" {
-				builder.WriteString("- intent_summary: " + intentSummary + "\n")
-			}
-			if len(intent.MatchedCapabilities) > 0 {
-				builder.WriteString("- matched_capabilities: " + strings.Join(intent.MatchedCapabilities, ", ") + "\n")
-			}
-			builder.WriteString("</INTENT_CONTEXT>")
-		}
-	}
-
 	if opts.PublishContract != "" {
 		builder.WriteString("\n\n<OUTPUT_CONTRACTS>\n")
 		builder.WriteString(fmt.Sprintf("publish_contract: %s\n", opts.PublishContract))
@@ -644,16 +609,6 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		}
 	}
 	currentStep := snapshot.CurrentStep()
-	if currentStep != nil && strings.TrimSpace(currentStep.ID) != "" {
-		stepID := strings.TrimSpace(currentStep.ID)
-		if strings.TrimSpace(a.stepBaselineStepID) != stepID {
-			a.stepBaselineStepID = stepID
-			a.stepBaselineAt = time.Now()
-			if a.stepDiffer != nil {
-				a.stepDiffer.SetBaseline()
-			}
-		}
-	}
 	a.emitRuntimeLog("info", "enter step phase", snapshot, map[string]any{
 		"event":        "phase_enter",
 		"current_step": currentStep,
@@ -896,29 +851,6 @@ func stepIDOf(step *builtin_tools.PlanItem) string {
 		return ""
 	}
 	return strings.TrimSpace(step.ID)
-}
-
-func (a *Agent) shouldBypassPlanner(snapshot builtin_tools.StateSnapshot) bool {
-	if a.currentIntent == nil {
-		return false
-	}
-	if a.currentIntent.Complexity == "complex" || a.currentIntent.Complexity == "unknown" {
-		return false
-	}
-	if snapshot.ReplanContext != nil || len(snapshot.Plan) > 0 {
-		return false
-	}
-	if len(snapshot.StepOutcomes) > 0 {
-		return false
-	}
-	latest := snapshot.LatestInput()
-	if latest == nil {
-		return false
-	}
-	if len([]rune(strings.TrimSpace(latest.Content))) > 200 || strings.Count(strings.TrimSpace(latest.Content), "\n") >= 3 {
-		return false
-	}
-	return true
 }
 
 // blockingStepFailure 已由 step_summary -> final_answer 的统一链路覆盖；本次重构不再提前截断。

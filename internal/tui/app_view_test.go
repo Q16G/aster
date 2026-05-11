@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +115,34 @@ func TestAgentDoneClearsRetryState(t *testing.T) {
 	updated := model.(Model)
 	if updated.retryState != nil {
 		t.Fatalf("expected retry state cleared after agent done, got %#v", updated.retryState)
+	}
+}
+
+func TestAgentDonePersistsHistoryAfterFailure(t *testing.T) {
+	m := newViewTestModel()
+	m.agentRunning = true
+	m.agentCtx = &AgentExecContext{
+		InitialHistory: []*ai.MsgInfo{ai.NewUserMsgInfo("old context")},
+	}
+
+	history := []*ai.MsgInfo{
+		ai.NewUserMsgInfo("please continue"),
+		ai.NewAIMsgInfo("partial reply"),
+	}
+
+	model, _ := m.Update(AgentDoneMsg{
+		Err:     errors.New("context canceled"),
+		History: history,
+	})
+	updated := model.(Model)
+	if updated.agentCtx == nil {
+		t.Fatal("expected agent context to remain available")
+	}
+	if got := len(updated.agentCtx.InitialHistory); got != len(history) {
+		t.Fatalf("expected latest history to be preserved after failure, got %d entries", got)
+	}
+	if got := strings.TrimSpace(fmt.Sprintf("%v", updated.agentCtx.InitialHistory[0].Content)); got != "please continue" {
+		t.Fatalf("expected failed run history to overwrite stale context, got %q", got)
 	}
 }
 
