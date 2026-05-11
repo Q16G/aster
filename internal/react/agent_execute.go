@@ -12,8 +12,11 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/memory"
+	"aster/internal/react/persistv2"
 	"aster/internal/structuredoutput"
 	"aster/internal/utils"
+
+	"github.com/google/uuid"
 )
 
 type ExecuteOption func(*ExecuteConfig)
@@ -28,9 +31,21 @@ type ExecuteConfig struct {
 	resumeExecutionIntent      bool
 	forceColdStart             bool
 	resumeOnly                 bool
+	interruptResolution        *interruptResolution
+	interruptCancel            *interruptCancel
 	resultSource               ResultSource
 	publishContract            string
 	finalAnswerPublish         *FinalAnswerPublishConfig
+}
+
+type interruptResolution struct {
+	InterruptID string
+	Answer      string
+}
+
+type interruptCancel struct {
+	InterruptID string
+	Reason      string
 }
 
 func normalizeWorkspaceRootDir(rootDir string) string {
@@ -139,6 +154,33 @@ func WithResumeOnly() ExecuteOption {
 	}
 }
 
+// WithInterruptResolution submits an answer for a previously raised interrupt.
+// This is used by the UI to resume a session that is WAITING_FOR_HUMAN.
+func WithInterruptResolution(interruptID string, answer string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.interruptResolution = &interruptResolution{
+			InterruptID: strings.TrimSpace(interruptID),
+			Answer:      answer,
+		}
+	}
+}
+
+// WithInterruptCancel cancels a previously raised interrupt.
+func WithInterruptCancel(interruptID string, reason string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.interruptCancel = &interruptCancel{
+			InterruptID: strings.TrimSpace(interruptID),
+			Reason:      strings.TrimSpace(reason),
+		}
+	}
+}
+
 // WithSkipIntentPrelude is kept for backward compatibility; it's now a no-op
 // since the Intent Prelude system has been removed.
 func WithSkipIntentPrelude() ExecuteOption {
@@ -181,10 +223,6 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return nil, fmt.Errorf("input is required")
-	}
 	defer a.runFinishHooks()
 	var runResult *builtin_tools.RunResult
 
@@ -193,6 +231,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		if opt != nil {
 			opt(cfg)
 		}
+	}
+	input = strings.TrimSpace(input)
+	if input == "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil && !cfg.resumeOnly {
+		return nil, fmt.Errorf("input is required")
 	}
 	extraText := cfg.extraText
 	taskContext := cfg.taskContext
@@ -250,62 +292,381 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 
 	// A reused agent should keep accumulated history, but each top-level Execute
 	// starts a fresh runtime state machine for the current turn.
-	a.currentRunID = strings.TrimSpace(cfg.runID)
-	if a.currentRunID == "" {
-		a.currentRunID = generateAgentRunID()
+	a.currentTurnID = strings.TrimSpace(cfg.runID)
+	if a.currentTurnID == "" {
+		a.currentTurnID = generateAgentTurnID()
 	}
+	// Legacy field: the codebase still uses RunID as a correlation id in tool runtime.
+	// In V2 semantics, this value is the current turn_id.
+	a.currentRunID = a.currentTurnID
 	a.currentResultSource = normalizeResultSource(cfg.resultSource)
 	a.currentPublishContract = strings.TrimSpace(cfg.publishContract)
 	a.currentFinalAnswerPublish = normalizeFinalAnswerPublishConfig(cfg.finalAnswerPublish)
 
-	// Resume decision: explicit caller intent + checkpoint data, no input text parsing.
-	probe, _ := probeDurableResume(a.workspaceRootDir, a.workspaceNamespace)
-	resume := cfg.resumeExecutionIntent && probe.HasCheckpoint && !cfg.forceColdStart
+	// V2 persistence store: session_id is stable, turn_id is per Execute call.
+	// V2 is not compatible with legacy durable-resume checkpoints.
+	if strings.TrimSpace(a.workspaceSessionID) == "" {
+		// Non-TUI callers may not provide a stable session id yet; use a local id so V2 is still usable.
+		a.workspaceSessionID = uuid.NewString()
+	}
+	store, storeErr := persistv2.Open(a.workspaceRootDir, a.workspaceSessionID)
+	if storeErr != nil {
+		return nil, storeErr
+	}
+	a.v2Store = store
+
+	// Ensure session exists in V2.
+	if snap, err := store.LoadSnapshot(); err == nil && snap != nil && snap.LastSeq == 0 {
+		appended, _ := store.AppendEvent(&persistv2.Event{Type: "SESSION_CREATED"})
+		lastSeq := uint64(0)
+		if appended != nil {
+			lastSeq = appended.Seq
+		}
+		_ = store.SaveSnapshotAtomic(&persistv2.Snapshot{
+			SessionID:    a.workspaceSessionID,
+			SessionState: persistv2.SessionStateIdle,
+			LastSeq:      lastSeq,
+		})
+	}
+
+	// V2: resume decision is snapshot-based, and legacy checkpoints are ignored.
+	v2Snap, _ := store.LoadSnapshot()
+	waitingForHuman := v2Snap != nil &&
+		v2Snap.SessionState == persistv2.SessionStateWaitingForHuman &&
+		v2Snap.PendingInterrupt != nil &&
+		strings.TrimSpace(v2Snap.PendingInterrupt.InterruptID) != ""
+
+	// If an interrupt is pending, block new input until it is resolved/cancelled.
+	// This is critical to avoid "state by guess" and to keep outstanding tool_call_id consistent.
+	if waitingForHuman && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
+		pi := v2Snap.PendingInterrupt
+		return &builtin_tools.RunResult{
+			Success:    false,
+			TurnID:     strings.TrimSpace(pi.TurnID),
+			TurnStatus: string(persistv2.TurnStatusInterrupted),
+			PendingInterrupt: &builtin_tools.PendingInterrupt{
+				InterruptID: strings.TrimSpace(pi.InterruptID),
+				Question:    strings.TrimSpace(pi.Question),
+				InputType:   strings.TrimSpace(pi.InputType),
+				Options:     builtin_tools.CloneStringSlice(pi.Options),
+				Context:     builtin_tools.CloneAnyMap(pi.Context),
+			},
+		}, nil
+	}
+
+	resumeIntent := cfg.resumeExecutionIntent || cfg.interruptResolution != nil || cfg.interruptCancel != nil
+	resume := resumeIntent && v2Snap != nil && v2Snap.LastSeq > 0 && !cfg.forceColdStart
+
+	// Fast path: resumeOnly returns the latest deliverable output from V2 snapshot without calling the model.
+	if resume && cfg.resumeOnly && v2Snap != nil && v2Snap.LatestFinal != nil {
+		content := strings.TrimSpace(v2Snap.LatestFinal.Content)
+		if content == "" && strings.TrimSpace(v2Snap.LatestFinal.BlobRef) != "" {
+			if b, berr := store.ReadBlob(v2Snap.LatestFinal.BlobRef); berr == nil && len(b) > 0 {
+				content = strings.TrimSpace(string(b))
+			}
+		}
+		if content != "" {
+			return &builtin_tools.RunResult{Success: true, Result: content}, nil
+		}
+	}
 
 	if a.state != nil {
-		if resume {
-			rehydrated := rehydrateFromProbe(probe)
-			_ = a.state.Replace(rehydrated)
+		if resume && v2Snap != nil && strings.TrimSpace(v2Snap.RuntimeStateBlobRef) != "" {
+			// Resume from a persisted runtime snapshot (primarily used for HIL / crash recovery).
+			if err := a.restoreRuntimeFromV2Snapshot(store, v2Snap); err != nil {
+				return nil, err
+			}
 		} else {
+			// Fresh turn: reset the runtime state machine.
 			a.state.Reset()
 		}
-		_ = a.state.AppendInputTimeline(input)
+
+		// Only a "real" user submission should extend the goal timeline. Interrupt resolution/cancel
+		// resumes the previous in-flight execution and should not mutate CurrentGoal.
+		if input != "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
+			_ = a.state.AppendInputTimeline(input)
+		}
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
 	a.resetRunMemory(ctx, extraText, runClient)
 
-	userMsg := ai.NewUserMsgInfo(input)
-	a.history = append(a.history, userMsg)
-	a.notifyHistoryAppend(userMsg)
+	if input != "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
+		userMsg := ai.NewUserMsgInfo(input)
+		a.history = append(a.history, userMsg)
+		a.notifyHistoryAppend(userMsg)
+	}
+
+	startedEv, _ := store.AppendEvent(&persistv2.Event{
+		Type:   "TURN_STARTED",
+		TurnID: a.currentTurnID,
+		Payload: map[string]any{
+			"input": input,
+		},
+	})
+	lastSeq := uint64(0)
+	if startedEv != nil {
+		lastSeq = startedEv.Seq
+	}
+	if snap, _ := store.LoadSnapshot(); snap != nil {
+		snap.SessionID = a.workspaceSessionID
+		snap.SessionState = persistv2.SessionStateBusy
+		startedAt := time.Now().UnixMilli()
+		if startedEv != nil && startedEv.TimeUnixMs > 0 {
+			startedAt = startedEv.TimeUnixMs
+		}
+		snap.CurrentTurn = &persistv2.Turn{
+			TurnID:    a.currentTurnID,
+			Status:    persistv2.TurnStatusRunning,
+			Input:     input,
+			StartedAt: startedAt,
+		}
+		snap.LastSeq = lastSeq
+		_ = store.SaveSnapshotAtomic(snap)
+	}
+
+	// If this Execute() is resolving/cancelling a pending interrupt, record the external event
+	// and inject the corresponding tool_result into the restored step transcript BEFORE we
+	// call the model again.
+	if cfg.interruptResolution != nil || cfg.interruptCancel != nil {
+		latestSnap, _ := store.LoadSnapshot()
+		pending := (*persistv2.PendingInterrupt)(nil)
+		if latestSnap != nil {
+			pending = latestSnap.PendingInterrupt
+		}
+		if pending == nil || strings.TrimSpace(pending.InterruptID) == "" {
+			return nil, fmt.Errorf("no pending interrupt to resolve")
+		}
+
+		interruptID := strings.TrimSpace(pending.InterruptID)
+		if cfg.interruptResolution != nil && strings.TrimSpace(cfg.interruptResolution.InterruptID) != "" &&
+			strings.TrimSpace(cfg.interruptResolution.InterruptID) != interruptID {
+			return nil, fmt.Errorf("interrupt_id mismatch: pending=%s got=%s", interruptID, strings.TrimSpace(cfg.interruptResolution.InterruptID))
+		}
+		if cfg.interruptCancel != nil && strings.TrimSpace(cfg.interruptCancel.InterruptID) != "" &&
+			strings.TrimSpace(cfg.interruptCancel.InterruptID) != interruptID {
+			return nil, fmt.Errorf("interrupt_id mismatch: pending=%s got=%s", interruptID, strings.TrimSpace(cfg.interruptCancel.InterruptID))
+		}
+
+		// Idempotency guard: if already resolved, don't append duplicate events.
+		if pending.ResolvedAt == 0 {
+			switch {
+			case cfg.interruptResolution != nil:
+				answer := cfg.interruptResolution.Answer
+				answerBlob := ""
+				if len(answer) > 8*1024 {
+					if ref, berr := store.WriteBlob([]byte(answer)); berr == nil && ref != "" {
+						answerBlob = ref
+						answer = ""
+					}
+				}
+				ev, _ := store.AppendEvent(&persistv2.Event{
+					Type:        "INTERRUPT_RESOLVED",
+					TurnID:      strings.TrimSpace(a.currentTurnID),
+					InterruptID: interruptID,
+					Payload: map[string]any{
+						"answer":          answer,
+						"answer_blob_ref": answerBlob,
+					},
+				})
+				if ev != nil {
+					snap2, _ := store.LoadSnapshot()
+					if snap2 != nil {
+						_ = persistv2.ReduceSnapshot(snap2, ev)
+						_ = store.SaveSnapshotAtomic(snap2)
+					}
+				}
+
+			case cfg.interruptCancel != nil:
+				ev, _ := store.AppendEvent(&persistv2.Event{
+					Type:        "INTERRUPT_CANCELLED",
+					TurnID:      strings.TrimSpace(a.currentTurnID),
+					InterruptID: interruptID,
+					Payload: map[string]any{
+						"reason": strings.TrimSpace(cfg.interruptCancel.Reason),
+					},
+				})
+				if ev != nil {
+					snap2, _ := store.LoadSnapshot()
+					if snap2 != nil {
+						_ = persistv2.ReduceSnapshot(snap2, ev)
+						_ = store.SaveSnapshotAtomic(snap2)
+					}
+				}
+			}
+		}
+
+		// Inject tool_result so the next model call sees a consistent tool-call sequence.
+		if cfg.interruptResolution != nil {
+			callID := strings.TrimSpace(pending.ToolCallID)
+			if callID == "" {
+				return nil, fmt.Errorf("pending interrupt missing tool_call_id")
+			}
+			out := buildHumanConfirmToolResultJSON(interruptID, strings.TrimSpace(pending.InputType), cfg.interruptResolution.Answer)
+			a.stepHistory = append(a.stepHistory, ai.NewToolCallResultMsgInfo(out, callID))
+		}
+		if cfg.interruptCancel != nil {
+			// Cancel simply returns to IDLE without resuming the blocked tool call.
+			return &builtin_tools.RunResult{
+				Success:    false,
+				TurnID:     strings.TrimSpace(a.currentTurnID),
+				TurnStatus: string(persistv2.TurnStatusCancelled),
+				Error:      "interrupt cancelled",
+			}, nil
+		}
+	}
 
 	// Terminal short-circuit: only when explicitly resumeOnly and the checkpoint has a deliverable final.
 	// Use probe.Snapshot (which preserves the original completed status) instead of the
 	// rehydrated state snapshot — rehydrateFromProbe resets status to Running for the
 	// general resume path, but the return_final shortcut must honour the original terminal
 	// status so that finalizeResult returns success.
-	if resume && cfg.resumeOnly && probe.DeliverableFinal && a.state != nil {
-		probeSnapshot := probe.Snapshot
-		if probeSnapshot.FinalAnswer != nil {
-			finalText := strings.TrimSpace(probeSnapshot.FinalAnswer.Content)
-			if finalText == "" {
-				finalText = strings.TrimSpace(probeSnapshot.FinalAnswer.PublishedOutput)
-			}
-			if finalText != "" {
-				historyText := truncateForHistory(finalText, strings.TrimSpace(probeSnapshot.FinalAnswer.Source))
-				msg := ai.NewAIMsgInfo(historyText)
-				a.history = append(a.history, msg)
-				a.notifyHistoryAppend(msg)
-			}
-		}
-		return a.finalizeResult(probeSnapshot), nil
-	}
+	// V2: resumeOnly short-circuit is not yet implemented (legacy checkpoints are ignored).
 
 	runResult, err := a.runSchedulerLoop(ctx, runClient, extraText, taskContext, maxIterations)
 	if err != nil {
+		finishedEv, _ := store.AppendEvent(&persistv2.Event{
+			Type:   "TURN_FINISHED",
+			TurnID: a.currentTurnID,
+			Payload: map[string]any{
+				"status": "failed",
+				"error":  err.Error(),
+			},
+		})
+		lastSeq := uint64(0)
+		if finishedEv != nil {
+			lastSeq = finishedEv.Seq
+		}
+		if snap, _ := store.LoadSnapshot(); snap != nil {
+			snap.SessionID = a.workspaceSessionID
+			snap.SessionState = persistv2.SessionStateIdle
+			finishedAt := time.Now().UnixMilli()
+			if finishedEv != nil && finishedEv.TimeUnixMs > 0 {
+				finishedAt = finishedEv.TimeUnixMs
+			}
+			startedAt := time.Now().Add(-1 * time.Second).UnixMilli()
+			if snap.CurrentTurn != nil && snap.CurrentTurn.StartedAt > 0 {
+				startedAt = snap.CurrentTurn.StartedAt
+			}
+			snap.CurrentTurn = &persistv2.Turn{
+				TurnID:      a.currentTurnID,
+				Status:      persistv2.TurnStatusFailed,
+				Input:       input,
+				StartedAt:   startedAt,
+				FinishedAt:  finishedAt,
+				Error:       err.Error(),
+			}
+			snap.PendingInterrupt = nil
+			snap.RuntimeStateBlobRef = ""
+			snap.StepHistoryBlobRef = ""
+			snap.LastSeq = lastSeq
+			_ = store.SaveSnapshotAtomic(snap)
+		}
 		return nil, err
 	}
+	if runResult == nil {
+		runResult = &builtin_tools.RunResult{Success: false, Error: "failed"}
+	}
+	if strings.TrimSpace(runResult.TurnID) == "" {
+		runResult.TurnID = strings.TrimSpace(a.currentTurnID)
+	}
+	if strings.TrimSpace(runResult.TurnStatus) == "" {
+		if runResult.Success {
+			runResult.TurnStatus = string(persistv2.TurnStatusSucceeded)
+		} else {
+			runResult.TurnStatus = string(persistv2.TurnStatusFailed)
+		}
+	}
+	status := strings.TrimSpace(runResult.TurnStatus)
+
+	finalState := builtin_tools.StateSnapshot{}
+	if a.state != nil {
+		finalState = a.state.Snapshot()
+	}
+	finalContent := ""
+	finalPublished := ""
+	if finalState.FinalAnswer != nil {
+		finalContent = strings.TrimSpace(finalState.FinalAnswer.Content)
+		finalPublished = strings.TrimSpace(finalState.FinalAnswer.PublishedOutput)
+	}
+	if finalContent == "" && runResult != nil && runResult.Success {
+		finalContent = strings.TrimSpace(runResult.Result)
+	}
+	finalBlob := ""
+	if len(finalContent) > 8*1024 {
+		if ref, berr := store.WriteBlob([]byte(finalContent)); berr == nil && ref != "" {
+			finalBlob = ref
+			finalContent = ""
+		}
+	}
+
+	finishedEv, _ := store.AppendEvent(&persistv2.Event{
+		Type:   "TURN_FINISHED",
+		TurnID: a.currentTurnID,
+		Payload: map[string]any{
+			"status": status,
+			"error":  firstNonEmpty(runResultErrorText(runResult), ""),
+		},
+	})
+	lastSeq = uint64(0)
+	if finishedEv != nil {
+		lastSeq = finishedEv.Seq
+	}
+	if snap, _ := store.LoadSnapshot(); snap != nil {
+		snap.SessionID = a.workspaceSessionID
+		finishedAt := time.Now().UnixMilli()
+		if finishedEv != nil && finishedEv.TimeUnixMs > 0 {
+			finishedAt = finishedEv.TimeUnixMs
+		}
+		if snap.CurrentTurn == nil || strings.TrimSpace(snap.CurrentTurn.TurnID) != strings.TrimSpace(a.currentTurnID) {
+			snap.CurrentTurn = &persistv2.Turn{TurnID: strings.TrimSpace(a.currentTurnID)}
+		}
+		snap.CurrentTurn.Status = persistv2.TurnStatus(status)
+		snap.CurrentTurn.Input = input
+		snap.CurrentTurn.FinishedAt = finishedAt
+		snap.CurrentTurn.Error = runResultErrorText(runResult)
+
+		switch persistv2.TurnStatus(status) {
+		case persistv2.TurnStatusInterrupted:
+			// Session stays blocked on the interrupt.
+			snap.SessionState = persistv2.SessionStateWaitingForHuman
+			// Keep runtime_state + step_history blobs so we can resume after restart.
+		default:
+			snap.SessionState = persistv2.SessionStateIdle
+			snap.PendingInterrupt = nil
+			snap.RuntimeStateBlobRef = ""
+			snap.StepHistoryBlobRef = ""
+		}
+
+		// Only successful turns update LatestFinal.
+		if persistv2.TurnStatus(status) == persistv2.TurnStatusSucceeded {
+			snap.LatestFinal = &persistv2.FinalOutput{
+				TurnID:          a.currentTurnID,
+				Status:          status,
+				Content:         finalContent,
+				PublishedOutput: finalPublished,
+				BlobRef:         finalBlob,
+				UpdatedAt:       time.Now().UnixMilli(),
+			}
+		}
+		snap.LastSeq = lastSeq
+		_ = store.SaveSnapshotAtomic(snap)
+	}
 	return runResult, nil
+}
+
+func generateAgentTurnID() string {
+	return "turn-" + time.Now().UTC().Format("20060102-150405") + "-" + generateRandomString(6)
+}
+
+func runResultErrorText(res *builtin_tools.RunResult) string {
+	if res == nil {
+		return ""
+	}
+	if strings.TrimSpace(res.Error) != "" {
+		return strings.TrimSpace(res.Error)
+	}
+	return ""
 }
 
 func (a *Agent) bootstrapWorkspaceState(initial *builtin_tools.StateSnapshot) {
@@ -395,7 +756,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		if msg == "" {
 			msg = "canceled"
 		}
-		return &builtin_tools.RunResult{Success: false, Error: msg}
+		return &builtin_tools.RunResult{Success: false, Error: msg, TurnStatus: string(persistv2.TurnStatusCancelled)}
 	}
 
 	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {

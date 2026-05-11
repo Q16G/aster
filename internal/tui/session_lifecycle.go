@@ -10,6 +10,8 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
+	"aster/internal/react/persistv2"
+	tuiui "aster/internal/tui/ui"
 )
 
 func (m *Model) ensureSession() bool {
@@ -134,12 +136,54 @@ func (m *Model) switchSession(idOrPrefix string) {
 			}
 
 			m.restoreSessionState()
+			m.restorePendingInterruptFromV2()
 			m.statusText = fmt.Sprintf("session: %s", s.ID[:8])
 			m.refreshSidebarData()
 			return
 		}
 	}
 	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "session not found: " + idOrPrefix}})
+}
+
+func (m *Model) restorePendingInterruptFromV2() {
+	if m == nil || m.agentCtx == nil || m.currentSessionID == "" || m.agentCtx.SessionDir == "" {
+		return
+	}
+	workspaceRoot := m.agentCtx.SessionDir + "/workspace"
+	store, err := persistv2.Open(workspaceRoot, m.currentSessionID)
+	if err != nil {
+		return
+	}
+	snap, err := store.LoadSnapshot()
+	if err != nil || snap == nil {
+		return
+	}
+	if snap.SessionState != persistv2.SessionStateWaitingForHuman || snap.PendingInterrupt == nil {
+		return
+	}
+	if strings.TrimSpace(snap.PendingInterrupt.InterruptID) == "" {
+		return
+	}
+	// If already resolved, do not re-prompt.
+	if snap.PendingInterrupt.ResolvedAt > 0 {
+		return
+	}
+
+	m.pendingInterrupt = &builtin_tools.PendingInterrupt{
+		InterruptID: strings.TrimSpace(snap.PendingInterrupt.InterruptID),
+		Question:    strings.TrimSpace(snap.PendingInterrupt.Question),
+		InputType:   strings.TrimSpace(snap.PendingInterrupt.InputType),
+		Options:     builtin_tools.CloneStringSlice(snap.PendingInterrupt.Options),
+		Context:     builtin_tools.CloneAnyMap(snap.PendingInterrupt.Context),
+	}
+	m.input.SetEnabled(false)
+	m.dialogStack.Clear()
+	prompt := tuiui.NewPromptDialog(m.pendingInterrupt.InterruptID, "Agent needs your input", m.pendingInterrupt.Question)
+	if len(m.pendingInterrupt.Options) > 0 {
+		prompt.WithOptions(m.pendingInterrupt.Options)
+	}
+	m.dialogStack.Push(prompt, nil)
+	m.dialogStack.SetSize(m.width, m.height)
 }
 
 func (m *Model) bindSessionToAgent() {

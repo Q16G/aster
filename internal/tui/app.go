@@ -84,6 +84,7 @@ type Model struct {
 	hadStreamDuringRun      bool
 	hadFinalAnswerDuringRun bool
 	externalInterrupt       *builtin_tools.ExternalInterrupt
+	pendingInterrupt        *builtin_tools.PendingInterrupt
 	runtimePhase            string
 	runtimeProgress         int
 	runtimeGoal             string
@@ -231,7 +232,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			if m.agentRunning && m.agentCtx != nil {
-				m.agentCtx.Cancel()
+				m.agentCtx.CancelTurn()
 				m.clearRetryState()
 				m.statusText = "cancelling..."
 				return m, nil
@@ -441,6 +442,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentRunning = false
 		m.spinner.Stop()
 		m.input.SetEnabled(true)
+		m.pendingInterrupt = nil
 		history := ai.NormalizeMsgInfoSlice(msg.History)
 		if len(history) > 0 {
 			if m.agentCtx != nil {
@@ -448,9 +450,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.recalcUsageFromHistory(history)
 		}
+		turnStatus := ""
+		if msg.Result != nil {
+			turnStatus = strings.TrimSpace(msg.Result.TurnStatus)
+		}
+
 		if msg.Err != nil {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Error: %v", msg.Err)}})
 			m.statusText = "error"
+		} else if turnStatus == "interrupted" && msg.Result != nil && msg.Result.PendingInterrupt != nil {
+			// Human-in-the-loop: the turn ends in WAITING_FOR_HUMAN instead of "failed".
+			m.pendingInterrupt = msg.Result.PendingInterrupt
+			m.statusText = "waiting for your input..."
+			m.input.SetEnabled(false)
+			prompt := tuiui.NewPromptDialog(m.pendingInterrupt.InterruptID, "Agent needs your input", m.pendingInterrupt.Question)
+			if len(m.pendingInterrupt.Options) > 0 {
+				prompt.WithOptions(m.pendingInterrupt.Options)
+			}
+			m.dialogStack.Push(prompt, nil)
+			m.dialogStack.SetSize(m.width, m.height)
+		} else if turnStatus == "cancelled" {
+			m.statusText = "cancelled"
 		} else if msg.Result != nil && !msg.Result.Success {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("Agent failed: %s", msg.Result.Error)}})
 			m.statusText = "failed"
@@ -471,27 +491,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				System: &SystemPart{Content: notice},
 			})
 		}
-		// Run summary
-		success := msg.Err == nil && (msg.Result == nil || msg.Result.Success)
-		agentName := ""
-		modelID := ""
-		if m.agentCtx != nil {
-			agentName = m.agentCtx.Definition.Name
+		// Run summary (skip for "interrupted/cancelled" turns; they are not user-facing completion).
+		if msg.Err == nil && turnStatus != "interrupted" && turnStatus != "cancelled" {
+			success := msg.Result == nil || msg.Result.Success
+			agentName := ""
+			modelID := ""
+			if m.agentCtx != nil {
+				agentName = m.agentCtx.Definition.Name
+			}
+			if m.providerCfg != nil {
+				modelID = m.providerCfg.ModelID
+			}
+			m.chat.AddPart(DisplayPart{
+				Type: PartTypeSummary,
+				Time: time.Now(),
+				Summary: &SummaryPart{
+					AgentName: agentName,
+					ModelID:   modelID,
+					Duration:  time.Since(m.runStartTime),
+					Success:   success,
+				},
+			})
 		}
-		if m.providerCfg != nil {
-			modelID = m.providerCfg.ModelID
-		}
-		m.chat.AddPart(DisplayPart{
-			Type: PartTypeSummary,
-			Time: time.Now(),
-			Summary: &SummaryPart{
-				AgentName: agentName,
-				ModelID:   modelID,
-				Duration:  time.Since(m.runStartTime),
-				Success:   success,
-			},
-		})
 		m.persistCurrentSession()
+		if turnStatus == "interrupted" {
+			return m, m.refreshSidebarCmd()
+		}
 		return m, tea.Batch(m.input.Focus(), m.refreshSidebarCmd())
 
 	case HumanRequestMsg:
@@ -507,6 +532,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dialogStack.Pop()
 		if strings.HasPrefix(msg.DialogID, "provider-") {
 			return m.handleProviderPromptResult(msg)
+		}
+		// Durable HIL: resolving the pending interrupt resumes the same session via V2 snapshot/events.
+		if m.pendingInterrupt != nil && msg.DialogID == m.pendingInterrupt.InterruptID && m.agentCtx != nil {
+			m.agentRunning = true
+			m.hadStreamDuringRun = false
+			m.hadFinalAnswerDuringRun = false
+			m.externalInterrupt = nil
+			m.thinkingPanel.Reset()
+			m.clearRetryState()
+			m.runStartTime = time.Now()
+			m.statusText = "thinking..."
+			m.input.SetEnabled(false)
+			m.refreshSidebarData()
+			spinnerCmd := m.spinner.Start()
+
+			interruptID := m.pendingInterrupt.InterruptID
+			m.pendingInterrupt = nil
+
+			if msg.Cancelled {
+				return m, tea.Batch(m.agentCtx.CancelInterruptCmd(interruptID), spinnerCmd)
+			}
+			return m, tea.Batch(m.agentCtx.ResolveInterruptCmd(interruptID, msg.Value), spinnerCmd)
 		}
 		if m.humanBridge != nil {
 			if msg.Cancelled {

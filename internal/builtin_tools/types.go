@@ -23,6 +23,21 @@ type RunResult struct {
 	Success bool   `json:"success"`
 	Result  string `json:"result,omitempty"`
 	Error   string `json:"error,omitempty"`
+
+	// V2 semantics: one Execute() corresponds to a turn within a stable session.
+	TurnID     string `json:"turn_id,omitempty"`
+	TurnStatus string `json:"turn_status,omitempty"` // succeeded|failed|cancelled|interrupted
+
+	// PendingInterrupt is populated when the turn ends in WAITING_FOR_HUMAN.
+	PendingInterrupt *PendingInterrupt `json:"pending_interrupt,omitempty"`
+}
+
+type PendingInterrupt struct {
+	InterruptID string         `json:"interrupt_id"`
+	Question    string         `json:"question,omitempty"`
+	InputType   string         `json:"input_type,omitempty"`
+	Options     []string       `json:"options,omitempty"`
+	Context     map[string]any `json:"context,omitempty"`
 }
 
 // ThoughtResult 思考结果
