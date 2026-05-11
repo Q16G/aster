@@ -146,6 +146,10 @@ func (s *Store) AppendEvent(ev *Event) (*Event, error) {
 	out.Seq = nextSeq
 	out.TimeUnixMs = time.Now().UnixMilli()
 	out.SessionID = firstNonEmpty(strings.TrimSpace(out.SessionID), s.sessionID)
+	if strings.TrimSpace(out.EventID) == "" {
+		// Deterministic and globally unique enough for our use: session_id + seq.
+		out.EventID = fmt.Sprintf("%s:%d", out.SessionID, out.Seq)
+	}
 	if strings.TrimSpace(out.Type) == "" {
 		return nil, fmt.Errorf("event type is empty")
 	}

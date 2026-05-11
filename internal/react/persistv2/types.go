@@ -39,6 +39,9 @@ type Event struct {
 	Seq           uint64         `json:"seq"`
 	TimeUnixMs    int64          `json:"time"`
 	Type          string         `json:"type"`
+	// EventID is an optional globally-unique identifier for referencing/deduplication.
+	// Seq remains the stable ordering key within a session.
+	EventID     string         `json:"event_id,omitempty"`
 	SessionID     string         `json:"session_id"`
 	TurnID        string         `json:"turn_id,omitempty"`
 	StepID        string         `json:"step_id,omitempty"`
