@@ -39,14 +39,17 @@ type Agent struct {
 	history       []*ai.MsgInfo
 	// StepHistory stores the in-step tool calling transcript (assistant messages + tool results).
 	// It is cleared when the current step changes so tool outputs do not leak across steps.
-	stepHistory               []*ai.MsgInfo
-	stepHistoryStepID         string
-	stepHistoryPhase          builtin_tools.AgentPhase
-	stepHistoryPlanVer        int
-	currentRunID              string
+	stepHistory        []*ai.MsgInfo
+	stepHistoryStepID  string
+	stepHistoryPhase   builtin_tools.AgentPhase
+	stepHistoryPlanVer int
+	currentRunID       string
 	// V2 persistence: session-scoped event store + per-turn correlation id.
-	v2Store      *persistv2.Store
+	v2Store       *persistv2.Store
 	currentTurnID string
+	// currentGroupID is an aggregation key carried across a "logical execution chain"
+	// (e.g. interrupt raise -> resolve) so UI consumers can group related events.
+	currentGroupID            string
 	handoff                   *handoffState
 	emitter                   *Emitter
 	workspaceSessionID        string

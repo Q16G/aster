@@ -37,6 +37,7 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 		snap.PendingInterrupt = nil
 		snap.CurrentTurn = &Turn{
 			TurnID:    strings.TrimSpace(ev.TurnID),
+			GroupID:   strings.TrimSpace(ev.GroupID),
 			Status:    TurnStatusRunning,
 			Input:     payloadText(ev.Payload, "input"),
 			StartedAt: ev.TimeUnixMs,
@@ -197,4 +198,3 @@ func payloadStringSlice(payload map[string]any, key string) []string {
 		return nil
 	}
 }
-

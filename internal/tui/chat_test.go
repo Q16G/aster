@@ -69,13 +69,13 @@ func TestFlushThinking_EmptyBuffer(t *testing.T) {
 	}
 }
 
-func TestFlushThinking_MergesSameEventID(t *testing.T) {
+func TestFlushThinking_MergesSameGroupID(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
 
-	m.AppendThinkingWithEventID("first ", "session-1")
+	m.AppendThinkingWithGroupID("first ", "group-1")
 	m.FlushThinking()
-	m.AppendThinkingWithEventID("second", "session-1")
+	m.AppendThinkingWithGroupID("second", "group-1")
 	m.FlushThinking()
 
 	count := 0
@@ -92,13 +92,13 @@ func TestFlushThinking_MergesSameEventID(t *testing.T) {
 	}
 }
 
-func TestFlushThinking_SeparatesDifferentEventIDs(t *testing.T) {
+func TestFlushThinking_SeparatesDifferentGroupIDs(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
 
-	m.AppendThinkingWithEventID("thought A", "session-1")
+	m.AppendThinkingWithGroupID("thought A", "group-1")
 	m.FlushThinking()
-	m.AppendThinkingWithEventID("thought B", "session-2")
+	m.AppendThinkingWithGroupID("thought B", "group-2")
 	m.FlushThinking()
 
 	count := 0
@@ -112,12 +112,12 @@ func TestFlushThinking_SeparatesDifferentEventIDs(t *testing.T) {
 	}
 }
 
-func TestAppendThinkingWithEventID_SessionSwitch(t *testing.T) {
+func TestAppendThinkingWithGroupID_SessionSwitch(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
 
-	m.AppendThinkingWithEventID("old ", "session-1")
-	m.AppendThinkingWithEventID("new", "session-2")
+	m.AppendThinkingWithGroupID("old ", "group-1")
+	m.AppendThinkingWithGroupID("new", "group-2")
 
 	count := 0
 	for _, p := range m.parts {
@@ -126,8 +126,8 @@ func TestAppendThinkingWithEventID_SessionSwitch(t *testing.T) {
 			if p.Thinking.Content != "old " {
 				t.Fatalf("expected flushed content 'old ', got %q", p.Thinking.Content)
 			}
-			if p.Thinking.EventID != "session-1" {
-				t.Fatalf("expected event ID 'session-1', got %q", p.Thinking.EventID)
+			if p.Thinking.GroupID != "group-1" {
+				t.Fatalf("expected group ID 'group-1', got %q", p.Thinking.GroupID)
 			}
 		}
 	}
@@ -139,14 +139,14 @@ func TestAppendThinkingWithEventID_SessionSwitch(t *testing.T) {
 	}
 }
 
-func TestAppendThinkingWithEventID_ResumeAfterFlush(t *testing.T) {
+func TestAppendThinkingWithGroupID_ResumeAfterFlush(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
 
-	m.AppendThinkingWithEventID("part1 ", "session-1")
+	m.AppendThinkingWithGroupID("part1 ", "group-1")
 	m.FlushThinking()
 
-	m.AppendThinkingWithEventID("part2", "session-1")
+	m.AppendThinkingWithGroupID("part2", "group-1")
 
 	thinkingParts := 0
 	for _, p := range m.parts {

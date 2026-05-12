@@ -59,3 +59,31 @@ func TestEmitter_PushProcessorKeepsSharedSeqID(t *testing.T) {
 		}
 	}
 }
+
+func TestEmitter_AssignsRecordUniqueEventID(t *testing.T) {
+	var eventIDs []string
+
+	emitter := NewEmitter("demo-session", "demo-agent", func(e *AgentOutputEvent) error {
+		if e == nil {
+			return nil
+		}
+		eventIDs = append(eventIDs, e.EventID)
+		return nil
+	})
+
+	_ = emitter.Emit(&AgentOutputEvent{Type: EventTypeLog, NodeID: "log"})
+	_ = emitter.Emit(&AgentOutputEvent{Type: EventTypeLog, NodeID: "log"})
+
+	if len(eventIDs) != 2 {
+		t.Fatalf("unexpected emitted events: got=%d want=%d", len(eventIDs), 2)
+	}
+	if eventIDs[0] == "" || eventIDs[1] == "" {
+		t.Fatalf("expected non-empty event IDs, got=%v", eventIDs)
+	}
+	if eventIDs[0] == eventIDs[1] {
+		t.Fatalf("expected distinct event IDs, got=%v", eventIDs)
+	}
+	if eventIDs[0] != "demo-session:1" || eventIDs[1] != "demo-session:2" {
+		t.Fatalf("unexpected event ID assignment: got=%v want=%v", eventIDs, []string{"demo-session:1", "demo-session:2"})
+	}
+}
