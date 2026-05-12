@@ -22,11 +22,19 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 		if ctx != nil && ctx.Err() != nil {
 			snapshot := a.state.Snapshot()
 			if a.v2Store != nil && errors.Is(context.Cause(ctx), ErrTurnAbortRequested) {
-				_, _ = a.v2Store.AppendEvent(&persistv2.Event{
+				if _, err := a.v2Store.AppendEvent(&persistv2.Event{
 					Type:    "TURN_ABORT_REQUESTED",
 					GroupID: strings.TrimSpace(a.currentGroupID),
 					TurnID:  strings.TrimSpace(a.currentTurnID),
-				})
+				}); err != nil {
+					// Best-effort signal: the turn is already being aborted, but persistence failure
+					// must still be visible to the user for diagnostics.
+					a.emitRuntimeLog("error", "persistence failed: append_event", snapshot, map[string]any{
+						"kind":   "persistence",
+						"action": "append_event",
+						"err":    err.Error(),
+					})
+				}
 			}
 			a.emitRuntimeLog("warning", "scheduler context canceled", snapshot, map[string]any{
 				"event": "scheduler_context_canceled",
@@ -800,36 +808,124 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		question, inputType, options, ctxMap := parseHumanConfirmArgs(argsMap)
 		interruptID := "interrupt-" + uuid.NewString()
 
-		if a.v2Store != nil {
-			ev, _ := a.v2Store.AppendEvent(&persistv2.Event{
-				Type:        "INTERRUPT_RAISED",
-				GroupID:     strings.TrimSpace(a.currentGroupID),
-				TurnID:      strings.TrimSpace(a.currentTurnID),
-				InterruptID: interruptID,
-				Payload: map[string]any{
-					"question":     question,
-					"input_type":   inputType,
-					"options":      options,
-					"context":      ctxMap,
-					"tool_call_id": callID,
-				},
+		// Persistence barrier (P0 hard requirement):
+		// - runtime_state + step_history MUST be durably written (as blobs)
+		// - INTERRUPT_RAISED MUST be appended with blob refs in payload
+		// - snapshot must be updated successfully
+		// Otherwise we must NOT enter WAITING_FOR_HUMAN, because resume would be unreliable.
+		if a.v2Store == nil {
+			a.emitRuntimeLog("error", "persistence store missing for human_confirm", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "human_confirm_raise",
 			})
+			return fmt.Errorf("persistence store is not available for human_confirm")
+		}
 
-			snap, _ := a.v2Store.LoadSnapshot()
-			if snap != nil && ev != nil {
-				_ = persistv2.ReduceSnapshot(snap, ev)
-				if raw, err := json.Marshal(a.state.Snapshot()); err == nil && len(raw) > 0 {
-					if ref, berr := a.v2Store.WriteBlob(raw); berr == nil && ref != "" {
-						snap.RuntimeStateBlobRef = ref
-					}
-				}
-				if raw, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory)); err == nil && len(raw) > 0 {
-					if ref, berr := a.v2Store.WriteBlob(raw); berr == nil && ref != "" {
-						snap.StepHistoryBlobRef = ref
-					}
-				}
-				_ = a.v2Store.SaveSnapshotAtomic(snap)
+		rawState, err := json.Marshal(a.state.Snapshot())
+		if err != nil || len(rawState) == 0 {
+			errText := "empty runtime_state"
+			if err != nil {
+				errText = err.Error()
 			}
+			a.emitRuntimeLog("error", "marshal runtime_state failed", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "write_blob",
+				"err":    errText,
+			})
+			return fmt.Errorf("marshal runtime_state failed: %w", err)
+		}
+		runtimeRef, err := a.v2Store.WriteBlob(rawState)
+		if err != nil || strings.TrimSpace(runtimeRef) == "" {
+			errText := ""
+			if err != nil {
+				errText = err.Error()
+			}
+			a.emitRuntimeLog("error", "persistence failed: write_blob(runtime_state)", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "write_blob",
+				"err":    errText,
+			})
+			return fmt.Errorf("write runtime_state blob failed: %w", err)
+		}
+
+		rawHistory, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory))
+		if err != nil || len(rawHistory) == 0 {
+			errText := "empty step_history"
+			if err != nil {
+				errText = err.Error()
+			}
+			a.emitRuntimeLog("error", "marshal step_history failed", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "write_blob",
+				"err":    errText,
+			})
+			return fmt.Errorf("marshal step_history failed: %w", err)
+		}
+		historyRef, err := a.v2Store.WriteBlob(rawHistory)
+		if err != nil || strings.TrimSpace(historyRef) == "" {
+			errText := ""
+			if err != nil {
+				errText = err.Error()
+			}
+			a.emitRuntimeLog("error", "persistence failed: write_blob(step_history)", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "write_blob",
+				"err":    errText,
+			})
+			return fmt.Errorf("write step_history blob failed: %w", err)
+		}
+
+		ev, err := a.v2Store.AppendEvent(&persistv2.Event{
+			Type:        "INTERRUPT_RAISED",
+			GroupID:     strings.TrimSpace(a.currentGroupID),
+			TurnID:      strings.TrimSpace(a.currentTurnID),
+			InterruptID: interruptID,
+			Payload: map[string]any{
+				"question":               question,
+				"input_type":             inputType,
+				"options":                options,
+				"context":                ctxMap,
+				"tool_call_id":           callID,
+				"runtime_state_blob_ref": strings.TrimSpace(runtimeRef),
+				"step_history_blob_ref":  strings.TrimSpace(historyRef),
+			},
+		})
+		if err != nil {
+			a.emitRuntimeLog("error", "persistence failed: append_event(INTERRUPT_RAISED)", prevSnapshot, map[string]any{
+				"kind":         "persistence",
+				"action":       "append_event",
+				"event_type":   "INTERRUPT_RAISED",
+				"interrupt_id": interruptID,
+				"err":          err.Error(),
+			})
+			return fmt.Errorf("append INTERRUPT_RAISED event failed: %w", err)
+		}
+
+		snap, lerr := a.v2Store.LoadSnapshot()
+		if lerr != nil {
+			a.emitRuntimeLog("error", "persistence failed: load_snapshot after interrupt raised", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "load_snapshot",
+				"err":    lerr.Error(),
+			})
+			return fmt.Errorf("load snapshot after interrupt raised failed: %w", lerr)
+		}
+		if snap == nil {
+			return fmt.Errorf("snapshot is nil after interrupt raised")
+		}
+		if rerr := persistv2.ReduceSnapshot(snap, ev); rerr != nil {
+			return fmt.Errorf("reduce snapshot failed: %w", rerr)
+		}
+		// Also keep blob refs in snapshot for fast reads; they are still present in the event payload.
+		snap.RuntimeStateBlobRef = strings.TrimSpace(runtimeRef)
+		snap.StepHistoryBlobRef = strings.TrimSpace(historyRef)
+		if serr := a.v2Store.SaveSnapshotAtomic(snap); serr != nil {
+			a.emitRuntimeLog("error", "persistence failed: save_snapshot after interrupt raised", prevSnapshot, map[string]any{
+				"kind":   "persistence",
+				"action": "save_snapshot",
+				"err":    serr.Error(),
+			})
+			return fmt.Errorf("save snapshot after interrupt raised failed: %w", serr)
 		}
 
 		waitSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
