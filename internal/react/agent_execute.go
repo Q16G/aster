@@ -1038,7 +1038,8 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 	switch phase {
 	case builtin_tools.AgentPhaseStep:
 		switch toolName {
-		case builtin_tools.TaskStatusQueryToolName:
+		case builtin_tools.TaskStatusQueryToolName,
+			builtin_tools.TaskPlannerToolName:
 			return false
 		default:
 			return true

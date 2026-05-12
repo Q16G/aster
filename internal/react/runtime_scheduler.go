@@ -916,7 +916,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		if rerr := persistv2.ReduceSnapshot(snap, ev); rerr != nil {
 			return fmt.Errorf("reduce snapshot failed: %w", rerr)
 		}
-		// Also keep blob refs in snapshot for fast reads; they are still present in the event payload.
+		// Redundant after reducer fix — kept as defensive double-write.
 		snap.RuntimeStateBlobRef = strings.TrimSpace(runtimeRef)
 		snap.StepHistoryBlobRef = strings.TrimSpace(historyRef)
 		if serr := a.v2Store.SaveSnapshotAtomic(snap); serr != nil {
