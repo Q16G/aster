@@ -354,6 +354,20 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}, nil
 	}
 
+	// group_id is the aggregation key for UI/event consumers.
+	// - For a fresh user turn: generate a new group_id.
+	// - For interrupt resolve/cancel: reuse the group_id of the interrupted in-flight chain
+	//   (stored in snapshot.current_turn.group_id) so consumers can keep the chain grouped.
+	a.currentGroupID = ""
+	if cfg.interruptResolution != nil || cfg.interruptCancel != nil {
+		if v2Snap != nil && v2Snap.CurrentTurn != nil && strings.TrimSpace(v2Snap.CurrentTurn.GroupID) != "" {
+			a.currentGroupID = strings.TrimSpace(v2Snap.CurrentTurn.GroupID)
+		}
+	}
+	if strings.TrimSpace(a.currentGroupID) == "" {
+		a.currentGroupID = uuid.NewString()
+	}
+
 	resumeIntent := cfg.resumeExecutionIntent || cfg.interruptResolution != nil || cfg.interruptCancel != nil
 	resume := resumeIntent && v2Snap != nil && v2Snap.LastSeq > 0 && !cfg.forceColdStart
 
@@ -398,8 +412,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	startedEv, _ := store.AppendEvent(&persistv2.Event{
-		Type:   "TURN_STARTED",
-		TurnID: a.currentTurnID,
+		Type:    "TURN_STARTED",
+		GroupID: strings.TrimSpace(a.currentGroupID),
+		TurnID:  a.currentTurnID,
 		Payload: map[string]any{
 			"input": input,
 		},
@@ -417,6 +432,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}
 		snap.CurrentTurn = &persistv2.Turn{
 			TurnID:    a.currentTurnID,
+			GroupID:   strings.TrimSpace(a.currentGroupID),
 			Status:    persistv2.TurnStatusRunning,
 			Input:     input,
 			StartedAt: startedAt,
@@ -462,6 +478,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				}
 				ev, _ := store.AppendEvent(&persistv2.Event{
 					Type:        "INTERRUPT_RESOLVED",
+					GroupID:     strings.TrimSpace(a.currentGroupID),
 					TurnID:      strings.TrimSpace(a.currentTurnID),
 					InterruptID: interruptID,
 					Payload: map[string]any{
@@ -480,6 +497,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			case cfg.interruptCancel != nil:
 				ev, _ := store.AppendEvent(&persistv2.Event{
 					Type:        "INTERRUPT_CANCELLED",
+					GroupID:     strings.TrimSpace(a.currentGroupID),
 					TurnID:      strings.TrimSpace(a.currentTurnID),
 					InterruptID: interruptID,
 					Payload: map[string]any{
@@ -526,8 +544,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	runResult, err := a.runSchedulerLoop(ctx, runClient, extraText, taskContext, maxIterations)
 	if err != nil {
 		finishedEv, _ := store.AppendEvent(&persistv2.Event{
-			Type:   "TURN_FINISHED",
-			TurnID: a.currentTurnID,
+			Type:    "TURN_FINISHED",
+			GroupID: strings.TrimSpace(a.currentGroupID),
+			TurnID:  a.currentTurnID,
 			Payload: map[string]any{
 				"status": "failed",
 				"error":  err.Error(),
@@ -549,12 +568,13 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				startedAt = snap.CurrentTurn.StartedAt
 			}
 			snap.CurrentTurn = &persistv2.Turn{
-				TurnID:      a.currentTurnID,
-				Status:      persistv2.TurnStatusFailed,
-				Input:       input,
-				StartedAt:   startedAt,
-				FinishedAt:  finishedAt,
-				Error:       err.Error(),
+				TurnID:     a.currentTurnID,
+				GroupID:    strings.TrimSpace(a.currentGroupID),
+				Status:     persistv2.TurnStatusFailed,
+				Input:      input,
+				StartedAt:  startedAt,
+				FinishedAt: finishedAt,
+				Error:      err.Error(),
 			}
 			snap.PendingInterrupt = nil
 			snap.RuntimeStateBlobRef = ""
@@ -601,8 +621,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	finishedEv, _ := store.AppendEvent(&persistv2.Event{
-		Type:   "TURN_FINISHED",
-		TurnID: a.currentTurnID,
+		Type:    "TURN_FINISHED",
+		GroupID: strings.TrimSpace(a.currentGroupID),
+		TurnID:  a.currentTurnID,
 		Payload: map[string]any{
 			"status": status,
 			"error":  firstNonEmpty(runResultErrorText(runResult), ""),
@@ -621,6 +642,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		if snap.CurrentTurn == nil || strings.TrimSpace(snap.CurrentTurn.TurnID) != strings.TrimSpace(a.currentTurnID) {
 			snap.CurrentTurn = &persistv2.Turn{TurnID: strings.TrimSpace(a.currentTurnID)}
 		}
+		snap.CurrentTurn.GroupID = strings.TrimSpace(a.currentGroupID)
 		snap.CurrentTurn.Status = persistv2.TurnStatus(status)
 		snap.CurrentTurn.Input = input
 		snap.CurrentTurn.FinishedAt = finishedAt
