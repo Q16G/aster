@@ -151,7 +151,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			} else if m.isStructuredOutputPhase() {
 				m.thinkingPanel.UpdateLastEntry("thinking...")
 			} else {
-				m.chat.AppendThinkingWithEventID(thinkDelta, event.EventID)
+				groupID := strings.TrimSpace(event.GroupID)
+				// Backward compatibility: if producer doesn't set group_id, fall back to event_id.
+				if groupID == "" {
+					groupID = strings.TrimSpace(event.EventID)
+				}
+				m.chat.AppendThinkingWithGroupID(thinkDelta, groupID)
 			}
 		}
 		m.statusText = "thinking..."

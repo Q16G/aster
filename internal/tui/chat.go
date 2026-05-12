@@ -18,7 +18,7 @@ type ChatModel struct {
 	streaming        *strings.Builder
 	isStreaming      bool
 	thinkingBuf      *strings.Builder
-	thinkingEventID  string
+	thinkingGroupID  string
 	isThinking       bool
 	width            int
 	height           int
@@ -98,26 +98,28 @@ func (m *ChatModel) FlushStream() bool {
 }
 
 func (m *ChatModel) AppendThinking(delta string) {
-	m.AppendThinkingWithEventID(delta, "")
+	m.AppendThinkingWithGroupID(delta, "")
 }
 
-func (m *ChatModel) AppendThinkingWithEventID(delta string, eventID string) {
-	if eventID != "" && m.thinkingEventID != "" && eventID != m.thinkingEventID {
+// AppendThinkingWithGroupID appends a thinking delta and aggregates by group_id.
+// group_id is the primary aggregation key; event_id is record-unique and should not be used for grouping.
+func (m *ChatModel) AppendThinkingWithGroupID(delta string, groupID string) {
+	if groupID != "" && m.thinkingGroupID != "" && groupID != m.thinkingGroupID {
 		m.FlushThinking()
 	}
 
-	if eventID != "" && !m.isThinking && m.thinkingBuf.Len() == 0 {
+	if groupID != "" && !m.isThinking && m.thinkingBuf.Len() == 0 {
 		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.EventID == eventID {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.GroupID == groupID {
 				m.parts[i].Thinking.Content += delta
-				m.thinkingEventID = eventID
+				m.thinkingGroupID = groupID
 				m.markDirty()
 				return
 			}
 		}
 	}
 
-	m.thinkingEventID = eventID
+	m.thinkingGroupID = groupID
 	m.thinkingBuf.WriteString(delta)
 	m.isThinking = true
 	m.markDirty()
@@ -129,14 +131,14 @@ func (m *ChatModel) FlushThinking() bool {
 		return false
 	}
 	content := m.thinkingBuf.String()
-	eventID := m.thinkingEventID
+	groupID := m.thinkingGroupID
 
-	if eventID != "" {
+	if groupID != "" {
 		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.EventID == eventID {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.GroupID == groupID {
 				m.parts[i].Thinking.Content += content
 				m.thinkingBuf.Reset()
-				m.thinkingEventID = ""
+				m.thinkingGroupID = ""
 				m.isThinking = false
 				m.markDirty()
 				return true
@@ -147,10 +149,10 @@ func (m *ChatModel) FlushThinking() bool {
 	m.parts = append(m.parts, DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     time.Now(),
-		Thinking: &ThinkingPart{Content: content, EventID: eventID},
+		Thinking: &ThinkingPart{Content: content, GroupID: groupID},
 	})
 	m.thinkingBuf.Reset()
-	m.thinkingEventID = ""
+	m.thinkingGroupID = ""
 	m.isThinking = false
 	m.markDirty()
 	return true
