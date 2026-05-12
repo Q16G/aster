@@ -34,7 +34,7 @@ func TestStore_SnapshotAtomicAndReplayTailTruncation(t *testing.T) {
 	if _, err := store.AppendEvent(&Event{Type: "SESSION_CREATED"}); err != nil {
 		t.Fatalf("AppendEvent failed: %v", err)
 	}
-	if _, err := store.AppendEvent(&Event{Type: "TURN_STARTED", TurnID: "turn-1", Payload: map[string]any{"input": "hi"}}); err != nil {
+	if _, err := store.AppendEvent(&Event{Type: "TURN_STARTED", TurnID: "turn-1", GroupID: "group-1", Payload: map[string]any{"input": "hi"}}); err != nil {
 		t.Fatalf("AppendEvent failed: %v", err)
 	}
 
@@ -76,6 +76,9 @@ func TestStore_SnapshotAtomicAndReplayTailTruncation(t *testing.T) {
 	if next == nil || next.CurrentTurn == nil || next.CurrentTurn.TurnID != "turn-1" {
 		t.Fatalf("unexpected rebuilt snapshot: %#v", next)
 	}
+	if next.CurrentTurn.GroupID != "group-1" {
+		t.Fatalf("unexpected group id in rebuilt snapshot: %#v", next.CurrentTurn)
+	}
 	if next.System == nil || !next.System.Degraded {
 		t.Fatalf("expected degraded system diagnostics in snapshot")
 	}
@@ -102,4 +105,3 @@ func TestStore_SnapshotAtomicAndReplayTailTruncation(t *testing.T) {
 		t.Fatalf("unexpected session dir: %s", store.SessionDir())
 	}
 }
-

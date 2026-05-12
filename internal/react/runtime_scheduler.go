@@ -23,8 +23,9 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			snapshot := a.state.Snapshot()
 			if a.v2Store != nil && errors.Is(context.Cause(ctx), ErrTurnAbortRequested) {
 				_, _ = a.v2Store.AppendEvent(&persistv2.Event{
-					Type:   "TURN_ABORT_REQUESTED",
-					TurnID: strings.TrimSpace(a.currentTurnID),
+					Type:    "TURN_ABORT_REQUESTED",
+					GroupID: strings.TrimSpace(a.currentGroupID),
+					TurnID:  strings.TrimSpace(a.currentTurnID),
 				})
 			}
 			a.emitRuntimeLog("warning", "scheduler context canceled", snapshot, map[string]any{
@@ -802,6 +803,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		if a.v2Store != nil {
 			ev, _ := a.v2Store.AppendEvent(&persistv2.Event{
 				Type:        "INTERRUPT_RAISED",
+				GroupID:     strings.TrimSpace(a.currentGroupID),
 				TurnID:      strings.TrimSpace(a.currentTurnID),
 				InterruptID: interruptID,
 				Payload: map[string]any{

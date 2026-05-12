@@ -35,24 +35,29 @@ const (
 // Required fields: format_version, seq, time, type, session_id.
 // Recommended correlation fields: turn_id, step_id, attempt_id, interrupt_id.
 type Event struct {
-	FormatVersion int            `json:"format_version"`
-	Seq           uint64         `json:"seq"`
-	TimeUnixMs    int64          `json:"time"`
-	Type          string         `json:"type"`
+	FormatVersion int    `json:"format_version"`
+	Seq           uint64 `json:"seq"`
+	TimeUnixMs    int64  `json:"time"`
+	Type          string `json:"type"`
 	// EventID is an optional globally-unique identifier for referencing/deduplication.
 	// Seq remains the stable ordering key within a session.
-	EventID     string         `json:"event_id,omitempty"`
-	SessionID     string         `json:"session_id"`
-	TurnID        string         `json:"turn_id,omitempty"`
-	StepID        string         `json:"step_id,omitempty"`
-	AttemptID     string         `json:"attempt_id,omitempty"`
-	InterruptID   string         `json:"interrupt_id,omitempty"`
-	BlobRef       string         `json:"blob_ref,omitempty"`
-	Payload       map[string]any `json:"payload,omitempty"`
+	EventID string `json:"event_id,omitempty"`
+	// GroupID is an optional aggregation key for UI/event consumers.
+	// Unlike event_id (record-unique), group_id is used to group multiple related events
+	// into a single logical unit (e.g. a turn chain across interrupt raise/resolve).
+	GroupID     string         `json:"group_id,omitempty"`
+	SessionID   string         `json:"session_id"`
+	TurnID      string         `json:"turn_id,omitempty"`
+	StepID      string         `json:"step_id,omitempty"`
+	AttemptID   string         `json:"attempt_id,omitempty"`
+	InterruptID string         `json:"interrupt_id,omitempty"`
+	BlobRef     string         `json:"blob_ref,omitempty"`
+	Payload     map[string]any `json:"payload,omitempty"`
 }
 
 type Turn struct {
 	TurnID     string     `json:"turn_id"`
+	GroupID    string     `json:"group_id,omitempty"`
 	Status     TurnStatus `json:"status"`
 	Input      string     `json:"input,omitempty"`
 	StartedAt  int64      `json:"started_at,omitempty"`
@@ -94,7 +99,7 @@ type Snapshot struct {
 	SessionID     string       `json:"session_id"`
 	SessionState  SessionState `json:"session_state"`
 
-	CurrentTurn      *Turn            `json:"current_turn,omitempty"`
+	CurrentTurn      *Turn             `json:"current_turn,omitempty"`
 	PendingInterrupt *PendingInterrupt `json:"pending_interrupt,omitempty"`
 
 	// RuntimeStateBlobRef stores a serialized builtin_tools.StateSnapshot (or compatible)
@@ -110,7 +115,7 @@ type Snapshot struct {
 
 	LastSeq uint64 `json:"last_seq,omitempty"`
 
-	UpdatedAt time.Time         `json:"updated_at,omitempty"`
+	UpdatedAt time.Time          `json:"updated_at,omitempty"`
 	System    *SystemDiagnostics `json:"system_diagnostics,omitempty"`
 }
 
