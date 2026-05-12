@@ -97,10 +97,6 @@ func (c *AIHistoryCompressor) Compress(ctx context.Context, aiClient ai.ChatClie
 			CanContinue: true,
 		}, nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	windowed := ApplyHistoryCompactionWindow(history)
 	working, summary := stripHistoryCompaction(windowed)
 	if len(working) == 0 && strings.TrimSpace(summary) == "" {

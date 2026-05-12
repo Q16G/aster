@@ -82,6 +82,8 @@ func (a *Agent) writeV2StepAttemptResult(stepID, stepName, attemptID string, sta
 			FinishedAt: now,
 		},
 	}
-	_, _ = a.v2Store.WriteStepAttemptResult(stepID, attemptID, res)
+	if _, err := a.v2Store.WriteStepAttemptResult(stepID, attemptID, res); err != nil {
+		a.emitPersistenceError("write_step_attempt_result", err)
+	}
 }
 

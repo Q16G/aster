@@ -1601,6 +1601,9 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
+				content: `{"should_replan":false}`,
+			},
+			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"replanned-done","references":[]}`,
 			},
 		},
@@ -1628,8 +1631,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if strings.TrimSpace(runResult.Result) != "replanned-done" {
 		t.Fatalf("expected replanned final answer result, got %q", runResult.Result)
 	}
-	if client.calls != 4 {
-		t.Fatalf("expected 4 model calls (step+replan+step+final), got %d", client.calls)
+	if client.calls != 5 {
+		t.Fatalf("expected 5 model calls (step+replan+step+replan+final), got %d", client.calls)
 	}
 	if planner.calls != 2 {
 		t.Fatalf("expected planner called twice, got %d", planner.calls)
