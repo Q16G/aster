@@ -16,6 +16,9 @@ func summarizeHistoryCompaction(ctx context.Context, client ai.ChatClient, manag
 	if client == nil {
 		return "", fmt.Errorf("history compaction summarizer is nil")
 	}
+	if ctx == nil {
+		return "", fmt.Errorf("ctx must not be nil")
+	}
 	instruction = strings.TrimSpace(instruction)
 	prevSummary = strings.TrimSpace(prevSummary)
 	if len(msgs) == 0 {
