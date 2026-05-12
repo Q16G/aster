@@ -89,6 +89,12 @@ func NewTimeLine(ctx context.Context, client ai.ChatClient, extraInfo func() str
 	return m
 }
 
+func (tm *TimelineMemory) RebindContext(ctx context.Context) {
+	if tm != nil && ctx != nil {
+		tm.ctx = ctx
+	}
+}
+
 // AddItem 添加记忆项
 func (tm *TimelineMemory) AddItem(key string, value TimelineItemValue) error {
 	item := &TimelineItem{

@@ -178,7 +178,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 		memOpts = append(memOpts, memory.WithKeepLastItems(cfg.MemoryKeepLastItems))
 	}
 	agent.memory = memory.NewTimeLine(
-		context.Background(),
+		context.TODO(),
 		aiClient,
 		func() string {
 			return ""
