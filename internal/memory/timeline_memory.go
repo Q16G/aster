@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -30,6 +31,7 @@ const (
 // 果等一些内容，是会注入到prompt中作后续的决策去使用, 是运行时记忆
 type TimelineMemory struct {
 	extraInfo func() string
+	ctxMu     sync.Mutex
 	ctx       context.Context
 	aiClient  ai.ChatClient
 	items     *utils.OrderMapx[string, *TimelineItem]
@@ -91,8 +93,17 @@ func NewTimeLine(ctx context.Context, client ai.ChatClient, extraInfo func() str
 
 func (tm *TimelineMemory) RebindContext(ctx context.Context) {
 	if tm != nil && ctx != nil {
+		tm.ctxMu.Lock()
 		tm.ctx = ctx
+		tm.ctxMu.Unlock()
 	}
+}
+
+func (tm *TimelineMemory) getCtx() context.Context {
+	tm.ctxMu.Lock()
+	c := tm.ctx
+	tm.ctxMu.Unlock()
+	return c
 }
 
 // AddItem 添加记忆项
@@ -120,7 +131,7 @@ func (tm *TimelineMemory) CreateTimeLineMemory(extraInfo func() string) (*Timeli
 	}
 	return &TimelineMemory{
 		extraInfo:      extraInfo,
-		ctx:            tm.ctx,
+		ctx:            tm.getCtx(),
 		aiClient:       tm.aiClient,
 		items:          utils.NewOrderMapx[string, *TimelineItem](),
 		trigger:        tm.trigger,
@@ -421,18 +432,19 @@ func (tm *TimelineMemory) summarize(items []*TimelineItem) (string, error) {
 	}
 
 	prompt := bufMemory.String()
+	ctx := tm.getCtx()
 	var lastErr error
 	for attempt := 0; attempt <= defaultAIOutputMaxRetries; attempt++ {
-		if tm.ctx != nil && tm.ctx.Err() != nil {
-			return "", tm.ctx.Err()
+		if ctx != nil && ctx.Err() != nil {
+			return "", ctx.Err()
 		}
 		if attempt > 0 {
-			if err := sleepWithContext(tm.ctx, retryDelay(attempt)); err != nil {
+			if err := sleepWithContext(ctx, retryDelay(attempt)); err != nil {
 				return "", err
 			}
 		}
 
-		resp, err := tm.aiClient.ChatText(tm.ctx, prompt)
+		resp, err := tm.aiClient.ChatText(ctx, prompt)
 		if err != nil {
 			return "", fmt.Errorf("chat text failed: %w", err)
 		}

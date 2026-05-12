@@ -16,6 +16,9 @@ func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager Pr
 	if client == nil {
 		return "", fmt.Errorf("agent handoff summarizer is nil")
 	}
+	if ctx == nil {
+		return "", fmt.Errorf("ctx must not be nil")
+	}
 	handoffTo = strings.TrimSpace(handoffTo)
 	agentInstruction = strings.TrimSpace(agentInstruction)
 	prevSummary = strings.TrimSpace(prevSummary)
