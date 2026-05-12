@@ -661,7 +661,7 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if _, err := a.ensureFrozenStepLineage(snapshot); err != nil {
 		return err
 	}
-	prompt := a.BuildThinkActPrompt(extraText, taskContext)
+	prompt := a.BuildThinkActPrompt(ctx, extraText, taskContext)
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStep)
 
 	thinkCtx, thinkCancel := context.WithCancel(ctx)
@@ -996,7 +996,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		displayOut = fmt.Sprintf("Error: %s", errText)
 	}
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
-	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, out, errText, isAgent)
+	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, displayOut, errText, isAgent)
 
 	a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
 		ID:         callID,

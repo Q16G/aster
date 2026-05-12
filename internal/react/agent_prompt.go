@@ -13,7 +13,7 @@ import (
 //go:embed prompts/think_act.prompt
 var thinkActPrompt string
 
-func (a *Agent) BuildThinkActPrompt(extra string, taskContext *TaskContextData) string {
+func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskContext *TaskContextData) string {
 	if a == nil || a.promptManager == nil {
 		return ""
 	}
@@ -27,7 +27,7 @@ func (a *Agent) BuildThinkActPrompt(extra string, taskContext *TaskContextData) 
 	hasWarnings := len(snap.Warnings) > 0
 	hasUnresolved := len(snap.Unresolved) > 0
 	latestInput := snap.LatestInput()
-	skillsContext := a.buildSkillsPromptContext(context.Background(), snap)
+	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
 
 	workspaceSharedDir := ""
