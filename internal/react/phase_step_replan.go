@@ -40,8 +40,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 	artifactDir := ""
 
-	// Fast path: step completed + no open questions → skip LLM
-	if rawOutcome.Status == builtin_tools.StepOutcomeCompleted && len(rawOutcome.OpenQuestions) == 0 {
+	if shouldSkipReplanLLM(rawOutcome, snapshot) {
 		return a.applyReplanResult(stepID, nil, nil, snapshot, artifactDir)
 	}
 
@@ -140,6 +139,15 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		"artifact_dir":  artifactDir,
 	})
 	return nil
+}
+
+func shouldSkipReplanLLM(outcome *builtin_tools.StepOutcome, snapshot builtin_tools.StateSnapshot) bool {
+	if outcome == nil || outcome.Status != builtin_tools.StepOutcomeCompleted {
+		return false
+	}
+	return len(outcome.OpenQuestions) == 0 &&
+		len(snapshot.Warnings) == 0 &&
+		len(snapshot.Unresolved) == 0
 }
 
 func findOutcome(outcomes []*builtin_tools.StepOutcome, stepID string) *builtin_tools.StepOutcome {
