@@ -219,6 +219,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
 		return nil, fmt.Errorf("agent not initialized")
 	}
+	if ctx == nil {
+		return nil, fmt.Errorf("ctx must not be nil")
+	}
 
 	defer a.runFinishHooks()
 	if a.memory != nil {
@@ -1355,8 +1358,13 @@ func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string,
 	}
 
 	content := result
-	if strings.TrimSpace(content) == "" && strings.TrimSpace(errText) != "" {
-		content = fmt.Sprintf("Error: %s", errText)
+	trimmedErr := strings.TrimSpace(errText)
+	if trimmedErr != "" {
+		if strings.TrimSpace(content) != "" {
+			content = fmt.Sprintf("%s\n\nError: %s", content, trimmedErr)
+		} else {
+			content = fmt.Sprintf("Error: %s", trimmedErr)
+		}
 	}
 
 	toolResultMsg := ai.NewToolCallResultMsgInfo(content, callID)
@@ -1384,6 +1392,9 @@ func (a *Agent) InjectAgentToolExtra(ctx context.Context, toolName string, args 
 
 // WithNextAgentCallInfo 注入下一个 Agent 调用信息到 context
 func WithNextAgentCallInfo(ctx context.Context, parentAgentID, parentAgentName string) context.Context {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
 	ctx = context.WithValue(ctx, ctxKeyParentAgentID, parentAgentID)
 	ctx = context.WithValue(ctx, ctxKeyParentAgentName, parentAgentName)
 	return ctx
