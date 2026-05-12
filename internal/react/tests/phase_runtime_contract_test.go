@@ -69,7 +69,7 @@ func TestBuildThinkActPrompt_CurrentStatusConditionalRendering(t *testing.T) {
 		Phase:  builtin_tools.AgentPhaseStep,
 		Status: builtin_tools.TaskStatusRunning,
 	})
-	prompt := agent.BuildThinkActPrompt("", nil)
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
 	if strings.Contains(prompt, "<CURRENT_STATUS>") {
 		t.Fatalf("expected no CURRENT_STATUS block when statusContext is empty, got %s", prompt)
 	}
@@ -117,7 +117,7 @@ func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 		},
 	})
 
-	prompt := agent.BuildThinkActPrompt("", nil)
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
 	for _, marker := range []string{"<CURRENT_STEP>", "<LATEST_INPUT>", "<INPUT_TIMELINE>", "<DEPENDENCY_STEP_SUMMARIES>"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
@@ -151,7 +151,7 @@ func TestBuildThinkActPrompt_RendersGenericTaskContextEntries(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt := agent.BuildThinkActPrompt("", &TaskContextData{
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
 		Entries: []TaskContextEntry{
 			{Label: "项目路径", Value: "/repo/project", Description: "待分析的项目根目录"},
 			{Label: "共享路径", Value: "/tmp/workspace/shared/step-1"},
@@ -179,7 +179,7 @@ func TestBuildThinkActPrompt_OmitsTaskContextWhenEmpty(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt := agent.BuildThinkActPrompt("", &TaskContextData{})
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{})
 	if strings.Contains(prompt, "任务上下文") {
 		t.Fatalf("did not expect task context section for empty data, got %s", prompt)
 	}
@@ -196,7 +196,7 @@ func TestBuildThinkActPrompt_RendersMultipleTaskContextEntries(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt := agent.BuildThinkActPrompt("", &TaskContextData{
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
 		Entries: []TaskContextEntry{
 			{Label: "项目路径", Value: "/repo/project"},
 			{Label: "当前路径", Value: "/repo/project/internal/react"},

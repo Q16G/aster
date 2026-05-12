@@ -414,7 +414,9 @@ func (w *artifactWriter) PersistFinalArtifacts(snapshot builtin_tools.StateSnaps
 			checkpoint.InputTimeline = prev.InputTimeline
 		}
 	}
-	_ = w.WritePlanCurrentCheckpoint(checkpoint)
+	if err := w.WritePlanCurrentCheckpoint(checkpoint); err != nil {
+		fmt.Fprintf(os.Stderr, "[persist] WritePlanCurrentCheckpoint failed: %v\n", err)
+	}
 
 	return &finalArtifactRecord{
 		FinalSeq:            finalSeq,

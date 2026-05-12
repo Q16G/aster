@@ -220,10 +220,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		return nil, fmt.Errorf("agent not initialized")
 	}
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	defer a.runFinishHooks()
+	if a.memory != nil {
+		a.memory.RebindContext(ctx)
+	}
 	var runResult *builtin_tools.RunResult
 
 	cfg := &ExecuteConfig{}
@@ -531,7 +531,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 						return nil, err
 					}
 					if snap2 != nil {
-						_ = persistv2.ReduceSnapshot(snap2, ev)
+						if err := persistv2.ReduceSnapshot(snap2, ev); err != nil {
+							a.emitPersistenceError("reduce_snapshot", err)
+						}
 						if err := store.SaveSnapshotAtomic(snap2); err != nil {
 							a.emitPersistenceError("save_snapshot", err)
 							return nil, err
@@ -560,7 +562,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 						return nil, err
 					}
 					if snap2 != nil {
-						_ = persistv2.ReduceSnapshot(snap2, ev)
+						if err := persistv2.ReduceSnapshot(snap2, ev); err != nil {
+							a.emitPersistenceError("reduce_snapshot", err)
+						}
 						if err := store.SaveSnapshotAtomic(snap2); err != nil {
 							a.emitPersistenceError("save_snapshot", err)
 							return nil, err
@@ -841,7 +845,9 @@ func (a *Agent) bootstrapWorkspaceState(initial *builtin_tools.StateSnapshot) {
 
 	if changed {
 		_ = a.state.Replace(merged)
-		_ = a.persistBootstrapWorkspaceState(merged)
+		if err := a.persistBootstrapWorkspaceState(merged); err != nil {
+			a.emitPersistenceError("persist_bootstrap_workspace", err)
+		}
 	}
 }
 
@@ -1349,7 +1355,7 @@ func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string,
 	}
 
 	content := result
-	if errText != "" {
+	if strings.TrimSpace(content) == "" && strings.TrimSpace(errText) != "" {
 		content = fmt.Sprintf("Error: %s", errText)
 	}
 
@@ -1378,9 +1384,6 @@ func (a *Agent) InjectAgentToolExtra(ctx context.Context, toolName string, args 
 
 // WithNextAgentCallInfo 注入下一个 Agent 调用信息到 context
 func WithNextAgentCallInfo(ctx context.Context, parentAgentID, parentAgentName string) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	ctx = context.WithValue(ctx, ctxKeyParentAgentID, parentAgentID)
 	ctx = context.WithValue(ctx, ctxKeyParentAgentName, parentAgentName)
 	return ctx

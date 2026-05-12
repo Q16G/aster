@@ -59,7 +59,7 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 		ActiveSkillNames: []string{"data-flow"},
 	})
 
-	prompt := agent.BuildThinkActPrompt("", nil)
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
 	for _, expected := range []string{
 		"### 5.3 Skills 索引",
 		"| data-flow | 数据流分析 | flow | loaded |",
