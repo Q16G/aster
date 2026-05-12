@@ -316,21 +316,37 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.v2Store = store
 
 	// Ensure session exists in V2.
-	if snap, err := store.LoadSnapshot(); err == nil && snap != nil && snap.LastSeq == 0 {
-		appended, _ := store.AppendEvent(&persistv2.Event{Type: "SESSION_CREATED"})
+	snap0, err := store.LoadSnapshot()
+	if err != nil {
+		a.emitPersistenceError("load_snapshot", err)
+		return nil, err
+	}
+	if snap0 != nil && snap0.LastSeq == 0 {
+		appended, err := store.AppendEvent(&persistv2.Event{Type: "SESSION_CREATED"})
+		if err != nil {
+			a.emitPersistenceError("append_event", err)
+			return nil, err
+		}
 		lastSeq := uint64(0)
 		if appended != nil {
 			lastSeq = appended.Seq
 		}
-		_ = store.SaveSnapshotAtomic(&persistv2.Snapshot{
+		if err := store.SaveSnapshotAtomic(&persistv2.Snapshot{
 			SessionID:    a.workspaceSessionID,
 			SessionState: persistv2.SessionStateIdle,
 			LastSeq:      lastSeq,
-		})
+		}); err != nil {
+			a.emitPersistenceError("save_snapshot", err)
+			return nil, err
+		}
 	}
 
 	// V2: resume decision is snapshot-based, and legacy checkpoints are ignored.
-	v2Snap, _ := store.LoadSnapshot()
+	v2Snap, err := store.LoadSnapshot()
+	if err != nil {
+		a.emitPersistenceError("load_snapshot", err)
+		return nil, err
+	}
 	waitingForHuman := v2Snap != nil &&
 		v2Snap.SessionState == persistv2.SessionStateWaitingForHuman &&
 		v2Snap.PendingInterrupt != nil &&
@@ -411,7 +427,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		a.notifyHistoryAppend(userMsg)
 	}
 
-	startedEv, _ := store.AppendEvent(&persistv2.Event{
+	startedEv, err := store.AppendEvent(&persistv2.Event{
 		Type:    "TURN_STARTED",
 		GroupID: strings.TrimSpace(a.currentGroupID),
 		TurnID:  a.currentTurnID,
@@ -419,11 +435,20 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			"input": input,
 		},
 	})
+	if err != nil {
+		a.emitPersistenceError("append_event", err)
+		return nil, err
+	}
 	lastSeq := uint64(0)
 	if startedEv != nil {
 		lastSeq = startedEv.Seq
 	}
-	if snap, _ := store.LoadSnapshot(); snap != nil {
+	snap, err := store.LoadSnapshot()
+	if err != nil {
+		a.emitPersistenceError("load_snapshot", err)
+		return nil, err
+	}
+	if snap != nil {
 		snap.SessionID = a.workspaceSessionID
 		snap.SessionState = persistv2.SessionStateBusy
 		startedAt := time.Now().UnixMilli()
@@ -438,14 +463,21 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			StartedAt: startedAt,
 		}
 		snap.LastSeq = lastSeq
-		_ = store.SaveSnapshotAtomic(snap)
+		if err := store.SaveSnapshotAtomic(snap); err != nil {
+			a.emitPersistenceError("save_snapshot", err)
+			return nil, err
+		}
 	}
 
 	// If this Execute() is resolving/cancelling a pending interrupt, record the external event
 	// and inject the corresponding tool_result into the restored step transcript BEFORE we
 	// call the model again.
 	if cfg.interruptResolution != nil || cfg.interruptCancel != nil {
-		latestSnap, _ := store.LoadSnapshot()
+		latestSnap, err := store.LoadSnapshot()
+		if err != nil {
+			a.emitPersistenceError("load_snapshot", err)
+			return nil, err
+		}
 		pending := (*persistv2.PendingInterrupt)(nil)
 		if latestSnap != nil {
 			pending = latestSnap.PendingInterrupt
@@ -474,9 +506,11 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 					if ref, berr := store.WriteBlob([]byte(answer)); berr == nil && ref != "" {
 						answerBlob = ref
 						answer = ""
+					} else if berr != nil {
+						a.emitPersistenceWarning("write_blob", berr)
 					}
 				}
-				ev, _ := store.AppendEvent(&persistv2.Event{
+				ev, err := store.AppendEvent(&persistv2.Event{
 					Type:        "INTERRUPT_RESOLVED",
 					GroupID:     strings.TrimSpace(a.currentGroupID),
 					TurnID:      strings.TrimSpace(a.currentTurnID),
@@ -486,16 +520,27 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 						"answer_blob_ref": answerBlob,
 					},
 				})
+				if err != nil {
+					a.emitPersistenceError("append_event", err)
+					return nil, err
+				}
 				if ev != nil {
-					snap2, _ := store.LoadSnapshot()
+					snap2, err := store.LoadSnapshot()
+					if err != nil {
+						a.emitPersistenceError("load_snapshot", err)
+						return nil, err
+					}
 					if snap2 != nil {
 						_ = persistv2.ReduceSnapshot(snap2, ev)
-						_ = store.SaveSnapshotAtomic(snap2)
+						if err := store.SaveSnapshotAtomic(snap2); err != nil {
+							a.emitPersistenceError("save_snapshot", err)
+							return nil, err
+						}
 					}
 				}
 
 			case cfg.interruptCancel != nil:
-				ev, _ := store.AppendEvent(&persistv2.Event{
+				ev, err := store.AppendEvent(&persistv2.Event{
 					Type:        "INTERRUPT_CANCELLED",
 					GroupID:     strings.TrimSpace(a.currentGroupID),
 					TurnID:      strings.TrimSpace(a.currentTurnID),
@@ -504,11 +549,22 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 						"reason": strings.TrimSpace(cfg.interruptCancel.Reason),
 					},
 				})
+				if err != nil {
+					a.emitPersistenceError("append_event", err)
+					return nil, err
+				}
 				if ev != nil {
-					snap2, _ := store.LoadSnapshot()
+					snap2, err := store.LoadSnapshot()
+					if err != nil {
+						a.emitPersistenceError("load_snapshot", err)
+						return nil, err
+					}
 					if snap2 != nil {
 						_ = persistv2.ReduceSnapshot(snap2, ev)
-						_ = store.SaveSnapshotAtomic(snap2)
+						if err := store.SaveSnapshotAtomic(snap2); err != nil {
+							a.emitPersistenceError("save_snapshot", err)
+							return nil, err
+						}
 					}
 				}
 			}
@@ -541,22 +597,31 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	// status so that finalizeResult returns success.
 	// V2: resumeOnly short-circuit is not yet implemented (legacy checkpoints are ignored).
 
-	runResult, err := a.runSchedulerLoop(ctx, runClient, extraText, taskContext, maxIterations)
-	if err != nil {
-		finishedEv, _ := store.AppendEvent(&persistv2.Event{
+	runResult, schedErr := a.runSchedulerLoop(ctx, runClient, extraText, taskContext, maxIterations)
+	if schedErr != nil {
+		finishedEv, evErr := store.AppendEvent(&persistv2.Event{
 			Type:    "TURN_FINISHED",
 			GroupID: strings.TrimSpace(a.currentGroupID),
 			TurnID:  a.currentTurnID,
 			Payload: map[string]any{
 				"status": "failed",
-				"error":  err.Error(),
+				"error":  schedErr.Error(),
 			},
 		})
+		if evErr != nil {
+			a.emitPersistenceError("append_event", evErr)
+			return nil, evErr
+		}
 		lastSeq := uint64(0)
 		if finishedEv != nil {
 			lastSeq = finishedEv.Seq
 		}
-		if snap, _ := store.LoadSnapshot(); snap != nil {
+		snap, snapErr := store.LoadSnapshot()
+		if snapErr != nil {
+			a.emitPersistenceError("load_snapshot", snapErr)
+			return nil, snapErr
+		}
+		if snap != nil {
 			snap.SessionID = a.workspaceSessionID
 			snap.SessionState = persistv2.SessionStateIdle
 			finishedAt := time.Now().UnixMilli()
@@ -574,15 +639,18 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				Input:      input,
 				StartedAt:  startedAt,
 				FinishedAt: finishedAt,
-				Error:      err.Error(),
+				Error:      schedErr.Error(),
 			}
 			snap.PendingInterrupt = nil
 			snap.RuntimeStateBlobRef = ""
 			snap.StepHistoryBlobRef = ""
 			snap.LastSeq = lastSeq
-			_ = store.SaveSnapshotAtomic(snap)
+			if err := store.SaveSnapshotAtomic(snap); err != nil {
+				a.emitPersistenceError("save_snapshot", err)
+				return nil, err
+			}
 		}
-		return nil, err
+		return nil, schedErr
 	}
 	if runResult == nil {
 		runResult = &builtin_tools.RunResult{Success: false, Error: "failed"}
@@ -617,10 +685,12 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		if ref, berr := store.WriteBlob([]byte(finalContent)); berr == nil && ref != "" {
 			finalBlob = ref
 			finalContent = ""
+		} else if berr != nil {
+			a.emitPersistenceWarning("write_blob", berr)
 		}
 	}
 
-	finishedEv, _ := store.AppendEvent(&persistv2.Event{
+	finishedEv, err := store.AppendEvent(&persistv2.Event{
 		Type:    "TURN_FINISHED",
 		GroupID: strings.TrimSpace(a.currentGroupID),
 		TurnID:  a.currentTurnID,
@@ -629,11 +699,20 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			"error":  firstNonEmpty(runResultErrorText(runResult), ""),
 		},
 	})
+	if err != nil {
+		a.emitPersistenceError("append_event", err)
+		return nil, err
+	}
 	lastSeq = uint64(0)
 	if finishedEv != nil {
 		lastSeq = finishedEv.Seq
 	}
-	if snap, _ := store.LoadSnapshot(); snap != nil {
+	snap, err = store.LoadSnapshot()
+	if err != nil {
+		a.emitPersistenceError("load_snapshot", err)
+		return nil, err
+	}
+	if snap != nil {
 		snap.SessionID = a.workspaceSessionID
 		finishedAt := time.Now().UnixMilli()
 		if finishedEv != nil && finishedEv.TimeUnixMs > 0 {
@@ -672,9 +751,46 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			}
 		}
 		snap.LastSeq = lastSeq
-		_ = store.SaveSnapshotAtomic(snap)
+		if err := store.SaveSnapshotAtomic(snap); err != nil {
+			a.emitPersistenceError("save_snapshot", err)
+			return nil, err
+		}
 	}
 	return runResult, nil
+}
+
+func (a *Agent) emitPersistenceError(action string, err error) {
+	if a == nil || a.emitter == nil || err == nil {
+		return
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		action = "unknown"
+	}
+	a.emitter.EmitLogPayload(map[string]any{
+		"level":   "error",
+		"kind":    "persistence",
+		"action":  action,
+		"err":     err.Error(),
+		"message": fmt.Sprintf("persistence failed: %s", action),
+	})
+}
+
+func (a *Agent) emitPersistenceWarning(action string, err error) {
+	if a == nil || a.emitter == nil || err == nil {
+		return
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		action = "unknown"
+	}
+	a.emitter.EmitLogPayload(map[string]any{
+		"level":   "warning",
+		"kind":    "persistence",
+		"action":  action,
+		"err":     err.Error(),
+		"message": fmt.Sprintf("persistence warning: %s", action),
+	})
 }
 
 func generateAgentTurnID() string {

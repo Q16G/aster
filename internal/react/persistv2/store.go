@@ -24,6 +24,11 @@ type Store struct {
 	blobsDir     string
 
 	mu sync.Mutex
+
+	// lastDiagnostics captures any degraded recovery / tail corruption info discovered
+	// while reading or repairing events.jsonl. It is materialized into snapshot.json
+	// by SaveSnapshotAtomic so callers don't have to remember to propagate it.
+	lastDiagnostics *SystemDiagnostics
 }
 
 func Open(workspaceRoot, sessionID string) (*Store, error) {
@@ -97,7 +102,13 @@ func (s *Store) LoadSnapshot() (*Snapshot, error) {
 	}
 	var snap Snapshot
 	if err := json.Unmarshal(raw, &snap); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+		// Do not silent-fail: attempt to rebuild from events.jsonl so we can still
+		// recover a durable WAITING_FOR_HUMAN session even if snapshot.json is damaged.
+		rebuilt, rerr := s.rebuildSnapshotFromEvents(fmt.Errorf("unmarshal snapshot: %w", err))
+		if rerr != nil {
+			return nil, rerr
+		}
+		return rebuilt, nil
 	}
 	if snap.FormatVersion == 0 {
 		snap.FormatVersion = FormatVersion
@@ -115,6 +126,9 @@ func (s *Store) SaveSnapshotAtomic(snap *Snapshot) error {
 	if snap == nil {
 		return fmt.Errorf("snapshot is nil")
 	}
+	s.mu.Lock()
+	s.mergeDiagnosticsLocked(snap)
+	s.mu.Unlock()
 	snap.FormatVersion = FormatVersion
 	if strings.TrimSpace(snap.SessionID) == "" {
 		snap.SessionID = s.sessionID
@@ -125,7 +139,11 @@ func (s *Store) SaveSnapshotAtomic(snap *Snapshot) error {
 		return fmt.Errorf("marshal snapshot: %w", err)
 	}
 	data = append(data, '\n')
-	return writeFileAtomic(s.snapshotPath, data, 0o644)
+	// Retry idempotent atomic writes: if a transient IO error happens we can safely
+	// retry the whole temp+rename sequence.
+	return withIOWriteRetry(func() error {
+		return writeFileAtomic(s.snapshotPath, data, 0o644)
+	})
 }
 
 func (s *Store) AppendEvent(ev *Event) (*Event, error) {
@@ -138,7 +156,13 @@ func (s *Store) AppendEvent(ev *Event) (*Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	lastSeq, diag := s.scanLastSeqLocked()
+	lastSeq, diag, repairErr := s.repairEventsTailLocked()
+	if repairErr != nil {
+		return nil, repairErr
+	}
+	if diag != nil {
+		s.lastDiagnostics = diag
+	}
 	nextSeq := lastSeq + 1
 
 	out := *ev
@@ -180,9 +204,6 @@ func (s *Store) AppendEvent(ev *Event) (*Event, error) {
 		return nil, cerr
 	}
 
-	// Best-effort: if the log was degraded, keep that info in snapshot diagnostics
-	// when caller chooses to persist a snapshot.
-	_ = diag
 	return &out, nil
 }
 
@@ -199,7 +220,9 @@ func (s *Store) WriteBlob(data []byte) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return "sha256:" + name, nil
 	}
-	if err := writeFileAtomic(path, data, 0o644); err != nil {
+	if err := withIOWriteRetry(func() error {
+		return writeFileAtomic(path, data, 0o644)
+	}); err != nil {
 		return "", err
 	}
 	return "sha256:" + name, nil
@@ -324,6 +347,77 @@ func (s *Store) scanLastSeqLocked() (uint64, *SystemDiagnostics) {
 			"events.jsonl tail parse failed during seq scan; next seq derived from last good event",
 		},
 	}
+}
+
+func (s *Store) mergeDiagnosticsLocked(snap *Snapshot) {
+	if s == nil || snap == nil {
+		return
+	}
+	diag := s.lastDiagnostics
+	if diag == nil {
+		return
+	}
+	if snap.System == nil {
+		c := *diag
+		snap.System = &c
+		return
+	}
+	if diag.Degraded {
+		snap.System.Degraded = true
+	}
+	if diag.EventsTailTruncated {
+		snap.System.EventsTailTruncated = true
+	}
+	if diag.EventsLastGoodSeq > 0 {
+		snap.System.EventsLastGoodSeq = diag.EventsLastGoodSeq
+	}
+	if strings.TrimSpace(diag.EventsLastParseError) != "" {
+		snap.System.EventsLastParseError = diag.EventsLastParseError
+	}
+	if len(diag.Notes) > 0 {
+		snap.System.Notes = append(snap.System.Notes, diag.Notes...)
+	}
+}
+
+func (s *Store) rebuildSnapshotFromEvents(snapshotErr error) (*Snapshot, error) {
+	events := make([]*Event, 0, 128)
+	diag, err := s.ReplayEvents(func(ev *Event) error {
+		if ev == nil {
+			return nil
+		}
+		c := *ev
+		events = append(events, &c)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("snapshot load failed (%v) and replay events failed: %w", snapshotErr, err)
+	}
+
+	// Mark degraded due to snapshot damage even if events replay is clean.
+	if diag == nil {
+		diag = &SystemDiagnostics{
+			Degraded: true,
+			Notes: []string{
+				"snapshot.json parse failed; rebuilt snapshot from events.jsonl",
+			},
+		}
+	} else {
+		diag.Degraded = true
+		diag.Notes = append(diag.Notes, "snapshot.json parse failed; rebuilt snapshot from events.jsonl")
+	}
+	s.mu.Lock()
+	s.lastDiagnostics = diag
+	s.mu.Unlock()
+
+	snap, berr := BuildSnapshotFromEvents(s.sessionID, events, diag)
+	if berr != nil {
+		return nil, fmt.Errorf("rebuild snapshot from events failed: %w", berr)
+	}
+	// Best-effort self-heal: persist rebuilt snapshot. If this fails we must fail fast.
+	if err := s.SaveSnapshotAtomic(snap); err != nil {
+		return nil, fmt.Errorf("save rebuilt snapshot failed: %w", err)
+	}
+	return snap, nil
 }
 
 func firstNonEmpty(items ...string) string {
