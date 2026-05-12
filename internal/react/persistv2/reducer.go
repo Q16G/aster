@@ -34,7 +34,9 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 
 	case "TURN_STARTED":
 		snap.SessionState = SessionStateBusy
-		snap.PendingInterrupt = nil
+		if payloadText(ev.Payload, "input") != "" {
+			snap.PendingInterrupt = nil
+		}
 		snap.CurrentTurn = &Turn{
 			TurnID:    strings.TrimSpace(ev.TurnID),
 			GroupID:   strings.TrimSpace(ev.GroupID),
@@ -62,6 +64,8 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 			snap.SessionState = SessionStateWaitingForHuman
 		default:
 			snap.SessionState = SessionStateIdle
+			snap.RuntimeStateBlobRef = ""
+			snap.StepHistoryBlobRef = ""
 		}
 
 	case "TURN_ABORT_REQUESTED":
@@ -82,6 +86,12 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 		if snap.CurrentTurn != nil && strings.TrimSpace(snap.CurrentTurn.TurnID) == strings.TrimSpace(ev.TurnID) {
 			snap.CurrentTurn.Status = TurnStatusInterrupted
 		}
+		if ref := payloadText(ev.Payload, "runtime_state_blob_ref"); ref != "" {
+			snap.RuntimeStateBlobRef = ref
+		}
+		if ref := payloadText(ev.Payload, "step_history_blob_ref"); ref != "" {
+			snap.StepHistoryBlobRef = ref
+		}
 
 	case "INTERRUPT_RESOLVED":
 		if snap.PendingInterrupt == nil || strings.TrimSpace(snap.PendingInterrupt.InterruptID) != strings.TrimSpace(ev.InterruptID) {
@@ -98,6 +108,8 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 		}
 		snap.PendingInterrupt = nil
 		snap.SessionState = SessionStateIdle
+		snap.RuntimeStateBlobRef = ""
+		snap.StepHistoryBlobRef = ""
 
 	default:
 		// Unknown events do not affect the materialized view.
