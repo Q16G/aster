@@ -3,6 +3,7 @@ package react
 import (
 	"aster/internal/builtin_tools"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,6 +45,7 @@ type AgentOutputEvent struct {
 	AgentName string         `json:"agent_name,omitempty"`
 	NodeID    string         `json:"node_id,omitempty"`
 	EventID   string         `json:"event_id,omitempty"`
+	GroupID   string         `json:"group_id,omitempty"`
 	Iteration int            `json:"iteration,omitempty"`
 	SeqID     uint64         `json:"seq_id,omitempty"`
 	Timestamp int64          `json:"timestamp"`
@@ -66,7 +68,7 @@ type Emitter struct {
 	baseEmitter    BaseEmitterFunc
 	processorStack []EventProcessor
 	seqID          *atomic.Uint64
-	thinkSessionID string
+	thinkGroupID   string
 }
 
 // NewEmitter 创建事件发射器
@@ -123,6 +125,14 @@ func (e *Emitter) Emit(event *AgentOutputEvent) error {
 	if event.Timestamp == 0 {
 		event.Timestamp = time.Now().UnixMilli()
 	}
+	// event_id is record-unique; UI should use group_id for aggregation.
+	if strings.TrimSpace(event.EventID) == "" {
+		if event.SeqID > 0 {
+			event.EventID = fmt.Sprintf("%s:%d", event.AgentID, event.SeqID)
+		} else {
+			event.EventID = uuid.NewString()
+		}
+	}
 
 	e.mu.RLock()
 	processors := e.processorStack
@@ -153,34 +163,34 @@ func (e *Emitter) EmitJSON(eventType EventType, nodeID string, payload map[strin
 	})
 }
 
-func (e *Emitter) EnsureThinkSessionID() string {
+func (e *Emitter) EnsureThinkGroupID() string {
 	if e == nil {
 		return ""
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.thinkSessionID == "" {
-		e.thinkSessionID = uuid.NewString()
+	if e.thinkGroupID == "" {
+		e.thinkGroupID = uuid.NewString()
 	}
-	return e.thinkSessionID
+	return e.thinkGroupID
 }
 
-func (e *Emitter) ResetThinkSessionID() {
+func (e *Emitter) ResetThinkGroupID() {
 	if e == nil {
 		return
 	}
 	e.mu.Lock()
-	e.thinkSessionID = ""
+	e.thinkGroupID = ""
 	e.mu.Unlock()
 }
 
 // EmitThink 发射思考事件
 func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string) {
-	eventID := e.EnsureThinkSessionID()
+	groupID := e.EnsureThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeThink,
 		NodeID:    "think",
-		EventID:   eventID,
+		GroupID:   groupID,
 		Iteration: iteration,
 		Payload: map[string]any{
 			"content":           content,
@@ -191,12 +201,12 @@ func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, 
 		},
 	})
 	if strings.TrimSpace(finishReason) != "" {
-		e.ResetThinkSessionID()
+		e.ResetThinkGroupID()
 	}
 }
 
 func (e *Emitter) EmitStream(iteration int, delta string) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStream,
 		NodeID:    "stream",
@@ -206,7 +216,7 @@ func (e *Emitter) EmitStream(iteration int, delta string) {
 }
 
 func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStepFinish,
 		NodeID:    "step_finish",
@@ -217,7 +227,7 @@ func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
 
 // EmitToolStart 发射工具开始事件
 func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolStart,
 		NodeID:    "tool:" + call.Name,
@@ -234,7 +244,7 @@ func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
 
 // EmitToolEnd 发射工具结束事件
 func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolEnd,
 		NodeID:    "tool:" + result.Name,
@@ -252,7 +262,7 @@ func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
 
 // EmitStateChange 发射状态变更事件
 func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStateChange,
 		NodeID:    "state",
@@ -277,7 +287,7 @@ func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
 
 // EmitHumanRequest 发射人工请求事件
 func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeHumanRequest,
 		NodeID:    "human_request",
@@ -292,7 +302,7 @@ func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question str
 
 // EmitTaskPlan 发射任务计划事件
 func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation string) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeTaskPlan,
 		NodeID: "task_plan",
@@ -304,7 +314,7 @@ func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation strin
 }
 
 func (e *Emitter) EmitTaskItem(item *builtin_tools.PlanItem, prevStatus builtin_tools.PlanStepStatus, index int, explanation string) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	if item == nil {
 		return
 	}
@@ -419,7 +429,7 @@ func (e *Emitter) EmitError(message string) {
 }
 
 func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome *builtin_tools.StepOutcome) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	if outcome == nil {
 		return
 	}
@@ -440,7 +450,7 @@ func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome 
 }
 
 func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *stepReplanModelOutput) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	if result == nil {
 		return
 	}
@@ -460,7 +470,7 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 }
 
 func (e *Emitter) EmitFinalAnswerResult(answer *builtin_tools.FinalAnswer) {
-	e.ResetThinkSessionID()
+	e.ResetThinkGroupID()
 	if answer == nil || strings.TrimSpace(answer.Content) == "" {
 		return
 	}
