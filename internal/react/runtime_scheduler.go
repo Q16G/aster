@@ -197,24 +197,43 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		items = normalized
 	}
 
-	// planner 返回空 plan 时，plan phase 仍需产出可执行 plan，避免 step 自行补计划语义。
 	if len(items) == 0 {
-		stepText := strings.TrimSpace(snapshot.CurrentGoal)
-		if stepText == "" {
-			if latest := snapshot.LatestInput(); latest != nil {
-				stepText = strings.TrimSpace(latest.Content)
-			}
+		// planner 未产出 plan items：直接使用 planner 的 direct_response 作为最终回复。
+		// 这是“简单问题”路径：planner 一次 AI 调用同时完成判断与回复，跳过 Step/FinalAnswer 模型调用。
+		directResponse := ""
+		if res != nil {
+			directResponse = strings.TrimSpace(res.DirectResponse)
 		}
-		if stepText == "" {
-			return fmt.Errorf("cannot build implicit plan from empty goal")
+		if directResponse == "" {
+			directResponse = strings.TrimSpace(explanation)
 		}
-		items = []*builtin_tools.PlanItem{
-			{
-				ID:     "auto-1",
-				Step:   stepText,
-				Status: builtin_tools.PlanStepPending,
-			},
+		if directResponse == "" {
+			directResponse = "已完成。"
 		}
+
+		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
+			NextPhase:          builtin_tools.AgentPhaseFinalAnswer,
+			Status:             builtin_tools.TaskStatusCompleted,
+			FinalAnswerContent: directResponse,
+			FinalAnswerSource:  "planner_direct",
+		})
+		a.emitter.EmitStateChange(snapshot)
+		if snapshot.FinalAnswer != nil {
+			a.emitter.EmitFinalAnswerResult(snapshot.FinalAnswer)
+		}
+
+		historyText := truncateForHistory(directResponse, "planner_direct")
+		a.history = append(a.history, ai.NewAIMsgInfo(historyText))
+		a.notifyHistoryReplace()
+		a.AddMemoryAssistantOutput(historyText)
+
+		a.emitRuntimeLog("info", "planner direct response: no plan items", snapshot, map[string]any{
+			"event":          "planner_direct_response",
+			"needs_planning": needsPlanning,
+			"explanation":    explanation,
+			"content_length": len(directResponse),
+		})
+		return nil
 	}
 
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)

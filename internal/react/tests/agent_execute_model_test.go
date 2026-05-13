@@ -1048,7 +1048,7 @@ func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
 	}
 }
 
-func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testing.T) {
+func TestExecute_PlanPhaseUsesPlannerDirectResponseWhenPlannerReturnsEmptyPlan(t *testing.T) {
 	var selectedPhases []string
 	emitter := NewEmitter("implicit-plan-session", "implicit-plan-agent", func(event *AgentOutputEvent) error {
 		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
@@ -1062,33 +1062,20 @@ func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testi
 	})
 
 	client := &executeModelTestClient{
-		replies: []executeModelReply{
-			{
-				toolCalls: []*ai.FunctionTool{
-					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":         "completed",
-						"summary":        "ok",
-						"display_result": "step ok",
-						"result":         "step ok",
-					}),
-				},
-			},
-			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`,
-			},
-		},
+		replies: []executeModelReply{},
 	}
 
 	agent, err := NewReActAgent(
 		"implicit-plan-agent",
 		client,
 		WithEmitter(emitter),
-		WithMaxIterations(6),
+		WithMaxIterations(2),
 		WithHistoryCompressor(&noopHistoryCompressor{}),
 		WithTaskPlanner(&executeModelStaticPlanner{
 			result: &builtin_tools.TaskPlannerResult{
-				NeedsPlanning: false,
-				Plan:          []*builtin_tools.PlanItem{},
+				NeedsPlanning:  false,
+				Plan:           []*builtin_tools.PlanItem{},
+				DirectResponse: "done",
 			},
 		}),
 	)
@@ -1103,19 +1090,99 @@ func TestExecute_PlanPhaseBuildsImplicitStepWhenPlannerReturnsEmptyPlan(t *testi
 	if runResult == nil || !runResult.Success {
 		t.Fatalf("expected success run result, got %#v", runResult)
 	}
+	if strings.TrimSpace(runResult.Result) != "done" {
+		t.Fatalf("expected planner direct response result, got %q", runResult.Result)
+	}
+	if client.calls != 0 {
+		t.Fatalf("expected 0 model calls (planner is static, no step/final_answer), got %d", client.calls)
+	}
 
 	snapshot := agent.State()
-	if len(snapshot.Plan) != 1 {
-		t.Fatalf("expected implicit single-step plan, got %+v", snapshot.Plan)
+	if len(snapshot.Plan) != 0 {
+		t.Fatalf("expected no plan items when planner returns empty plan, got %+v", snapshot.Plan)
 	}
-	if snapshot.Plan[0] == nil || strings.TrimSpace(snapshot.Plan[0].Step) != "hello" {
-		t.Fatalf("expected implicit step from latest input, got %+v", snapshot.Plan)
+	if snapshot.Status != builtin_tools.TaskStatusCompleted {
+		t.Fatalf("expected completed status, got %q", snapshot.Status)
 	}
-	if len(selectedPhases) < 2 {
-		t.Fatalf("expected at least plan and step phase selections, got %v", selectedPhases)
+	if snapshot.FinalAnswer == nil {
+		t.Fatalf("expected final answer")
 	}
-	if selectedPhases[0] != string(builtin_tools.AgentPhasePlan) || selectedPhases[1] != string(builtin_tools.AgentPhaseStep) {
-		t.Fatalf("expected plan then step, got %v", selectedPhases)
+	if strings.TrimSpace(snapshot.FinalAnswer.Content) != "done" {
+		t.Fatalf("expected final answer content to match direct response, got %q", snapshot.FinalAnswer.Content)
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
+		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
+	}
+	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
+	}
+}
+
+func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.T) {
+	var selectedPhases []string
+	emitter := NewEmitter("planner-direct-session", "planner-direct-agent", func(event *AgentOutputEvent) error {
+		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
+			return nil
+		}
+		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
+			return nil
+		}
+		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		return nil
+	})
+
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				// planner structured output
+				content: `{"needs_planning":false,"plan":[],"explanation":"无需规划","direct_response":"你好！"}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"planner-direct-agent",
+		client,
+		WithEmitter(emitter),
+		WithMaxIterations(2),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success run result, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "你好！" {
+		t.Fatalf("expected planner direct response result, got %q", runResult.Result)
+	}
+	if client.calls != 1 {
+		t.Fatalf("expected 1 model call (planner only), got %d", client.calls)
+	}
+
+	snapshot := agent.State()
+	if len(snapshot.Plan) != 0 {
+		t.Fatalf("expected no plan items when planner returns empty plan, got %+v", snapshot.Plan)
+	}
+	if snapshot.Status != builtin_tools.TaskStatusCompleted {
+		t.Fatalf("expected completed status, got %q", snapshot.Status)
+	}
+	if snapshot.FinalAnswer == nil {
+		t.Fatalf("expected final answer")
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Content) != "你好！" {
+		t.Fatalf("expected final answer content to match direct response, got %q", snapshot.FinalAnswer.Content)
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
+		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
+	}
+	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
 	}
 }
 
