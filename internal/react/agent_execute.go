@@ -588,12 +588,66 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}
 		if cfg.interruptCancel != nil {
 			// Cancel simply returns to IDLE without resuming the blocked tool call.
-			return &builtin_tools.RunResult{
+			// However, TURN_STARTED must always be paired with a TURN_FINISHED event so
+			// event consumers don't observe a "started but never finished" turn.
+			runResult := &builtin_tools.RunResult{
 				Success:    false,
 				TurnID:     strings.TrimSpace(a.currentTurnID),
 				TurnStatus: string(persistv2.TurnStatusCancelled),
 				Error:      "interrupt cancelled",
-			}, nil
+			}
+
+			finishedEv, err := store.AppendEvent(&persistv2.Event{
+				Type:    "TURN_FINISHED",
+				GroupID: strings.TrimSpace(a.currentGroupID),
+				TurnID:  strings.TrimSpace(a.currentTurnID),
+				Payload: map[string]any{
+					"status": "cancelled",
+					"error":  firstNonEmpty(runResultErrorText(runResult), ""),
+				},
+			})
+			if err != nil {
+				a.emitPersistenceError("append_event", err)
+				return nil, err
+			}
+
+			lastSeq := uint64(0)
+			if finishedEv != nil {
+				lastSeq = finishedEv.Seq
+			}
+
+			snap, err := store.LoadSnapshot()
+			if err != nil {
+				a.emitPersistenceError("load_snapshot", err)
+				return nil, err
+			}
+			if snap != nil {
+				snap.SessionID = a.workspaceSessionID
+				finishedAt := time.Now().UnixMilli()
+				if finishedEv != nil && finishedEv.TimeUnixMs > 0 {
+					finishedAt = finishedEv.TimeUnixMs
+				}
+				if snap.CurrentTurn == nil || strings.TrimSpace(snap.CurrentTurn.TurnID) != strings.TrimSpace(a.currentTurnID) {
+					snap.CurrentTurn = &persistv2.Turn{TurnID: strings.TrimSpace(a.currentTurnID)}
+				}
+				snap.CurrentTurn.GroupID = strings.TrimSpace(a.currentGroupID)
+				snap.CurrentTurn.Status = persistv2.TurnStatusCancelled
+				snap.CurrentTurn.Input = input
+				snap.CurrentTurn.FinishedAt = finishedAt
+				snap.CurrentTurn.Error = runResultErrorText(runResult)
+
+				snap.SessionState = persistv2.SessionStateIdle
+				snap.PendingInterrupt = nil
+				snap.RuntimeStateBlobRef = ""
+				snap.StepHistoryBlobRef = ""
+				snap.LastSeq = lastSeq
+				if err := store.SaveSnapshotAtomic(snap); err != nil {
+					a.emitPersistenceError("save_snapshot", err)
+					return nil, err
+				}
+			}
+
+			return runResult, nil
 		}
 	}
 
