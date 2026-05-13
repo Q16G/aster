@@ -29,6 +29,13 @@ type Store struct {
 	// while reading or repairing events.jsonl. It is materialized into snapshot.json
 	// by SaveSnapshotAtomic so callers don't have to remember to propagate it.
 	lastDiagnostics *SystemDiagnostics
+
+	// eventsCache avoids full scans of events.jsonl when snapshot reconciliation is needed.
+	// It is keyed by (size, modTime). This assumes a single-writer process in the common case.
+	eventsCacheValid   bool
+	eventsCacheSize    int64
+	eventsCacheModTime time.Time
+	eventsCacheLastSeq uint64
 }
 
 func Open(workspaceRoot, sessionID string) (*Store, error) {
@@ -89,26 +96,32 @@ func (s *Store) LoadSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("store is nil")
 	}
 	raw, err := os.ReadFile(s.snapshotPath)
+	snap := (*Snapshot)(nil)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &Snapshot{
-				FormatVersion: FormatVersion,
-				SessionID:     s.sessionID,
-				SessionState:  SessionStateIdle,
-				UpdatedAt:     time.Now(),
-			}, nil
+		if !os.IsNotExist(err) {
+			return nil, err
 		}
-		return nil, err
-	}
-	var snap Snapshot
-	if err := json.Unmarshal(raw, &snap); err != nil {
-		// Do not silent-fail: attempt to rebuild from events.jsonl so we can still
-		// recover a durable WAITING_FOR_HUMAN session even if snapshot.json is damaged.
-		rebuilt, rerr := s.rebuildSnapshotFromEvents(fmt.Errorf("unmarshal snapshot: %w", err))
-		if rerr != nil {
-			return nil, rerr
+		// snapshot.json missing is recoverable: treat it as an empty materialized view
+		// and reconcile from events.jsonl.
+		snap = &Snapshot{
+			FormatVersion: FormatVersion,
+			SessionID:     s.sessionID,
+			SessionState:  SessionStateIdle,
+			LastSeq:       0,
+			UpdatedAt:     time.Now(),
 		}
-		return rebuilt, nil
+	} else {
+		var parsed Snapshot
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			// Do not silent-fail: attempt to rebuild from events.jsonl so we can still
+			// recover a durable WAITING_FOR_HUMAN session even if snapshot.json is damaged.
+			rebuilt, rerr := s.rebuildSnapshotFromEvents(fmt.Errorf("unmarshal snapshot: %w", err))
+			if rerr != nil {
+				return nil, rerr
+			}
+			return s.reconcileSnapshotAgainstEvents(rebuilt)
+		}
+		snap = &parsed
 	}
 	if snap.FormatVersion == 0 {
 		snap.FormatVersion = FormatVersion
@@ -116,7 +129,94 @@ func (s *Store) LoadSnapshot() (*Snapshot, error) {
 	if strings.TrimSpace(snap.SessionID) == "" {
 		snap.SessionID = s.sessionID
 	}
-	return &snap, nil
+	return s.reconcileSnapshotAgainstEvents(snap)
+}
+
+func (s *Store) reconcileSnapshotAgainstEvents(snap *Snapshot) (*Snapshot, error) {
+	if s == nil {
+		return nil, fmt.Errorf("store is nil")
+	}
+	if snap == nil {
+		return nil, fmt.Errorf("snapshot is nil")
+	}
+
+	eventsLastSeq, diag, err := s.eventsLastSeqLocked()
+	if err != nil {
+		return nil, err
+	}
+	if diag != nil {
+		s.mu.Lock()
+		s.lastDiagnostics = diag
+		s.mu.Unlock()
+	}
+	// Nothing to reconcile.
+	if eventsLastSeq == 0 || eventsLastSeq <= snap.LastSeq {
+		return snap, nil
+	}
+
+	prevLastSeq := snap.LastSeq
+	replayDiag, err := s.ReplayEvents(func(ev *Event) error {
+		if ev == nil {
+			return nil
+		}
+		// Incremental reconcile: only apply missing events.
+		if ev.Seq <= prevLastSeq {
+			return nil
+		}
+		return ReduceSnapshot(snap, ev)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if replayDiag != nil {
+		s.mu.Lock()
+		s.lastDiagnostics = replayDiag
+		s.mu.Unlock()
+	}
+	// Self-heal: persist the reconciled snapshot to avoid permanent divergence after crashes.
+	if err := s.SaveSnapshotAtomic(snap); err != nil {
+		return nil, err
+	}
+	return snap, nil
+}
+
+func (s *Store) eventsLastSeqLocked() (uint64, *SystemDiagnostics, error) {
+	if s == nil {
+		return 0, nil, fmt.Errorf("store is nil")
+	}
+	st, err := os.Stat(s.eventsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.mu.Lock()
+			s.eventsCacheValid = false
+			s.mu.Unlock()
+			return 0, nil, nil
+		}
+		return 0, nil, err
+	}
+	size := st.Size()
+	modTime := st.ModTime()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.eventsCacheValid &&
+		s.eventsCacheSize == size &&
+		s.eventsCacheModTime.Equal(modTime) {
+		return s.eventsCacheLastSeq, nil, nil
+	}
+
+	lastSeq, diag := s.scanLastSeqLocked()
+	// Refresh the cache with the most recent stat (best-effort).
+	if st2, serr := os.Stat(s.eventsPath); serr == nil {
+		size = st2.Size()
+		modTime = st2.ModTime()
+	}
+	s.eventsCacheValid = true
+	s.eventsCacheSize = size
+	s.eventsCacheModTime = modTime
+	s.eventsCacheLastSeq = lastSeq
+	return lastSeq, diag, nil
 }
 
 func (s *Store) SaveSnapshotAtomic(snap *Snapshot) error {

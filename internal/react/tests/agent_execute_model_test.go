@@ -1358,11 +1358,11 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 	}
 
 	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+	if err == nil {
+		t.Fatalf("expected Execute to fail when step_replan/final_answer models return empty content")
 	}
-	if runResult == nil || runResult.Success {
-		t.Fatalf("expected failed run result, got %#v", runResult)
+	if runResult != nil {
+		t.Fatalf("expected nil run result on error, got %#v", runResult)
 	}
 
 	out := buf.String()
