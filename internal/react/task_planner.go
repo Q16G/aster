@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -57,25 +56,9 @@ func (p *DefaultTaskPlanner) Plan(ctx context.Context, input string) (*builtin_t
 	if err == nil {
 		return &retryResult.Value, nil
 	}
-	var exhausted *structuredoutput.ExhaustedError
-	if errors.As(err, &exhausted) && exhausted != nil {
-		if last := exhausted.LastAttempt(); last != nil && last.ErrorType == structuredoutput.ErrorTypeModelCallFailed {
-			return nil, err
-		}
-	}
-	// 兜底：planner 输出不合法时，回退为“无需规划”，由 runtime 走隐式单步 plan 推进。
-	explanation := "planner structured output retry exhausted, fallback to direct execution"
-	if raw := structuredoutput.LastResponse(err); raw != "" {
-		explanation = fmt.Sprintf("%s: %s", explanation, err.Error())
-		explanation = fmt.Sprintf("%s; last_response=%s", explanation, raw)
-	} else if err != nil {
-		explanation = fmt.Sprintf("%s: %s", explanation, err.Error())
-	}
-	return &builtin_tools.TaskPlannerResult{
-		NeedsPlanning: false,
-		Plan:          []*builtin_tools.PlanItem{},
-		Explanation:   explanation,
-	}, nil
+	// planner structured output 重试耗尽时直接失败（fail fast），避免将 last_response 或内部诊断信息回传给用户。
+	// 需要诊断时可通过 structuredoutput 日志（response_excerpt / last_response）排查。
+	return nil, fmt.Errorf("planner structured output retry exhausted: %w", err)
 }
 
 func parseTaskPlannerResult(raw string) (builtin_tools.TaskPlannerResult, error) {

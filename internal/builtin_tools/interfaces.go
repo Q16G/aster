@@ -43,9 +43,10 @@ type OnHumanInputFunc func(ctx context.Context, question string, context map[str
 
 // TaskPlannerResult 任务规划结果
 type TaskPlannerResult struct {
-	NeedsPlanning bool        `json:"needs_planning"`
-	Plan          []*PlanItem `json:"plan,omitempty"`
-	Explanation   string      `json:"explanation,omitempty"`
+	NeedsPlanning  bool        `json:"needs_planning"`
+	Plan           []*PlanItem `json:"plan,omitempty"`
+	Explanation    string      `json:"explanation,omitempty"`
+	DirectResponse string      `json:"direct_response,omitempty"`
 }
 
 // TaskPlanner 任务规划器接口
