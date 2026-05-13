@@ -72,54 +72,15 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 		switch phase {
 		case builtin_tools.AgentPhasePlan:
 			if err := a.runPlanPhase(ctx, extraText, taskContext); err != nil {
-				if tri, ok := isTurnInterruptRaised(err); ok {
-					return &builtin_tools.RunResult{
-						Success:          false,
-						TurnID:           strings.TrimSpace(a.currentTurnID),
-						TurnStatus:       string(persistv2.TurnStatusInterrupted),
-						PendingInterrupt: tri.Pending(),
-					}, nil
-				}
-				a.prepareTerminalInterrupt(err)
-				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
-				a.syncStepHistoryLayer(a.state.Snapshot())
-				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
-				a.emitter.EmitIteration(iter, maxIterations, "terminal")
-				return a.finalizeResult(snapshot), nil
+				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
 			}
 		case builtin_tools.AgentPhaseStep:
 			if err := a.runStepPhase(ctx, iter, runClient, extraText, taskContext); err != nil {
-				if tri, ok := isTurnInterruptRaised(err); ok {
-					return &builtin_tools.RunResult{
-						Success:          false,
-						TurnID:           strings.TrimSpace(a.currentTurnID),
-						TurnStatus:       string(persistv2.TurnStatusInterrupted),
-						PendingInterrupt: tri.Pending(),
-					}, nil
-				}
-				a.prepareTerminalInterrupt(err)
-				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
-				a.syncStepHistoryLayer(a.state.Snapshot())
-				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
-				a.emitter.EmitIteration(iter, maxIterations, "terminal")
-				return a.finalizeResult(snapshot), nil
+				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
 			}
 		case builtin_tools.AgentPhaseStepReplan:
 			if err := a.runStepReplanPhase(ctx, iter, runClient); err != nil {
-				if tri, ok := isTurnInterruptRaised(err); ok {
-					return &builtin_tools.RunResult{
-						Success:          false,
-						TurnID:           strings.TrimSpace(a.currentTurnID),
-						TurnStatus:       string(persistv2.TurnStatusInterrupted),
-						PendingInterrupt: tri.Pending(),
-					}, nil
-				}
-				a.prepareTerminalInterrupt(err)
-				_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
-				a.syncStepHistoryLayer(a.state.Snapshot())
-				snapshot, _ := a.runFinalAnswerPhase(ctx, iter, runClient)
-				a.emitter.EmitIteration(iter, maxIterations, "terminal")
-				return a.finalizeResult(snapshot), nil
+				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
 			}
 		case builtin_tools.AgentPhaseFinalAnswer:
 			if _, err := a.runFinalAnswerPhase(ctx, iter, runClient); err != nil {
@@ -184,8 +145,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 	if planner == nil {
 		return fmt.Errorf("task planner not configured")
 	}
-
-	snapshot = a.state.Snapshot()
 
 	snapshot = a.state.Snapshot()
 	input := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
@@ -619,6 +578,37 @@ func normalizeRuntimeErrorText(err error) string {
 	return strings.TrimSpace(err.Error())
 }
 
+func (a *Agent) handlePhaseError(
+	ctx context.Context,
+	err error,
+	iter, maxIterations int,
+	runClient ai.ChatClient,
+) (*builtin_tools.RunResult, error) {
+	if tri, ok := isTurnInterruptRaised(err); ok {
+		return &builtin_tools.RunResult{
+			Success:          false,
+			TurnID:           strings.TrimSpace(a.currentTurnID),
+			TurnStatus:       string(persistv2.TurnStatusInterrupted),
+			PendingInterrupt: tri.Pending(),
+		}, nil
+	}
+	a.prepareTerminalInterrupt(err)
+	_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
+	a.syncStepHistoryLayer(a.state.Snapshot())
+	snapshot, faErr := a.runFinalAnswerPhase(ctx, iter, runClient)
+	if faErr != nil {
+		a.emitRuntimeLog("error", "final answer phase failed during error handling", snapshot, map[string]any{
+			"event":          "final_answer_phase_error_in_fallback",
+			"original_error": err.Error(),
+			"final_error":    faErr.Error(),
+		})
+		a.emitter.EmitIteration(iter, maxIterations, "terminal")
+		return nil, fmt.Errorf("phase error: %v; final_answer error: %w", err, faErr)
+	}
+	a.emitter.EmitIteration(iter, maxIterations, "terminal")
+	return a.finalizeResult(snapshot), nil
+}
+
 func (a *Agent) prepareTerminalInterrupt(err error) {
 	if a == nil || a.state == nil {
 		return
@@ -640,17 +630,6 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// cleared by the next sync transition.
 	a.syncStepHistoryLayer(snapshot)
 
-	// Durable step-start checkpoint (in_progress): enables "resume current step" after interrupts.
-	if writer, err := newArtifactWriter(a.workspaceRuntime); err == nil {
-		if persistErr := writer.PersistRuntimeCheckpoint(snapshot, a.workspaceSessionID, "step_start"); persistErr != nil {
-			a.emitRuntimeLog("warning", "persist runtime checkpoint failed", snapshot, map[string]any{
-				"event":   "runtime_checkpoint_persist_failed",
-				"phase":   "step",
-				"step_id": strings.TrimSpace(snapshot.CurrentStepID),
-				"error":   strings.TrimSpace(persistErr.Error()),
-			})
-		}
-	}
 	currentStep := snapshot.CurrentStep()
 	a.emitRuntimeLog("info", "enter step phase", snapshot, map[string]any{
 		"event":        "phase_enter",

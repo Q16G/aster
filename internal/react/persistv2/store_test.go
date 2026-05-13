@@ -205,3 +205,78 @@ func TestStore_LoadSnapshot_RebuildsFromEventsOnParseError(t *testing.T) {
 		t.Fatalf("expected healed snapshot to contain system_diagnostics, got: %s", string(raw))
 	}
 }
+
+func TestStore_LoadSnapshot_ReconcilesWhenSnapshotBehindEvents(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "44444444-4444-4444-4444-444444444444"
+
+	store, err := Open(root, sessionID)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	// Seed events.
+	if _, err := store.AppendEvent(&Event{Type: "SESSION_CREATED"}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+	if _, err := store.AppendEvent(&Event{
+		Type:    "TURN_STARTED",
+		TurnID:  "turn-1",
+		GroupID: "group-1",
+		Payload: map[string]any{
+			"input": "hi",
+		},
+	}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+
+	// First load should reconcile from events.
+	snap, err := store.LoadSnapshot()
+	if err != nil {
+		t.Fatalf("LoadSnapshot failed: %v", err)
+	}
+	if snap == nil {
+		t.Fatal("expected snapshot")
+	}
+	if snap.LastSeq != 2 {
+		t.Fatalf("expected LastSeq=2 after initial reconcile, got %d", snap.LastSeq)
+	}
+	if snap.CurrentTurn == nil || snap.CurrentTurn.TurnID != "turn-1" {
+		t.Fatalf("expected CurrentTurn turn-1, got %#v", snap.CurrentTurn)
+	}
+	if snap.CurrentTurn.Status != TurnStatusRunning {
+		t.Fatalf("expected CurrentTurn.Status=running, got %q", snap.CurrentTurn.Status)
+	}
+
+	// Append a new event but do NOT update snapshot.json (simulates crash between append + snapshot write).
+	if _, err := store.AppendEvent(&Event{
+		Type:   "TURN_FINISHED",
+		TurnID: "turn-1",
+		Payload: map[string]any{
+			"status": "succeeded",
+		},
+	}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+
+	// Next load must detect snapshot behind events and reconcile incrementally.
+	snap2, err := store.LoadSnapshot()
+	if err != nil {
+		t.Fatalf("LoadSnapshot(2) failed: %v", err)
+	}
+	if snap2 == nil {
+		t.Fatal("expected snapshot (2)")
+	}
+	if snap2.LastSeq != 3 {
+		t.Fatalf("expected LastSeq=3 after reconcile, got %d", snap2.LastSeq)
+	}
+	if snap2.CurrentTurn == nil || snap2.CurrentTurn.TurnID != "turn-1" {
+		t.Fatalf("expected CurrentTurn turn-1, got %#v", snap2.CurrentTurn)
+	}
+	if snap2.CurrentTurn.Status != TurnStatusSucceeded {
+		t.Fatalf("expected CurrentTurn.Status=succeeded, got %q", snap2.CurrentTurn.Status)
+	}
+	if snap2.SessionState != SessionStateIdle {
+		t.Fatalf("expected SessionState=IDLE after succeeded finish, got %q", snap2.SessionState)
+	}
+}
