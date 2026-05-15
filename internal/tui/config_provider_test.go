@@ -32,7 +32,7 @@ providers:
 	cfg, err := LoadConfig(configPath)
 	require.NoError(t, err)
 
-	state := cfg.ResolveProviderState("", "", "", "")
+	state := cfg.ResolveProviderState("", "", "", "", nil, nil)
 	require.NotNil(t, state)
 
 	assert.Equal(t, "openai", state.Name)

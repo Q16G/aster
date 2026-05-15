@@ -10,6 +10,7 @@ func TestBuildModelSelectOptionsGroupsCurrentAndRecent(t *testing.T) {
 			{ID: "claude-3-7-sonnet", OwnedBy: "anthropic"},
 		},
 		"gpt-4o",
+		nil,
 		[]string{"gpt-4.1-mini", "gpt-4o"},
 	)
 
