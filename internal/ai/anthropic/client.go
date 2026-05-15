@@ -378,12 +378,7 @@ func extractStableSystemPrefix(promptFamily string, text string) string {
 		return text
 	}
 	for _, marker := range []string{
-		"<PHASE>",
-		"<CURRENT_GOAL>",
-		"<CURRENT_STEP_ID>",
 		"<CURRENT_STEP>",
-		"<LATEST_INPUT>",
-		"<INPUT_TIMELINE>",
 		"<DEPENDENCY_STEP_SUMMARIES>",
 		"<EXECUTION_CONTEXTS>",
 		"<WARNINGS>",
@@ -518,6 +513,19 @@ func (c *Client) LastTokenUsage() *ai.TokenUsage {
 		return nil
 	}
 	return ai.NormalizeTokenUsagePtr(c.lastUsage)
+}
+
+func (c *Client) ModelContextInfo() ai.ModelContextInfo {
+	if c == nil || c.config == nil {
+		return ai.ModelContextInfo{}
+	}
+	return ai.ModelContextInfo{
+		ModelName:           c.config.Model,
+		ContextWindowTokens: c.config.ContextWindowTokens,
+		OutputTokenLimit:    c.config.OutputTokenLimit,
+		SupportsVision:      c.config.SupportsVision,
+		SupportsAudio:       c.config.SupportsAudio,
+	}.Normalize()
 }
 
 func (c *Client) UsagePricingModel() aiusage.PricingModel {

@@ -35,23 +35,23 @@ func ResolveEmbeddingsURL(raw string) string {
 	return appendAPIPath(value, "/embeddings")
 }
 
+// ResolveModelsURL 将用户传入的 URL 规范化为 models 的最终请求地址。
+func ResolveModelsURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return value
+	}
+	if strings.Contains(value, "/models") {
+		return value
+	}
+	return appendAPIPath(value, "/models")
+}
+
 func appendAPIPath(raw string, apiPath string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		s := strings.TrimRight(raw, "/")
-		if strings.HasSuffix(s, "/v1") {
-			return s + apiPath
-		}
-		return s + "/v1" + apiPath
+		return strings.TrimRight(raw, "/") + apiPath
 	}
-
-	path := strings.TrimSuffix(u.Path, "/")
-	if strings.HasSuffix(path, "/v1") {
-		u.Path = path + apiPath
-	} else if path == "" || path == "/" {
-		u.Path = "/v1" + apiPath
-	} else {
-		u.Path = path + "/v1" + apiPath
-	}
+	u.Path = strings.TrimSuffix(u.Path, "/") + apiPath
 	return u.String()
 }

@@ -100,6 +100,19 @@ func (m *Manager) LoadFromConfigWithProbe(ctx context.Context, cfg *Config, emit
 	}
 }
 
+func (m *Manager) RegisterServer(name string, cfg *MCPServerConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.servers[name]; exists {
+		return
+	}
+	m.servers[name] = &MCPServerEntry{
+		Name:   name,
+		Config: cfg,
+		Status: MCPStatusDisconnected,
+	}
+}
+
 func (m *Manager) Connect(ctx context.Context, name string) ([]*ToolAdapter, error) {
 	m.mu.Lock()
 	entry, ok := m.servers[name]
