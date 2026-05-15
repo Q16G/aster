@@ -92,7 +92,7 @@ func TestChatExWithOptions_BuildsAnthropicCacheableRequest(t *testing.T) {
 	)
 
 	choices, err := client.ChatExWithOptions(context.Background(), []*ai.MsgInfo{
-		ai.NewSystemMsgInfo("static rules\n<PHASE>\ndynamic state"),
+		ai.NewSystemMsgInfo("static rules\n<CURRENT_STEP>\ndynamic state"),
 		ai.NewUserMsgInfo("hello"),
 		ai.NewToolCallResultMsgInfo("tool result", "toolu_1"),
 	}, &ai.RequestOptions{
