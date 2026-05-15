@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type SelectResultMsg struct {
@@ -21,17 +22,20 @@ type SelectOption struct {
 	Value       string
 	Description string
 	Disabled    bool
+	IsFavorite  bool
 }
 
 type SelectDialog struct {
-	id       string
-	title    string
-	options  []SelectOption
-	filtered []int
-	cursor   int
-	filter   textinput.Model
-	width    int
-	height   int
+	id               string
+	title            string
+	options          []SelectOption
+	filtered         []int
+	cursor           int
+	filter           textinput.Model
+	width            int
+	height           int
+	FullWidth        bool
+	OnFavoriteToggle func(value string)
 }
 
 func NewSelectDialog(id, title string, options []SelectOption) *SelectDialog {
@@ -65,6 +69,28 @@ func NewSelectDialog(id, title string, options []SelectOption) *SelectDialog {
 func (s *SelectDialog) ID() string { return s.id }
 
 func (s *SelectDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
+	if mouse, ok := msg.(tea.MouseMsg); ok {
+		me := tea.MouseEvent(mouse)
+		if me.IsWheel() {
+			switch me.Button {
+			case tea.MouseButtonWheelUp:
+				for next := s.cursor - 1; next >= 0; next-- {
+					if !s.options[s.filtered[next]].Disabled {
+						s.cursor = next
+						break
+					}
+				}
+			case tea.MouseButtonWheelDown:
+				for next := s.cursor + 1; next < len(s.filtered); next++ {
+					if !s.options[s.filtered[next]].Disabled {
+						s.cursor = next
+						break
+					}
+				}
+			}
+			return s, nil
+		}
+	}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
@@ -130,6 +156,16 @@ func (s *SelectDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 				}
 			}
 			return s, nil
+		case "ctrl+f":
+			if s.OnFavoriteToggle != nil && len(s.filtered) > 0 && s.cursor < len(s.filtered) {
+				idx := s.filtered[s.cursor]
+				opt := s.options[idx]
+				if !opt.Disabled {
+					s.options[idx].IsFavorite = !s.options[idx].IsFavorite
+					s.OnFavoriteToggle(opt.Value)
+				}
+			}
+			return s, nil
 		case "esc":
 			return s, func() tea.Msg {
 				return SelectResultMsg{DialogID: s.id, Cancelled: true}
@@ -144,19 +180,24 @@ func (s *SelectDialog) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 }
 
 func (s *SelectDialog) applyFilter() {
-	query := strings.ToLower(s.filter.Value())
+	query := strings.TrimSpace(s.filter.Value())
 	if query == "" {
 		s.filtered = make([]int, len(s.options))
 		for i := range s.options {
 			s.filtered[i] = i
 		}
 	} else {
-		s.filtered = s.filtered[:0]
+		matched := FuzzyFilter(query, s.options)
+		valueToOrigIdx := make(map[string]int, len(s.options))
 		for i, opt := range s.options {
-			if opt.Disabled ||
-				strings.Contains(strings.ToLower(opt.Label), query) ||
-				strings.Contains(strings.ToLower(opt.Description), query) {
-				s.filtered = append(s.filtered, i)
+			if !opt.Disabled && opt.Value != "" {
+				valueToOrigIdx[opt.Value] = i
+			}
+		}
+		s.filtered = s.filtered[:0]
+		for _, opt := range matched {
+			if idx, ok := valueToOrigIdx[opt.Value]; ok {
+				s.filtered = append(s.filtered, idx)
 			}
 		}
 	}
@@ -184,6 +225,9 @@ func (s *SelectDialog) View() string {
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
+	if s.FullWidth {
+		contentWidth = s.width - 4
+	}
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62"))
@@ -210,6 +254,11 @@ func (s *SelectDialog) View() string {
 	}
 	end := min(start+maxVisible, len(s.filtered))
 
+	lineWidth := contentWidth - 6
+	if s.FullWidth {
+		lineWidth = contentWidth - 2
+	}
+
 	for i := start; i < end; i++ {
 		idx := s.filtered[i]
 		opt := s.options[idx]
@@ -224,7 +273,21 @@ func (s *SelectDialog) View() string {
 			prefix = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s", prefix, opt.Label)
+		star := ""
+		if opt.IsFavorite {
+			star = "★ "
+		}
+		label := opt.Label
+		if s.FullWidth && lineWidth > 0 {
+			maxLabel := lineWidth - runewidth.StringWidth(prefix) - runewidth.StringWidth(star)
+			if opt.Description != "" {
+				maxLabel -= runewidth.StringWidth(opt.Description) + 1
+			}
+			if maxLabel > 0 && runewidth.StringWidth(label) > maxLabel {
+				label = runewidth.Truncate(label, maxLabel-1, "…")
+			}
+		}
+		line := fmt.Sprintf("%s%s%s", prefix, star, label)
 		sb.WriteString(style.Render(line))
 		if opt.Description != "" {
 			sb.WriteString(" " + descStyle.Render(opt.Description))
@@ -234,6 +297,13 @@ func (s *SelectDialog) View() string {
 
 	if len(s.filtered) == 0 {
 		sb.WriteString(descStyle.Render("  No matches"))
+	}
+
+	if s.FullWidth {
+		wrapper := lipgloss.NewStyle().
+			Padding(1, 1).
+			Width(s.width)
+		return lipgloss.Place(s.width, s.height, lipgloss.Left, lipgloss.Top, wrapper.Render(sb.String()))
 	}
 
 	border := lipgloss.NewStyle().
@@ -249,12 +319,10 @@ func (s *SelectDialog) View() string {
 func (s *SelectDialog) SetSize(w, h int) {
 	s.width = w
 	s.height = h
-	s.filter.Width = min(w-10, 50)
+	if s.FullWidth {
+		s.filter.Width = max(20, w-10)
+	} else {
+		s.filter.Width = min(w-10, 50)
+	}
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

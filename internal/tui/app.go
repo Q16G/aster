@@ -17,6 +17,7 @@ import (
 	aiusage "aster/internal/ai/usage"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
+	"aster/internal/provider"
 	"aster/internal/service"
 	tuicontext "aster/internal/tui/context"
 	tuiui "aster/internal/tui/ui"
@@ -72,6 +73,8 @@ type Model struct {
 
 	skillService    *service.SkillService
 	mcpManager      *mcp.Manager
+	registry        *provider.Registry
+	credStore       *CredentialStore
 	appCfg          *AppConfig
 	providerCfg     *ProviderState
 	pendingProvider *pendingProviderSetup
@@ -121,10 +124,16 @@ func NewModel(
 	profileRegistry *ProfileRegistry,
 	skillService *service.SkillService,
 	mcpManager *mcp.Manager,
+	reg *provider.Registry,
+	credStore *CredentialStore,
 	appCfg *AppConfig,
 	providerCfg *ProviderState,
+	localProv *tuicontext.LocalProvider,
 	syncStore *tuicontext.SyncStore,
 ) Model {
+	if localProv == nil {
+		localProv = tuicontext.NewLocalProvider()
+	}
 	m := Model{
 		store:           store,
 		chat:            NewChatModel(),
@@ -136,6 +145,8 @@ func NewModel(
 		profileRegistry: profileRegistry,
 		skillService:    skillService,
 		mcpManager:      mcpManager,
+		registry:        reg,
+		credStore:       credStore,
 		appCfg:          appCfg,
 		providerCfg:     providerCfg,
 		statusText:      "ready",
@@ -144,7 +155,7 @@ func NewModel(
 		syncStore:       syncStore,
 		themeProvider:   tuicontext.NewThemeProvider(),
 		keybindProvider: tuicontext.NewKeybindProvider(),
-		localProvider:   tuicontext.NewLocalProvider(),
+		localProvider:   localProv,
 		exitProvider:    tuicontext.NewExitProvider(),
 		dialogStack:     tuiui.NewDialogStack(),
 		toastManager:    tuiui.NewToastManager(5),
@@ -213,10 +224,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// act on wheel events to avoid focus surprises.
 		me := tea.MouseEvent(msg)
 		if me.IsWheel() {
-			var cmd tea.Cmd
-			m.chat, cmd = m.chat.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
+			if !m.dialogStack.IsEmpty() {
+				cmd := m.dialogStack.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			} else {
+				var cmd tea.Cmd
+				m.chat, cmd = m.chat.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
 			}
 		}
 		// Let the rest of the model (spinner/toasts/etc) update as usual.
@@ -627,7 +645,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "skill-select":
 			if msg.Value != "" {
-				active := stringsContains(m.sessionMeta.ActiveSkillNames, msg.Value)
+				active := false
+				if set := m.effectiveActiveSkillSet(); set != nil {
+					_, active = set[msg.Value]
+				}
 				m.toggleSessionSkill(msg.Value, !active)
 				return m.openSkillSelector()
 			}
@@ -639,23 +660,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "provider-select":
 			if msg.Value != "" {
-				if bp, ok := GetBuiltinProvider(msg.Value); ok {
-					cfgP := m.appCfg.Providers[msg.Value]
-					apiKey := resolveAPIKey(bp, "")
-					if cfgP != nil {
-						apiKey = resolveAPIKey(bp, cfgP.APIKey)
+				cfgP := m.appCfg.Providers[msg.Value]
+				cfgKey := ""
+				if cfgP != nil {
+					cfgKey = cfgP.APIKey
+				}
+				apiKey := m.registry.ResolveAPIKey(msg.Value, cfgKey)
+				envVar := m.registry.ProviderEnvVar(msg.Value)
+				if apiKey == "" && envVar != "" {
+					pInfo, _ := m.registry.GetProvider(msg.Value)
+					pName := msg.Value
+					if pInfo != nil {
+						pName = pInfo.Name
 					}
-					if apiKey == "" && bp.APIKeyEnvVar != "" {
-						m.pendingProvider = &pendingProviderSetup{ProviderID: msg.Value}
-						prompt := tuiui.NewPromptDialog(
-							"provider-apikey:"+msg.Value,
-							fmt.Sprintf("Configure %s", bp.Name),
-							fmt.Sprintf("Enter your %s API key:", bp.Name),
-						).WithMasked().WithPlaceholder("sk-...")
-						m.dialogStack.Push(prompt, nil)
-						m.dialogStack.SetSize(m.width, m.height)
-						return m, nil
-					}
+					m.pendingProvider = &pendingProviderSetup{ProviderID: msg.Value}
+					prompt := tuiui.NewPromptDialog(
+						"provider-apikey:"+msg.Value,
+						fmt.Sprintf("Configure %s", pName),
+						fmt.Sprintf("Enter your %s API key:", pName),
+					).WithMasked().WithPlaceholder("sk-...")
+					m.dialogStack.Push(prompt, nil)
+					m.dialogStack.SetSize(m.width, m.height)
+					return m, nil
 				}
 				return m, func() tea.Msg { return ProviderSwitchMsg{Name: msg.Value} }
 			}
@@ -721,13 +747,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		state := m.appCfg.ResolveProviderState(msg.Name, "", "", "")
+		state := m.appCfg.ResolveProviderState(msg.Name, "", "", "", m.registry, m.credStore)
 		if state == nil {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + msg.Name}})
 			return m, nil
 		}
-		if bp, ok := GetBuiltinProvider(msg.Name); ok && state.APIKey == "" && bp.APIKeyEnvVar != "" {
-			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider %s requires %s to be set", bp.Name, bp.APIKeyEnvVar)}})
+		envVar := m.registry.ProviderEnvVar(msg.Name)
+		if state.APIKey == "" && envVar != "" {
+			pInfo, _ := m.registry.GetProvider(msg.Name)
+			pName := msg.Name
+			if pInfo != nil {
+				pName = pInfo.Name
+			}
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider %s requires %s to be set", pName, envVar)}})
 			return m, nil
 		}
 
@@ -747,12 +779,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cfg.Providers = make(map[string]*ProviderConfig)
 			}
 			if _, exists := cfg.Providers[msg.Name]; !exists {
-				if bp, ok := GetBuiltinProvider(msg.Name); ok {
-					cfg.Providers[msg.Name] = &ProviderConfig{
-						BaseURL:      bp.BaseURL,
-						APIKey:       fmt.Sprintf("${%s}", bp.APIKeyEnvVar),
-						DefaultModel: bp.DefaultModel,
+				if rp, ok := m.registry.GetProvider(msg.Name); ok {
+					pc := &ProviderConfig{BaseURL: rp.BaseURL}
+					if len(rp.EnvVars) > 0 {
+						pc.APIKey = fmt.Sprintf("${%s}", rp.EnvVars[0])
 					}
+					cfg.Providers[msg.Name] = pc
 				}
 			}
 		}); err != nil {
@@ -783,19 +815,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusText = msg.Text
 		return m, nil
 
-	case ModelPickerLoadedMsg:
-		if len(msg.Models) == 0 {
-			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "no models available from current provider"}})
+	case MultiProviderModelPickerLoadedMsg:
+		totalModels := 0
+		for _, models := range msg.ModelsByProvider {
+			totalModels += len(models)
+		}
+		if totalModels == 0 {
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "no models available from configured providers"}})
 			m.statusText = "no models"
 			return m, nil
 		}
+		currentProviderID := ""
 		currentModelID := ""
 		if m.providerCfg != nil {
+			currentProviderID = m.providerCfg.Name
 			currentModelID = m.providerCfg.ModelID
 		}
-		recentIDs := tuicontext.RecentModelIDs(m.localProvider.Get().RecentModels)
-		options := buildModelSelectOptions(msg.Models, currentModelID, recentIDs)
+		prefs := m.localProvider.Get()
+		providerOrder := m.configuredProviderIDs()
+		options := buildMultiProviderModelSelectOptions(
+			msg.ModelsByProvider,
+			providerOrder,
+			currentProviderID, currentModelID,
+			prefs.FavoriteModels, prefs.RecentModels,
+		)
 		dialog := tuiui.NewSelectDialog("model-select", "Select Model", options)
+		dialog.OnFavoriteToggle = func(value string) {
+			pid, mid := decodeModelValue(value)
+			if pid == "" {
+				pid = currentProviderID
+			}
+			m.localProvider.ToggleFavoriteModel(pid, mid)
+		}
 		m.dialogStack.Push(dialog, nil)
 		m.dialogStack.SetSize(m.width, m.height)
 		m.statusText = "select model"
@@ -841,16 +892,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.toastManager.Push(fmt.Sprintf("theme: %s", m.themeProvider.Get().Name), tuiui.ToastInfo, 2*time.Second)
 
 	case ModelSwitchMsg:
-		if m.providerCfg != nil && msg.ModelID != "" {
-			m.providerCfg.ModelID = msg.ModelID
-			if m.agentCtx != nil {
-				m.agentCtx.Definition.ModelID = msg.ModelID
-			}
-			m.rememberRecentModel(msg.ModelID)
-			m.persistSessionMeta()
-			m.refreshSidebarData()
-			m.statusText = fmt.Sprintf("model: %s", msg.ModelID)
+		if m.providerCfg == nil || msg.ModelID == "" {
+			return m, nil
 		}
+
+		targetProvider, rawModelID := decodeModelValue(msg.ModelID)
+		if targetProvider == "" {
+			targetProvider = m.providerCfg.Name
+		}
+
+		if targetProvider != m.providerCfg.Name {
+			if err := m.switchProviderInline(targetProvider); err != nil {
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("provider switch failed: %v", err)}})
+				return m, nil
+			}
+		}
+
+		var cfgVariants map[string]map[string]any
+		if m.appCfg != nil {
+			if pc := m.appCfg.Providers[m.providerCfg.Name]; pc != nil {
+				cfgVariants = pc.Variants
+			}
+		}
+		baseModel, variant, variantOpts := ParseModelVariant(rawModelID, m.registry, m.providerCfg.Name, cfgVariants)
+		m.providerCfg.ModelID = baseModel
+		m.providerCfg.Variant = variant
+		m.providerCfg.VariantOptions = variantOpts
+		if m.agentCtx != nil {
+			m.agentCtx.Definition.ModelID = baseModel
+		}
+		m.rememberRecentModel(rawModelID)
+		m.persistSessionMeta()
+		m.refreshSidebarData()
+		label := baseModel
+		if variant != "" {
+			label += " (" + variant + ")"
+		}
+		m.statusText = fmt.Sprintf("model: %s", label)
 		return m, nil
 
 	case BatchedEventsMsg:
@@ -865,6 +943,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) switchProviderInline(providerID string) error {
+	state := m.appCfg.ResolveProviderState(providerID, "", "", "", m.registry, m.credStore)
+	if state == nil {
+		return fmt.Errorf("unknown provider: %s", providerID)
+	}
+	envVar := m.registry.ProviderEnvVar(providerID)
+	if state.APIKey == "" && envVar != "" {
+		return fmt.Errorf("provider %s requires %s", providerID, envVar)
+	}
+
+	*m.providerCfg = *state
+
+	if m.agentCtx != nil && m.agentCtx.RebuildClient != nil {
+		m.agentCtx.RebuildClient(m.providerCfg)
+	}
+
+	m.appCfg.DefaultProvider = providerID
+	_ = SaveConfig(DefaultConfigPath(), func(cfg *AppConfig) {
+		cfg.DefaultProvider = providerID
+	})
+
+	return nil
 }
 
 // --- Focus Management ---
@@ -973,7 +1075,7 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 		}
 	}
 
-	snap.ActiveSkills = m.sessionMeta.ActiveSkillNames
+	snap.ActiveSkills = m.effectiveActiveSkillNames()
 	snap.ActiveMCPs = m.sessionMeta.ActiveMCPServers
 	snap.DismissedGettingStarted = m.localProvider.Get().DismissedGettingStarted
 	snap.Workdir = m.footer.Workdir()

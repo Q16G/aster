@@ -80,9 +80,9 @@ func (m Model) renderTips(hintStyle lipgloss.Style) string {
 
 func (m Model) renderProviderHints(hintStyle lipgloss.Style) string {
 	var available []string
-	for _, bp := range builtinProviders {
-		if isProviderAvailable(bp) {
-			available = append(available, bp.Name)
+	for _, rp := range m.registry.ListProviders() {
+		if m.registry.IsProviderAvailable(rp.ID) {
+			available = append(available, rp.Name)
 		}
 	}
 	if len(available) == 0 {

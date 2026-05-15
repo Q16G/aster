@@ -69,12 +69,12 @@ type ModelSwitchMsg struct {
 	ModelID string
 }
 
-type ModelPickerLoadedMsg struct {
-	Models []ModelOption
-}
-
 type ModelPickerFailedMsg struct {
 	Err error
+}
+
+type MultiProviderModelPickerLoadedMsg struct {
+	ModelsByProvider map[string][]ModelOption
 }
 
 type QuitConfirmMsg struct{}

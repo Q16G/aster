@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,6 +12,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
+	"aster/internal/provider"
 	tuiui "aster/internal/tui/ui"
 )
 
@@ -134,6 +136,8 @@ func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {
 			if def, ok := m.profileRegistry.Get(args[0]); ok {
 				m.agentCtx.Definition = def
 				m.updateSessionAgent(def.Name)
+				m.applySessionRuntimeState()
+				m.refreshSidebarData()
 				m.statusText = fmt.Sprintf("switched to %s", def.Name)
 				return m, m.input.Focus()
 			}
@@ -158,9 +162,9 @@ func (m *Model) cmdProvider(args []string) (tea.Model, tea.Cmd) {
 	}
 
 	name := args[0]
-	_, isBuiltin := GetBuiltinProvider(name)
+	_, inRegistry := m.registry.GetProvider(name)
 	_, inConfig := m.appCfg.Providers[name]
-	if !isBuiltin && !inConfig {
+	if !inRegistry && !inConfig {
 		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown provider: " + name}})
 		return m, nil
 	}
@@ -177,39 +181,60 @@ func (m *Model) openProviderSelector() (tea.Model, tea.Cmd) {
 		return m.providerCfg.Name == id
 	}
 
-	seen := make(map[string]bool)
-	options := make([]tuiui.SelectOption, 0, len(builtinProviders)+4)
-
-	for _, bp := range builtinProviders {
-		seen[bp.ID] = true
-		cfgProvider := m.appCfg.Providers[bp.ID]
-		apiKey := resolveAPIKey(bp, "")
-		if cfgProvider != nil {
-			apiKey = resolveAPIKey(bp, cfgProvider.APIKey)
+	isConfigured := func(rp *provider.ProviderInfo) bool {
+		cfgKey := ""
+		if cfgProvider := m.appCfg.Providers[rp.ID]; cfgProvider != nil {
+			cfgKey = cfgProvider.APIKey
 		}
+		if m.credStore != nil && m.credStore.Get(rp.ID) != "" {
+			return true
+		}
+		return m.registry.ResolveAPIKey(rp.ID, cfgKey) != "" || len(rp.EnvVars) == 0
+	}
 
-		configured := apiKey != "" || bp.APIKeyEnvVar == ""
+	makeOption := func(rp *provider.ProviderInfo, configured bool) tuiui.SelectOption {
 		icon := "○"
 		if configured {
 			icon = "✓"
 		}
-
-		desc := bp.DefaultModel
-		if cfgProvider != nil && cfgProvider.DefaultModel != "" {
+		desc := fmt.Sprintf("%d models", len(rp.Models))
+		if cfgProvider := m.appCfg.Providers[rp.ID]; cfgProvider != nil && cfgProvider.DefaultModel != "" {
 			desc = cfgProvider.DefaultModel
 		}
-		if isCurrent(bp.ID) {
+		if isCurrent(rp.ID) {
 			desc += " (current)"
 		}
-		if !configured && bp.APIKeyEnvVar != "" {
-			desc += fmt.Sprintf("  [set %s]", bp.APIKeyEnvVar)
+		if !configured && len(rp.EnvVars) > 0 {
+			desc += fmt.Sprintf("  [set %s]", rp.EnvVars[0])
 		}
-
-		options = append(options, tuiui.SelectOption{
-			Label:       icon + " " + bp.Name,
-			Value:       bp.ID,
+		return tuiui.SelectOption{
+			Label:       icon + " " + rp.Name,
+			Value:       rp.ID,
 			Description: desc,
-		})
+		}
+	}
+
+	seen := make(map[string]bool)
+	priority := m.appCfg.effectiveProviderPriority()
+	providers := m.registry.ListProvidersSorted(priority, func(id string) bool {
+		rp, ok := m.registry.GetProvider(id)
+		if !ok {
+			return false
+		}
+		return isConfigured(rp)
+	})
+
+	var configured, envAvailable, rest []tuiui.SelectOption
+	for _, rp := range providers {
+		seen[rp.ID] = true
+		opt := makeOption(rp, isConfigured(rp))
+		if isConfigured(rp) {
+			configured = append(configured, opt)
+		} else if m.registry.IsProviderAvailable(rp.ID) {
+			envAvailable = append(envAvailable, opt)
+		} else {
+			rest = append(rest, opt)
+		}
 	}
 
 	if m.appCfg != nil {
@@ -225,12 +250,26 @@ func (m *Model) openProviderSelector() (tea.Model, tea.Cmd) {
 			if isCurrent(name) {
 				desc += " (current)"
 			}
-			options = append(options, tuiui.SelectOption{
+			configured = append(configured, tuiui.SelectOption{
 				Label:       icon + " " + name,
 				Value:       name,
 				Description: desc,
 			})
 		}
+	}
+
+	options := make([]tuiui.SelectOption, 0, len(configured)+len(envAvailable)+len(rest)+6)
+	if len(configured) > 0 {
+		options = append(options, tuiui.SelectOption{Label: "── Configured ──", Disabled: true})
+		options = append(options, configured...)
+	}
+	if len(envAvailable) > 0 {
+		options = append(options, tuiui.SelectOption{Label: "── Available (env) ──", Disabled: true})
+		options = append(options, envAvailable...)
+	}
+	if len(rest) > 0 {
+		options = append(options, tuiui.SelectOption{Label: "── All Providers ──", Disabled: true})
+		options = append(options, rest...)
 	}
 
 	dialog := tuiui.NewSelectDialog("provider-select", "Select Provider", options)
@@ -256,6 +295,14 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 			return m, nil
 		}
 
+		if m.credStore != nil {
+			if err := m.credStore.Set(providerID, apiKey); err != nil {
+				m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("failed to save API key: %v", err)}})
+				m.pendingProvider = nil
+				return m, nil
+			}
+		}
+
 		if err := SaveConfig(DefaultConfigPath(), func(cfg *AppConfig) {
 			if cfg.Providers == nil {
 				cfg.Providers = make(map[string]*ProviderConfig)
@@ -265,19 +312,13 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 				p = &ProviderConfig{}
 				cfg.Providers[providerID] = p
 			}
-			p.APIKey = apiKey
-			if bp, ok := GetBuiltinProvider(providerID); ok {
+			if rp, ok := m.registry.GetProvider(providerID); ok {
 				if p.BaseURL == "" {
-					p.BaseURL = bp.BaseURL
-				}
-				if p.DefaultModel == "" {
-					p.DefaultModel = bp.DefaultModel
+					p.BaseURL = rp.BaseURL
 				}
 			}
 		}); err != nil {
-			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("failed to save API key: %v", err)}})
-			m.pendingProvider = nil
-			return m, nil
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("failed to save provider config: %v", err)}})
 		}
 
 		if m.appCfg.Providers == nil {
@@ -288,13 +329,9 @@ func (m *Model) handleProviderPromptResult(msg tuiui.PromptResultMsg) (tea.Model
 			p = &ProviderConfig{}
 			m.appCfg.Providers[providerID] = p
 		}
-		p.APIKey = apiKey
-		if bp, ok := GetBuiltinProvider(providerID); ok {
+		if rp, ok := m.registry.GetProvider(providerID); ok {
 			if p.BaseURL == "" {
-				p.BaseURL = bp.BaseURL
-			}
-			if p.DefaultModel == "" {
-				p.DefaultModel = bp.DefaultModel
+				p.BaseURL = rp.BaseURL
 			}
 		}
 
@@ -313,8 +350,7 @@ func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 	}
 
 	if len(args) == 0 {
-		m.statusText = "loading models..."
-		return m, fetchModelsCmd(m.providerCfg.BaseURL, m.providerCfg.APIKey)
+		return m, m.fetchAllProviderModelsCmd()
 	}
 
 	m.providerCfg.ModelID = args[0]
@@ -327,15 +363,114 @@ func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func fetchModelsCmd(baseURL, apiKey string) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		models, err := ai.ListModels(ctx, baseURL, apiKey)
-		if err != nil {
-			return ModelPickerFailedMsg{Err: err}
+type providerFetchInfo struct {
+	providerID string
+	baseURL    string
+	apiKey     string
+}
+
+func (m *Model) configuredProviderIDs() []string {
+	if m.appCfg == nil {
+		if m.providerCfg != nil {
+			return []string{m.providerCfg.Name}
 		}
-		return ModelPickerLoadedMsg{Models: modelOptionsFromDescriptors(models)}
+		return nil
+	}
+
+	priority := m.appCfg.effectiveProviderPriority()
+	currentID := ""
+	if m.providerCfg != nil {
+		currentID = m.providerCfg.Name
+	}
+
+	seen := make(map[string]bool)
+	var result []string
+
+	if currentID != "" {
+		result = append(result, currentID)
+		seen[currentID] = true
+	}
+
+	for _, pid := range priority {
+		if seen[pid] {
+			continue
+		}
+		if _, ok := m.appCfg.Providers[pid]; ok {
+			result = append(result, pid)
+			seen[pid] = true
+		}
+	}
+
+	for pid := range m.appCfg.Providers {
+		if !seen[pid] {
+			result = append(result, pid)
+			seen[pid] = true
+		}
+	}
+
+	return result
+}
+
+func (m *Model) fetchAllProviderModelsCmd() tea.Cmd {
+	providerIDs := m.configuredProviderIDs()
+	if len(providerIDs) == 0 {
+		return func() tea.Msg {
+			return ModelPickerFailedMsg{Err: fmt.Errorf("no providers configured")}
+		}
+	}
+
+	registryModels := make(map[string][]ModelOption)
+	var needsFetch []providerFetchInfo
+
+	for _, pid := range providerIDs {
+		if models := m.registry.ListModels(pid); len(models) > 0 {
+			registryModels[pid] = registryModelsToOptions(pid, models)
+		} else {
+			state := m.appCfg.ResolveProviderState(pid, "", "", "", m.registry, m.credStore)
+			if state != nil && state.BaseURL != "" {
+				needsFetch = append(needsFetch, providerFetchInfo{
+					providerID: pid,
+					baseURL:    state.BaseURL,
+					apiKey:     state.APIKey,
+				})
+			}
+		}
+	}
+
+	if len(needsFetch) == 0 {
+		result := registryModels
+		return func() tea.Msg {
+			return MultiProviderModelPickerLoadedMsg{ModelsByProvider: result}
+		}
+	}
+
+	m.statusText = "loading models..."
+	return func() tea.Msg {
+		result := make(map[string][]ModelOption, len(registryModels)+len(needsFetch))
+		for k, v := range registryModels {
+			result[k] = v
+		}
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		for _, fi := range needsFetch {
+			wg.Add(1)
+			go func(fi providerFetchInfo) {
+				defer wg.Done()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				models, err := ai.ListModels(ctx, fi.baseURL, fi.apiKey)
+				if err != nil {
+					return
+				}
+				opts := modelOptionsFromDescriptors(fi.providerID, models)
+				mu.Lock()
+				result[fi.providerID] = opts
+				mu.Unlock()
+			}(fi)
+		}
+		wg.Wait()
+		return MultiProviderModelPickerLoadedMsg{ModelsByProvider: result}
 	}
 }
 
@@ -352,6 +487,10 @@ func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /skill enable <name>"}})
 			return m, nil
 		}
+		if m.isPreloadedSkill(args[1]) {
+			m.statusText = fmt.Sprintf("skill pinned: %s", args[1])
+			return m, m.toastManager.Push(fmt.Sprintf("skill pinned by agent: %s", args[1]), tuiui.ToastInfo, 3*time.Second)
+		}
 		m.toggleSessionSkill(args[1], true)
 		m.statusText = fmt.Sprintf("skill enabled: %s", args[1])
 		return m, m.toastManager.Push(fmt.Sprintf("skill enabled: %s", args[1]), tuiui.ToastSuccess, 3*time.Second)
@@ -359,6 +498,10 @@ func (m *Model) cmdSkill(args []string) (tea.Model, tea.Cmd) {
 		if len(args) < 2 {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /skill disable <name>"}})
 			return m, nil
+		}
+		if m.isPreloadedSkill(args[1]) {
+			m.toggleSessionSkill(args[1], false)
+			return m, m.toastManager.Push(fmt.Sprintf("skill pinned by agent: %s", args[1]), tuiui.ToastWarning, 3*time.Second)
 		}
 		m.toggleSessionSkill(args[1], false)
 		m.statusText = fmt.Sprintf("skill disabled: %s", args[1])
@@ -398,6 +541,7 @@ func (m *Model) skillList() (tea.Model, tea.Cmd) {
 	}
 
 	allowed := m.allowedSkillNames()
+	activeSet := m.effectiveActiveSkillSet()
 	var sb strings.Builder
 	sb.WriteString("Skills:\n")
 	for _, s := range skills {
@@ -407,7 +551,12 @@ func (m *Model) skillList() (tea.Model, tea.Cmd) {
 			}
 		}
 		icon := "○"
-		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
+		if activeSet != nil {
+			if _, ok := activeSet[s.Name]; ok {
+				icon = "●"
+			}
+		}
+		if icon == "○" && m.isPreloadedSkill(s.Name) {
 			icon = "●"
 		}
 		sb.WriteString(fmt.Sprintf("  %s %s", icon, s.Name))
@@ -431,6 +580,7 @@ func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	allowed := m.allowedSkillNames()
+	activeSet := m.effectiveActiveSkillSet()
 	options := make([]tuiui.SelectOption, 0, len(skills))
 	for _, s := range skills {
 		if len(allowed) > 0 {
@@ -439,7 +589,12 @@ func (m *Model) openSkillSelector() (tea.Model, tea.Cmd) {
 			}
 		}
 		icon := "○"
-		if stringsContains(m.sessionMeta.ActiveSkillNames, s.Name) {
+		if activeSet != nil {
+			if _, ok := activeSet[s.Name]; ok {
+				icon = "●"
+			}
+		}
+		if icon == "○" && m.isPreloadedSkill(s.Name) {
 			icon = "●"
 		}
 		options = append(options, tuiui.SelectOption{
@@ -628,6 +783,7 @@ func (m *Model) openSessionSelector() (tea.Model, tea.Cmd) {
 	}
 	options := buildSessionSelectOptions(sessions, m.currentSessionID)
 	dialog := tuiui.NewSelectDialog("session-select", "Switch Session", options)
+	dialog.FullWidth = true
 	m.dialogStack.Push(dialog, nil)
 	m.dialogStack.SetSize(m.width, m.height)
 	m.statusText = "select session"

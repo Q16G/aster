@@ -1,5 +1,11 @@
 package tuicontext
 
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
 type ProviderModelRef struct {
 	ProviderID string `json:"provider_id"`
 	ModelID    string `json:"model_id"`
@@ -32,6 +38,17 @@ func NewLocalProvider() *LocalProvider {
 			HeaderVisible: true,
 		}),
 	}
+}
+
+func NewLocalProviderFromFile(path string) *LocalProvider {
+	p := NewLocalProvider()
+	if prefs, err := LoadLocalPreferences(path); err == nil {
+		p.Set(prefs)
+	}
+	p.Subscribe(func(v LocalPreferences) {
+		_ = SaveLocalPreferences(path, v)
+	})
+	return p
 }
 
 func (l *LocalProvider) MigrateRecentModels(defaultProviderID string) {
@@ -90,6 +107,32 @@ func (l *LocalProvider) ToggleFavoriteModel(providerID, modelID string) {
 		p.FavoriteModels = append(p.FavoriteModels, ref)
 		return p
 	})
+}
+
+func LoadLocalPreferences(path string) (LocalPreferences, error) {
+	var p LocalPreferences
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return NewLocalProvider().Get(), nil
+		}
+		return p, err
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return p, err
+	}
+	return p, nil
+}
+
+func SaveLocalPreferences(path string, p LocalPreferences) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0644)
 }
 
 func RecentModelIDs(models []ProviderModelRef) []string {
