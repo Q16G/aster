@@ -66,6 +66,7 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 			snap.SessionState = SessionStateIdle
 			snap.RuntimeStateBlobRef = ""
 			snap.StepHistoryBlobRef = ""
+			snap.ConversationHistoryBlobRef = ""
 		}
 
 	case "TURN_ABORT_REQUESTED":
@@ -92,6 +93,9 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 		if ref := payloadText(ev.Payload, "step_history_blob_ref"); ref != "" {
 			snap.StepHistoryBlobRef = ref
 		}
+		if ref := payloadText(ev.Payload, "conversation_history_blob_ref"); ref != "" {
+			snap.ConversationHistoryBlobRef = ref
+		}
 
 	case "INTERRUPT_RESOLVED":
 		if snap.PendingInterrupt == nil || strings.TrimSpace(snap.PendingInterrupt.InterruptID) != strings.TrimSpace(ev.InterruptID) {
@@ -110,6 +114,7 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 		snap.SessionState = SessionStateIdle
 		snap.RuntimeStateBlobRef = ""
 		snap.StepHistoryBlobRef = ""
+		snap.ConversationHistoryBlobRef = ""
 
 	default:
 		// Unknown events do not affect the materialized view.

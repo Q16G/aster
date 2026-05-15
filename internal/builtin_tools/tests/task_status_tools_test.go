@@ -32,10 +32,9 @@ func (noopEmitter) EmitWarning(message string)                             {}
 func (noopEmitter) EmitError(message string)                               {}
 
 type fakeToolContext struct {
-	snapshot      StateSnapshot
-	emitter       Emitter
-	planner       TaskPlanner
-	memoryOutputs []string
+	snapshot StateSnapshot
+	emitter  Emitter
+	planner  TaskPlanner
 }
 
 func newFakeToolContext() *fakeToolContext {
@@ -135,10 +134,6 @@ func (f *fakeToolContext) GetHistory() []*ai.MsgInfo {
 
 func (f *fakeToolContext) GetOnHumanInput() OnHumanInputFunc {
 	return nil
-}
-
-func (f *fakeToolContext) AddMemoryAssistantOutput(content string) {
-	f.memoryOutputs = append(f.memoryOutputs, content)
 }
 
 func decodeJSONMap(t *testing.T, raw string) map[string]any {

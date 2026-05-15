@@ -186,10 +186,6 @@ func (t *UpdateTaskStatusTool) Execute(ctx context.Context, args map[string]any)
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
 
-	if status == TaskStatusCompleted && strings.TrimSpace(result) != "" {
-		t.ctx.AddMemoryAssistantOutput(result)
-	}
-
 	out, _ := json.Marshal(map[string]any{
 		"ok":      true,
 		"task":    task,

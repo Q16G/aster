@@ -12,15 +12,16 @@ import (
 // AgentFactory builds Agent instances from AgentDefinitions.
 // It resolves tool names via a ToolRegistry and skill names via a SkillsCatalog.
 type AgentFactory struct {
-	toolRegistry    *ToolRegistry
-	skillsCatalog   SkillsCatalog
-	skillLookup     SkillLookup
-	aiClientFactory ai.ClientFactory
-	defaultAIClient ai.ChatClient
-	emitter         *Emitter
-	emitterFunc     BaseEmitterFunc
-	onHumanInput    builtin_tools.OnHumanInputFunc
-	mcpManager      *mcp.Manager
+	toolRegistry      *ToolRegistry
+	skillsCatalog     SkillsCatalog
+	skillLookup       SkillLookup
+	aiClientFactory   ai.ClientFactory
+	defaultAIClient   ai.ChatClient
+	emitter           *Emitter
+	emitterFunc       BaseEmitterFunc
+	onHumanInput      builtin_tools.OnHumanInputFunc
+	mcpManager        *mcp.Manager
+	promptCacheConfig *ai.PromptCacheConfig
 }
 
 type FactoryOption func(*AgentFactory)
@@ -81,6 +82,12 @@ func WithFactoryMCPManager(manager *mcp.Manager) FactoryOption {
 	}
 }
 
+func WithFactoryPromptCacheConfig(cfg *ai.PromptCacheConfig) FactoryOption {
+	return func(f *AgentFactory) {
+		f.promptCacheConfig = cfg
+	}
+}
+
 // NewAgentFactory creates a factory with the given options.
 func NewAgentFactory(opts ...FactoryOption) *AgentFactory {
 	f := &AgentFactory{}
@@ -113,6 +120,10 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 	}
 	if f.aiClientFactory != nil {
 		opts = append(opts, WithAIClientFactory(f.aiClientFactory))
+	}
+
+	if f.promptCacheConfig != nil {
+		opts = append(opts, WithPromptCacheConfig(f.promptCacheConfig))
 	}
 
 	// Policies
@@ -149,10 +160,6 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 	agent, err := NewReActAgent(def.Name, client, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("build agent %q failed: %w", def.Name, err)
-	}
-
-	if len(def.OutputContracts) > 0 {
-		agent.cfg.OutputContracts = def.OutputContracts
 	}
 
 	if err := agent.registerTool(NewSubAgentTool(agent, f)); err != nil {
@@ -209,6 +216,10 @@ func (f *AgentFactory) UpdateDefaultClient(client ai.ChatClient) {
 
 func (f *AgentFactory) UpdateClientFactory(factory ai.ClientFactory) {
 	f.aiClientFactory = factory
+}
+
+func (f *AgentFactory) UpdatePromptCacheConfig(cfg *ai.PromptCacheConfig) {
+	f.promptCacheConfig = cfg
 }
 
 func (f *AgentFactory) resolveEmitter(agentName string) *Emitter {

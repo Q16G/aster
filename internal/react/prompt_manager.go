@@ -14,19 +14,10 @@ type ThinkActPromptInput struct {
 	WorkspaceNamespace      string
 	WorkspaceSharedDir      string
 	SkillsContext           *SkillsPromptContext
-	Phase                   any
-	Status                  any
-	CurrentGoal             any
-	CurrentStepID           any
 	CurrentStep             any
-	LatestInput             any
-	InputTimeline           any
 	DependencyStepSummaries any
 	ExecutionContexts       any
-	HasCurrentGoal          bool
-	HasCurrentStepID        bool
 	HasCurrentStep          bool
-	HasLatestInput          bool
 	HasDependencySummaries  bool
 	HasExecutionContexts    bool
 	HasWarnings             bool
@@ -38,10 +29,6 @@ type ThinkActPromptInput struct {
 	Warnings                any
 	Unresolved              any
 	ExtraContext            string
-	HasOutputContract       bool
-	OutputContractName      string
-	OutputContractSchema    string
-	OutputContractExample   string
 }
 
 type StepReplanPromptInput struct {
@@ -55,22 +42,15 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
-	Status                  any
-	StateError              any
-	InputTimeline           any
-	ShowPlanSection         bool
-	Plan                    any
-	PlanVersion             any
-	StepOutcomes            any
-	Warnings                any
-	Unresolved              any
-	HasSummaryPolicy        bool
-	SummaryPolicyName       string
-	SummaryPolicyDetail     string
-	PublishedOutputRequired bool
-	PublishedOutputName     string
-	PublishedOutputSchema   string
-	PublishedOutputExample  string
+	Status          any
+	StateError      any
+	InputTimeline   any
+	ShowPlanSection bool
+	Plan            any
+	PlanVersion     any
+	StepOutcomes    any
+	Warnings        any
+	Unresolved      any
 }
 
 type HistoryCompactionPromptInput struct {
@@ -170,19 +150,10 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"HAS_TASK_CONTEXT":              len(taskContextEntries) > 0,
 		"TASK_CONTEXT_ENTRIES":          taskContextEntries,
 		"SKILLS_CONTEXT":                input.SkillsContext,
-		"PHASE":                         prettyJSON(input.Phase),
-		"STATUS":                        prettyJSON(input.Status),
-		"CURRENT_GOAL":                  prettyJSON(input.CurrentGoal),
-		"CURRENT_STEP_ID":               prettyJSON(input.CurrentStepID),
 		"CURRENT_STEP":                  prettyJSON(input.CurrentStep),
-		"LATEST_INPUT":                  prettyJSON(input.LatestInput),
-		"INPUT_TIMELINE":                prettyJSON(input.InputTimeline),
 		"DEPENDENCY_STEP_SUMMARIES":     prettyJSON(input.DependencyStepSummaries),
 		"EXECUTION_CONTEXTS":            prettyJSON(input.ExecutionContexts),
-		"HAS_CURRENT_GOAL":              input.HasCurrentGoal,
-		"HAS_CURRENT_STEP_ID":           input.HasCurrentStepID,
 		"HAS_CURRENT_STEP":              input.HasCurrentStep,
-		"HAS_LATEST_INPUT":              input.HasLatestInput,
 		"HAS_DEPENDENCY_STEP_SUMMARIES": input.HasDependencySummaries,
 		"HAS_EXECUTION_CONTEXTS":        input.HasExecutionContexts,
 		"HAS_WARNINGS":                  input.HasWarnings,
@@ -194,10 +165,6 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"WARNINGS":                      prettyJSON(input.Warnings),
 		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
-		"HAS_OUTPUT_CONTRACT":           input.HasOutputContract,
-		"OUTPUT_CONTRACT_NAME":          strings.TrimSpace(input.OutputContractName),
-		"OUTPUT_CONTRACT_SCHEMA":        strings.TrimSpace(input.OutputContractSchema),
-		"OUTPUT_CONTRACT_EXAMPLE":       strings.TrimSpace(input.OutputContractExample),
 	}); err != nil {
 		return "", err
 	}
@@ -238,13 +205,6 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"STEP_OUTCOMES":             prettyJSON(input.StepOutcomes),
 		"WARNINGS":                  prettyJSON(input.Warnings),
 		"UNRESOLVED":                prettyJSON(input.Unresolved),
-		"HAS_SUMMARY_POLICY":        input.HasSummaryPolicy,
-		"SUMMARY_POLICY_NAME":       strings.TrimSpace(input.SummaryPolicyName),
-		"SUMMARY_POLICY_DETAIL":     strings.TrimSpace(input.SummaryPolicyDetail),
-		"PUBLISHED_OUTPUT_REQUIRED": input.PublishedOutputRequired,
-		"PUBLISHED_OUTPUT_NAME":     strings.TrimSpace(input.PublishedOutputName),
-		"PUBLISHED_OUTPUT_SCHEMA":   strings.TrimSpace(input.PublishedOutputSchema),
-		"PUBLISHED_OUTPUT_EXAMPLE":  strings.TrimSpace(input.PublishedOutputExample),
 	}); err != nil {
 		return "", err
 	}

@@ -1,7 +1,6 @@
 package react
 
 import (
-	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 )
 
@@ -15,10 +14,10 @@ type AgentDefinition struct {
 	ModelID         string
 	ToolNames       []string
 	SkillNames      []string
+	PreloadSkills   []string
 	MCPServers      []*mcp.MCPServerConfig
 	Policies        AgentPolicies
 	Context         []TaskContextEntry
-	OutputContracts map[string]*builtin_tools.OutputContract
 }
 
 // AgentPolicies controls runtime behavior boundaries.
@@ -27,7 +26,6 @@ type AgentPolicies struct {
 	AllowBash               bool
 	BashPermissionContext   *BashToolConfig
 	ResultSource            ResultSource
-	PublishContract         string
 	EnableHistoryCompaction bool
 }
 

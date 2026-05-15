@@ -43,7 +43,7 @@
   对用户的直接回复。回复应完整、自然、直接回答用户的问题或请求。
   此回复是最终结果，不会再经过额外的模型调用处理。
 - **原则 6**：计划步数建议 3-8 步；若输入已包含 `<TASK_ITEMS>`，优先保持连续性，仅在末尾追加必要步骤（一般不超过 3 条新增），不要为满足步数硬凑。
-- **原则 7**：每个 plan item 都必须包含 `id`、`step`、`status`、`depends_on`；当输入中包含 `<OUTPUT_CONTRACTS>` 且指定了 `publish_contract` 时，**必须**在最终输出结构化结果的 step 上设置 `output_contract_ref` 为该 contract 名称，这是 runtime 提取任务产物的必要条件。未指定 `publish_contract` 时，`output_contract_ref` 为可选字段，大多数探索性 step 不需要。
+- **原则 7**：每个 plan item 都必须包含 `id`、`step`、`status`、`depends_on`。
 - **原则 8**：`status` 只允许使用 `pending`、`in_progress`、`completed`、`failed`，且新计划默认使用 `pending`。
 - **原则 9**：`depends_on` 只能引用前面已出现的任务，整个 plan 必须是无环依赖图。
 - **原则 10**：不要输出子步骤、备注列表或额外字段；不要反问用户，基于现有输入做最合理判断。
@@ -88,10 +88,6 @@
           "depends_on": {
             "type": "array",
             "items": { "type": "string" }
-          },
-          "output_contract_ref": {
-            "type": "string",
-            "description": "引用已定义的 output contract 名称。当输入包含 <OUTPUT_CONTRACTS> 时，最终结果 step 必须填写此字段。"
           }
         }
       }
