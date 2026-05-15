@@ -17,11 +17,11 @@ func (m Model) isFirstTimeUser() bool {
 	if m.providerCfg.APIKey != "" {
 		return false
 	}
-	bp, ok := GetBuiltinProvider(m.providerCfg.Name)
-	if !ok {
+	envVar := m.registry.ProviderEnvVar(m.providerCfg.Name)
+	if envVar == "" {
 		return m.providerCfg.BaseURL == ""
 	}
-	return bp.APIKeyEnvVar != "" && resolveAPIKey(bp, "") == ""
+	return m.registry.ResolveAPIKey(m.providerCfg.Name, "") == ""
 }
 
 func (m *Model) startProviderOnboarding() (tea.Model, tea.Cmd) {
@@ -29,25 +29,32 @@ func (m *Model) startProviderOnboarding() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleProviderSelected(providerID string) (tea.Model, tea.Cmd) {
-	bp, isBuiltin := GetBuiltinProvider(providerID)
-	if !isBuiltin {
-		return m, func() tea.Msg { return ProviderSwitchMsg{Name: providerID} }
-	}
+	rp, inRegistry := m.registry.GetProvider(providerID)
 
 	cfgProvider := m.appCfg.Providers[providerID]
-	apiKey := resolveAPIKey(bp, "")
+	cfgKey := ""
 	if cfgProvider != nil {
-		apiKey = resolveAPIKey(bp, cfgProvider.APIKey)
+		cfgKey = cfgProvider.APIKey
 	}
+	apiKey := m.registry.ResolveAPIKey(providerID, cfgKey)
+	envVar := m.registry.ProviderEnvVar(providerID)
 
-	if apiKey != "" || bp.APIKeyEnvVar == "" {
+	if !inRegistry && cfgProvider == nil {
 		return m, func() tea.Msg { return ProviderSwitchMsg{Name: providerID} }
 	}
 
+	if apiKey != "" || envVar == "" {
+		return m, func() tea.Msg { return ProviderSwitchMsg{Name: providerID} }
+	}
+
+	pName := providerID
+	if rp != nil {
+		pName = rp.Name
+	}
 	m.pendingProvider = &pendingProviderSetup{ProviderID: providerID}
-	prompt := fmt.Sprintf("Enter API key for %s", bp.Name)
-	if bp.APIKeyEnvVar != "" {
-		prompt += fmt.Sprintf(" (or set %s)", bp.APIKeyEnvVar)
+	prompt := fmt.Sprintf("Enter API key for %s", pName)
+	if envVar != "" {
+		prompt += fmt.Sprintf(" (or set %s)", envVar)
 	}
 	dialog := tuiui.NewPromptDialog("provider-apikey:"+providerID, prompt, "")
 	m.dialogStack.Push(dialog, nil)
@@ -61,14 +68,9 @@ func (m *Model) openModelSelectorAfterProviderSetup() (tea.Model, tea.Cmd) {
 	}
 
 	providerID := m.providerCfg.Name
-	bp, isBuiltin := GetBuiltinProvider(providerID)
+	regModels := m.registry.ListModels(providerID)
 
-	var models []string
-	if isBuiltin {
-		models = bp.Models
-	}
-
-	if len(models) == 0 {
+	if len(regModels) == 0 {
 		if m.pendingPrompt != "" {
 			prompt := m.pendingPrompt
 			m.pendingPrompt = ""
@@ -77,15 +79,15 @@ func (m *Model) openModelSelectorAfterProviderSetup() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	options := make([]tuiui.SelectOption, 0, len(models))
-	for _, mid := range models {
+	options := make([]tuiui.SelectOption, 0, len(regModels))
+	for _, mi := range regModels {
 		desc := ""
-		if m.providerCfg.ModelID == mid {
+		if m.providerCfg.ModelID == mi.ID {
 			desc = "(current)"
 		}
 		options = append(options, tuiui.SelectOption{
-			Label:       mid,
-			Value:       mid,
+			Label:       mi.Name,
+			Value:       mi.ID,
 			Description: desc,
 		})
 	}

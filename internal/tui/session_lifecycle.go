@@ -317,6 +317,22 @@ func (m *Model) persistPartWithCallID(partType, name, callID, content string) {
 }
 
 func (m *Model) toggleSessionSkill(name string, enabled bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if !enabled && m.isPreloadedSkill(name) {
+		m.chat.AddPart(DisplayPart{
+			Type: PartTypeSystem,
+			Time: time.Now(),
+			System: &SystemPart{
+				Content: fmt.Sprintf("skill %q is pinned by current agent (preload_skills), cannot disable", name),
+			},
+		})
+		m.statusText = fmt.Sprintf("skill pinned: %s", name)
+		m.refreshSidebarData()
+		return
+	}
 	if enabled {
 		if !stringsContains(m.sessionMeta.ActiveSkillNames, name) {
 			m.sessionMeta.ActiveSkillNames = append(m.sessionMeta.ActiveSkillNames, name)
@@ -380,7 +396,7 @@ func (m *Model) restoreSessionProvider(rec *SessionRecord) {
 		return
 	}
 	if rec.ProviderName != "" {
-		if state := m.appCfg.ResolveProviderState(rec.ProviderName, rec.ModelID, "", ""); state != nil {
+		if state := m.appCfg.ResolveProviderState(rec.ProviderName, rec.ModelID, "", "", m.registry, m.credStore); state != nil {
 			*m.providerCfg = *state
 			if m.agentCtx != nil {
 				m.agentCtx.Definition.ModelID = m.providerCfg.ModelID
@@ -409,8 +425,22 @@ func (m *Model) applySessionRuntimeState() {
 	}
 
 	snapshot := builtin_tools.StateSnapshot{
-		ActiveSkillNames: builtin_tools.CloneStringSlice(m.sessionMeta.ActiveSkillNames),
+		ActiveSkillNames: builtin_tools.CloneStringSlice(m.effectiveActiveSkillNames()),
 		ActiveMCPServers: builtin_tools.CloneStringSlice(m.sessionMeta.ActiveMCPServers),
+	}
+
+	if mcpDefs := m.agentCtx.Definition.MCPServers; len(mcpDefs) > 0 {
+		set := make(map[string]struct{}, len(snapshot.ActiveMCPServers))
+		for _, n := range snapshot.ActiveMCPServers {
+			set[n] = struct{}{}
+		}
+		for _, sc := range mcpDefs {
+			if sc != nil && sc.Name != "" {
+				if _, ok := set[sc.Name]; !ok {
+					snapshot.ActiveMCPServers = append(snapshot.ActiveMCPServers, sc.Name)
+				}
+			}
+		}
 	}
 
 	m.agentCtx.InitialState = snapshot
@@ -422,6 +452,70 @@ func (m *Model) applySessionRuntimeState() {
 	_ = saveSessionWorkspaceState(m.store.BaseDir(), m.currentSessionID, workspaceState)
 
 	m.reconcileSessionMCP(snapshot.ActiveMCPServers)
+}
+
+func (m *Model) effectiveActiveSkillNames() []string {
+	if m == nil {
+		return nil
+	}
+	sessionSkills := builtin_tools.CloneStringSlice(m.sessionMeta.ActiveSkillNames)
+	var preload []string
+	if m.agentCtx != nil {
+		preload = builtin_tools.CloneStringSlice(m.agentCtx.Definition.PreloadSkills)
+	}
+	return mergeDistinctNames(preload, sessionSkills)
+}
+
+func (m *Model) effectiveActiveSkillSet() map[string]struct{} {
+	names := m.effectiveActiveSkillNames()
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		set[name] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+func (m *Model) isPreloadedSkill(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || m == nil || m.agentCtx == nil {
+		return false
+	}
+	for _, n := range m.agentCtx.Definition.PreloadSkills {
+		if strings.EqualFold(strings.TrimSpace(n), name) {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeDistinctNames(primary []string, secondary []string) []string {
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	out := make([]string, 0, len(primary)+len(secondary))
+	for _, raw := range append(primary, secondary...) {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (m *Model) reconcileSessionMCP(desired []string) {

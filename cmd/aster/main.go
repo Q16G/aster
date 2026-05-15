@@ -6,20 +6,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"aster/internal/ai"
+	"aster/internal/ai/anthropic"
 	"aster/internal/ai/openai"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
+	"aster/internal/provider"
 	"aster/internal/react"
 	"aster/internal/runtimelog"
 	"aster/internal/service"
 	"aster/internal/tui"
 	tuicontext "aster/internal/tui/context"
-	semgrep_rules "aster/skills/semgrep-rules"
+	skillspkg "aster/skills"
+	semgrep_rules "aster/semgrep-rules"
 )
 
 var (
@@ -74,6 +78,10 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("extract semgrep rules: %w", err)
 	}
 
+	if _, err := skillspkg.ExtractSkillsDir(); err != nil {
+		return fmt.Errorf("extract builtin skills: %w", err)
+	}
+
 	appCfg, err := tui.LoadConfig(tui.DefaultConfigPath())
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -94,6 +102,14 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get home dir: %w", err)
 	}
 
+	credStore := tui.NewCredentialStore(filepath.Join(appDir, "credentials.yaml"))
+	localProv := tuicontext.NewLocalProviderFromFile(filepath.Join(appDir, "preferences.json"))
+
+	cachePath := filepath.Join(appDir, "cache", "models.json")
+	providerRegistry := provider.InitRegistry(cachePath)
+	providerRegistry.StartBackgroundRefresh(ctx)
+	react.SetProviderRegistry(providerRegistry)
+
 	bridge := tui.NewEventBridge()
 	humanBridge := tui.NewHumanInputBridge()
 	syncStore := tuicontext.NewSyncStore()
@@ -102,9 +118,19 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	bootstrapEmitter := react.NewEmitter("bootstrap", "bootstrap", bridge.EmitterFunc())
 	retryCallback := newRetryCallback(bootstrapEmitter)
 
-	providerCfg := appCfg.ResolveProviderState(flagProvider, flagModel, flagBaseURL, flagAPIKey)
+	providerCfg := appCfg.ResolveProviderState(flagProvider, flagModel, flagBaseURL, flagAPIKey, providerRegistry, credStore)
 	if providerCfg == nil {
 		providerCfg = &tui.ProviderState{}
+	}
+	{
+		var cfgVariants map[string]map[string]any
+		if pc := appCfg.Providers[providerCfg.Name]; pc != nil {
+			cfgVariants = pc.Variants
+		}
+		base, variant, vopts := tui.ParseModelVariant(providerCfg.ModelID, providerRegistry, providerCfg.Name, cfgVariants)
+		providerCfg.ModelID = base
+		providerCfg.Variant = variant
+		providerCfg.VariantOptions = vopts
 	}
 
 	aiClient := newProviderClient(providerCfg, retryCallback, "")
@@ -147,11 +173,12 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		react.WithFactoryEmitterFunc(bridge.EmitterFunc()),
 		react.WithFactoryOnHumanInput(humanBridge.OnHumanInput),
 		react.WithFactoryMCPManager(mcpManager),
+		react.WithFactoryPromptCacheConfig(providerCfg.PromptCache),
 	)
 
 	profileRegistry := tui.NewProfileRegistry()
-	for _, def := range tui.DefaultProfiles() {
-		profileRegistry.Register(def)
+	for _, yp := range tui.ParseDefaultAgentProfiles() {
+		profileRegistry.MergeYAML(yp)
 	}
 	agentsDir := filepath.Join(appDir, "agents")
 	if yamlProfiles, err := tui.LoadProfilesFromDir(agentsDir); err == nil {
@@ -164,7 +191,14 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if len(profiles) == 0 {
 		return fmt.Errorf("no agent profiles found; check %s for .yaml files", agentsDir)
 	}
-	defaultDef := profiles[0]
+	for _, def := range profiles {
+		for _, sc := range def.MCPServers {
+			if sc != nil && sc.Name != "" {
+				mcpManager.RegisterServer(sc.Name, sc)
+			}
+		}
+	}
+	defaultDef := chooseDefaultAgentDefinition(profiles)
 
 	agentCtx := &tui.AgentExecContext{
 		Factory:     factory,
@@ -178,10 +212,11 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			})
 			factory.UpdateDefaultClient(newClient)
 			factory.UpdateClientFactory(newFactory)
+			factory.UpdatePromptCacheConfig(provider.PromptCache)
 		},
 	}
 
-	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, appCfg, providerCfg, syncStore)
+	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, providerRegistry, credStore, appCfg, providerCfg, localProv, syncStore)
 
 	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
@@ -212,6 +247,18 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func chooseDefaultAgentDefinition(profiles []react.AgentDefinition) react.AgentDefinition {
+	if len(profiles) == 0 {
+		return react.AgentDefinition{}
+	}
+	for _, def := range profiles {
+		if strings.EqualFold(strings.TrimSpace(def.Name), "code-audit") {
+			return def
+		}
+	}
+	return profiles[0]
+}
+
 func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 	if emitter == nil {
 		return nil
@@ -221,31 +268,78 @@ func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 	}
 }
 
-func newProviderClient(provider *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) *openai.Client {
-	if provider == nil {
-		provider = &tui.ProviderState{}
+func newProviderClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) ai.ChatClient {
+	if ps == nil {
+		ps = &tui.ProviderState{}
 	}
+	switch ps.Protocol {
+	case "anthropic":
+		return newAnthropicClient(ps, modelOverride)
+	default:
+		return newOpenAIClient(ps, retryCallback, modelOverride)
+	}
+}
+
+func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) *openai.Client {
 	modelID := modelOverride
 	if modelID == "" {
-		modelID = provider.ModelID
+		modelID = ps.ModelID
 	}
-
 	opts := []openai.Option{
-		openai.WithURL(provider.BaseURL),
+		openai.WithURL(ps.BaseURL),
 		openai.WithURLAutoComplete(true),
-		openai.WithAPIKey(provider.APIKey),
+		openai.WithAPIKey(ps.APIKey),
 		openai.WithModel(modelID),
 		openai.WithStream(true),
 		openai.WithRetryCallback(retryCallback),
 	}
-	if provider.Proxy != "" {
-		opts = append(opts, openai.WithProxy(provider.Proxy))
+	if ps.Proxy != "" {
+		opts = append(opts, openai.WithProxy(ps.Proxy))
 	}
-	if provider.SupportsVision != nil {
-		opts = append(opts, openai.WithSupportsVision(*provider.SupportsVision))
+	if ps.SupportsVision != nil {
+		opts = append(opts, openai.WithSupportsVision(*ps.SupportsVision))
 	}
-	if provider.SupportsAudio != nil {
-		opts = append(opts, openai.WithSupportsAudio(*provider.SupportsAudio))
+	if ps.SupportsAudio != nil {
+		opts = append(opts, openai.WithSupportsAudio(*ps.SupportsAudio))
+	}
+	if len(ps.VariantOptions) > 0 {
+		opts = append(opts, openai.WithExtraBody(ps.VariantOptions))
 	}
 	return openai.NewClient(opts...)
+}
+
+func newAnthropicClient(ps *tui.ProviderState, modelOverride string) *anthropic.Client {
+	modelID := modelOverride
+	if modelID == "" {
+		modelID = ps.ModelID
+	}
+	opts := []anthropic.Option{
+		anthropic.WithURL(ps.BaseURL),
+		anthropic.WithAPIKey(ps.APIKey),
+		anthropic.WithModel(modelID),
+	}
+	if ps.Proxy != "" {
+		opts = append(opts, anthropic.WithProxy(ps.Proxy))
+	}
+	if ps.SupportsVision != nil {
+		opts = append(opts, anthropic.WithSupportsVision(*ps.SupportsVision))
+	}
+	if ps.SupportsAudio != nil {
+		opts = append(opts, anthropic.WithSupportsAudio(*ps.SupportsAudio))
+	}
+	for k, v := range ps.Headers {
+		opts = append(opts, anthropic.WithHeaders(map[string]string{k: v}))
+	}
+	if len(ps.VariantOptions) > 0 {
+		variantHeaders := make(map[string]string)
+		for k, v := range ps.VariantOptions {
+			if s, ok := v.(string); ok {
+				variantHeaders[k] = s
+			}
+		}
+		if len(variantHeaders) > 0 {
+			opts = append(opts, anthropic.WithHeaders(variantHeaders))
+		}
+	}
+	return anthropic.NewClient(opts...)
 }
