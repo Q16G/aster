@@ -1,9 +1,10 @@
 ---
 name: dataflow-analysis
-description: 数据流分析与退化复核指南，使用 SyntaxFlow MCP 做 topdef/bottomUse/注解查找；当 SSA 不可用时，执行固定 fallback checklist。
+description: 数据流分析与退化复核指南：使用 SyntaxFlow（yak SSA）做 TopDef/BottomUse 数据流确认；当 SSA 不可用时，执行固定 fallback checklist。
 tags: code-audit,dataflow,syntaxflow,mcp
 when-to-use: 当需要对 semgrep 候选集做数据流确认，或需要分析 request -> session、cookie -> auth decision、owner -> mapper 等跨函数链路时
 allowed-tools: bash,read_file,list_files,rg
+mcp: [syntaxflow, yak]
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"
 arguments:
@@ -22,7 +23,7 @@ arguments:
 - owner/operator arg -> service -> mapper/query
 - controller -> service -> repository / mapper 的权限或 ownership 丢失
 
-如果 `SyntaxFlow` 可用，则用 SSA 做 topdef / bottomUse。  
+如果 `SyntaxFlow` 可用，则用 SSA 做 TopDef / BottomUse（`#->/#>` 与 `--> / ->`）做数据流确认。  
 如果不可用，则必须执行固定 fallback checklist，不允许只写“转人工审计”。
 
 ## 何时使用
@@ -44,7 +45,115 @@ arguments:
 
 推荐把 `program_name` 命名成与项目或样本相关的稳定名字，便于复用查询。
 
-### 2. 使用通用查询模板
+### 2. 执行查询（必须理解 ssa_query）
+
+SyntaxFlow 查询的唯一入口是：
+
+- `ssa_query(program_name, rule_text)`
+
+其中 `rule_text` 是 **SyntaxFlow DSL** 文本；TopDef / BottomUse 不是工具名，而是 DSL 运算符（见下文速查表）。
+
+### 3. SyntaxFlow DSL 速查（Alert-first）
+
+#### 3.1 运算符速查（只保留最核心）
+
+TopDef（向上追溯定义链）：
+
+- `#>`：追踪到**直接定义点**（one-hop def）
+- `#->`：追踪到**定义链起点**（递归 topdef）
+
+BottomUse（向下追踪使用链）：
+
+- `->`：追踪到**下一个使用点**（one-hop use）
+- `-->`：追踪到**使用链结束**（递归 bottomuse）
+
+控爆炸建议（首次调试默认加限深）：
+
+- TopDef 限深：`$x #{depth: 5}-> $y;`
+- BottomUse 限深：`$x -{depth: 3}-> $y;`
+
+#### 3.2 Alert 输出规范（硬要求）
+
+- **每条规则必须至少包含 1 个 `alert`**（否则视为“无可见输出”）
+- `check` 可选：用于在锚点未命中时输出提示，但不是硬要求
+- 推荐写法：`alert $var for { message: "...", level: info }`（`message/msg/content` 字段兼容识别）
+
+#### 3.3 禁止过于宽泛的规则（硬约束）
+
+为了避免爆炸式匹配与不可读输出，禁止编写以下类型的“全局 wildcard”规则：
+
+- **禁止**：`*.* #-> ...`、`*.* #> ...`（匹配任何对象的任何成员）
+- **禁止**：以 `*` 作为 anchor 且不带任何收敛条件（例如：`* as $x; $x #-> ...`）
+- **禁止**：仅靠 `#->`/`-->` 追溯/追踪，但 anchor 不包含任何具体 API / 方法名 / 类名 / 关键字
+
+允许的最小收敛方式（至少满足其一）：
+
+- anchor 必须包含**明确的方法/调用链片段**（如 `Runtime.getRuntime().exec`、`Files.write`、`.parse`、`.evaluate`）
+- 或对追踪加 `depth`（首次调试建议 `depth: 3~8`）
+- 或使用条件过滤收敛（仅在你明确知道语义时使用）
+
+#### 3.4 写规则固定套路（强制建议）
+
+为避免模型/审计者“瞎写 DSL”，每次写 `rule_text` 都按以下套路组织：
+
+1. **先锚定（Anchor）**：必须先选一个具体调用点或方法链作为 anchor（例如 `Runtime.getRuntime().exec` / `Files.write` / `.parse`）
+2. **再捕获（Capture）**：用 `* as $arg` 把你关心的参数/值抓出来
+3. **再追踪（Trace）**：默认用 `#->`（必要时先 `#>` 粗定位），并在首次调试时加 `depth`
+4. **必须输出（Alert）**：对你最终要看的变量 `alert`（`check` 可选）
+
+### 4. TopDef Cookbook（复制即用，必须 alert）
+
+> 约定：以下片段中的 `<ANCHOR_CALL>` 都是占位符，替换为具体的调用链或方法名。
+
+#### 片段 A：先抓参数，再 TopDef（推荐默认）
+
+```sf
+<ANCHOR_CALL>(* as $arg) as $call;
+$arg #-> * as $topdef;
+alert $topdef for { message: "TopDef($arg) from <ANCHOR_CALL>", level: info };
+```
+
+#### 片段 B：在调用点内联 TopDef（更短）
+
+```sf
+<ANCHOR_CALL>(* #-> * as $source) as $call;
+alert $source for { message: "TopDef(inline) from <ANCHOR_CALL>", level: info };
+```
+
+#### 片段 C：只追一层（快速定位直接来源）
+
+```sf
+<ANCHOR_CALL>(* as $arg) as $call;
+$arg #> * as $direct_def;
+alert $direct_def for { message: "DirectDef($arg) from <ANCHOR_CALL>", level: info };
+```
+
+#### 片段 D：TopDef 限深（先小后大，防爆炸）
+
+```sf
+<ANCHOR_CALL>(* as $arg) as $call;
+$arg #{depth: 5}-> * as $bounded_topdef;
+alert $bounded_topdef for { message: "TopDef depth=5 from <ANCHOR_CALL>", level: info };
+```
+
+#### 片段 E：TopDef + BottomUse（同时回答“从哪来/到哪去”）
+
+```sf
+<ANCHOR_CALL>(* as $arg) as $call;
+$arg #-> * as $topdef;
+$arg -{depth: 3}-> * as $bottomuse;
+alert $topdef for { message: "TopDef from <ANCHOR_CALL>", level: info };
+alert $bottomuse for { message: "BottomUse depth=3 from <ANCHOR_CALL>", level: info };
+```
+
+#### 片段 F：从一个变量开始追（你已定位到 `$x`）
+
+```sf
+$x #-> * as $topdef;
+alert $topdef for { message: "TopDef($x)", level: info };
+```
+
+### 5. 使用通用查询模板（基于 Cookbook 拼装）
 
 不要围绕单个项目字段名写查询。优先从以下通用模板出发。
 
@@ -76,7 +185,7 @@ arguments:
 - service / mapper 调用是否丢弃 owner/operator 约束
 - 最终 query 是否只保留 target/resource ID
 
-### 3. 对输出做判定
+### 6. 对输出做判定
 
 对每个链路给出之一：
 
@@ -221,3 +330,4 @@ arguments:
 - 不要为单一样本项目的字段名定制 SSA 查询
 - 不要把“SSA 不可用”当成结束条件
 - 不要只围绕已有扫描命中追踪，必须补 owner/auth/session 这三类固定主题
+- 禁止编写 `*.* #-> ...` / `*.* #> ...` 这种全局 wildcard TopDef 规则；必须先收敛 anchor 或设置 depth

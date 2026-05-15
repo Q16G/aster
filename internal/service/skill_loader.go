@@ -12,11 +12,17 @@ import (
 	skillspkg "aster/skills"
 )
 
+const builtinCommonGroup = "common"
+
 func (s *SkillService) ImportSkillsFromFS(ctx context.Context, root fs.FS) (int, error) {
 	return s.ImportSkillsFromFSWithSource(ctx, root, "", "")
 }
 
 func (s *SkillService) ImportSkillsFromFSWithSource(ctx context.Context, root fs.FS, source string, baseDir string) (int, error) {
+	return s.importSkillsFromFS(ctx, root, source, baseDir, "")
+}
+
+func (s *SkillService) importSkillsFromFS(ctx context.Context, root fs.FS, source string, baseDir string, agentOverride string) (int, error) {
 	if s == nil {
 		return 0, fmt.Errorf("skill service is nil")
 	}
@@ -63,6 +69,9 @@ func (s *SkillService) ImportSkillsFromFSWithSource(ctx context.Context, root fs
 		if baseDir != "" {
 			skill.SkillDir = filepath.Join(baseDir, filepath.Dir(path))
 		}
+		if agentOverride != "" {
+			skill.Agent = agentOverride
+		}
 
 		if err := s.ImportSkill(ctx, skill); err != nil {
 			return imported, fmt.Errorf("import skill %s failed: %w", skill.Name, err)
@@ -94,19 +103,60 @@ func (s *SkillService) ImportEmbeddedSkills(ctx context.Context) (int, error) {
 	return s.ImportSkillsFromFSWithSource(ctx, skillspkg.EmbeddedSkills, "builtin", "")
 }
 
+func (s *SkillService) ImportBuiltinSkillsFromDir(ctx context.Context, dir string) (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("skill service is nil")
+	}
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return 0, fmt.Errorf("builtin skills dir is empty")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("read builtin skills dir: %w", err)
+	}
+
+	total := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
+		groupName := entry.Name()
+		groupDir := filepath.Join(dir, groupName)
+		absGroupDir, _ := filepath.Abs(groupDir)
+
+		agent := groupName
+		if groupName == builtinCommonGroup {
+			agent = "all"
+		}
+
+		n, importErr := s.importSkillsFromFS(ctx, os.DirFS(filepath.Clean(groupDir)), "builtin", absGroupDir, agent)
+		if importErr != nil {
+			return total, fmt.Errorf("import %s skills: %w", groupName, importErr)
+		}
+		total += n
+	}
+	return total, nil
+}
+
 func (s *SkillService) ImportSkillsFromMultipleSources(ctx context.Context, workspaceRoot string, homeDir string) (int, error) {
 	total := 0
 
-	n, err := s.ImportEmbeddedSkills(ctx)
-	if err != nil {
-		return total, fmt.Errorf("import builtin skills: %w", err)
+	appSkillsDir := filepath.Join(homeDir, ".aster", "skills")
+	if info, statErr := os.Stat(appSkillsDir); statErr == nil && info.IsDir() {
+		n, err := s.ImportBuiltinSkillsFromDir(ctx, appSkillsDir)
+		if err != nil {
+			return total, fmt.Errorf("import builtin skills: %w", err)
+		}
+		total += n
 	}
-	total += n
 
 	if homeDir != "" {
 		userSkillsDir := filepath.Join(homeDir, ".agent", "skills")
 		if info, statErr := os.Stat(userSkillsDir); statErr == nil && info.IsDir() {
-			n, err = s.ImportSkillsFromDirWithSource(ctx, userSkillsDir, "user")
+			n, err := s.ImportSkillsFromDirWithSource(ctx, userSkillsDir, "user")
 			if err != nil {
 				return total, fmt.Errorf("import user skills: %w", err)
 			}
@@ -117,7 +167,7 @@ func (s *SkillService) ImportSkillsFromMultipleSources(ctx context.Context, work
 	if workspaceRoot != "" {
 		projectSkillsDir := filepath.Join(workspaceRoot, ".agent", "skills")
 		if info, statErr := os.Stat(projectSkillsDir); statErr == nil && info.IsDir() {
-			n, err = s.ImportSkillsFromDirWithSource(ctx, projectSkillsDir, "project")
+			n, err := s.ImportSkillsFromDirWithSource(ctx, projectSkillsDir, "project")
 			if err != nil {
 				return total, fmt.Errorf("import project skills: %w", err)
 			}

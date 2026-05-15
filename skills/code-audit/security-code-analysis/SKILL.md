@@ -16,18 +16,24 @@ arguments:
 
 这个 skill 用来解决一个常见偏差：只围绕危险 API 做扫描，最后漏掉认证绕过、Cookie 伪鉴权、ownership 丢失、IDOR 这类高价值问题。
 
-它的职责是：
+它是**总控视角**，不是单点规则库。根据项目实际情况判断需要做什么、调用哪些子 skill、以什么顺序推进。
 
-1. 先盘攻击面和权限边界
-2. 再决定如何调用 `sast-scan`
-3. 命中需要时再调 `dataflow-analysis`
-4. 必要时再补 `business-logic-auth-review`
+## 可用子 skill
 
-也就是说，它是**总控视角**，不是单点规则库。
+| skill | 适用场景 |
+|-------|---------|
+| `sast-scan` | 需要建立候选漏洞集、发现强 sink、动态 SQL/模板/配置风险时 |
+| `dataflow-analysis` | 出现 `needs_dataflow_confirmation`、session/cookie/request attribute 风险、ownership/IDOR 线索、controller/service/mapper 关系不清楚时 |
+| `business-logic-auth-review` | 登录函数语义可疑、管理接口只依赖 body/query/cookie 判权、service/mapper 查询缺少操作者约束、自动规则无法稳定确认但风险很高时 |
+| `result-with-file` | 所有分析完成后，将 source/sink/dataflow/verify 持久化为 Markdown 表格文件 |
 
-## 固定工作流
+子 skill 的调用顺序和组合由你根据项目上下文自行判断。不是每个子 skill 都必须调用——按需加载。
 
-### 1. 攻击面盘点（必须做）
+## 审计关注面
+
+以下是审计需要覆盖的关注面。无论以何种顺序推进，最终结论必须体现对这些面的覆盖。
+
+### 攻击面盘点
 
 至少枚举：
 
@@ -37,9 +43,9 @@ arguments:
 - 文件上传 / 下载 / 预览 / 模板渲染
 - 动态 SQL / 动态模板 / 反射 / 脚本执行入口
 
-### 2. 认证与授权盘点（必须做）
+### 认证与授权
 
-对 Java Web 项目，必须完成以下 checklist：
+对 Java Web 项目，必须完成以下 checklist（即使自动扫描未报出认证授权问题）：
 
 - 所有登录接口
 - 所有管理接口
@@ -47,40 +53,13 @@ arguments:
 - 所有 `session` / `cookie` / `request attribute` 参与身份流转的代码
 - 所有 `mapper.xml` 中 `${}`、动态条件、动态排序
 
-即使自动扫描没有直接报出认证授权问题，也必须人工完成这组 checklist。
+### sink 到入口点反查
 
-### 3. 多介质 SAST
+对每个被命中的 sink（危险 mapper 方法、session 写入、Cookie 判断等），反查所有能到达该 sink 的 controller 入口点。同一个 sink 可能被多个入口点到达，必须全部枚举。
 
-调用 `sast-scan` 建立候选集，并要求其输出：
+### 覆盖声明
 
-- 扫描面覆盖声明
-- 高置信结果
-- 需要数据流确认的结果
-- 高噪声分桶
-
-### 4. 按需调用数据流分析
-
-当出现以下任一情况时，继续调用 `dataflow-analysis`：
-
-- `needs_dataflow_confirmation`
-- session / cookie / request attribute 风险
-- ownership / IDOR / authz 线索
-- controller/service/mapper 关系不清楚
-
-### 5. 按需调用业务逻辑专项复核
-
-若发现以下信号，再调用 `business-logic-auth-review`：
-
-- 登录函数成功/失败逻辑可疑
-- 管理接口只依赖 body/query/cookie 判断权限
-- service / mapper 查询看起来缺少操作者约束
-- 自动规则无法稳定确认，但风险很高
-
-### 6. sink → 入口点反查
-
-所有子 skill 完成后，对每个被命中的 sink（危险 mapper 方法、session 写入、Cookie 判断等），用 `rg` 或调用链分析反查所有能到达该 sink 的 controller 入口点。
-
-目的：同一个 sink 可能被多个 controller 入口点到达，必须全部枚举，不能只报一条。
+最终结论必须包含覆盖声明：扫描了哪些介质、覆盖了哪些框架信号、存在哪些扫描缺口。不允许在未声明覆盖范围的情况下给出"无漏洞"结论。
 
 ## 结论组织方式
 
