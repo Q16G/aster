@@ -7,8 +7,26 @@ import (
 	"unicode/utf8"
 
 	"aster/internal/ai"
+	"aster/internal/provider"
 	"github.com/tiktoken-go/tokenizer"
 )
+
+var (
+	globalRegistryMu sync.RWMutex
+	globalRegistry   *provider.Registry
+)
+
+func SetProviderRegistry(r *provider.Registry) {
+	globalRegistryMu.Lock()
+	defer globalRegistryMu.Unlock()
+	globalRegistry = r
+}
+
+func getProviderRegistry() *provider.Registry {
+	globalRegistryMu.RLock()
+	defer globalRegistryMu.RUnlock()
+	return globalRegistry
+}
 
 const (
 	defaultCharsPerToken       = 4
@@ -176,6 +194,21 @@ func inferKnownModelContext(modelName string) (ai.ModelContextInfo, bool) {
 	if name == "" {
 		return ai.ModelContextInfo{}, false
 	}
+
+	if reg := getProviderRegistry(); reg != nil {
+		if ctx, out, ok := reg.ResolveContextBudget(name); ok {
+			vision, audio, _ := reg.ResolveModelCapabilities(name)
+			info := ai.ModelContextInfo{
+				ModelName:           strings.TrimSpace(modelName),
+				ContextWindowTokens: ctx,
+				OutputTokenLimit:    out,
+				SupportsVision:      ai.BoolPtr(vision),
+				SupportsAudio:       ai.BoolPtr(audio),
+			}
+			return info.Normalize(), true
+		}
+	}
+
 	for _, profile := range knownModelTokenProfiles {
 		for _, pattern := range profile.MatchPatterns {
 			if strings.Contains(name, strings.ToLower(strings.TrimSpace(pattern))) {

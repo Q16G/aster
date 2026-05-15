@@ -109,6 +109,9 @@ type Snapshot struct {
 	// StepHistoryBlobRef stores a serialized []ai.MsgInfo transcript for the in-flight step window.
 	// This is required to resume tool-call sequences (including human_confirm) correctly.
 	StepHistoryBlobRef string `json:"step_history_blob_ref,omitempty"`
+	// ConversationHistoryBlobRef stores the serialized long-term conversation history (a.history).
+	// Without this, the model loses all prior-turn context after interrupt/resume.
+	ConversationHistoryBlobRef string `json:"conversation_history_blob_ref,omitempty"`
 
 	// Optional: latest deliverable output for fast resume paths.
 	LatestFinal *FinalOutput `json:"latest_final,omitempty"`
@@ -123,7 +126,6 @@ type FinalOutput struct {
 	TurnID          string `json:"turn_id,omitempty"`
 	Status          string `json:"status,omitempty"`
 	Content         string `json:"content,omitempty"`
-	PublishedOutput string `json:"published_output,omitempty"`
 	BlobRef         string `json:"blob_ref,omitempty"`
 	UpdatedAt       int64  `json:"updated_at,omitempty"`
 }

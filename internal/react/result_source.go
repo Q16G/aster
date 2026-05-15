@@ -38,11 +38,6 @@ func truncateForHistory(text string, source string) string {
 	return strings.TrimSpace(string(runes[:historyMaxRunes])) + "\n\n…(完整结果已持久化到 artifact 文件)"
 }
 
-type contractStepMatch struct {
-	ContractRef string
-	Outcome     *builtin_tools.StepOutcome
-}
-
 func buildEligibleOutcomeMap(outcomes []*builtin_tools.StepOutcome) map[string]*builtin_tools.StepOutcome {
 	m := make(map[string]*builtin_tools.StepOutcome, len(outcomes))
 	for _, o := range outcomes {
@@ -57,56 +52,12 @@ func buildEligibleOutcomeMap(outcomes []*builtin_tools.StepOutcome) map[string]*
 	return m
 }
 
-// resolveContractStep selects the best contract step from the plan.
-//  1. If publishContract is specified, pick the last step referencing that contract
-//     with an eligible outcome. Returns nil if no match — never falls through to
-//     a different contract.
-//  2. If publishContract is empty, pick the last step with any OutputContractRef
-//     and an eligible outcome.
-func resolveContractStep(plan []*builtin_tools.PlanItem, outcomes []*builtin_tools.StepOutcome, publishContract string) *contractStepMatch {
-	publishContract = strings.TrimSpace(publishContract)
-	outcomeByStepID := buildEligibleOutcomeMap(outcomes)
-
-	if publishContract != "" {
-		var best *contractStepMatch
-		for _, item := range plan {
-			if item == nil || strings.TrimSpace(item.OutputContractRef) != publishContract {
-				continue
-			}
-			if o, ok := outcomeByStepID[strings.TrimSpace(item.ID)]; ok {
-				best = &contractStepMatch{ContractRef: publishContract, Outcome: o}
-			}
-		}
-		return best
-	}
-
-	var best *contractStepMatch
-	for _, item := range plan {
-		if item == nil {
-			continue
-		}
-		ref := strings.TrimSpace(item.OutputContractRef)
-		if ref == "" {
-			continue
-		}
-		if o, ok := outcomeByStepID[strings.TrimSpace(item.ID)]; ok {
-			best = &contractStepMatch{ContractRef: ref, Outcome: o}
-		}
-	}
-	return best
-}
-
 func latestNonEmptyStepResult(outcomes []*builtin_tools.StepOutcome) (string, bool) {
-	result, ok, _ := latestNonEmptyStepResultWithPlan(outcomes, nil, "")
+	result, ok := latestNonEmptyStepResultWithPlan(outcomes, nil)
 	return result, ok
 }
 
-func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, plan []*builtin_tools.PlanItem, publishContract string) (string, bool, bool) {
-	if match := resolveContractStep(plan, outcomes, publishContract); match != nil {
-		return strings.TrimSpace(match.Outcome.Result), true, false
-	}
-	degraded := strings.TrimSpace(publishContract) != ""
-
+func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, plan []*builtin_tools.PlanItem) (string, bool) {
 	outcomeByStepID := buildEligibleOutcomeMap(outcomes)
 	var latestAny *builtin_tools.StepOutcome
 	for _, o := range outcomeByStepID {
@@ -115,9 +66,9 @@ func latestNonEmptyStepResultWithPlan(outcomes []*builtin_tools.StepOutcome, pla
 		}
 	}
 	if latestAny != nil {
-		return strings.TrimSpace(latestAny.Result), true, degraded
+		return strings.TrimSpace(latestAny.Result), true
 	}
-	return "", false, degraded
+	return "", false
 }
 
 func stepOutcomeEligibleForResultSource(outcome *builtin_tools.StepOutcome) bool {

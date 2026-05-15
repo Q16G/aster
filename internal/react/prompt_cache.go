@@ -23,6 +23,9 @@ func (a *Agent) buildPromptRequestOptions(promptFamily string, prompt string, en
 	if a == nil || !enableCache {
 		return ai.NormalizeRequestOptions(options)
 	}
+	if pcc := a.cfg.PromptCacheConfig; pcc != nil && !pcc.Enabled {
+		return ai.NormalizeRequestOptions(options)
+	}
 
 	stablePrefix := extractStablePromptPrefix(promptFamily, prompt)
 	stablePrefixHash := hashText(stablePrefix)
@@ -44,6 +47,9 @@ func (a *Agent) buildPromptRequestOptions(promptFamily string, prompt string, en
 	options.PromptCacheEnabled = true
 	options.PromptCacheKey = key
 	options.PromptCacheKeyHash = hashText(key)
+	if pcc := a.cfg.PromptCacheConfig; pcc != nil && pcc.TTL != "" {
+		options.PromptCacheRetention = pcc.TTL
+	}
 	return ai.NormalizeRequestOptions(options)
 }
 
@@ -56,12 +62,7 @@ func extractStablePromptPrefix(promptFamily string, prompt string) string {
 		return prompt
 	}
 	for _, marker := range []string{
-		"<PHASE>",
-		"<CURRENT_GOAL>",
-		"<CURRENT_STEP_ID>",
 		"<CURRENT_STEP>",
-		"<LATEST_INPUT>",
-		"<INPUT_TIMELINE>",
 		"<DEPENDENCY_STEP_SUMMARIES>",
 		"<EXECUTION_CONTEXTS>",
 		"<WARNINGS>",

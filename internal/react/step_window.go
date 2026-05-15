@@ -3,7 +3,7 @@ package react
 type StepWindow struct {
 	StepID string `json:"step_id,omitempty"`
 
-	// RawTimelineDiff: TimelineMemoryDiffer 的 raw diff（可能较长）。
+	// RawTimelineDiff: 当前 step 相关的原始 timeline diff（可能较长）。
 	// 仅用于审计/调试与 reducer 输入；不要把它当作长期知识单元直接消费。
 	RawTimelineDiff string `json:"raw_timeline_diff,omitempty"`
 

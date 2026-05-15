@@ -1,14 +1,12 @@
 package react
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
-	"aster/internal/memory"
 	"aster/internal/react/persistv2"
 	"aster/internal/utils"
 )
@@ -33,7 +31,6 @@ type Agent struct {
 	agentName     string
 	cfg           *AgentConfig
 	tools         *utils.OrderMapx[string, Tool]
-	memory        *memory.TimelineMemory
 	promptManager PromptManager
 	state         *StateTracker
 	history       []*ai.MsgInfo
@@ -57,8 +54,6 @@ type Agent struct {
 	workspaceNamespace        string
 	frozenLineageByStep       map[string]*frozenStepLineage
 	currentResultSource       ResultSource
-	currentPublishContract    string
-	currentFinalAnswerPublish *FinalAnswerPublishConfig
 	workspaceRuntime          builtin_tools.WorkspaceRuntime
 	runClientMu               sync.RWMutex
 	currentRunClientVal       ai.ChatClient
@@ -133,9 +128,6 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 
 	// 平台级内置工具：状态回写和人工确认，所有 Agent 共享。
 	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
-	ucsTool.ContractLookup = func(name string) *builtin_tools.OutputContract {
-		return agent.cfg.LookupOutputContract(name)
-	}
 	if err := agent.registerTool(ucsTool); err != nil {
 		return nil, err
 	}
@@ -160,31 +152,6 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 			return nil, err
 		}
 	}
-
-	var memOpts []memory.TimelineOption
-	if cfg.MemoryTriggerBytes >= 0 {
-		memOpts = append(memOpts, memory.WithTriggerBytes(cfg.MemoryTriggerBytes))
-	} else {
-		budget := resolveContextBudget(aiClient)
-		triggerTokens := budget.TriggerTokens
-		if triggerTokens <= 0 {
-			triggerTokens = budget.UsableInputTokens
-		}
-		if triggerTokens > 0 {
-			memOpts = append(memOpts, memory.WithTriggerBytes(triggerTokens*defaultCharsPerToken))
-		}
-	}
-	if cfg.MemoryKeepLastItems >= 0 {
-		memOpts = append(memOpts, memory.WithKeepLastItems(cfg.MemoryKeepLastItems))
-	}
-	agent.memory = memory.NewTimeLine(
-		context.TODO(),
-		aiClient,
-		func() string {
-			return ""
-		},
-		memOpts...,
-	)
 
 	return agent, nil
 }
@@ -634,17 +601,4 @@ func (a *Agent) GetOnHumanInput() builtin_tools.OnHumanInputFunc {
 		return nil
 	}
 	return a.cfg.OnHumanInput
-}
-
-// AddMemoryAssistantOutput 实现 ToolContext 接口
-func (a *Agent) AddMemoryAssistantOutput(content string) {
-	if a == nil || a.memory == nil {
-		return
-	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return
-	}
-	_ = a.memory.AddItem(generateRandomString(8), memory.NewAssistantOutputItem(content))
-	a.memory.TryCompressAsync()
 }

@@ -152,8 +152,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		ExtraContext:       strings.TrimSpace(extraText),
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
-		PublishContract:    strings.TrimSpace(a.currentPublishContract),
-		OutputContracts:    a.cfg.OutputContracts,
 	})
 	if input == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -225,7 +223,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		historyText := truncateForHistory(directResponse, "planner_direct")
 		a.history = append(a.history, ai.NewAIMsgInfo(historyText))
 		a.notifyHistoryReplace()
-		a.AddMemoryAssistantOutput(historyText)
 
 		a.emitRuntimeLog("info", "planner direct response: no plan items", snapshot, map[string]any{
 			"event":          "planner_direct_response",
@@ -252,8 +249,6 @@ type PlannerInputOptions struct {
 	ExtraContext       string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
-	PublishContract    string
-	OutputContracts    map[string]*builtin_tools.OutputContract
 }
 
 type plannerStepOutcomeView struct {
@@ -483,20 +478,6 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 			}))
 			builder.WriteString("\n</WORKSPACE_STEP_CONTEXTS>\n")
 		}
-	}
-
-	if opts.PublishContract != "" {
-		builder.WriteString("\n\n<OUTPUT_CONTRACTS>\n")
-		builder.WriteString(fmt.Sprintf("publish_contract: %s\n", opts.PublishContract))
-		if c, ok := opts.OutputContracts[opts.PublishContract]; ok && c != nil {
-			if c.Schema != "" {
-				builder.WriteString(fmt.Sprintf("schema:\n%s\n", c.Schema))
-			}
-			if c.Example != "" {
-				builder.WriteString(fmt.Sprintf("example:\n%s\n", c.Example))
-			}
-		}
-		builder.WriteString("</OUTPUT_CONTRACTS>\n")
 	}
 
 	return builder.String()
@@ -873,20 +854,55 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 			return fmt.Errorf("write step_history blob failed: %w", err)
 		}
 
+		var convHistoryRef string
+		if len(a.history) > 0 {
+			rawConvHistory, cerr := json.Marshal(ai.NormalizeMsgInfoSlice(a.history))
+			if cerr != nil || len(rawConvHistory) == 0 {
+				errText := "empty conversation_history"
+				if cerr != nil {
+					errText = cerr.Error()
+				}
+				a.emitRuntimeLog("error", "marshal conversation_history failed", prevSnapshot, map[string]any{
+					"kind":   "persistence",
+					"action": "write_blob",
+					"err":    errText,
+				})
+				return fmt.Errorf("marshal conversation_history failed: %w", cerr)
+			}
+			convHistoryRef, err = a.v2Store.WriteBlob(rawConvHistory)
+			if err != nil || strings.TrimSpace(convHistoryRef) == "" {
+				errText := ""
+				if err != nil {
+					errText = err.Error()
+				}
+				a.emitRuntimeLog("error", "persistence failed: write_blob(conversation_history)", prevSnapshot, map[string]any{
+					"kind":   "persistence",
+					"action": "write_blob",
+					"err":    errText,
+				})
+				return fmt.Errorf("write conversation_history blob failed: %w", err)
+			}
+		}
+
+		payload := map[string]any{
+			"question":               question,
+			"input_type":             inputType,
+			"options":                options,
+			"context":                ctxMap,
+			"tool_call_id":           callID,
+			"runtime_state_blob_ref": strings.TrimSpace(runtimeRef),
+			"step_history_blob_ref":  strings.TrimSpace(historyRef),
+		}
+		if convHistoryRef != "" {
+			payload["conversation_history_blob_ref"] = strings.TrimSpace(convHistoryRef)
+		}
+
 		ev, err := a.v2Store.AppendEvent(&persistv2.Event{
 			Type:        "INTERRUPT_RAISED",
 			GroupID:     strings.TrimSpace(a.currentGroupID),
 			TurnID:      strings.TrimSpace(a.currentTurnID),
 			InterruptID: interruptID,
-			Payload: map[string]any{
-				"question":               question,
-				"input_type":             inputType,
-				"options":                options,
-				"context":                ctxMap,
-				"tool_call_id":           callID,
-				"runtime_state_blob_ref": strings.TrimSpace(runtimeRef),
-				"step_history_blob_ref":  strings.TrimSpace(historyRef),
-			},
+			Payload:     payload,
 		})
 		if err != nil {
 			a.emitRuntimeLog("error", "persistence failed: append_event(INTERRUPT_RAISED)", prevSnapshot, map[string]any{
@@ -917,6 +933,9 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		// Redundant after reducer fix — kept as defensive double-write.
 		snap.RuntimeStateBlobRef = strings.TrimSpace(runtimeRef)
 		snap.StepHistoryBlobRef = strings.TrimSpace(historyRef)
+		if convHistoryRef != "" {
+			snap.ConversationHistoryBlobRef = strings.TrimSpace(convHistoryRef)
+		}
 		if serr := a.v2Store.SaveSnapshotAtomic(snap); serr != nil {
 			a.emitRuntimeLog("error", "persistence failed: save_snapshot after interrupt raised", prevSnapshot, map[string]any{
 				"kind":   "persistence",
@@ -980,7 +999,14 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
 	})
 
-	out, err := tool.Execute(callCtx, argsMap)
+	toolTimeout := a.cfg.resolveToolTimeout(argsMap)
+	execCtx, cancelTimeout := context.WithTimeout(callCtx, toolTimeout)
+	defer cancelTimeout()
+
+	out, err := tool.Execute(execCtx, argsMap)
+	if err != nil && execCtx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("tool %q timed out after %s: %w", toolName, toolTimeout, err)
+	}
 	errText := ""
 	if err != nil {
 		errText = err.Error()

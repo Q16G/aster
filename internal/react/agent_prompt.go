@@ -26,24 +26,12 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	hasExecutionContexts := len(executionContexts) > 0
 	hasWarnings := len(snap.Warnings) > 0
 	hasUnresolved := len(snap.Unresolved) > 0
-	latestInput := snap.LatestInput()
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
 
 	workspaceSharedDir := ""
 	if a.workspaceRuntime != nil {
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
-	}
-
-	var contractName, contractSchema, contractExample string
-	hasContract := false
-	if currentStep != nil && currentStep.OutputContractRef != "" && a.cfg != nil {
-		if c := a.cfg.LookupOutputContract(currentStep.OutputContractRef); c != nil {
-			hasContract = true
-			contractName = c.Name
-			contractSchema = c.Schema
-			contractExample = c.Example
-		}
 	}
 
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
@@ -53,19 +41,10 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		WorkspaceNamespace:      a.workspaceNamespace,
 		WorkspaceSharedDir:      workspaceSharedDir,
 		SkillsContext:           skillsContext,
-		Phase:                   snap.Phase,
-		Status:                  snap.Status,
-		CurrentGoal:             snap.CurrentGoal,
-		CurrentStepID:           snap.CurrentStepID,
 		CurrentStep:             currentStep,
-		LatestInput:             latestInput,
-		InputTimeline:           snap.InputTimeline,
 		DependencyStepSummaries: dependencySummaries,
 		ExecutionContexts:       executionContexts,
-		HasCurrentGoal:          strings.TrimSpace(snap.CurrentGoal) != "",
-		HasCurrentStepID:        strings.TrimSpace(snap.CurrentStepID) != "",
 		HasCurrentStep:          currentStep != nil,
-		HasLatestInput:          latestInput != nil,
 		HasDependencySummaries:  hasDependencySummaries,
 		HasExecutionContexts:    hasExecutionContexts,
 		HasWarnings:             hasWarnings,
@@ -77,10 +56,6 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		Warnings:                snap.Warnings,
 		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
-		HasOutputContract:       hasContract,
-		OutputContractName:      contractName,
-		OutputContractSchema:    contractSchema,
-		OutputContractExample:   contractExample,
 	})
 	if err == nil {
 		return prompt
