@@ -13,6 +13,7 @@ type SkillIndexRow struct {
 	WhenToUse   string
 	Context     string
 	Status      string
+	SkillDir    string
 }
 
 func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName string, allowedSkillNames []string, activeSkillNames []string) (string, error) {
@@ -61,6 +62,7 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 			WhenToUse:   strings.TrimSpace(item.WhenToUse),
 			Context:     firstNonEmpty(strings.TrimSpace(item.Context), "inline"),
 			Status:      skillStatus(name, activeSet),
+			SkillDir:    strings.TrimSpace(item.SkillDir),
 		})
 	}
 
@@ -152,13 +154,27 @@ func skillVisibleToAgent(skillAgent string, agentName string) bool {
 	}
 }
 
+const skillsTablePathThreshold = 20
+
 func formatSkillsTable(rows []SkillIndexRow) string {
 	if len(rows) == 0 {
 		return ""
 	}
-	lines := make([]string, 0, len(rows)+2)
-	lines = append(lines, "| name | description | when-to-use | context | status |")
-	lines = append(lines, "| --- | --- | --- | --- | --- |")
+
+	showPath := len(rows) > skillsTablePathThreshold
+
+	lines := make([]string, 0, len(rows)+4)
+
+	if showPath {
+		lines = append(lines, "> 可用技能较多，请通过 read_file 读取对应 SKILL.md 获取完整指令，不要一次性加载所有技能。")
+		lines = append(lines, "")
+		lines = append(lines, "| name | description | when-to-use | path | context | status |")
+		lines = append(lines, "| --- | --- | --- | --- | --- | --- |")
+	} else {
+		lines = append(lines, "| name | description | when-to-use | context | status |")
+		lines = append(lines, "| --- | --- | --- | --- | --- |")
+	}
+
 	for _, row := range rows {
 		name := sanitizeTableCell(row.Name)
 		desc := sanitizeTableCell(row.Description)
@@ -177,7 +193,15 @@ func formatSkillsTable(rows []SkillIndexRow) string {
 		if status == "" {
 			status = "available"
 		}
-		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s |", name, desc, whenToUse, ctx, status))
+		if showPath {
+			skillPath := "-"
+			if row.SkillDir != "" {
+				skillPath = sanitizeTableCell(row.SkillDir + "/SKILL.md")
+			}
+			lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s | %s |", name, desc, whenToUse, skillPath, ctx, status))
+		} else {
+			lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s |", name, desc, whenToUse, ctx, status))
+		}
 	}
 	return strings.Join(lines, "\n")
 }

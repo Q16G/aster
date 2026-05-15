@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -304,6 +305,9 @@ func (s *skillMemoryStore) ListSkills(_ context.Context, filter *SkillFilter) ([
 		}
 		out = append(out, cloneSkill(item))
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
 }
 

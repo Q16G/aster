@@ -207,6 +207,7 @@ providers:
 | **host-defense** | 主机防护 — 基线检查 + 入侵检测 + 应急响应 | `baseline-check`, `intrusion-detection`, `malware-detect` |
 
 Agent 定义文件位于 `~/.aster/agents/`，启动时按字母序加载，第一个为默认 Agent。
+默认优先加载 `name: code-audit`（如果存在），否则回退到加载序中的第一个 Agent。
 
 ### Agent YAML Schema
 
@@ -237,6 +238,10 @@ skill_names:
   - sast-scan
   - dataflow-analysis
 
+# 强制预加载技能（总是注入 prompt，无法通过 /skill disable 禁用）
+preload_skills:
+  - security-code-analysis
+
 # Agent 专属 MCP 服务器（仅该 Agent 可用）
 mcp_servers:
   - name: syntaxflow
@@ -250,17 +255,7 @@ policies:
   allow_bash: true                # 是否启用 bash 工具
   enable_history_compaction: true # Token 超限时自动压缩历史
   result_source: latest_step_result  # 结果提取策略
-  publish_contract: sast-findings    # 输出合约名
 
-# 输出合约（结构化输出验证）
-output_contracts:
-  sast-findings:
-    schema: |
-      {"type":"object","required":["total_findings","findings"],"properties":{...}}
-    example: |
-      {"total_findings":3,"findings":[...]}
-    summary_policy: |
-      保留所有发现的 id、标题和严重等级
 ```
 
 ### 自定义 Agent 示例
@@ -348,7 +343,7 @@ Agent YAML: skill_names → SkillsCatalog 构建可用列表
 - Python：Flask / Django / FastAPI `redirect(...)`、`render_template_string(...)`、`jinja2.Template(...).render(...)`、Django Storage / FastAPI UploadFile 保存路径
 - JavaScript / TypeScript：Koa / Fastify / Next.js `redirect(...)`、Vue `v-html` 存储型 XSS 入口、`undici` SSRF sink
 
-当前 README 不再手写维护规则总数，具体覆盖范围以 `skills/semgrep-rules/` 目录和对应最小样例为准。
+当前 README 不再手写维护规则总数，具体覆盖范围以 `semgrep-rules/` 目录和对应最小样例为准。
 
 ### 运行时管理
 
@@ -357,6 +352,8 @@ Agent YAML: skill_names → SkillsCatalog 构建可用列表
 /skill enable sast-scan       # 启用技能
 /skill disable sast-scan      # 禁用技能
 ```
+
+> 说明：若某技能被当前 Agent 配置在 `preload_skills` 中，则属于“强制启用”，运行时不可禁用。
 
 ---
 
@@ -476,7 +473,6 @@ mcp_servers:
                          ▼
 ┌─────────────────────────────────────────────────┐
 │  FinalAnswer Phase — 输出结构化结果                 │
-│  （按 output_contracts 验证格式）                  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -488,7 +484,6 @@ mcp_servers:
 | `allow_bash` | 是否启用 bash 工具 | true |
 | `enable_history_compaction` | Token 超限时压缩历史 | true |
 | `result_source` | 结果提取策略：`latest_step_result` / `final_answer` / `step_summary` | latest_step_result |
-| `publish_contract` | 输出合约名（要求结构化输出） | — |
 
 ### 子 Agent 委派
 
@@ -612,8 +607,12 @@ internal/
   builtin_providers/         # Provider 预设
   service/                   # 技能服务
   memory/                    # Agent 时间线记忆
-skills/                      # 内嵌技能定义（SKILL.md）
-  semgrep-rules/             # SAST 规则（6 语言，本地自建 + 社区精选）
+skills/                      # 内嵌技能定义（按 agent 分组）
+  common/                    # 通用技能
+  code-audit/                # 代码审计技能
+  pentest/                   # 渗透测试技能
+  host-defense/              # 主机防御技能
+semgrep-rules/               # SAST 规则（6 语言，本地自建 + 社区精选）
 ```
 
 ---
