@@ -24,6 +24,11 @@ type Config struct {
 	Headers    map[string]string
 	HTTPClient *http.Client
 
+	ContextWindowTokens int
+	OutputTokenLimit    int
+	SupportsVision      *bool
+	SupportsAudio       *bool
+
 	UsagePricing aiusage.PricingModel
 }
 
@@ -108,6 +113,34 @@ func WithHeaders(headers map[string]string) Option {
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Config) {
 		c.HTTPClient = client
+	}
+}
+
+func WithContextWindowTokens(tokens int) Option {
+	return func(c *Config) {
+		if tokens > 0 {
+			c.ContextWindowTokens = tokens
+		}
+	}
+}
+
+func WithOutputTokenLimit(tokens int) Option {
+	return func(c *Config) {
+		if tokens > 0 {
+			c.OutputTokenLimit = tokens
+		}
+	}
+}
+
+func WithSupportsVision(v bool) Option {
+	return func(c *Config) {
+		c.SupportsVision = &v
+	}
+}
+
+func WithSupportsAudio(v bool) Option {
+	return func(c *Config) {
+		c.SupportsAudio = &v
 	}
 }
 
