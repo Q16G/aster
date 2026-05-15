@@ -2,11 +2,19 @@ package react
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
+	"time"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/structuredoutput"
+)
+
+const (
+	defaultToolTimeoutMs int64 = 300_000   // 5 min
+	maxToolTimeoutMs     int64 = 1_800_000 // 30 min
 )
 
 // OnHandoffFunc Agent 交接回调
@@ -34,8 +42,6 @@ type AgentConfig struct {
 	EnableStreaming bool
 
 	TaskPlanner         builtin_tools.TaskPlanner
-	MemoryTriggerBytes  int
-	MemoryKeepLastItems int
 
 	HistoryCompressKeepLastRounds int
 	HistoryCompressor             HistoryCompressor
@@ -57,22 +63,13 @@ type AgentConfig struct {
 
 	StructuredOutput StructuredOutputConfig
 
+	PromptCacheConfig *ai.PromptCacheConfig
+
 	// BashTool 可选：bash 工具配置。非 nil 时 NewReActAgent 在内部注册 BashTool。
 	BashTool *BashToolConfig
 
-	// OutputContracts 按名称索引的 step output contract 定义。
-	OutputContracts map[string]*builtin_tools.OutputContract
-}
-
-func (c *AgentConfig) LookupOutputContract(name string) *builtin_tools.OutputContract {
-	if c == nil || len(c.OutputContracts) == 0 {
-		return nil
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil
-	}
-	return c.OutputContracts[name]
+	// DefaultToolTimeoutMs 所有工具调用的默认超时（毫秒）。0 表示使用内置默认值（300000）。
+	DefaultToolTimeoutMs int64
 }
 
 // Option Agent 配置选项
@@ -83,8 +80,6 @@ func defaultAgentConfig(aiClient ai.ChatClient) *AgentConfig {
 		MaxIterations:       120,
 		AIClient:            aiClient,
 		OnHandoffFunc:       DefaultOnHandoffFunc,
-		MemoryTriggerBytes:  -1,
-		MemoryKeepLastItems: -1,
 
 		HistoryCompressKeepLastRounds: 5,
 		StructuredOutput:              structuredoutput.DefaultConfig(),
@@ -193,20 +188,6 @@ func WithStreamingEnabled(enabled bool) Option {
 func WithTaskPlanner(planner builtin_tools.TaskPlanner) Option {
 	return func(c *AgentConfig) {
 		c.TaskPlanner = planner
-	}
-}
-
-// WithMemoryTriggerBytes 设置记忆触发字节数
-func WithMemoryTriggerBytes(n int) Option {
-	return func(c *AgentConfig) {
-		c.MemoryTriggerBytes = n
-	}
-}
-
-// WithMemoryKeepLastItems 设置保留最近记忆项数
-func WithMemoryKeepLastItems(n int) Option {
-	return func(c *AgentConfig) {
-		c.MemoryKeepLastItems = n
 	}
 }
 
@@ -321,11 +302,86 @@ func WithBashTool(cfg *BashToolConfig) Option {
 	}
 }
 
+func WithPromptCacheConfig(cfg *ai.PromptCacheConfig) Option {
+	return func(c *AgentConfig) {
+		if c == nil {
+			return
+		}
+		c.PromptCacheConfig = cfg
+	}
+}
+
 func WithPromptManager(manager PromptManager) Option {
 	return func(c *AgentConfig) {
 		if c == nil || manager == nil {
 			return
 		}
 		c.PromptManager = manager
+	}
+}
+
+func WithDefaultToolTimeout(ms int64) Option {
+	return func(c *AgentConfig) {
+		if c == nil || ms <= 0 {
+			return
+		}
+		c.DefaultToolTimeoutMs = ms
+	}
+}
+
+func (c *AgentConfig) resolveToolTimeout(args map[string]any) time.Duration {
+	ms := c.resolveToolTimeoutMs(args)
+	return time.Duration(ms) * time.Millisecond
+}
+
+func (c *AgentConfig) resolveToolTimeoutMs(args map[string]any) int64 {
+	if v, ok := args["timeout_ms"]; ok && v != nil {
+		if ms := toInt64(v); ms > 0 {
+			if ms > maxToolTimeoutMs {
+				return maxToolTimeoutMs
+			}
+			return ms
+		}
+	}
+	if c != nil && c.DefaultToolTimeoutMs > 0 {
+		return c.DefaultToolTimeoutMs
+	}
+	return defaultToolTimeoutMs
+}
+
+func toInt64(v any) int64 {
+	switch n := v.(type) {
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	case float32:
+		return int64(n)
+	case int32:
+		return int64(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		if f, err := n.Float64(); err == nil {
+			return int64(f)
+		}
+		return 0
+	case string:
+		s := strings.TrimSpace(n)
+		if s == "" {
+			return 0
+		}
+		if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return i
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return int64(f)
+		}
+		return 0
+	default:
+		return 0
 	}
 }

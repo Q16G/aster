@@ -564,7 +564,6 @@ type finalAnswerPhaseUpdate struct {
 	FinalAnswerContent    string
 	FinalAnswerSource     string
 	FinalAnswerReferences []string
-	FinalPublishedOutput  string
 
 	NextGoal          string
 	Warnings          []string
@@ -582,7 +581,6 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 	update.Error = strings.TrimSpace(update.Error)
 	update.FinalAnswerContent = strings.TrimSpace(update.FinalAnswerContent)
 	update.FinalAnswerSource = strings.TrimSpace(update.FinalAnswerSource)
-	update.FinalPublishedOutput = strings.TrimSpace(update.FinalPublishedOutput)
 	update.FinalAnswerReferences = normalizeReferences(update.FinalAnswerReferences)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 	update.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(update.ExternalInterrupt)
@@ -629,11 +627,10 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 			source = "final_answer"
 		}
 		t.state.FinalAnswer = &builtin_tools.FinalAnswer{
-			Content:         update.FinalAnswerContent,
-			Source:          source,
-			CreatedAt:       time.Now(),
-			References:      update.FinalAnswerReferences,
-			PublishedOutput: update.FinalPublishedOutput,
+			Content:    update.FinalAnswerContent,
+			Source:     source,
+			CreatedAt:  time.Now(),
+			References: update.FinalAnswerReferences,
 		}
 		// status_summary 默认复用最终答案文本（方便 UI 快速展示）
 		t.state.StatusSummary = update.FinalAnswerContent

@@ -166,11 +166,10 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 
 		id := canonicalPlanItemID(item.ID, idx, usedIDs)
 		norm := &PlanItem{
-			ID:                id,
-			Step:              step,
-			Status:            status,
-			DependsOn:         CloneStringSlice(item.DependsOn),
-			OutputContractRef: strings.TrimSpace(item.OutputContractRef),
+			ID:        id,
+			Step:      step,
+			Status:    status,
+			DependsOn: CloneStringSlice(item.DependsOn),
 		}
 		out = append(out, norm)
 		if _, exists := stepToID[step]; !exists {
@@ -554,14 +553,11 @@ func ParsePlanItems(raw any) ([]*PlanItem, error) {
 			return nil, fmt.Errorf("plan.depends_on must be array of strings: %w", err)
 		}
 
-		outputContractRef := ToolRuntimeValue(m["output_contract_ref"])
-
 		items = append(items, &PlanItem{
-			ID:                id,
-			Step:              step,
-			Status:            status,
-			DependsOn:         dependsOn,
-			OutputContractRef: outputContractRef,
+			ID:        id,
+			Step:      step,
+			Status:    status,
+			DependsOn: dependsOn,
 		})
 	}
 

@@ -300,14 +300,12 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 					}
 				}
 			}
-			published := strings.TrimSpace(string(decision.model.PublishedOutput))
-			if finalText != "" || published != "" {
+			if finalText != "" {
 				snapshot.FinalAnswer = &builtin_tools.FinalAnswer{
-					Content:         strings.TrimSpace(finalText),
-					Source:          "final_assessment",
-					CreatedAt:       now,
-					References:      builtin_tools.CloneStringSlice(decision.model.References),
-					PublishedOutput: published,
+					Content:    strings.TrimSpace(finalText),
+					Source:     "final_assessment",
+					CreatedAt:  now,
+					References: builtin_tools.CloneStringSlice(decision.model.References),
 				}
 				if strings.TrimSpace(snapshot.StatusSummary) == "" {
 					snapshot.StatusSummary = firstNonEmpty(strings.TrimSpace(decision.model.Reason), strings.TrimSpace(finalText))
@@ -565,9 +563,6 @@ func isDeliverableFinal(snapshot builtin_tools.StateSnapshot) bool {
 		return false
 	}
 	if strings.TrimSpace(snapshot.FinalAnswer.Content) != "" {
-		return true
-	}
-	if strings.TrimSpace(snapshot.FinalAnswer.PublishedOutput) != "" {
 		return true
 	}
 	return false

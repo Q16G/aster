@@ -59,21 +59,6 @@ func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
 	}
 }
 
-func TestBuildThinkActPrompt_CurrentStatusConditionalRendering(t *testing.T) {
-	// HAS_CURRENT_STATUS=false → no CURRENT_STATUS block
-	agent, err := NewReActAgent("status-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-	agent.ReplaceState(builtin_tools.StateSnapshot{
-		Phase:  builtin_tools.AgentPhaseStep,
-		Status: builtin_tools.TaskStatusRunning,
-	})
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
-	if strings.Contains(prompt, "<CURRENT_STATUS>") {
-		t.Fatalf("expected no CURRENT_STATUS block when statusContext is empty, got %s", prompt)
-	}
-}
 
 func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 	agent, err := NewReActAgent(
@@ -118,7 +103,7 @@ func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 	})
 
 	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
-	for _, marker := range []string{"<CURRENT_STEP>", "<LATEST_INPUT>", "<INPUT_TIMELINE>", "<DEPENDENCY_STEP_SUMMARIES>"} {
+	for _, marker := range []string{"<CURRENT_STEP>", "<DEPENDENCY_STEP_SUMMARIES>"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
 		}

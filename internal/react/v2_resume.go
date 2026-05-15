@@ -44,6 +44,22 @@ func (a *Agent) restoreRuntimeFromV2Snapshot(store *persistv2.Store, snap *persi
 		}
 	}
 
+	// Restore the long-term conversation history so the model retains prior-turn context.
+	if strings.TrimSpace(snap.ConversationHistoryBlobRef) != "" {
+		raw, err := store.ReadBlob(snap.ConversationHistoryBlobRef)
+		if err != nil {
+			return fmt.Errorf("read conversation_history blob: %w", err)
+		}
+		if len(raw) > 0 {
+			var msgs []*ai.MsgInfo
+			if err := json.Unmarshal(raw, &msgs); err != nil {
+				return fmt.Errorf("unmarshal conversation_history: %w", err)
+			}
+			a.history = ai.NormalizeMsgInfoSlice(msgs)
+			a.notifyHistoryReplace()
+		}
+	}
+
 	// Re-align step-history bookkeeping with restored state.
 	if a.state != nil {
 		st := a.state.Snapshot()

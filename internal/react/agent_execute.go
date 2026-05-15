@@ -11,7 +11,6 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
-	"aster/internal/memory"
 	"aster/internal/react/persistv2"
 	"aster/internal/structuredoutput"
 	"aster/internal/utils"
@@ -34,8 +33,6 @@ type ExecuteConfig struct {
 	interruptResolution        *interruptResolution
 	interruptCancel            *interruptCancel
 	resultSource               ResultSource
-	publishContract            string
-	finalAnswerPublish         *FinalAnswerPublishConfig
 }
 
 type interruptResolution struct {
@@ -196,24 +193,6 @@ func WithResultSource(source ResultSource) ExecuteOption {
 	}
 }
 
-func WithPublishContract(name string) ExecuteOption {
-	return func(cfg *ExecuteConfig) {
-		if cfg == nil {
-			return
-		}
-		cfg.publishContract = strings.TrimSpace(name)
-	}
-}
-
-func WithFinalAnswerPublishConfig(publish *FinalAnswerPublishConfig) ExecuteOption {
-	return func(cfg *ExecuteConfig) {
-		if cfg == nil {
-			return
-		}
-		cfg.finalAnswerPublish = publish
-	}
-}
-
 // Execute 执行 Agent
 func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
 	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
@@ -224,9 +203,6 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	defer a.runFinishHooks()
-	if a.memory != nil {
-		a.memory.RebindContext(ctx)
-	}
 	var runResult *builtin_tools.RunResult
 
 	cfg := &ExecuteConfig{}
@@ -303,8 +279,6 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	// In V2 semantics, this value is the current turn_id.
 	a.currentRunID = a.currentTurnID
 	a.currentResultSource = normalizeResultSource(cfg.resultSource)
-	a.currentPublishContract = strings.TrimSpace(cfg.publishContract)
-	a.currentFinalAnswerPublish = normalizeFinalAnswerPublishConfig(cfg.finalAnswerPublish)
 
 	// V2 persistence store: session_id is stable, turn_id is per Execute call.
 	// V2 is not compatible with legacy durable-resume checkpoints.
@@ -422,7 +396,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
-	a.resetRunMemory(ctx, extraText, runClient)
+	a.resetRunHandoff()
 
 	if input != "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
 		userMsg := ai.NewUserMsgInfo(input)
@@ -733,10 +707,8 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		finalState = a.state.Snapshot()
 	}
 	finalContent := ""
-	finalPublished := ""
 	if finalState.FinalAnswer != nil {
 		finalContent = strings.TrimSpace(finalState.FinalAnswer.Content)
-		finalPublished = strings.TrimSpace(finalState.FinalAnswer.PublishedOutput)
 	}
 	if finalContent == "" && runResult != nil && runResult.Success {
 		finalContent = strings.TrimSpace(runResult.Result)
@@ -806,7 +778,6 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				TurnID:          a.currentTurnID,
 				Status:          status,
 				Content:         finalContent,
-				PublishedOutput: finalPublished,
 				BlobRef:         finalBlob,
 				UpdatedAt:       time.Now().UnixMilli(),
 			}
@@ -967,38 +938,19 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		runtimeForcedFail := snapshot.Status == builtin_tools.TaskStatusFailed &&
 			strings.TrimSpace(snapshot.Error) != ""
 		if !runtimeForcedFail && snapshot.ExternalInterrupt == nil {
-			if result, ok, degraded := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan, a.currentPublishContract); ok {
-				if degraded {
-					a.emitRuntimeLog("warning", "publish contract fallback: no plan step matched contract, using latest step result", snapshot, map[string]any{
-						"event":            "publish_contract_fallback",
-						"publish_contract": a.currentPublishContract,
-					})
-				}
+			if result, ok := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan); ok {
 				return &builtin_tools.RunResult{Success: true, Result: result}
 			}
 		}
 		if snapshot.Status == builtin_tools.TaskStatusCompleted && snapshot.ExternalInterrupt == nil {
 			a.emitRuntimeLog("warning", "result_source=latest_step_result: no step result produced, falling through to final_answer", snapshot, map[string]any{
-				"event":            "step_result_missing_fallback",
-				"publish_contract": a.currentPublishContract,
+				"event": "step_result_missing_fallback",
 			})
 		}
 	}
 
 	switch snapshot.Status {
 	case builtin_tools.TaskStatusCompleted:
-		if a.requiresPublishedOutput() {
-			if snapshot.FinalAnswer != nil {
-				published := strings.TrimSpace(snapshot.FinalAnswer.PublishedOutput)
-				if published != "" {
-					return &builtin_tools.RunResult{Success: true, Result: published}
-				}
-			}
-			return &builtin_tools.RunResult{
-				Success: false,
-				Error:   "final_answer.published_output is required but missing",
-			}
-		}
 		result := ""
 		if snapshot.FinalAnswer != nil {
 			result = strings.TrimSpace(snapshot.FinalAnswer.Content)
@@ -1034,40 +986,11 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 	}
 }
 
-func (a *Agent) resetRunMemory(ctx context.Context, extraText string, runClient ai.ChatClient) {
+func (a *Agent) resetRunHandoff() {
 	if a == nil {
 		return
 	}
-	var memOpts []memory.TimelineOption
-	if a.cfg != nil {
-		if a.cfg.MemoryTriggerBytes >= 0 {
-			memOpts = append(memOpts, memory.WithTriggerBytes(a.cfg.MemoryTriggerBytes))
-		} else if runClient != nil {
-			budget := resolveContextBudget(runClient)
-			triggerTokens := budget.TriggerTokens
-			if triggerTokens <= 0 {
-				triggerTokens = budget.UsableInputTokens
-			}
-			if triggerTokens > 0 {
-				memOpts = append(memOpts, memory.WithTriggerBytes(triggerTokens*defaultCharsPerToken))
-			}
-		}
-		if a.cfg.MemoryKeepLastItems >= 0 {
-			memOpts = append(memOpts, memory.WithKeepLastItems(a.cfg.MemoryKeepLastItems))
-		}
-		if runClient == nil {
-			runClient = a.cfg.AIClient
-		}
-	}
-	a.memory = memory.NewTimeLine(
-		ctx,
-		runClient,
-		func() string { return strings.TrimSpace(extraText) },
-		memOpts...,
-	)
-	a.handoff = &handoffState{
-		differ: memory.NewTimelineMemoryDiffer(a.memory),
-	}
+	a.handoff = &handoffState{}
 }
 
 func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
@@ -1352,9 +1275,6 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.Cha
 		// No change to long-term history.
 	}
 
-	// 将 assistant 输出记入 TimelineMemory，供 TimelineMemoryDiffer 生成 step window diff。
-	a.AddMemoryAssistantOutput(content)
-
 	return &aiCallProxyResult{
 		ToolCalls:     msg.ToolCalls,
 		AssistantText: content,
@@ -1424,14 +1344,6 @@ func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string,
 	toolResultMsg := ai.NewToolCallResultMsgInfo(content, callID)
 	// Step phase: tool results are step-local transcript and should not be persisted to long-term ai.history.
 	a.stepHistory = append(a.stepHistory, toolResultMsg)
-
-	if a.memory != nil {
-		_ = a.memory.AddItem(
-			generateRandomString(8),
-			memory.NewToolCallItem(callID, toolName, description, args, result, errText),
-		)
-		a.memory.TryCompressAsync()
-	}
 }
 
 // InjectAgentToolExtra 注入 Agent 工具额外信息
