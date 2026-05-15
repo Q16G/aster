@@ -23,9 +23,6 @@ type FinalAnswerModelOutput struct {
 	Warnings     []string `json:"warnings"`
 	UserMessage  string   `json:"user_message"`
 	References   []string `json:"references"`
-
-	// PublishedOutput: 子 agent 机器发布 payload（可选；仅在启用 publish contract 时必填）
-	PublishedOutput json.RawMessage `json:"published_output,omitempty"`
 }
 
 func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.ChatClient) (builtin_tools.StateSnapshot, error) {
@@ -116,7 +113,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			})
 			var retryResult structuredoutput.Result[FinalAnswerModelOutput]
 			retryResult, runErr := runStructuredOutputWithRetry(a, ctx, snapshot, runClient, "final_answer", prompt, func(raw string) (FinalAnswerModelOutput, error) {
-				return parseFinalAnswerOutput(raw, a.currentFinalAnswerPublishConfig())
+				return parseFinalAnswerOutput(raw)
 			})
 			if runErr == nil {
 				rawResponse = strings.TrimSpace(retryResult.RawResponse)
@@ -130,21 +127,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			} else {
 				rawResponse = strings.TrimSpace(structuredoutput.LastResponse(runErr))
 				if rawResponse != "" {
-					if a.requiresPublishedOutput() {
-						runtimelog.LogJSON("error", map[string]any{
-							"event":               "final_answer_model_raw_response",
-							"phase":               "final_answer",
-							"mode":                "publish_contract_parse_failed",
-							"error":               strings.TrimSpace(runErr.Error()),
-							"raw_response_length": len(rawResponse),
-						})
-						a.emitRuntimeLog("error", "final answer publish contract parse failed", snapshot, map[string]any{
-							"event":           "final_answer_publish_contract_parse_failed",
-							"response_length": len(rawResponse),
-							"error":           strings.TrimSpace(runErr.Error()),
-						})
-						return snapshot, fmt.Errorf("final_answer publish contract parse failed: %w", runErr)
-					}
 					runtimelog.LogJSON("warning", map[string]any{
 						"event":               "final_answer_model_raw_response",
 						"phase":               "final_answer",
@@ -246,8 +228,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			finalText = interruptText
 		}
 	}
-	publishedOutput := strings.TrimSpace(string(decision.model.PublishedOutput))
-
 	finalAnswerSource := "final_assessment"
 
 	snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
@@ -257,7 +237,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		FinalAnswerContent:    finalText,
 		FinalAnswerSource:     finalAnswerSource,
 		FinalAnswerReferences: decision.model.References,
-		FinalPublishedOutput:  publishedOutput,
 		Warnings:              decision.model.Warnings,
 		Unresolved:            []string{},
 		ExternalInterrupt:     externalInterrupt,
@@ -287,7 +266,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		a.history = append(a.history, msg)
 		// 用 replace 快照落盘，避免最终答案落到 delta（便于恢复与审计一致性）。
 		a.notifyHistoryReplace()
-		a.AddMemoryAssistantOutput(historyText)
 		a.emitRuntimeLog("info", "final answer history persisted", snapshot, map[string]any{
 			"event":          "final_answer_history_persisted",
 			"history_length": len(a.history),
@@ -303,7 +281,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	return snapshot, nil
 }
 
-func parseFinalAnswerOutput(raw string, publish *FinalAnswerPublishConfig) (FinalAnswerModelOutput, error) {
+func parseFinalAnswerOutput(raw string) (FinalAnswerModelOutput, error) {
 	var zero FinalAnswerModelOutput
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -336,27 +314,10 @@ func parseFinalAnswerOutput(raw string, publish *FinalAnswerPublishConfig) (Fina
 		}
 		return zero, structuredoutput.UnmarshalFailedError(fmt.Errorf("final_answer missing required field %q", key))
 	}
-	strictPublish := publish != nil && publish.Strict && publish.Contract != nil
-	if strictPublish {
-		if _, ok := rawMap["published_output"]; !ok {
-			return zero, structuredoutput.UnmarshalFailedError(fmt.Errorf("final_answer missing required field %q", "published_output"))
-		}
-	}
 
 	var out FinalAnswerModelOutput
 	if err := json.Unmarshal([]byte(objText), &out); err != nil {
 		return zero, structuredoutput.UnmarshalFailedError(err)
-	}
-	if strictPublish {
-		published := strings.TrimSpace(string(out.PublishedOutput))
-		if published == "" || published == "null" {
-			return zero, structuredoutput.UnmarshalFailedError(fmt.Errorf("final_answer.published_output is empty"))
-		}
-		if publish.Contract != nil && publish.Contract.Validate != nil {
-			if err := publish.Contract.Validate(published); err != nil {
-				return zero, structuredoutput.UnmarshalFailedError(fmt.Errorf("final_answer.published_output invalid: %w", err))
-			}
-		}
 	}
 	return out, nil
 }
@@ -434,12 +395,6 @@ func (a *Agent) canFastCloseFinalAnswer(snapshot builtin_tools.StateSnapshot, ct
 	if snapshot.ExternalInterrupt != nil {
 		return false
 	}
-	if a.requiresPublishedOutput() {
-		return false
-	}
-	if contract := a.lookupFinalAnswerOutputContract(snapshot); contract != nil && strings.TrimSpace(contract.SummaryPolicy) != "" {
-		return false
-	}
 	if len(snapshot.Plan) != 1 {
 		return false
 	}
@@ -512,7 +467,6 @@ func (a *Agent) fastCloseFinalAnswer(
 		msg := ai.NewAIMsgInfo(historyText)
 		a.history = append(a.history, msg)
 		a.notifyHistoryReplace()
-		a.AddMemoryAssistantOutput(historyText)
 	}
 
 	a.emitRuntimeLog("info", "final answer fast closed", snapshot, map[string]any{

@@ -3,13 +3,10 @@ package react
 import (
 	"context"
 	"strings"
-
-	"aster/internal/memory"
 )
 
 type handoffState struct {
 	summary string
-	differ  *memory.TimelineMemoryDiffer
 }
 
 // DefaultOnHandoffFunc 默认的 Agent 交接回调
