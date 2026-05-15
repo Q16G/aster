@@ -5,36 +5,54 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"aster/internal/ai"
 	"aster/internal/mcp"
+	"aster/internal/provider"
 
 	"gopkg.in/yaml.v3"
 )
 
 type ProviderConfig struct {
-	BaseURL        string                `yaml:"base_url"`
-	APIKey         string                `yaml:"api_key"`
-	DefaultModel   string                `yaml:"default_model"`
-	Headers        map[string]string     `yaml:"headers,omitempty"`
-	PromptCache    *ai.PromptCacheConfig `yaml:"prompt_cache,omitempty"`
-	Env            map[string]string     `yaml:"env,omitempty"`
-	SupportsVision *bool                 `yaml:"supports_vision,omitempty"`
-	SupportsAudio  *bool                 `yaml:"supports_audio,omitempty"`
+	BaseURL        string                       `yaml:"base_url"`
+	APIKey         string                       `yaml:"api_key"`
+	DefaultModel   string                       `yaml:"default_model"`
+	Headers        map[string]string            `yaml:"headers,omitempty"`
+	PromptCache    *ai.PromptCacheConfig        `yaml:"prompt_cache,omitempty"`
+	Variants       map[string]map[string]any    `yaml:"variants,omitempty"`
+	Env            map[string]string            `yaml:"env,omitempty"`
+	SupportsVision *bool                        `yaml:"supports_vision,omitempty"`
+	SupportsAudio  *bool                        `yaml:"supports_audio,omitempty"`
 }
 
 type AppConfig struct {
-	Providers       map[string]*ProviderConfig      `yaml:"providers"`
-	DefaultProvider string                          `yaml:"default_provider"`
-	MCPServers      map[string]*mcp.MCPServerConfig `yaml:"mcp_servers"`
+	Providers        map[string]*ProviderConfig      `yaml:"providers"`
+	DefaultProvider  string                          `yaml:"default_provider"`
+	ProviderPriority []string                        `yaml:"provider_priority,omitempty"`
+	MCPServers       map[string]*mcp.MCPServerConfig `yaml:"mcp_servers"`
+}
+
+var DefaultProviderPriority = []string{
+	"openai", "anthropic", "deepseek", "groq", "openrouter", "together", "ollama",
+}
+
+func (c *AppConfig) effectiveProviderPriority() []string {
+	if len(c.ProviderPriority) > 0 {
+		return c.ProviderPriority
+	}
+	return DefaultProviderPriority
 }
 
 type ProviderState struct {
 	Name           string
+	Protocol       string
 	BaseURL        string
 	APIKey         string
 	ModelID        string
+	Variant        string
+	VariantOptions map[string]any
 	Headers        map[string]string
 	PromptCache    *ai.PromptCacheConfig
 	Env            map[string]string
@@ -80,14 +98,34 @@ func EnsureAppDefaults() error {
 	}
 	for name, content := range defaultAgentFiles {
 		agentPath := filepath.Join(agentsDir, name)
-		if _, err := os.Stat(agentPath); errors.Is(err, os.ErrNotExist) {
-			if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
-				return fmt.Errorf("write agent %s: %w", name, err)
-			}
+		if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write agent %s: %w", name, err)
 		}
 	}
 
 	return nil
+}
+
+func ParseDefaultAgentProfiles() []ProfileYAML {
+	var profiles []ProfileYAML
+	names := make([]string, 0, len(defaultAgentFiles))
+	for name := range defaultAgentFiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		content := defaultAgentFiles[name]
+		var p ProfileYAML
+		if err := yaml.Unmarshal([]byte(content), &p); err != nil {
+			continue
+		}
+		if p.Name == "" {
+			p.Name = strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
+		}
+		profiles = append(profiles, p)
+	}
+	return profiles
 }
 
 var defaultConfigYAML = `# ASTER Configuration
@@ -195,125 +233,34 @@ instruction: |
 	"code-audit.yaml": `name: code-audit
 role: 代码安全审计专家，擅长静态分析、漏洞模式识别、数据流追踪和安全编码指导
 background: |
-  精通多种编程语言和框架的安全漏洞模式。先盘点攻击面与权限边界，再执行
-  多介质 SAST 扫描（源码 + XML/配置/模板），对需要确认的链路使用
-  SyntaxFlow MCP 做 topdef/bottomUse 数据流验证，并按需补充业务逻辑与
-  认证授权复核，给出覆盖声明明确、分桶清晰的审计结论。
+  精通多种编程语言和框架的安全漏洞模式。具备攻击面盘点、多介质 SAST
+  扫描（源码 + XML/配置/模板）、SyntaxFlow 数据流验证、业务逻辑与认证
+  授权复核等能力。根据项目实际情况选择合适的分析手段和顺序，给出覆盖
+  声明明确、分桶清晰的审计结论。
 policies:
   result_source: latest_step_result
-  publish_contract: sast-findings
 skill_names:
   - security-code-analysis
   - sast-scan
   - dataflow-analysis
   - business-logic-auth-review
+  - result-with-file
+preload_skills:
+  - result-with-file
+mcp_servers:
+  - name: yak
+    type: stdio
+    command: yak
+    args:
+      - mcp
+      - -t
+      - ssa
 tool_names:
   - list_files
   - read_file
   - rg
   - list_skills
   - load_skills
-output_contracts:
-  sast-findings:
-    schema: |
-      {
-        "type": "object",
-        "required": ["total_findings", "severity_counts", "findings"],
-        "properties": {
-          "total_findings": { "type": "integer", "description": "发现总数" },
-          "severity_counts": {
-            "type": "object",
-            "properties": {
-              "critical": { "type": "integer" },
-              "high":     { "type": "integer" },
-              "medium":   { "type": "integer" },
-              "low":      { "type": "integer" },
-              "info":     { "type": "integer" }
-            }
-          },
-          "scan_target": { "type": "string", "description": "扫描目标路径或仓库" },
-          "assessment": {
-            "type": "object",
-            "description": "覆盖声明、噪声分桶与认证授权复核补充信息",
-            "properties": {
-              "coverage": {
-                "type": "object",
-                "properties": {
-                  "languages": { "type": "array", "items": { "type": "string" } },
-                  "framework_signals": { "type": "array", "items": { "type": "string" } },
-                  "java_files": { "type": "integer" },
-                  "xml_mappers": { "type": "integer" },
-                  "config_files": { "type": "integer" },
-                  "template_files": { "type": "integer" }
-                }
-              },
-              "high_noise_findings": {
-                "type": "array",
-                "items": { "type": "string" }
-              },
-              "scan_gaps": {
-                "type": "array",
-                "items": { "type": "string" }
-              },
-              "fallback_mode": {
-                "type": "object",
-                "properties": {
-                  "ssa_available": { "type": "boolean" },
-                  "fallback_used": { "type": "boolean" },
-                  "fallback_checklist_completed": { "type": "boolean" }
-                }
-              },
-              "authn_authz_review": {
-                "type": "object",
-                "properties": {
-                  "completed": { "type": "boolean" },
-                  "notes": { "type": "array", "items": { "type": "string" } }
-                }
-              }
-            }
-          },
-          "findings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["id", "title", "severity", "file", "line"],
-              "properties": {
-                "id":             { "type": "string" },
-                "title":          { "type": "string" },
-                "severity":       { "type": "string", "enum": ["critical","high","medium","low","info"] },
-                "file":           { "type": "string" },
-                "line":           { "type": "integer" },
-                "rule_id":        { "type": "string" },
-                "cwe":            { "type": "string" },
-                "description":    { "type": "string" },
-                "snippet":        { "type": "string" },
-                "recommendation": { "type": "string" },
-                "dataflow_verified": { "type": "boolean" }
-              }
-            }
-          }
-        }
-      }
-    example: |
-      {
-        "total_findings": 3,
-        "severity_counts": { "critical": 1, "high": 1, "medium": 1, "low": 0, "info": 0 },
-        "scan_target": "./src",
-        "assessment": {
-          "coverage": { "languages": ["java"], "framework_signals": ["Spring", "MyBatis"], "java_files": 120, "xml_mappers": 8, "config_files": 6, "template_files": 4 },
-          "high_noise_findings": ["Thymeleaf SSTI", "JNDI audit"],
-          "scan_gaps": [],
-          "fallback_mode": { "ssa_available": true, "fallback_used": false, "fallback_checklist_completed": false },
-          "authn_authz_review": { "completed": true, "notes": ["management endpoints reviewed", "ownership checklist reviewed"] }
-        },
-        "findings": [
-          { "id": "F-001", "title": "SQL Injection", "severity": "critical", "file": "src/db/query.go", "line": 42, "rule_id": "go.lang.security.audit.sqli", "cwe": "CWE-89", "description": "用户输入直接拼接到 SQL 查询", "snippet": "db.Raw(\"SELECT * FROM users WHERE id=\" + input)", "recommendation": "使用参数化查询", "dataflow_verified": true }
-        ]
-      }
-    summary_policy: |
-      禁止压缩或省略 findings 列表；total_findings 和 severity_counts 必须原样保留。
-      long_summary 中必须逐条列出所有 finding 的 id、title、severity、file:line，并说明 assessment 中的 coverage、scan_gaps、high_noise_findings 与 fallback_mode。
-      若 findings 超过 30 条，可按 severity 分组呈现，但不得省略任何条目。
 `,
 
 	"pentest.yaml": `name: pentest
@@ -325,7 +272,6 @@ background: |
   遵循 OWASP 测试指南和 PTES 标准。
 policies:
   result_source: latest_step_result
-  publish_contract: pentest-findings
 skill_names:
   - agent-browser
   - SQL注入-多策略综合检测
@@ -345,60 +291,6 @@ tool_names:
   - rg
   - list_skills
   - load_skills
-output_contracts:
-  pentest-findings:
-    schema: |
-      {
-        "type": "object",
-        "required": ["total_findings", "severity_counts", "target", "findings"],
-        "properties": {
-          "total_findings": { "type": "integer", "description": "发现总数" },
-          "severity_counts": {
-            "type": "object",
-            "properties": {
-              "critical": { "type": "integer" },
-              "high":     { "type": "integer" },
-              "medium":   { "type": "integer" },
-              "low":      { "type": "integer" },
-              "info":     { "type": "integer" }
-            }
-          },
-          "target": { "type": "string", "description": "测试目标 URL 或域名" },
-          "findings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["id", "title", "severity", "endpoint"],
-              "properties": {
-                "id":               { "type": "string" },
-                "title":            { "type": "string" },
-                "severity":         { "type": "string", "enum": ["critical","high","medium","low","info"] },
-                "vulnerability_type": { "type": "string", "description": "漏洞类型，如 SQLi、XSS、IDOR 等" },
-                "endpoint":         { "type": "string", "description": "受影响的 URL 或 API 端点" },
-                "method":           { "type": "string", "description": "HTTP 方法" },
-                "parameter":        { "type": "string", "description": "受影响的参数" },
-                "cwe":              { "type": "string" },
-                "description":      { "type": "string" },
-                "proof_of_concept": { "type": "string", "description": "PoC 请求或复现步骤" },
-                "recommendation":   { "type": "string" }
-              }
-            }
-          }
-        }
-      }
-    example: |
-      {
-        "total_findings": 2,
-        "severity_counts": { "critical": 1, "high": 1, "medium": 0, "low": 0, "info": 0 },
-        "target": "https://example.com",
-        "findings": [
-          { "id": "PT-001", "title": "SQL Injection in login", "severity": "critical", "vulnerability_type": "SQLi", "endpoint": "/api/login", "method": "POST", "parameter": "username", "cwe": "CWE-89", "description": "登录接口 username 参数存在 SQL 注入", "proof_of_concept": "POST /api/login {\"username\": \"admin' OR 1=1--\"}", "recommendation": "使用参数化查询" }
-        ]
-      }
-    summary_policy: |
-      禁止压缩或省略 findings 列表；total_findings 和 severity_counts 必须原样保留。
-      long_summary 中必须逐条列出所有 finding 的 id、title、severity、endpoint。
-      若 findings 超过 30 条，可按 vulnerability_type 分组呈现，但不得省略任何条目。
 `,
 
 	"host-defense.yaml": `name: host-defense
@@ -467,6 +359,7 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 			cp := *v
 			cp.Headers = cloneStringMap(v.Headers)
 			cp.PromptCache = v.PromptCache.Clone()
+			cp.Variants = cloneVariantsMap(v.Variants)
 			cp.Env = cloneStringMap(v.Env)
 			cleanCfg.Providers[k] = &cp
 		}
@@ -483,35 +376,44 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 }
 
 func (c *AppConfig) ResolveProvider(cliProvider, cliModel, cliBaseURL, cliAPIKey string) (providerName, baseURL, apiKey, model string) {
-	state := c.ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey)
+	state := c.ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey, nil, nil)
 	if state == nil {
 		return "", "", "", ""
 	}
 	return state.Name, state.BaseURL, state.APIKey, state.ModelID
 }
 
-func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey string) *ProviderState {
+func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliAPIKey string, reg *provider.Registry, creds *CredentialStore) *ProviderState {
 	var (
 		providerName string
 		baseURL      string
 		apiKey       string
 		model        string
 	)
-	providerName = firstNonEmpty(cliProvider, os.Getenv("ASTER_PROVIDER"), c.DefaultProvider, "openai")
+	providerName = firstNonEmpty(cliProvider, os.Getenv("ASTER_PROVIDER"), c.DefaultProvider)
+	if providerName == "" && reg != nil {
+		providerName = c.autoDetectProvider(reg, creds)
+	}
+	if providerName == "" {
+		providerName = "openai"
+	}
 
 	var p *ProviderConfig
 	if c.Providers != nil {
 		p = c.Providers[providerName]
 	}
 
-	var bpBaseURL, bpAPIKey, bpDefaultModel string
-	if bp, ok := GetBuiltinProvider(providerName); ok {
-		bpBaseURL = bp.BaseURL
-		bpDefaultModel = bp.DefaultModel
-		bpAPIKey = resolveAPIKey(bp, "")
-		if p != nil {
-			bpAPIKey = resolveAPIKey(bp, p.APIKey)
+	var regBaseURL, regAPIKey, regProtocol string
+	if reg != nil {
+		if rp, ok := reg.GetProvider(providerName); ok {
+			regBaseURL = rp.BaseURL
+			regProtocol = rp.Protocol
 		}
+		cfgKey := ""
+		if p != nil {
+			cfgKey = p.APIKey
+		}
+		regAPIKey = reg.ResolveAPIKey(providerName, cfgKey)
 	}
 
 	if p == nil {
@@ -524,11 +426,17 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 		headers[key] = expandProviderValue(value, resolvedEnv)
 	}
 
-	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), expandProviderValue(p.BaseURL, resolvedEnv), bpBaseURL, "https://api.openai.com/v1")
-	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), bpAPIKey, expandProviderValue(p.APIKey, resolvedEnv))
-	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, bpDefaultModel, "gpt-4o")
+	var credKey string
+	if creds != nil {
+		credKey = creds.Get(providerName)
+	}
+
+	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), expandProviderValue(p.BaseURL, resolvedEnv), regBaseURL, "https://api.openai.com/v1")
+	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), credKey, regAPIKey, expandProviderValue(p.APIKey, resolvedEnv))
+	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, "gpt-4o")
 	return &ProviderState{
 		Name:           providerName,
+		Protocol:       regProtocol,
 		BaseURL:        baseURL,
 		APIKey:         apiKey,
 		ModelID:        model,
@@ -539,6 +447,23 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 		SupportsVision: p.SupportsVision,
 		SupportsAudio:  p.SupportsAudio,
 	}
+}
+
+func (c *AppConfig) autoDetectProvider(reg *provider.Registry, creds *CredentialStore) string {
+	priority := c.effectiveProviderPriority()
+	isAvailable := func(id string) bool {
+		if creds != nil && creds.Get(id) != "" {
+			return true
+		}
+		return reg.IsProviderAvailable(id)
+	}
+	sorted := reg.ListProvidersSorted(priority, isAvailable)
+	for _, p := range sorted {
+		if isAvailable(p.ID) {
+			return p.ID
+		}
+	}
+	return ""
 }
 
 func (c *AppConfig) ToMCPConfig() *mcp.Config {
@@ -593,6 +518,25 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+func cloneVariantsMap(src map[string]map[string]any) map[string]map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]any, len(src))
+	for k, v := range src {
+		if v == nil {
+			out[k] = nil
+			continue
+		}
+		inner := make(map[string]any, len(v))
+		for ik, iv := range v {
+			inner[ik] = iv
+		}
+		out[k] = inner
+	}
+	return out
 }
 
 func cloneStringMap(src map[string]string) map[string]string {

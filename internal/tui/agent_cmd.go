@@ -104,9 +104,6 @@ func (c *AgentExecContext) executeInternal(input, extraText string) tea.Msg {
 	if def.Policies.ResultSource != "" {
 		execOpts = append(execOpts, react.WithResultSource(def.Policies.ResultSource))
 	}
-	if def.Policies.PublishContract != "" {
-		execOpts = append(execOpts, react.WithPublishContract(def.Policies.PublishContract))
-	}
 
 	result, err := agent.Execute(ctx, input, execOpts...)
 	history := agent.History()
@@ -167,9 +164,6 @@ func (c *AgentExecContext) executeInterruptInternal(interruptID, answer string, 
 	}
 	if def.Policies.ResultSource != "" {
 		execOpts = append(execOpts, react.WithResultSource(def.Policies.ResultSource))
-	}
-	if def.Policies.PublishContract != "" {
-		execOpts = append(execOpts, react.WithPublishContract(def.Policies.PublishContract))
 	}
 	if cancel {
 		execOpts = append(execOpts, react.WithInterruptCancel(interruptID, "user_cancelled"))

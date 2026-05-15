@@ -74,25 +74,16 @@ func buildSessionSelectOptions(sessions []*SessionRecord, currentSessionID strin
 		if title == "" {
 			title = "Untitled session"
 		}
-
-		agent := firstNonEmpty(strings.TrimSpace(session.AgentName), "agent?")
-		model := firstNonEmpty(strings.TrimSpace(session.ModelID), "model?")
-		desc := fmt.Sprintf("#%s · %s · %s · %d msgs · %s",
-			shortSessionID(session.ID),
-			agent, model,
-			session.MessageCount,
-			formatRelativeTime(session.UpdatedAt),
-		)
-
-		label := title
 		if session.ID == currentSessionID {
-			label += " [current]"
+			title += " [current]"
 		}
 
+		timeStr := formatRelativeTime(session.UpdatedAt)
+		label := fmt.Sprintf("%-10s  %s", timeStr, title)
+
 		options = append(options, tuiui.SelectOption{
-			Label:       label,
-			Value:       session.ID,
-			Description: desc,
+			Label: label,
+			Value: session.ID,
 		})
 	}
 	return options
