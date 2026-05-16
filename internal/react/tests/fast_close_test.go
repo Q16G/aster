@@ -28,6 +28,8 @@ func TestExecute_SingleStepFastClose(t *testing.T) {
 					}),
 				},
 			},
+			// step replan (LLM always runs now)
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
 		},
 	}
 	planner := &executeModelStaticPlanner{
@@ -57,8 +59,8 @@ func TestExecute_SingleStepFastClose(t *testing.T) {
 	if result.Result != "这是总结内容" {
 		t.Fatalf("unexpected result: %q", result.Result)
 	}
-	if client.calls != 1 {
-		t.Fatalf("expected 1 model call (step only, no intent), got %d", client.calls)
+	if client.calls != 2 {
+		t.Fatalf("expected 2 model calls (step + step_replan; final_answer fast_close), got %d", client.calls)
 	}
 	snap := agent.State()
 	if snap.FinalAnswer == nil {
@@ -91,6 +93,8 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 					}),
 				},
 			},
+			// step replan (LLM always runs now)
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
 			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"sub-final","references":[]}`},
 		},
 	}
@@ -121,8 +125,8 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 	if result.Result != "sub-final" {
 		t.Fatalf("expected sub-final, got %q", result.Result)
 	}
-	if client.calls != 2 {
-		t.Fatalf("expected 2 model calls (step + final_answer), got %d", client.calls)
+	if client.calls != 3 {
+		t.Fatalf("expected 3 model calls (step + step_replan + final_answer), got %d", client.calls)
 	}
 }
 

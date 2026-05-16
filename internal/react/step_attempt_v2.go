@@ -68,7 +68,8 @@ func (a *Agent) writeV2StepAttemptResult(stepID, stepName, attemptID string, sta
 		ShortSummary:  strings.TrimSpace(outcome.ShortSummary),
 		LongSummary:   strings.TrimSpace(outcome.LongSummary),
 		OpenQuestions: builtin_tools.CloneStringSlice(outcome.OpenQuestions),
-		Warnings:      nil,
+		Warnings:        nil,
+		ToolCallsDigest: builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
 		Display: &persistv2.StepAttemptDisplay{
 			Title:   title,
 			Summary: firstNonEmpty(strings.TrimSpace(outcome.StatusSummary), strings.TrimSpace(outcome.ShortSummary)),

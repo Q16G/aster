@@ -203,6 +203,79 @@ func TestBuildFunctionTools_RelaxesBuiltInUpdateCurrentStepSchema(t *testing.T) 
 	}
 }
 
+func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
+	agent, err := NewReActAgent(
+		"allowlist-test",
+		&stubChatClient{},
+		WithEmitter(NewDummyEmitter()),
+		WithTool(&orderedTool{name: builtin_tools.ReadFileToolName}),
+		WithTool(&orderedTool{name: builtin_tools.ListFilesToolName}),
+		WithTool(&orderedTool{name: builtin_tools.RgToolName}),
+		WithTool(&orderedTool{name: builtin_tools.SkillToolName}),
+		WithTool(&orderedTool{name: builtin_tools.SubAgentToolName}),
+		WithTool(&orderedTool{name: "mcp_some_server_tool"}),
+		WithTool(&orderedTool{name: "custom_unknown_tool"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	allowedSet := map[string]struct{}{
+		builtin_tools.ReadFileToolName:  {},
+		builtin_tools.ListFilesToolName: {},
+		builtin_tools.RgToolName:        {},
+		builtin_tools.BashToolName:      {},
+	}
+
+	for _, phase := range []builtin_tools.AgentPhase{
+		builtin_tools.AgentPhasePlan,
+		builtin_tools.AgentPhaseStepReplan,
+	} {
+		tools, allowed := agent.BuildFunctionTools(phase)
+		var names []string
+		for _, tool := range tools {
+			if tool == nil || tool.Function == nil {
+				continue
+			}
+			names = append(names, tool.Function.Name)
+		}
+
+		for _, name := range names {
+			if _, ok := allowedSet[name]; !ok {
+				t.Errorf("phase %s: tool %q should NOT be allowed but was included", phase, name)
+			}
+		}
+
+		for _, forbidden := range []string{
+			builtin_tools.SkillToolName,
+			builtin_tools.SubAgentToolName,
+			builtin_tools.HumanConfirmToolName,
+			builtin_tools.UpdateCurrentStepToolName,
+			builtin_tools.UpdateTaskStatusToolName,
+			builtin_tools.TaskStatusQueryToolName,
+			builtin_tools.TaskPlannerToolName,
+			builtin_tools.LoadSkillsToolName,
+			builtin_tools.ListSkillsToolName,
+			builtin_tools.DeleteSkillToolName,
+			"mcp_some_server_tool",
+			"custom_unknown_tool",
+		} {
+			if _, ok := allowed[forbidden]; ok {
+				t.Errorf("phase %s: tool %q must be blocked but was in allowed set", phase, forbidden)
+			}
+		}
+
+		for want := range allowedSet {
+			if _, ok := allowed[want]; !ok {
+				if want == builtin_tools.BashToolName {
+					continue // bash is only present if BashTool config is set
+				}
+				t.Errorf("phase %s: tool %q should be allowed but was missing", phase, want)
+			}
+		}
+	}
+}
+
 func TestBuildFunctionTools_FollowsRegistrationOrder(t *testing.T) {
 	agent, err := NewReActAgent(
 		"ordered-tools-test",

@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
-	"aster/internal/jsonextractor"
-	"aster/internal/structuredoutput"
 )
 
 type stepReplanModelOutput struct {
@@ -38,54 +37,118 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if rawOutcome == nil {
 		return fmt.Errorf("step_replan phase missing step outcome step_id=%s", stepID)
 	}
-	artifactDir := ""
 
-	if shouldSkipReplanLLM(rawOutcome, snapshot) {
-		return a.applyReplanResult(stepID, nil, nil, snapshot, artifactDir)
-	}
+	// Scheme A: always run the StepReplan LLM loop.
+	//
+	// Rationale: the old fast-path skip logic only relied on self-reported signals like
+	// open_questions/warnings/unresolved, which can be under-reported and cause replan to
+	// "never trigger". We intentionally trade cost for correctness here.
 
-	// LLM replan decision
-	outcomeJSON, _ := json.Marshal(rawOutcome)
+	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
+	stepContextsPath := a.resolveStepContextsPath()
+
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":  snapshot.CurrentGoal,
-		"current_step":  current,
-		"step_outcome":  string(outcomeJSON),
-		"task_plan":     snapshot.Plan,
-		"step_outcomes": snapshot.StepOutcomes,
-		"warnings":      snapshot.Warnings,
-		"unresolved":    snapshot.Unresolved,
+		"current_goal":       snapshot.CurrentGoal,
+		"current_step":       current,
+		"step_outcome":       rawOutcome,
+		"task_plan":          snapshot.Plan,
+		"step_outcomes":      snapshot.StepOutcomes,
+		"warnings":           snapshot.Warnings,
+		"unresolved":         snapshot.Unresolved,
+		"step_result_path":   stepResultPath,
+		"step_contexts_path": stepContextsPath,
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
 	}
 
-	result, err := runStructuredOutputWithRetry(a, ctx, snapshot, runClient, "step_replan", prompt, func(raw string) (stepReplanModelOutput, error) {
-		return parseStepReplanOutput(raw)
-	})
-	if err != nil {
-		return fmt.Errorf("step replan LLM call failed: %w", err)
+	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
+	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
+
+	const maxSubmitRetries = 3
+	submitRetries := 0
+
+	for round := 0; ; round++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		if round > 0 {
+			a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
+				fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够做出重规划决策？如果足够，请立即调用 submit_plan 提交决策。", round+1, round),
+			))
+		}
+
+		replanCtx, replanCancel := context.WithCancel(ctx)
+		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, fnTools...)
+		replanCancel()
+		if err != nil {
+			return fmt.Errorf("step replan AICallProxy failed: %w", err)
+		}
+
+		// Replan 允许空响应：语义为"不需要重规划"，默认继续当前计划。
+		if len(callResult.ToolCalls) == 0 {
+			return a.applyReplanResult(stepID, nil, nil, snapshot, "")
+		}
+
+		anyUsefulTool := false
+		for _, tc := range callResult.ToolCalls {
+			if ctx.Err() != nil {
+				break
+			}
+			if tc == nil || tc.Function == nil {
+				continue
+			}
+			if tc.Function.Name == submitPlanToolName {
+				decision, parseErr := parseSubmitReplanArgs(tc.Function.Arguments)
+				if parseErr != nil {
+					submitRetries++
+					if submitRetries > maxSubmitRetries {
+						return fmt.Errorf("submit_plan replan failed after %d retries: %w", maxSubmitRetries, parseErr)
+					}
+					a.AICallProxyWriteToolResult(
+						strings.TrimSpace(tc.Id), submitPlanToolName,
+						"", nil, "",
+						fmt.Sprintf("submit_plan 参数校验失败: %s\n请修正后重新调用 submit_plan。", parseErr.Error()),
+						false,
+					)
+					anyUsefulTool = true
+					continue
+				}
+				return a.applyReplanDecision(stepID, decision, snapshot)
+			}
+			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
+				anyUsefulTool = true
+				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+					return err
+				}
+			} else {
+				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+			}
+		}
+		if !anyUsefulTool {
+			return a.applyReplanResult(stepID, nil, nil, snapshot, "")
+		}
 	}
+}
 
-	modelOut := result.Value
-
+func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	var replanContext *builtin_tools.ReplanContext
-	if modelOut.ShouldReplan {
-		nextGoal := strings.TrimSpace(modelOut.NextGoal)
+	if decision.ShouldReplan {
+		nextGoal := strings.TrimSpace(decision.NextGoal)
 		if nextGoal == "" {
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
-		replanReason := strings.TrimSpace(modelOut.ReplanReason)
 		replanContext = &builtin_tools.ReplanContext{
 			SourceStepID:   stepID,
-			Reason:         replanReason,
+			Reason:         strings.TrimSpace(decision.ReplanReason),
 			NextGoal:       nextGoal,
-			MissingItems:   normalizeStringSlice(modelOut.MissingItems),
-			Warnings:       normalizeStringSlice(modelOut.Warnings),
+			MissingItems:   normalizeStringSlice(decision.MissingItems),
+			Warnings:       normalizeStringSlice(decision.Warnings),
 			ReplacePending: true,
 		}
 	}
-
-	return a.applyReplanResult(stepID, &modelOut, replanContext, snapshot, artifactDir)
+	return a.applyReplanResult(stepID, &decision, replanContext, snapshot, "")
 }
 
 func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput, replanContext *builtin_tools.ReplanContext, snapshot builtin_tools.StateSnapshot, artifactDir string) error {
@@ -113,14 +176,20 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 
+	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
+
 	snapshot = a.state.ApplyStepReplan(stepID, stepReplanUpdate{
 		ArtifactDir:   artifactDir,
+		ContextKey:    contextKey,
 		CurrentGoal:   summaryGoal,
 		Warnings:      replanWarnings,
 		Unresolved:    replanMissingItems,
 		ReplanContext: replanContext,
 		NextPhase:     nextPhase,
 	})
+
+	a.appendStepContextRecord(stepID, snapshot)
+
 	a.emitter.EmitStateChange(snapshot)
 
 	if rawOutcome != nil {
@@ -141,13 +210,76 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	return nil
 }
 
-func shouldSkipReplanLLM(outcome *builtin_tools.StepOutcome, snapshot builtin_tools.StateSnapshot) bool {
-	if outcome == nil || outcome.Status != builtin_tools.StepOutcomeCompleted {
-		return false
+func (a *Agent) resolveStepContextKey(stepID string, outcome *builtin_tools.StepOutcome, snapshot builtin_tools.StateSnapshot) string {
+	if outcome != nil {
+		if ck := strings.TrimSpace(outcome.ContextKey); ck != "" {
+			return ck
+		}
 	}
-	return len(outcome.OpenQuestions) == 0 &&
-		len(snapshot.Warnings) == 0 &&
-		len(snapshot.Unresolved) == 0
+	namespace := builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace)
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	return fmt.Sprintf("%s:%d:%s", namespace, planVersion, stepID)
+}
+
+func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.StateSnapshot) {
+	if a.workspaceRuntime == nil {
+		return
+	}
+	outcome := findOutcome(snapshot.StepOutcomes, stepID)
+	if outcome == nil {
+		return
+	}
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	record := &builtin_tools.StepContextRecord{
+		ContextKey:      strings.TrimSpace(outcome.ContextKey),
+		Namespace:       builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
+		StepID:          stepID,
+		PlanVersion:     planVersion,
+		ShortSummary:    strings.TrimSpace(outcome.ShortSummary),
+		KeyFacts:        builtin_tools.CloneStringSlice(outcome.KeyFacts),
+		ToolCallsDigest: builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
+		References:      builtin_tools.CloneStringSlice(outcome.References),
+		SummaryFile:     strings.TrimSpace(outcome.SummaryFile),
+		ResultFile:      strings.TrimSpace(outcome.ResultFile),
+		CreatedAt:       time.Now(),
+	}
+	if err := a.workspaceRuntime.AppendStepContextRecords(
+		[]*builtin_tools.StepContextRecord{record},
+	); err != nil {
+		a.emitRuntimeLog("warn", "append step context record failed", snapshot, map[string]any{
+			"event":   "step_context_append_failed",
+			"step_id": stepID,
+			"error":   err.Error(),
+		})
+	}
+}
+
+func (a *Agent) resolveStepResultPath(stepID string, outcome *builtin_tools.StepOutcome) string {
+	if a == nil || a.v2Store == nil {
+		return ""
+	}
+	if outcome != nil {
+		if aid := strings.TrimSpace(outcome.AttemptID); aid != "" {
+			p, err := a.v2Store.StepAttemptResultPath(stepID, aid)
+			if err == nil {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+func (a *Agent) resolveStepContextsPath() string {
+	if a == nil {
+		return ""
+	}
+	return builtin_tools.WorkspaceStepContextsFileAbs(a.workspaceRootDir)
 }
 
 func findOutcome(outcomes []*builtin_tools.StepOutcome, stepID string) *builtin_tools.StepOutcome {
@@ -182,20 +314,54 @@ func normalizeStringSlice(in []string) []string {
 	return out
 }
 
-func parseStepReplanOutput(raw string) (stepReplanModelOutput, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return stepReplanModelOutput{}, fmt.Errorf("empty replan output")
+func buildSubmitReplanFunctionTool() *ai.FunctionTool {
+	return &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        submitPlanToolName,
+			Description: "当你完成评估、准备好输出重规划决策时，调用此工具提交。参数即为决策的结构化内容。",
+			Parameters: map[string]any{
+				"type":     "object",
+				"required": []string{"should_replan", "replan_reason", "next_goal", "missing_items", "warnings"},
+				"properties": map[string]any{
+					"should_replan": map[string]any{"type": "boolean"},
+					"replan_reason": map[string]any{"type": "string"},
+					"next_goal":     map[string]any{"type": "string"},
+					"missing_items": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+					"warnings": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
 	}
-	results, _ := jsonextractor.ExtractJSONWithRaw(raw)
-	if len(results) > 0 {
-		raw = results[0]
-	}
-	var out stepReplanModelOutput
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return stepReplanModelOutput{}, fmt.Errorf("parse replan output: %w", err)
-	}
-	return out, nil
 }
 
-var _ structuredoutput.ParseFunc[stepReplanModelOutput] = parseStepReplanOutput
+func parseSubmitReplanArgs(args any) (stepReplanModelOutput, error) {
+	var data []byte
+	switch v := args.(type) {
+	case string:
+		data = []byte(v)
+	case []byte:
+		data = v
+	default:
+		var err error
+		data, err = json.Marshal(v)
+		if err != nil {
+			return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: marshal args failed: %w", err)
+		}
+	}
+	var result stepReplanModelOutput
+	if err := json.Unmarshal(data, &result); err != nil {
+		return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: parse args failed: %w", err)
+	}
+	if result.ShouldReplan && strings.TrimSpace(result.NextGoal) == "" {
+		return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: should_replan=true but next_goal is empty")
+	}
+	return result, nil
+}
+

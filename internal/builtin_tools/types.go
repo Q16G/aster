@@ -146,8 +146,8 @@ type StepOutcome struct {
 	UpdatedAt time.Time         `json:"updated_at,omitempty"`
 
 	// ==================== A. 原始事实层（update_current_step 提交） ====================
-	// Summary: 短事实摘要
-	Summary string `json:"summary,omitempty"`
+	AttemptID string `json:"attempt_id,omitempty"`
+	Summary   string `json:"summary,omitempty"`
 	// DisplayResult: 面向用户的简洁结果
 	DisplayResult string `json:"display_result,omitempty"`
 	// Result: 结构化原始结果（文本化 JSON）
