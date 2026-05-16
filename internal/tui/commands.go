@@ -359,6 +359,7 @@ func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 	}
 	m.rememberRecentModel(args[0])
 	m.persistSessionMeta()
+	m.refreshSidebarData()
 	m.statusText = fmt.Sprintf("model: %s", args[0])
 	return m, nil
 }
