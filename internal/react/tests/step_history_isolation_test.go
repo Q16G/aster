@@ -90,6 +90,11 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 		}
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	case 3:
+		// step-1 replan: always return a valid replan decision JSON.
+		// (StepReplan now always runs the LLM loop; see phase_step_replan.go.)
+		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`)
+		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
+	case 4:
 		// step-2: ensure no tool transcript from step-1 leaks into the model input.
 		for _, m := range infos {
 			if m == nil {
@@ -112,6 +117,10 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 				"result":         "step2 ok",
 			}),
 		}
+		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
+	case 5:
+		// step-2 replan: return a valid replan decision JSON.
+		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`)
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	default:
 		return []*ai.ChatChoices{{Message: ai.NewAIMsgInfo(""), FinishReason: "stop"}}, nil
@@ -160,8 +169,8 @@ func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T)
 	if runResult == nil || !runResult.Success || strings.TrimSpace(runResult.Result) != "done" {
 		t.Fatalf("unexpected run result: %#v", runResult)
 	}
-	if client.chatExCall != 3 {
-		t.Fatalf("expected 3 step-phase model calls, got %d", client.chatExCall)
+	if client.chatExCall != 5 {
+		t.Fatalf("expected 5 model calls (step1, step1, replan1, step2, replan2), got %d", client.chatExCall)
 	}
 
 	// Long-term history should only contain the skeleton; no tool or tool-call messages.

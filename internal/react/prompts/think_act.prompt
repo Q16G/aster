@@ -69,65 +69,65 @@ workspace namespace: {{.WORKSPACE_NAMESPACE}}
 ---
 {{end}}
 
-{{if .EXTRA_CONTEXT}}
+{{- if .EXTRA_CONTEXT}}
 ### 5.2 交接上下文
 ---
 {{.EXTRA_CONTEXT}}
 ---
-{{end}}
+{{- end}}
 
-{{if .HAS_SKILLS_TABLE}}
+{{- if .HAS_SKILLS_TABLE}}
 ### 5.3 Skills 索引
 ## Skills
 ---
 {{.SKILLS_CONTEXT.Table}}
 ---
-{{end}}
+{{- end}}
 
-{{if .HAS_INJECTED_SKILLS}}
+{{- if .HAS_INJECTED_SKILLS}}
 ### 5.3b Injected Skills
 ---
 {{.SKILLS_CONTEXT.Injected}}
 ---
-{{end}}
+{{- end}}
 
-{{if .HAS_MCP_TABLE}}
+{{- if .HAS_MCP_TABLE}}
 ### 5.3c MCP Servers
 ---
 {{.MCP_CONTEXT.Table}}
 ---
-{{end}}
+{{- end}}
 
 ### 5.4 当前任务视图
-{{if .HAS_CURRENT_STEP}}
+{{- if .HAS_CURRENT_STEP}}
 <CURRENT_STEP>
 {{.CURRENT_STEP}}
 </CURRENT_STEP>
-{{end}}
+{{- end}}
 
-{{if .HAS_DEPENDENCY_STEP_SUMMARIES}}
+{{- if .HAS_DEPENDENCY_STEP_SUMMARIES}}
 <DEPENDENCY_STEP_SUMMARIES>
 {{.DEPENDENCY_STEP_SUMMARIES}}
 </DEPENDENCY_STEP_SUMMARIES>
-{{end}}
+{{- end}}
 
-{{if .HAS_EXECUTION_CONTEXTS}}
+{{- if .HAS_EXECUTION_CONTEXTS}}
 <EXECUTION_CONTEXTS>
 {{.EXECUTION_CONTEXTS}}
 </EXECUTION_CONTEXTS>
-{{end}}
+{{- end}}
 
-{{if .HAS_WARNINGS}}
+{{- if .HAS_WARNINGS}}
 <WARNINGS>
 {{.WARNINGS}}
 </WARNINGS>
-{{end}}
+{{- end}}
 
-{{if .HAS_UNRESOLVED}}
+{{- if .HAS_UNRESOLVED}}
 <UNRESOLVED>
 {{.UNRESOLVED}}
 </UNRESOLVED>
-{{end}}
+{{- end}}
 
 ## 6. 输出要求 (Output Requirements)
 - **语言要求**：使用简体中文。

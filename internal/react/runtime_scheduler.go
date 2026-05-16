@@ -71,7 +71,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		switch phase {
 		case builtin_tools.AgentPhasePlan:
-			if err := a.runPlanPhase(ctx, extraText, taskContext); err != nil {
+			if err := a.runPlanPhase(ctx, iter, runClient, extraText, taskContext); err != nil {
 				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
 			}
 		case builtin_tools.AgentPhaseStep:
@@ -132,7 +132,7 @@ func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase
 	}
 }
 
-func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext *TaskContextData) error {
+func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatClient, extraText string, taskContext *TaskContextData) error {
 	_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 	snapshot := a.state.Snapshot()
 	a.emitter.EmitStateChange(snapshot)
@@ -161,13 +161,23 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		return fmt.Errorf("input timeline is empty")
 	}
 
-	plannerCtx := structuredoutput.WithLogger(ctx, a.structuredOutputLogger(snapshot))
-	cfg := a.resolveStructuredOutputConfig(nil)
-	cfg.StreamHandler = a.buildStructuredOutputStreamHandler()
-	plannerCtx = structuredoutput.WithConfig(plannerCtx, cfg)
-	res, err := planner.Plan(plannerCtx, input)
-	if err != nil {
-		return err
+	var res *builtin_tools.TaskPlannerResult
+	if promptBuilder, ok := planner.(PlannerPromptBuilder); ok {
+		planRes, err := a.runPlanPhaseWithTools(ctx, iter, runClient, input, promptBuilder)
+		if err != nil {
+			return err
+		}
+		res = planRes
+	} else {
+		plannerCtx := structuredoutput.WithLogger(ctx, a.structuredOutputLogger(snapshot))
+		cfg := a.resolveStructuredOutputConfig(nil)
+		cfg.StreamHandler = a.buildStructuredOutputStreamHandler()
+		plannerCtx = structuredoutput.WithConfig(plannerCtx, cfg)
+		planRes, err := planner.Plan(plannerCtx, input)
+		if err != nil {
+			return err
+		}
+		res = planRes
 	}
 
 	var items []*builtin_tools.PlanItem
@@ -196,8 +206,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 	}
 
 	if len(items) == 0 {
-		// planner 未产出 plan items：直接使用 planner 的 direct_response 作为最终回复。
-		// 这是“简单问题”路径：planner 一次 AI 调用同时完成判断与回复，跳过 Step/FinalAnswer 模型调用。
 		directResponse := ""
 		if res != nil {
 			directResponse = strings.TrimSpace(res.DirectResponse)
@@ -242,6 +250,165 @@ func (a *Agent) runPlanPhase(ctx context.Context, extraText string, taskContext 
 		"planner_explanation": plannerExplanation,
 	})
 	return nil
+}
+
+const submitPlanToolName = "submit_plan"
+
+func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input string, promptBuilder PlannerPromptBuilder) (*builtin_tools.TaskPlannerResult, error) {
+	prompt, err := promptBuilder.BuildPrompt(input)
+	if err != nil {
+		return nil, fmt.Errorf("build task planner prompt failed: %w", err)
+	}
+
+	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool())
+
+	const maxSubmitRetries = 3
+	submitRetries := 0
+
+	for round := 0; ; round++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if round > 0 {
+			a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
+				fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够输出一个高效的执行计划？如果足够，请立即调用 submit_plan 提交计划。", round+1, round),
+			))
+		}
+
+		planCtx, planCancel := context.WithCancel(ctx)
+		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, prompt, fnTools...)
+		planCancel()
+		if callErr != nil {
+			return nil, fmt.Errorf("plan phase AICallProxy failed: %w", callErr)
+		}
+
+		// Plan 阶段必须产出结果（plan 或 direct_response），空响应是硬错误。
+		if len(callResult.ToolCalls) == 0 {
+			return nil, fmt.Errorf("planner produced no plan and no tool calls")
+		}
+
+		anyUsefulTool := false
+		for _, tc := range callResult.ToolCalls {
+			if ctx.Err() != nil {
+				break
+			}
+			if tc == nil || tc.Function == nil {
+				continue
+			}
+			if tc.Function.Name == submitPlanToolName {
+				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments)
+				if parseErr != nil {
+					submitRetries++
+					if submitRetries > maxSubmitRetries {
+						return nil, fmt.Errorf("submit_plan failed after %d retries: %w", maxSubmitRetries, parseErr)
+					}
+					a.AICallProxyWriteToolResult(
+						strings.TrimSpace(tc.Id), submitPlanToolName,
+						"", nil, "",
+						fmt.Sprintf("submit_plan 参数校验失败: %s\n请修正后重新调用 submit_plan。", parseErr.Error()),
+						false,
+					)
+					anyUsefulTool = true
+					continue
+				}
+				if parsed.NeedsPlanning && len(parsed.Plan) > 0 {
+					if _, normErr := builtin_tools.NormalizePlanItems(parsed.Plan, true); normErr != nil {
+						submitRetries++
+						if submitRetries > maxSubmitRetries {
+							return nil, fmt.Errorf("submit_plan plan validation failed after %d retries: %w", maxSubmitRetries, normErr)
+						}
+						a.AICallProxyWriteToolResult(
+							strings.TrimSpace(tc.Id), submitPlanToolName,
+							"", nil, "",
+							fmt.Sprintf("submit_plan plan 结构校验失败: %s\n请修正 depends_on 引用后重新调用 submit_plan。", normErr.Error()),
+							false,
+						)
+						anyUsefulTool = true
+						continue
+					}
+				}
+				return parsed, nil
+			}
+			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
+				anyUsefulTool = true
+				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+					return nil, err
+				}
+			} else {
+				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+			}
+		}
+		if !anyUsefulTool {
+			return nil, fmt.Errorf("planner produced no plan and no usable tool calls")
+		}
+	}
+}
+
+func buildSubmitPlanFunctionTool() *ai.FunctionTool {
+	return &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        submitPlanToolName,
+			Description: "当你完成调查、准备好输出执行计划时，调用此工具提交计划。参数即为计划的结构化内容。",
+			Parameters: map[string]any{
+				"type":     "object",
+				"required": []string{"needs_planning", "plan", "explanation"},
+				"properties": map[string]any{
+					"needs_planning": map[string]any{"type": "boolean"},
+					"plan": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type":     "object",
+							"required": []string{"id", "step", "status", "depends_on"},
+							"properties": map[string]any{
+								"id":   map[string]any{"type": "string"},
+								"step": map[string]any{"type": "string"},
+								"status": map[string]any{
+									"type": "string",
+									"enum": []string{"pending", "in_progress", "completed", "failed"},
+								},
+								"depends_on": map[string]any{
+									"type":  "array",
+									"items": map[string]any{"type": "string"},
+								},
+							},
+						},
+					},
+					"explanation":     map[string]any{"type": "string"},
+					"direct_response": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+}
+
+func parseSubmitPlanArgs(args any) (*builtin_tools.TaskPlannerResult, error) {
+	var data []byte
+	switch v := args.(type) {
+	case string:
+		data = []byte(v)
+	case []byte:
+		data = v
+	default:
+		var err error
+		data, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("submit_plan: marshal args failed: %w", err)
+		}
+	}
+	var result builtin_tools.TaskPlannerResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("submit_plan: parse args failed: %w", err)
+	}
+	if result.NeedsPlanning && len(result.Plan) == 0 {
+		return nil, fmt.Errorf("submit_plan: needs_planning=true but plan is empty")
+	}
+	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
+		return nil, fmt.Errorf("submit_plan: needs_planning=false but direct_response is empty")
+	}
+	return &result, nil
 }
 
 type PlannerInputOptions struct {
@@ -1014,7 +1181,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	out = TruncateToolOutput(toolName, out, a.workspaceRootDir)
 	errText = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
 
-	// 一些前端仅展示 result 字段而忽略 error 字段；为了避免“失败但无输出”，把错误信息也放进展示结果里。
+	// 一些前端仅展示 result 字段而忽略 error 字段；为了避免"失败但无输出"，把错误信息也放进展示结果里。
 	displayOut := out
 	if strings.TrimSpace(displayOut) == "" && strings.TrimSpace(errText) != "" {
 		displayOut = fmt.Sprintf("Error: %s", errText)
@@ -1050,6 +1217,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		outcome := findOutcome(nextSnapshot.StepOutcomes, stepID)
 		status := builtin_tools.PlanStepStatus(builtin_tools.ToolRuntimeValue(argsMap["status"]))
 		a.writeV2StepAttemptResult(stepID, stepName, callID, status, outcome)
+		a.state.SetStepOutcomeAttemptID(stepID, callID)
 	}
 	return nil
 }

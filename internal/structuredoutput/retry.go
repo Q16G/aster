@@ -164,6 +164,9 @@ func RunWithRetry[T any](ctx context.Context, client ai.ChatClient, phase string
 	failures := make([]AttemptFailure, 0, cfg.RetryCount)
 	result := zero
 	for attempt := 1; attempt <= cfg.RetryCount; attempt++ {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
 		var rawResponse string
 		var err error
 		if cfg.StreamHandler != nil {

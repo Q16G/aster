@@ -21,7 +21,8 @@ type StepAttemptResult struct {
 	ShortSummary  string   `json:"short_summary,omitempty"`
 	LongSummary   string   `json:"long_summary,omitempty"`
 	OpenQuestions []string `json:"open_questions,omitempty"`
-	Warnings      []string `json:"warnings,omitempty"`
+	Warnings        []string `json:"warnings,omitempty"`
+	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
 
 	Display *StepAttemptDisplay `json:"display,omitempty"`
 	Result  *StepAttemptPayload `json:"result,omitempty"`
@@ -63,6 +64,16 @@ func (s *Store) stepAttemptDir(stepID, attemptID string) (string, error) {
 	}
 	return filepath.Join(s.sessionDir, "steps", stepID, "attempts", attemptID), nil
 }
+
+func (s *Store) StepAttemptResultPath(stepID, attemptID string) (string, error) {
+	dir, err := s.stepAttemptDir(stepID, attemptID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "result.json"), nil
+}
+
+
 
 func (s *Store) WriteStepAttemptResult(stepID, attemptID string, res *StepAttemptResult) (string, error) {
 	if s == nil {

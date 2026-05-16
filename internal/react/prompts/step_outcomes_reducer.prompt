@@ -20,13 +20,13 @@
    - `long_summary`（压缩为更精简的版本，保留核心结论和关键数据点，不要直接丢弃）
    - `references`（原样保留，这是证据链，不可丢弃）
    - `status_summary`（原样保留）
+   - `tool_calls_digest`（原样保留，这是步骤执行记录，replan 决策需要）
+   - `open_questions`（原样保留，这是未解决问题列表，replan 决策需要）
    - `error`（若有则保留）
 
 2. **可以丢弃**以下字段：
    - `display_result`
    - `result`
-   - `tool_calls_digest`
-   - `open_questions`
    - `short_summary`（已被 summary 覆盖）
    - `artifact_dir` / `summary_file` / `result_file` / `context_key`
    - `updated_at`
