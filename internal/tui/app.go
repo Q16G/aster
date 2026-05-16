@@ -740,6 +740,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentSessionID != "" {
 			m.updateSessionAgent(msg.Definition.Name)
 		}
+		m.applySessionRuntimeState()
+		m.refreshSidebarData()
 		return m, m.input.Focus()
 
 	case ProviderSwitchMsg:
