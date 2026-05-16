@@ -737,6 +737,22 @@ func (t *StateTracker) touchLocked() {
 	t.state.UpdatedAt = time.Now()
 }
 
+func (t *StateTracker) SetStepOutcomeAttemptID(stepID, attemptID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	stepID = strings.TrimSpace(stepID)
+	attemptID = strings.TrimSpace(attemptID)
+	if stepID == "" || attemptID == "" {
+		return
+	}
+	for _, outcome := range t.state.StepOutcomes {
+		if outcome != nil && strings.TrimSpace(outcome.StepID) == stepID {
+			outcome.AttemptID = attemptID
+			return
+		}
+	}
+}
+
 func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, update builtin_tools.CurrentStepUpdate) {
 	if step == nil {
 		return

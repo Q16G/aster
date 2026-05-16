@@ -32,13 +32,15 @@ type ThinkActPromptInput struct {
 }
 
 type StepReplanPromptInput struct {
-	CurrentGoal  any
-	CurrentStep  any
-	StepOutcome  any
-	TaskPlan     any
-	StepOutcomes any
-	Warnings     any
-	Unresolved   any
+	CurrentGoal      any
+	CurrentStep      any
+	StepOutcome      any
+	TaskPlan         any
+	StepOutcomes     any
+	Warnings         any
+	Unresolved       any
+	StepResultPath   string
+	StepContextsPath string
 }
 
 type FinalAnswerPromptInput struct {
@@ -177,13 +179,15 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
-		"CURRENT_GOAL":  prettyJSON(input.CurrentGoal),
-		"CURRENT_STEP":  prettyJSON(input.CurrentStep),
-		"STEP_OUTCOME":  prettyJSON(input.StepOutcome),
-		"TASK_PLAN":     prettyJSON(input.TaskPlan),
-		"STEP_OUTCOMES": prettyJSON(input.StepOutcomes),
-		"WARNINGS":      prettyJSON(input.Warnings),
-		"UNRESOLVED":    prettyJSON(input.Unresolved),
+		"CURRENT_GOAL":      fmt.Sprint(input.CurrentGoal),
+		"CURRENT_STEP":      prettyJSON(input.CurrentStep),
+		"STEP_OUTCOME":      prettyJSON(input.StepOutcome),
+		"TASK_PLAN":         prettyJSON(input.TaskPlan),
+		"STEP_OUTCOMES":     prettyJSON(input.StepOutcomes),
+		"WARNINGS":          prettyJSON(input.Warnings),
+		"UNRESOLVED":        prettyJSON(input.Unresolved),
+		"STEP_RESULT_PATH":  input.StepResultPath,
+		"STEP_CONTEXTS_PATH": input.StepContextsPath,
 	}); err != nil {
 		return "", err
 	}
@@ -196,8 +200,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
-		"STATUS":                    prettyJSON(input.Status),
-		"STATE_ERROR":               prettyJSON(input.StateError),
+		"STATUS":                    fmt.Sprint(input.Status),
+		"STATE_ERROR":               fmt.Sprint(input.StateError),
 		"INPUT_TIMELINE":            prettyJSON(input.InputTimeline),
 		"SHOW_PLAN_SECTION":         input.ShowPlanSection,
 		"PLAN":                      prettyJSON(input.Plan),

@@ -10,14 +10,23 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		return "", fmt.Errorf("step replan prompt manager is nil")
 	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
-		CurrentGoal:  payload["current_goal"],
-		CurrentStep:  payload["current_step"],
-		StepOutcome:  payload["step_outcome"],
-		TaskPlan:     payload["task_plan"],
-		StepOutcomes: payload["step_outcomes"],
-		Warnings:     payload["warnings"],
-		Unresolved:   payload["unresolved"],
+		CurrentGoal:      payload["current_goal"],
+		CurrentStep:      payload["current_step"],
+		StepOutcome:      payload["step_outcome"],
+		TaskPlan:         payload["task_plan"],
+		StepOutcomes:     payload["step_outcomes"],
+		Warnings:         payload["warnings"],
+		Unresolved:       payload["unresolved"],
+		StepResultPath:   stringFromPayload(payload, "step_result_path"),
+		StepContextsPath: stringFromPayload(payload, "step_contexts_path"),
 	})
+}
+
+func stringFromPayload(payload map[string]any, key string) string {
+	if v, ok := payload[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
