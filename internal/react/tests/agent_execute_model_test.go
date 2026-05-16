@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -1019,8 +1020,14 @@ func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
-				// planner structured output
-				content: `{"needs_planning":false,"plan":[],"explanation":"无需规划","direct_response":"你好！"}`,
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
+						"needs_planning":  false,
+						"plan":            []any{},
+						"explanation":     "无需规划",
+						"direct_response": "你好！",
+					}),
+				},
 			},
 		},
 	}
@@ -1031,6 +1038,7 @@ func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.
 		WithEmitter(emitter),
 		WithMaxIterations(2),
 		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
 	)
 	if err != nil {
 		t.Fatalf("NewReActAgent failed: %v", err)
@@ -1282,12 +1290,12 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 					}),
 				},
 			},
+			// step_replan phase: empty response → defaults to no replan (agentic mode)
 			{content: ``},
-			{content: ``},
-			{content: ``},
-			{content: ``},
-			{content: ``},
-			{content: ``},
+			// final_answer phase
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","user_message":"done","references":[]}`,
+			},
 		},
 	}
 
@@ -1310,22 +1318,18 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 	}
 
 	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
-	if err == nil {
-		t.Fatalf("expected Execute to fail when step_replan/final_answer models return empty content")
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
 	}
-	if runResult != nil {
-		t.Fatalf("expected nil run result on error, got %#v", runResult)
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "\"structured_output_phase\":\"step_replan\"") {
-		t.Fatalf("expected step_replan structured output phase in logs, got %s", out)
-	}
-	if !strings.Contains(out, "\"event\":\"structured_retry_attempt_failed\"") {
-		t.Fatalf("expected structured_retry_attempt_failed log, got %s", out)
-	}
-	if client.calls != 7 {
-		t.Fatalf("expected 7 model calls (1 step + 3 step_replan + 3 final_answer), got %d", client.calls)
+	// With agentic step_replan, empty response defaults to no-replan instead of erroring.
+	// The step_replan_completed event should be logged.
+	if !strings.Contains(out, "\"event\":\"step_replan_completed\"") {
+		t.Fatalf("expected step_replan_completed log, got %s", out)
 	}
 }
 
@@ -1447,7 +1451,11 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 				},
 			},
 			{
-				// step-2 (step_replan fast path for step-1 skips LLM, proceeds to next step)
+				// step-1 replan (LLM always runs now)
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`,
+			},
+			{
+				// step-2
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
 						"status":         "completed",
@@ -1458,7 +1466,11 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 				},
 			},
 			{
-				// final_answer (step_replan fast path for step-2 skips LLM, then no more runnable steps)
+				// step-2 replan
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`,
+			},
+			{
+				// final_answer
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"two-steps-done","references":[]}`,
 			},
 		},
@@ -1494,8 +1506,8 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	if strings.TrimSpace(runResult.Result) != "two-steps-done" {
 		t.Fatalf("expected final answer result, got %q", runResult.Result)
 	}
-	if client.calls != 3 {
-		t.Fatalf("expected 3 model calls (step+step+final), got %d", client.calls)
+	if client.calls != 5 {
+		t.Fatalf("expected 5 model calls (step1+replan1+step2+replan2+final), got %d", client.calls)
 	}
 }
 
@@ -1540,7 +1552,15 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
-				content: `{"should_replan":true,"replan_reason":"旧计划未覆盖新增验证缺口","next_goal":"围绕新缺口补齐验证","missing_items":["missing-1"],"warnings":["warn-1"]}`,
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-replan-1", "submit_plan", map[string]any{
+						"should_replan": true,
+						"replan_reason": "旧计划未覆盖新增验证缺口",
+						"next_goal":     "围绕新缺口补齐验证",
+						"missing_items": []any{"missing-1"},
+						"warnings":      []any{"warn-1"},
+					}),
+				},
 			},
 			{
 				toolCalls: []*ai.FunctionTool{
@@ -1553,7 +1573,15 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
-				content: `{"should_replan":false}`,
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-replan-2", "submit_plan", map[string]any{
+						"should_replan": false,
+						"replan_reason": "",
+						"next_goal":     "",
+						"missing_items": []any{},
+						"warnings":      []any{},
+					}),
+				},
 			},
 			{
 				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"replanned-done","references":[]}`,
@@ -1756,6 +1784,688 @@ func TestPlannerInputFromSnapshotRejectsEmptyTimeline(t *testing.T) {
 	}, PlannerInputOptions{})
 	if text != "" {
 		t.Fatalf("expected empty planner input when timeline is empty, got %q", text)
+	}
+}
+
+// executeModelAgenticPlanner implements both TaskPlanner and PlannerPromptBuilder,
+// triggering the runPlanPhaseWithTools path in runPlanPhase.
+type executeModelAgenticPlanner struct {
+	prompt string
+}
+
+func (p *executeModelAgenticPlanner) Plan(ctx context.Context, input string) (*builtin_tools.TaskPlannerResult, error) {
+	return nil, fmt.Errorf("should not be called when PlannerPromptBuilder is implemented")
+}
+
+func (p *executeModelAgenticPlanner) BuildPrompt(input string) (string, error) {
+	return p.prompt, nil
+}
+
+func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// plan phase via AICallProxy: model calls submit_plan
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
+						"needs_planning": true,
+						"plan": []any{
+							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
+						},
+						"explanation": "需要规划",
+					}),
+				},
+			},
+			// step phase: step completes
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "ok",
+						"display_result": "step ok",
+						"result":         "step ok",
+					}),
+				},
+			},
+			// final_answer phase (step_replan fast path skips LLM)
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"agentic-plan-final","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"agentic-plan-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "agentic-plan-final" {
+		t.Fatalf("expected final answer from agentic plan path, got %q", runResult.Result)
+	}
+
+	snapshot := agent.State()
+	if len(snapshot.Plan) != 1 {
+		t.Fatalf("expected 1 plan item, got %d", len(snapshot.Plan))
+	}
+	if snapshot.Plan[0].ID != "step-1" {
+		t.Fatalf("expected plan item id step-1, got %q", snapshot.Plan[0].ID)
+	}
+}
+
+func TestExecute_PlanPhaseWithToolsDirectResponse(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// plan phase via AICallProxy: model calls submit_plan with direct response
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
+						"needs_planning":  false,
+						"plan":            []any{},
+						"explanation":     "简单问题",
+						"direct_response": "这是直接回复",
+					}),
+				},
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"agentic-direct-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(2),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "这是直接回复" {
+		t.Fatalf("expected direct response, got %q", runResult.Result)
+	}
+	if client.calls != 1 {
+		t.Fatalf("expected 1 model call (plan only), got %d", client.calls)
+	}
+}
+
+// realFileWorkspaceRuntime uses actual builtin_tools file I/O for step_contexts.jsonl,
+// exercising the full validation + persistence path (not a recording mock).
+type realFileWorkspaceRuntime struct {
+	rootDir string
+}
+
+func (w *realFileWorkspaceRuntime) SessionID() string  { return "test-session" }
+func (w *realFileWorkspaceRuntime) RootDir() string     { return w.rootDir }
+func (w *realFileWorkspaceRuntime) Namespace() string   { return "" }
+func (w *realFileWorkspaceRuntime) SharedDir() string   { return w.rootDir + "/shared" }
+func (w *realFileWorkspaceRuntime) ReadFileRel(_ string) ([]byte, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (w *realFileWorkspaceRuntime) WriteFileRel(_ string, _ []byte) error { return nil }
+func (w *realFileWorkspaceRuntime) LoadWorkspaceState() (*builtin_tools.WorkspaceState, error) {
+	return &builtin_tools.WorkspaceState{}, nil
+}
+func (w *realFileWorkspaceRuntime) SaveWorkspaceState(_ *builtin_tools.WorkspaceState) error {
+	return nil
+}
+func (w *realFileWorkspaceRuntime) LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {
+	return nil, nil
+}
+func (w *realFileWorkspaceRuntime) AppendWorkspaceReferences(_ []*builtin_tools.WorkspaceReferenceRecord) error {
+	return nil
+}
+func (w *realFileWorkspaceRuntime) LoadStepContextRecords(limit int) ([]*builtin_tools.StepContextRecord, error) {
+	return builtin_tools.LoadWorkspaceStepContextRecords(w.rootDir, limit)
+}
+func (w *realFileWorkspaceRuntime) AppendStepContextRecords(records []*builtin_tools.StepContextRecord) error {
+	return builtin_tools.AppendWorkspaceStepContextRecords(w.rootDir, records)
+}
+func (w *realFileWorkspaceRuntime) ArtifactWritePath(relPath string) (string, string, error) {
+	return relPath, w.rootDir + "/" + relPath, nil
+}
+
+func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
+	wsRoot := t.TempDir()
+	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
+
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// step phase: step completes with tool_calls_digest
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":            "completed",
+						"summary":           "ok",
+						"display_result":    "step ok",
+						"result":            "step ok",
+						"short_summary":     "completed analysis",
+						"tool_calls_digest": []string{"read_file(main.go)", "rg('TODO')"},
+						"key_facts":         []string{"found 3 TODOs"},
+					}),
+				},
+			},
+			// final_answer phase (step_replan fast path skips LLM)
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"contexts-test-done","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"contexts-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: true,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "分析代码", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello",
+		WithSkipIntentPrelude(),
+		WithWorkspaceRuntime(wsRuntime),
+	)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+
+	// Load records from the real step_contexts.jsonl file via builtin_tools
+	records, loadErr := builtin_tools.LoadWorkspaceStepContextRecords(wsRoot, 0)
+	if loadErr != nil {
+		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 step context record in file, got %d", len(records))
+	}
+	rec := records[0]
+	if rec.StepID != "step-1" {
+		t.Fatalf("expected step_id=step-1, got %q", rec.StepID)
+	}
+	if rec.PlanVersion < 1 {
+		t.Fatalf("expected plan_version >= 1, got %d", rec.PlanVersion)
+	}
+	if rec.ContextKey == "" {
+		t.Fatalf("expected non-empty context_key")
+	}
+	if rec.ShortSummary != "completed analysis" {
+		t.Fatalf("expected short_summary='completed analysis', got %q", rec.ShortSummary)
+	}
+	if len(rec.ToolCallsDigest) != 2 {
+		t.Fatalf("expected 2 tool_calls_digest entries, got %d: %v", len(rec.ToolCallsDigest), rec.ToolCallsDigest)
+	}
+	if len(rec.KeyFacts) != 1 || rec.KeyFacts[0] != "found 3 TODOs" {
+		t.Fatalf("expected key_facts=[found 3 TODOs], got %v", rec.KeyFacts)
+	}
+}
+
+func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
+	wsRoot := t.TempDir()
+	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
+
+		client := &executeModelTestClient{
+			replies: []executeModelReply{
+				// step-1 completes
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-step-1-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":            "completed",
+						"summary":           "step1 done",
+						"display_result":    "step1 ok",
+						"result":            "step1 ok",
+						"short_summary":     "first step done",
+						"tool_calls_digest": []string{"bash(ls)"},
+						}),
+					},
+				},
+				// step-1 replan (LLM always runs now)
+				{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
+				// step-2 completes
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":            "completed",
+						"summary":           "step2 done",
+						"display_result":    "step2 ok",
+						"result":            "step2 ok",
+						"short_summary":     "second step done",
+						"tool_calls_digest": []string{"read_file(a.go)", "read_file(b.go)"},
+						"key_facts":         []string{"fact-a", "fact-b"},
+						}),
+					},
+				},
+				// step-2 replan
+				{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
+				// final_answer
+				{
+					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"multi-step-done","references":[]}`,
+				},
+			},
+		}
+
+	agent, err := NewReActAgent(
+		"multi-step-contexts-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(10),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: true,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "第一步", Status: builtin_tools.PlanStepPending},
+					{ID: "step-2", Step: "第二步", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello",
+		WithSkipIntentPrelude(),
+		WithWorkspaceRuntime(wsRuntime),
+	)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+
+	records, loadErr := builtin_tools.LoadWorkspaceStepContextRecords(wsRoot, 0)
+	if loadErr != nil {
+		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 step context records, got %d", len(records))
+	}
+
+	// Verify records are in execution order
+	if records[0].StepID != "step-1" {
+		t.Fatalf("expected first record step_id=step-1, got %q", records[0].StepID)
+	}
+	if records[1].StepID != "step-2" {
+		t.Fatalf("expected second record step_id=step-2, got %q", records[1].StepID)
+	}
+
+	// Verify both have same plan version
+	if records[0].PlanVersion != records[1].PlanVersion {
+		t.Fatalf("expected same plan_version, got %d vs %d", records[0].PlanVersion, records[1].PlanVersion)
+	}
+
+	// Verify context keys are unique
+	if records[0].ContextKey == records[1].ContextKey {
+		t.Fatalf("expected unique context_keys, both are %q", records[0].ContextKey)
+	}
+
+	// Verify step-2 data
+	if records[1].ShortSummary != "second step done" {
+		t.Fatalf("expected step-2 short_summary='second step done', got %q", records[1].ShortSummary)
+	}
+	if len(records[1].ToolCallsDigest) != 2 {
+		t.Fatalf("expected step-2 tool_calls_digest len=2, got %d", len(records[1].ToolCallsDigest))
+	}
+	if len(records[1].KeyFacts) != 2 {
+		t.Fatalf("expected step-2 key_facts len=2, got %d", len(records[1].KeyFacts))
+	}
+}
+
+// recordingChatClient wraps executeModelTestClient and captures the system message
+// (msgs[0]) from each ChatEx call, enabling tests to verify that multi-round
+// tool loops retain the full system prompt.
+type recordingChatClient struct {
+	executeModelTestClient
+	systemMessages []string // Content of msgs[0] from each ChatEx call
+}
+
+func (c *recordingChatClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+	if len(infos) > 0 && infos[0] != nil {
+		if s, ok := infos[0].Content.(string); ok {
+			c.systemMessages = append(c.systemMessages, s)
+		}
+	}
+	return c.executeModelTestClient.ChatEx(ctx, infos, tools...)
+}
+
+type noopPhaseTool struct{ name string }
+
+func (t *noopPhaseTool) Name() string                                            { return t.name }
+func (t *noopPhaseTool) Description() string                                     { return "noop" }
+func (t *noopPhaseTool) Parameters() any                                         { return map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}} }
+func (t *noopPhaseTool) Execute(_ context.Context, _ map[string]any) (string, error) { return "ok", nil }
+
+func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
+	client := &recordingChatClient{
+		executeModelTestClient: executeModelTestClient{
+			replies: []executeModelReply{
+				// step phase: step completes with open_questions to trigger LLM replan
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+							"status":         "completed",
+							"summary":        "analysis done",
+							"display_result": "found issues",
+							"result":         "result data",
+							"short_summary":  "analysis complete",
+							"open_questions": []string{"need to check middleware"},
+						}),
+					},
+				},
+				// step_replan round 1: model calls read_file tool
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-read", builtin_tools.ReadFileToolName, map[string]any{
+							"path": "/tmp/nonexistent.go",
+						}),
+					},
+				},
+				// step_replan round 2: model calls submit_plan
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-submit-replan", "submit_plan", map[string]any{
+							"should_replan": false,
+							"replan_reason": "",
+							"next_goal":     "",
+							"missing_items": []any{},
+							"warnings":      []any{},
+						}),
+					},
+				},
+				// final_answer
+				{
+					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"replan-prompt-test","references":[]}`,
+				},
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"replan-prompt-retain",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(10),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTools(&noopPhaseTool{name: builtin_tools.ReadFileToolName}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: true,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "分析代码", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+
+	// Find the step_replan system messages (they contain STEP_OUTCOME).
+	// The sequence is: step phase call(s), step_replan round 1, step_replan round 2, final_answer.
+	var replanSystemMsgs []string
+	for _, sys := range client.systemMessages {
+		if strings.Contains(sys, "STEP_OUTCOME") {
+			replanSystemMsgs = append(replanSystemMsgs, sys)
+		}
+	}
+
+	if len(replanSystemMsgs) < 2 {
+		t.Fatalf("expected at least 2 step_replan rounds with system prompt, got %d (total calls: %d)",
+			len(replanSystemMsgs), len(client.systemMessages))
+	}
+
+	// Round 2 system message must be identical to round 1
+	if replanSystemMsgs[0] != replanSystemMsgs[1] {
+		t.Fatalf("round-2 system message differs from round-1:\nround1 len=%d\nround2 len=%d",
+			len(replanSystemMsgs[0]), len(replanSystemMsgs[1]))
+	}
+
+	// Verify critical markers are present in round 2
+	round2 := replanSystemMsgs[1]
+	for _, marker := range []string{"CURRENT_GOAL", "STEP_OUTCOME", "JSON-SCHEMA", "should_replan"} {
+		if !strings.Contains(round2, marker) {
+			t.Errorf("round-2 system prompt missing marker %q", marker)
+		}
+	}
+
+	// Verify it's not empty
+	if len(round2) < 100 {
+		t.Fatalf("round-2 system prompt suspiciously short (%d bytes), likely empty or truncated", len(round2))
+	}
+}
+
+func TestPlanPhaseWithTools_MultiRoundRetainsSystemPrompt(t *testing.T) {
+	client := &recordingChatClient{
+		executeModelTestClient: executeModelTestClient{
+			replies: []executeModelReply{
+				// plan round 1: model calls list_files tool
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-list", builtin_tools.ListFilesToolName, map[string]any{
+							"path": "/tmp",
+						}),
+					},
+				},
+				// plan round 2: model calls submit_plan
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
+							"needs_planning": true,
+							"plan": []any{
+								map[string]any{"id": "step-1", "step": "执行", "status": "pending"},
+							},
+							"explanation": "planned",
+						}),
+					},
+				},
+				// step phase: step completes
+				{
+					toolCalls: []*ai.FunctionTool{
+						mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+							"status":         "completed",
+							"summary":        "done",
+							"display_result": "ok",
+							"result":         "ok",
+							"short_summary":  "step done",
+						}),
+					},
+				},
+				// final_answer (step_replan fast path skips LLM)
+				{
+					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"plan-prompt-test","references":[]}`,
+				},
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"plan-prompt-retain",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(10),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTools(&noopPhaseTool{name: builtin_tools.ListFilesToolName}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "你是任务规划器。\n<JSON-SCHEMA>\nplan schema here\n</JSON-SCHEMA>"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success, got %#v", runResult)
+	}
+
+	// Find plan phase system messages (they contain "任务规划器")
+	var planSystemMsgs []string
+	for _, sys := range client.systemMessages {
+		if strings.Contains(sys, "任务规划器") {
+			planSystemMsgs = append(planSystemMsgs, sys)
+		}
+	}
+
+	if len(planSystemMsgs) < 2 {
+		t.Fatalf("expected at least 2 plan rounds with system prompt, got %d (total calls: %d)",
+			len(planSystemMsgs), len(client.systemMessages))
+	}
+
+	// Round 2 must be identical to round 1
+	if planSystemMsgs[0] != planSystemMsgs[1] {
+		t.Fatalf("plan round-2 system message differs from round-1:\nround1 len=%d\nround2 len=%d",
+			len(planSystemMsgs[0]), len(planSystemMsgs[1]))
+	}
+
+	// Verify critical markers in round 2
+	round2 := planSystemMsgs[1]
+	for _, marker := range []string{"任务规划器", "JSON-SCHEMA"} {
+		if !strings.Contains(round2, marker) {
+			t.Errorf("plan round-2 system prompt missing marker %q", marker)
+		}
+	}
+
+	if len(round2) < 20 {
+		t.Fatalf("plan round-2 system prompt suspiciously short (%d bytes)", len(round2))
+	}
+}
+
+func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// round 1: model calls submit_plan with invalid depends_on
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-bad", "submit_plan", map[string]any{
+						"needs_planning": true,
+						"plan": []any{
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"S-01"}},
+						},
+						"explanation": "planned",
+					}),
+				},
+			},
+			// round 2: model retries with corrected depends_on
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-submit-ok", "submit_plan", map[string]any{
+						"needs_planning": true,
+						"plan": []any{
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"step-0"}},
+						},
+						"explanation": "planned",
+					}),
+				},
+			},
+			// step 1: completes
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-1-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "ok",
+						"result": "ok", "short_summary": "step done",
+					}),
+				},
+			},
+			// step_replan: no replan
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-replan-1", "submit_plan", map[string]any{
+						"should_replan": false, "replan_reason": "", "next_goal": "",
+						"missing_items": []string{}, "warnings": []string{},
+					}),
+				},
+			},
+			// step 2: completes
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "ok",
+						"result": "ok", "short_summary": "step done",
+					}),
+				},
+			},
+			// step_replan: no replan
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-replan-2", "submit_plan", map[string]any{
+						"should_replan": false, "replan_reason": "", "next_goal": "",
+						"missing_items": []string{}, "warnings": []string{},
+					}),
+				},
+			},
+			// final_answer
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"validation retry ok","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"submit-plan-retry",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(20),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "你是任务规划器。\n<JSON-SCHEMA>\nplan schema\n</JSON-SCHEMA>"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "test validation retry", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success but got %#v", runResult)
+	}
+	if !strings.Contains(runResult.Result, "validation retry ok") {
+		t.Fatalf("expected result to contain 'validation retry ok', got %q", runResult.Result)
 	}
 }
 

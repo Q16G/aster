@@ -21,13 +21,15 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	}
 
 	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":  "继续推进",
-		"current_step":  map[string]any{"id": "step-1", "step": "执行"},
-		"step_outcome":  `{"summary":"done","status":"completed"}`,
+		"current_goal": "继续推进",
+		"current_step": map[string]any{"id": "step-1", "step": "执行"},
+		"step_outcome": map[string]any{"summary": "done", "status": "completed"},
 		"task_plan":     []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
 		"step_outcomes": []map[string]any{{"step_id": "step-1", "status": "completed"}},
 		"warnings":      []string{"warn-1"},
 		"unresolved":    []string{"missing-1"},
+		"step_result_path":   "/tmp/test/result.json",
+		"step_contexts_path": "/tmp/test/step_contexts.jsonl",
 	})
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
@@ -37,6 +39,51 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got:\n%s", marker, prompt)
 		}
+	}
+}
+
+func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
+	agent, err := NewReActAgent("prompt-content-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+
+	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		"current_goal": "分析代码",
+		"current_step": map[string]any{"id": "step-1", "step": "执行分析"},
+		"step_outcome": map[string]any{
+			"status":        "completed",
+			"short_summary": "分析完成",
+			"key_facts":     []string{"fact-a", "fact-b"},
+		},
+		"task_plan":          []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
+		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":           []string{},
+		"unresolved":         []string{},
+		"step_result_path":   "/workspace/steps/step-1/result.json",
+		"step_contexts_path": "/workspace/step_contexts.jsonl",
+	})
+	if err != nil {
+		t.Fatalf("buildStepReplanPrompt failed: %v", err)
+	}
+
+	// STEP_OUTCOME should contain a proper JSON object, not a double-quoted string like "{\"status\":...}"
+	if strings.Contains(prompt, `"{\"`) || strings.Contains(prompt, `\"}"`) {
+		t.Fatalf("STEP_OUTCOME appears double-serialized (escaped quotes inside string):\n%s", prompt)
+	}
+	if !strings.Contains(prompt, `"status"`) {
+		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"status\", got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, `"short_summary"`) {
+		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
+	}
+
+	// Step result path and step contexts path should render
+	if !strings.Contains(prompt, "/workspace/steps/step-1/result.json") {
+		t.Fatalf("expected STEP_RESULT_PATH in prompt, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "/workspace/step_contexts.jsonl") {
+		t.Fatalf("expected STEP_CONTEXTS_PATH in prompt, got:\n%s", prompt)
 	}
 }
 
