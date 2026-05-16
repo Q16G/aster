@@ -1,0 +1,21 @@
+rules:
+  - id: java-xxe-apache-poi
+    patterns:
+      - pattern-either:
+          - pattern: new XSSFWorkbook($INPUT)
+          - pattern: WorkbookFactory.create($INPUT)
+      - pattern-not: new XSSFWorkbook()
+    message: >
+      Apache POI XSSFWorkbook / WorkbookFactory parses user-supplied .xlsx
+      files which are ZIP archives containing XML. Older versions of POI
+      (before 4.1.0) do not disable external entity processing by default,
+      allowing XXE attacks via crafted .xlsx files. Upgrade to POI >= 4.1.0
+      and explicitly disable DTD processing, or use OPCPackage with
+      secure XML parser configuration.
+    metadata:
+      cwe: CWE-611
+      owasp: "A05:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]

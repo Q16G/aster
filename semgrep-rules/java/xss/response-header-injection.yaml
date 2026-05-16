@@ -1,0 +1,32 @@
+rules:
+  - id: java-response-header-injection
+    patterns:
+      - pattern-either:
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).setContentType($INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).setHeader("Content-Type", $INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).addHeader("Content-Type", $INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).setHeader($NAME, $INPUT);
+          - pattern: |
+              (javax.servlet.http.HttpServletResponse $RESP).addHeader($NAME, $INPUT);
+      - pattern-not: |
+          (javax.servlet.http.HttpServletResponse $RESP).setContentType("...");
+      - pattern-not: |
+          (javax.servlet.http.HttpServletResponse $RESP).setHeader("...", "...");
+      - pattern-not: |
+          (javax.servlet.http.HttpServletResponse $RESP).addHeader("...", "...");
+    message: >
+      User-controlled input is used to set HTTP response headers (Content-Type
+      or other headers). This can lead to response header injection (CRLF
+      injection), content-type manipulation for XSS, or cache poisoning.
+      Validate and whitelist header values before setting them.
+    metadata:
+      cwe: CWE-113
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: WARNING
+    languages: [java]
