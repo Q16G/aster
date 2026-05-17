@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -147,13 +149,13 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 
 	snapshot = a.state.Snapshot()
-	input := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
+	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		UserInstruction:    strings.TrimSpace(a.cfg.Instruction),
 		ExtraContext:       strings.TrimSpace(extraText),
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
 	})
-	if input == "" {
+	if inputStr == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
 			"event":                "plan_input_missing",
 			"input_timeline_count": len(snapshot.InputTimeline),
@@ -161,9 +163,20 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		return fmt.Errorf("input timeline is empty")
 	}
 
+	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
+	mcpCtx := a.buildMCPPromptContext()
+	plannerInput := TaskPlannerPromptInput{
+		Input:          inputStr,
+		SkillsContext:  skillsCtx,
+		MCPContext:     mcpCtx,
+		HasSkillsTable: skillsCtx != nil && skillsCtx.HasTable(),
+		HasMCPTable:    mcpCtx != nil && mcpCtx.HasTable(),
+	}
+	a.applyPlannerOverflowHints(&plannerInput)
+
 	var res *builtin_tools.TaskPlannerResult
 	if promptBuilder, ok := planner.(PlannerPromptBuilder); ok {
-		planRes, err := a.runPlanPhaseWithTools(ctx, iter, runClient, input, promptBuilder)
+		planRes, err := a.runPlanPhaseWithTools(ctx, iter, runClient, plannerInput, promptBuilder)
 		if err != nil {
 			return err
 		}
@@ -173,7 +186,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		cfg := a.resolveStructuredOutputConfig(nil)
 		cfg.StreamHandler = a.buildStructuredOutputStreamHandler()
 		plannerCtx = structuredoutput.WithConfig(plannerCtx, cfg)
-		planRes, err := planner.Plan(plannerCtx, input)
+		planRes, err := planner.Plan(plannerCtx, inputStr)
 		if err != nil {
 			return err
 		}
@@ -257,7 +270,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 const submitPlanToolName = "submit_plan"
 
-func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input string, promptBuilder PlannerPromptBuilder) (*builtin_tools.TaskPlannerResult, error) {
+func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder) (*builtin_tools.TaskPlannerResult, error) {
 	prompt, err := promptBuilder.BuildPrompt(input)
 	if err != nil {
 		return nil, fmt.Errorf("build task planner prompt failed: %w", err)
@@ -1362,3 +1375,73 @@ func stepIDOf(step *builtin_tools.PlanItem) string {
 }
 
 // blockingStepFailure 已由 step_summary -> final_answer 的统一链路覆盖；本次重构不再提前截断。
+
+const plannerInlineLimit = 15
+
+func (a *Agent) applyPlannerOverflowHints(input *TaskPlannerPromptInput) {
+	if input.HasSkillsTable && countMarkdownTableRows(input.SkillsContext.Table) > plannerInlineLimit {
+		path := a.writePlannerTempFile("planner_skills_index.md", input.SkillsContext.Table)
+		if path != "" {
+			input.SkillsOverflowPath = path
+		}
+	}
+	if input.HasMCPTable && countMarkdownTableRows(input.MCPContext.Table) > plannerInlineLimit {
+		path := a.writePlannerTempFile("planner_mcp_index.md", input.MCPContext.Table)
+		if path != "" {
+			input.MCPOverflowPath = path
+		}
+	}
+}
+
+func countMarkdownTableRows(table string) int {
+	lines := strings.Split(strings.TrimSpace(table), "\n")
+	count := 0
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		if isMarkdownSeparatorRow(trimmed) {
+			continue
+		}
+		count++
+	}
+	if count > 0 {
+		count-- // 减去表头行
+	}
+	return count
+}
+
+func isMarkdownSeparatorRow(line string) bool {
+	inner := strings.Trim(line, "| ")
+	if inner == "" {
+		return false
+	}
+	for _, ch := range inner {
+		if ch != '-' && ch != ':' && ch != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Agent) writePlannerTempFile(name, content string) string {
+	if a == nil || a.workspaceRuntime == nil {
+		return ""
+	}
+	dir := a.workspaceRuntime.SharedDir()
+	if dir == "" {
+		return ""
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		runtimelog.LogJSON("warning", map[string]any{
+			"event":   "planner_overflow_file_write_failed",
+			"message": "failed to write planner overflow file",
+			"path":    path,
+			"error":   err.Error(),
+		})
+		return ""
+	}
+	return path
+}
