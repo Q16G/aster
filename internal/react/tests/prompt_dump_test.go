@@ -143,7 +143,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			t.Fatal("PlannerInputFromSnapshot returned empty")
 		}
 
-		prompt, err := planner.BuildPrompt(planInput)
+		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 		if err != nil {
 			t.Fatalf("BuildPrompt failed: %v", err)
 		}
@@ -188,7 +188,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			WorkspaceRootDir:   "/repo/project",
 			WorkspaceNamespace: "audit",
 		})
-		prompt, err := planner.BuildPrompt(planInput)
+		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 		if err != nil {
 			t.Fatalf("BuildPrompt replan failed: %v", err)
 		}

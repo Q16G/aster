@@ -14,7 +14,7 @@ import (
 // can satisfy to enable tool-assisted planning via AICallProxy instead of
 // the legacy structuredoutput.RunWithRetry path.
 type PlannerPromptBuilder interface {
-	BuildPrompt(input string) (string, error)
+	BuildPrompt(input TaskPlannerPromptInput) (string, error)
 }
 
 // DefaultTaskPlanner 默认任务规划器
@@ -40,12 +40,11 @@ var taskPlanPrompt string
 
 // BuildPrompt builds the planner prompt text without calling the AI model.
 // This enables runPlanPhase to use AICallProxy (with tools) instead of structuredoutput.RunWithRetry.
-func (p *DefaultTaskPlanner) BuildPrompt(input string) (string, error) {
+func (p *DefaultTaskPlanner) BuildPrompt(input TaskPlannerPromptInput) (string, error) {
 	if p == nil || p.promptManager == nil {
 		return "", fmt.Errorf("task planner prompt manager is nil")
 	}
-	input = strings.TrimSpace(input)
-	if input == "" {
+	if strings.TrimSpace(input.Input) == "" {
 		return "", fmt.Errorf("input is required")
 	}
 	return p.promptManager.BuildTaskPlannerPrompt(input)
