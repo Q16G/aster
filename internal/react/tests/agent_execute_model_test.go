@@ -2008,10 +2008,16 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 	if loadErr != nil {
 		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
 	}
-	if len(records) != 1 {
-		t.Fatalf("expected 1 step context record in file, got %d", len(records))
+	if len(records) != 2 {
+		t.Fatalf("expected 2 step context records (plan + step), got %d", len(records))
 	}
-	rec := records[0]
+	// First record: plan context
+	planRec := records[0]
+	if planRec.StepID != "__plan__" {
+		t.Fatalf("expected first record step_id=__plan__, got %q", planRec.StepID)
+	}
+	// Second record: step context
+	rec := records[1]
 	if rec.StepID != "step-1" {
 		t.Fatalf("expected step_id=step-1, got %q", rec.StepID)
 	}
@@ -2111,37 +2117,42 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 	if loadErr != nil {
 		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
 	}
-	if len(records) != 2 {
-		t.Fatalf("expected 2 step context records, got %d", len(records))
+	if len(records) != 3 {
+		t.Fatalf("expected 3 step context records, got %d", len(records))
 	}
 
-	// Verify records are in execution order
-	if records[0].StepID != "step-1" {
-		t.Fatalf("expected first record step_id=step-1, got %q", records[0].StepID)
-	}
-	if records[1].StepID != "step-2" {
-		t.Fatalf("expected second record step_id=step-2, got %q", records[1].StepID)
+	// records[0] = __plan__ (plan phase context record)
+	if records[0].StepID != "__plan__" {
+		t.Fatalf("expected first record step_id=__plan__, got %q", records[0].StepID)
 	}
 
-	// Verify both have same plan version
-	if records[0].PlanVersion != records[1].PlanVersion {
-		t.Fatalf("expected same plan_version, got %d vs %d", records[0].PlanVersion, records[1].PlanVersion)
+	// Verify step records are in execution order
+	if records[1].StepID != "step-1" {
+		t.Fatalf("expected second record step_id=step-1, got %q", records[1].StepID)
+	}
+	if records[2].StepID != "step-2" {
+		t.Fatalf("expected third record step_id=step-2, got %q", records[2].StepID)
+	}
+
+	// Verify step records have same plan version
+	if records[1].PlanVersion != records[2].PlanVersion {
+		t.Fatalf("expected same plan_version, got %d vs %d", records[1].PlanVersion, records[2].PlanVersion)
 	}
 
 	// Verify context keys are unique
-	if records[0].ContextKey == records[1].ContextKey {
-		t.Fatalf("expected unique context_keys, both are %q", records[0].ContextKey)
+	if records[1].ContextKey == records[2].ContextKey {
+		t.Fatalf("expected unique context_keys, both are %q", records[1].ContextKey)
 	}
 
 	// Verify step-2 data
-	if records[1].ShortSummary != "second step done" {
-		t.Fatalf("expected step-2 short_summary='second step done', got %q", records[1].ShortSummary)
+	if records[2].ShortSummary != "second step done" {
+		t.Fatalf("expected step-2 short_summary='second step done', got %q", records[2].ShortSummary)
 	}
-	if len(records[1].ToolCallsDigest) != 2 {
-		t.Fatalf("expected step-2 tool_calls_digest len=2, got %d", len(records[1].ToolCallsDigest))
+	if len(records[2].ToolCallsDigest) != 2 {
+		t.Fatalf("expected step-2 tool_calls_digest len=2, got %d", len(records[2].ToolCallsDigest))
 	}
-	if len(records[1].KeyFacts) != 2 {
-		t.Fatalf("expected step-2 key_facts len=2, got %d", len(records[1].KeyFacts))
+	if len(records[2].KeyFacts) != 2 {
+		t.Fatalf("expected step-2 key_facts len=2, got %d", len(records[2].KeyFacts))
 	}
 }
 
