@@ -55,7 +55,7 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 			},
 			"references": map[string]any{
 				"type":        "array",
-				"description": "可选：显式证据引用。建议填写文件路径、文档路径或其他可追溯产物标识；runtime 会在后续阶段补充 artifact 路径。",
+				"description": "可选：显式证据引用。填写绝对文件路径、文档路径或其他可追溯产物标识。",
 				"items": map[string]any{
 					"type": "string",
 				},
