@@ -16,6 +16,13 @@
 - 避免过度调查——高效决策优于完美调查
 
 ## 信息来源
+{{- if .HAS_AGENT_INSTRUCTION}}
+
+### Agent 指令
+---
+{{.AGENT_INSTRUCTION}}
+---
+{{- end}}
 
 ### 已注入的上下文
 

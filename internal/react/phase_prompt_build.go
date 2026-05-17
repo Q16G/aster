@@ -3,6 +3,7 @@ package react
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
@@ -10,6 +11,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		return "", fmt.Errorf("step replan prompt manager is nil")
 	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentInstruction: strings.TrimSpace(a.cfg.Instruction),
 		CurrentGoal:      payload["current_goal"],
 		CurrentStep:      payload["current_step"],
 		StepOutcome:      payload["step_outcome"],
@@ -35,15 +37,16 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 	}
 	showPlanSection, _ := payload["show_plan"].(bool)
 	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		Status:          payload["status"],
-		StateError:      payload["state_error"],
-		InputTimeline:   payload["input_timeline"],
-		ShowPlanSection: showPlanSection,
-		Plan:            payload["plan"],
-		PlanVersion:     payload["plan_version"],
-		StepOutcomes:    payload["step_outcomes"],
-		Warnings:        payload["warnings"],
-		Unresolved:      payload["unresolved"],
+		AgentInstruction: strings.TrimSpace(a.cfg.Instruction),
+		Status:           payload["status"],
+		StateError:       payload["state_error"],
+		InputTimeline:    payload["input_timeline"],
+		ShowPlanSection:  showPlanSection,
+		Plan:             payload["plan"],
+		PlanVersion:      payload["plan_version"],
+		StepOutcomes:     payload["step_outcomes"],
+		Warnings:         payload["warnings"],
+		Unresolved:       payload["unresolved"],
 	})
 }
 
