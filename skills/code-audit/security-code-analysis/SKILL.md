@@ -1,6 +1,6 @@
 ---
 name: security-code-analysis
-description: 通用安全代码审计总控 skill，从攻击面、认证授权、ownership、动态 SQL、模板与配置等角度组织静态安全审计，而不只依赖强 sink。
+description: 安全审计总控 — 编排攻击面盘点、结构化漏洞扫描、数据流验证、认证授权复核、配置审查的完整审计流程，协调各专项能力并输出分桶清晰的审计结论。
 tags: code-audit,security-review,authz,ownership,attack-surface
 when-to-use: 当需要做系统性的代码安全审计、认证授权复核、业务逻辑安全排查或为后续 SAST/SSA 编排审计流程时
 allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
