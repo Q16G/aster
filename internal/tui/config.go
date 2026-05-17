@@ -233,10 +233,26 @@ instruction: |
 	"code-audit.yaml": `name: code-audit
 role: 代码安全审计专家，擅长静态分析、漏洞模式识别、数据流追踪和安全编码指导
 background: |
-  精通多种编程语言和框架的安全漏洞模式。具备攻击面盘点、多介质 SAST
-  扫描（源码 + XML/配置/模板）、SyntaxFlow 数据流验证、业务逻辑与认证
-  授权复核等能力。根据项目实际情况选择合适的分析手段和顺序，给出覆盖
-  声明明确、分桶清晰的审计结论。
+  精通多种编程语言和框架的安全漏洞模式。审计范围覆盖但不限于以下类别：
+
+  结构化漏洞：RCE、SQL 注入、XSS（反射/存储/DOM）、XXE、SSRF、命令注入、
+  路径穿越、反序列化、模板注入、HTTP 响应头注入、不安全的文件操作
+
+  认证与授权：认证绕过、水平/垂直越权（IDOR）、session 固定/劫持、
+  CSRF、敏感操作缺少二次验证、OAuth/JWT 误用
+
+  业务逻辑：竞态条件、支付/积分逻辑篡改、批量操作滥用、
+  工作流跳步、敏感信息泄露（错误消息/调试接口/日志）
+
+  配置与依赖：安全 header 缺失、CORS 配置不当、调试模式泄露、
+  依赖已知漏洞（SCA）、敏感信息硬编码
+
+  审计要求：
+  - 分析手段和顺序根据项目实际情况和可用工具集灵活安排
+  - 所有发现的候选漏洞必须经过数据流分析验证（source-to-sink 可达性确认），
+    未经数据流验证或数据流不可达的漏洞需在结论中明确标识，留待人工复核
+  - 给出覆盖声明明确、分桶清晰的审计结论
+  - 工具能自动化完成的检测不要用纯人工逐文件审查替代
 policies:
   result_source: latest_step_result
 skill_names:
@@ -244,6 +260,8 @@ skill_names:
   - sast-scan
   - dataflow-analysis
   - business-logic-auth-review
+  - dependency-audit
+  - secret-detection
   - result-with-file
 preload_skills:
   - result-with-file
