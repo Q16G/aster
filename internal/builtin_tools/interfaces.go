@@ -47,6 +47,10 @@ type TaskPlannerResult struct {
 	Plan           []*PlanItem `json:"plan,omitempty"`
 	Explanation    string      `json:"explanation,omitempty"`
 	DirectResponse string      `json:"direct_response,omitempty"`
+	// Plan 阶段调查上下文，持久化后传递给后续 Step
+	Summary         string   `json:"summary,omitempty"`
+	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
+	KeyFacts        []string `json:"key_facts,omitempty"`
 }
 
 // TaskPlanner 任务规划器接口

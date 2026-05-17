@@ -29,6 +29,7 @@
 - 通常 2-4 轮工具调用即可了解项目结构，避免过度调查
 - 当你对项目结构、关键文件、技术栈已有足够了解时，立即调用 `submit_plan`
 - 不要为了"更完整"而无限探索——高效计划优于完美调查
+- 当你使用了工具进行调查后，在调用 `submit_plan` 时建议填写 `summary`、`tool_calls_digest`、`key_facts`，这些信息将作为执行上下文传递给后续步骤，避免重复调查
 
 ## 2. 职责 (Responsibilities)
 - 判断当前用户输入是否真的需要进入正式 planning。
@@ -114,6 +115,20 @@
     “direct_response”: {
       “type”: “string”,
       “description”: “当 needs_planning=false 时，直接输出对用户的完整回复。此字段仅在 needs_planning=false 时必填。”
+    },
+    “summary”: {
+      “type”: “string”,
+      “description”: “调查阶段的简要总结。如果你在提交 plan 前使用了工具进行调查，请在此总结调查发现，后续执行步骤将获得此上下文。”
+    },
+    “tool_calls_digest”: {
+      “type”: “array”,
+      “items”: { “type”: “string” },
+      “description”: “工具调用摘要。格式：[工具名] 参数摘要 → 结果要点。如果你使用了工具，请填写此字段。”
+    },
+    “key_facts”: {
+      “type”: “array”,
+      “items”: { “type”: “string” },
+      “description”: “调查过程中发现的关键事实（文件路径、架构模式、技术栈、关键函数等）。”
     }
   }
 }
