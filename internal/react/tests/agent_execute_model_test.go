@@ -1797,7 +1797,7 @@ func (p *executeModelAgenticPlanner) Plan(ctx context.Context, input string) (*b
 	return nil, fmt.Errorf("should not be called when PlannerPromptBuilder is implemented")
 }
 
-func (p *executeModelAgenticPlanner) BuildPrompt(input string) (string, error) {
+func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (string, error) {
 	return p.prompt, nil
 }
 

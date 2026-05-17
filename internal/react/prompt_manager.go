@@ -32,6 +32,7 @@ type ThinkActPromptInput struct {
 }
 
 type StepReplanPromptInput struct {
+	AgentInstruction string
 	CurrentGoal      any
 	CurrentStep      any
 	StepOutcome      any
@@ -44,15 +45,16 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
-	Status          any
-	StateError      any
-	InputTimeline   any
-	ShowPlanSection bool
-	Plan            any
-	PlanVersion     any
-	StepOutcomes    any
-	Warnings        any
-	Unresolved      any
+	AgentInstruction string
+	Status           any
+	StateError       any
+	InputTimeline    any
+	ShowPlanSection  bool
+	Plan             any
+	PlanVersion      any
+	StepOutcomes     any
+	Warnings         any
+	Unresolved       any
 }
 
 type HistoryCompactionPromptInput struct {
@@ -71,12 +73,22 @@ type StepOutcomesReducerPromptInput struct {
 	StepOutcomes string
 }
 
+type TaskPlannerPromptInput struct {
+	Input              string
+	SkillsContext      *SkillsPromptContext
+	MCPContext         *MCPPromptContext
+	HasSkillsTable     bool
+	HasMCPTable        bool
+	SkillsOverflowPath string
+	MCPOverflowPath    string
+}
+
 type PromptManager interface {
 	BuildThinkActPrompt(input ThinkActPromptInput) (string, error)
 	BuildStepReplanPrompt(input StepReplanPromptInput) (string, error)
 	BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (string, error)
 	BuildHistoryCompactionPrompt(input HistoryCompactionPromptInput) (string, error)
-	BuildTaskPlannerPrompt(input string) (string, error)
+	BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (string, error)
 	BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error)
 	BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error)
 }
@@ -179,6 +191,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
+		"AGENT_INSTRUCTION":  strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
 		"CURRENT_GOAL":      fmt.Sprint(input.CurrentGoal),
 		"CURRENT_STEP":      prettyJSON(input.CurrentStep),
 		"STEP_OUTCOME":      prettyJSON(input.StepOutcome),
@@ -200,6 +214,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
+		"AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction) != "",
 		"STATUS":                    fmt.Sprint(input.Status),
 		"STATE_ERROR":               fmt.Sprint(input.StateError),
 		"INPUT_TIMELINE":            prettyJSON(input.InputTimeline),
@@ -229,13 +245,19 @@ func (m *defaultPromptManager) BuildHistoryCompactionPrompt(input HistoryCompact
 	return buf.String(), nil
 }
 
-func (m *defaultPromptManager) BuildTaskPlannerPrompt(input string) (string, error) {
+func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (string, error) {
 	if m == nil || m.taskPlannerTmpl == nil {
 		return "", fmt.Errorf("task planner template is nil")
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.taskPlannerTmpl.Execute(buf, map[string]any{
-		"INPUT": strings.TrimSpace(input),
+		"INPUT":                strings.TrimSpace(input.Input),
+		"SKILLS_CONTEXT":       input.SkillsContext,
+		"MCP_CONTEXT":          input.MCPContext,
+		"HAS_SKILLS_TABLE":     input.HasSkillsTable,
+		"HAS_MCP_TABLE":        input.HasMCPTable,
+		"SKILLS_OVERFLOW_PATH": strings.TrimSpace(input.SkillsOverflowPath),
+		"MCP_OVERFLOW_PATH":    strings.TrimSpace(input.MCPOverflowPath),
 	}); err != nil {
 		return "", err
 	}
