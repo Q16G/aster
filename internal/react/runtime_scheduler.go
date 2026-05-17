@@ -242,6 +242,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
+	if res != nil && len(items) > 0 {
+		a.appendPlanContextRecord(res, snapshot)
+	}
 	a.emitRuntimeLog("info", "planner applied plan", snapshot, map[string]any{
 		"event":               "plan_applied",
 		"plan_count":          len(items),
@@ -378,6 +381,20 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 					},
 					"explanation":     map[string]any{"type": "string"},
 					"direct_response": map[string]any{"type": "string"},
+					"summary": map[string]any{
+						"type":        "string",
+						"description": "调查阶段的简要总结，概括项目结构发现和规划依据",
+					},
+					"tool_calls_digest": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+						"description": "调查阶段的工具调用摘要，格式：[工具名] 参数摘要 → 结果要点",
+					},
+					"key_facts": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+						"description": "调查过程中发现的关键事实（文件路径、架构模式、技术栈等）",
+					},
 				},
 			},
 		},
@@ -730,6 +747,90 @@ func min(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+func (a *Agent) extractPlanToolCallsDigest() []string {
+	if a == nil || len(a.stepHistory) == 0 {
+		return nil
+	}
+	var digest []string
+	seen := make(map[string]struct{})
+	for _, msg := range a.stepHistory {
+		if msg == nil || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		for _, tc := range msg.ToolCalls {
+			if tc == nil || tc.Function == nil {
+				continue
+			}
+			name := strings.TrimSpace(tc.Function.Name)
+			if name == "" || name == submitPlanToolName {
+				continue
+			}
+			argSummary := truncatePlanToolArgs(tc.Function.Arguments)
+			entry := fmt.Sprintf("[%s] %s", name, argSummary)
+			if _, ok := seen[entry]; ok {
+				continue
+			}
+			seen[entry] = struct{}{}
+			digest = append(digest, entry)
+		}
+	}
+	return digest
+}
+
+func truncatePlanToolArgs(args any) string {
+	s, ok := args.(string)
+	if !ok {
+		return ""
+	}
+	var argsMap map[string]any
+	if json.Unmarshal([]byte(s), &argsMap) != nil {
+		return truncateByRunes(s, 120)
+	}
+	for _, key := range []string{"path", "file", "pattern", "command", "query"} {
+		if v, ok := argsMap[key]; ok {
+			return fmt.Sprintf("%s=%v", key, v)
+		}
+	}
+	return truncateByRunes(s, 120)
+}
+
+func (a *Agent) appendPlanContextRecord(res *builtin_tools.TaskPlannerResult, snapshot builtin_tools.StateSnapshot) {
+	if a == nil || a.workspaceRuntime == nil || res == nil {
+		return
+	}
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	namespace := builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace)
+	stepID := "__plan__"
+	contextKey := fmt.Sprintf("%s:%d:%s", namespace, planVersion, stepID)
+
+	digest := builtin_tools.CloneStringSlice(res.ToolCallsDigest)
+	if len(digest) == 0 {
+		digest = a.extractPlanToolCallsDigest()
+	}
+
+	record := &builtin_tools.StepContextRecord{
+		ContextKey:      contextKey,
+		Namespace:       namespace,
+		StepID:          stepID,
+		PlanVersion:     planVersion,
+		ShortSummary:    firstNonEmpty(strings.TrimSpace(res.Summary), strings.TrimSpace(res.Explanation)),
+		KeyFacts:        builtin_tools.CloneStringSlice(res.KeyFacts),
+		ToolCallsDigest: digest,
+		CreatedAt:       time.Now(),
+	}
+	if err := a.workspaceRuntime.AppendStepContextRecords(
+		[]*builtin_tools.StepContextRecord{record},
+	); err != nil {
+		a.emitRuntimeLog("warn", "append plan context record failed", snapshot, map[string]any{
+			"event": "plan_context_append_failed",
+			"error": err.Error(),
+		})
+	}
 }
 
 func normalizeRuntimeErrorText(err error) string {
