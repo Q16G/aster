@@ -1,8 +1,8 @@
 ---
 name: dataflow-analysis
-description: 数据流分析与退化复核指南：使用 SyntaxFlow（yak SSA）做 TopDef/BottomUse 数据流确认；当 SSA 不可用时，执行固定 fallback checklist。
+description: 数据流分析与污点追踪 — 对候选漏洞做跨函数 source-to-sink 数据流确认，验证污点传播路径是否真实可达；支持 SSA 引擎分析与手动 fallback 两种模式。
 tags: code-audit,dataflow,syntaxflow,mcp
-when-to-use: 当需要对 semgrep 候选集做数据流确认，或需要分析 request -> session、cookie -> auth decision、owner -> mapper 等跨函数链路时
+when-to-use: 当需要对 SAST 候选集做数据流确认、验证污点传播可达性，或需要分析 request→session、cookie→auth、owner→mapper 等跨函数调用链路时
 allowed-tools: bash,read_file,list_files,rg
 mcp: [syntaxflow, yak]
 user-invocable: true

@@ -1,6 +1,6 @@
 ---
 name: sast-scan
-description: 基于 Semgrep 的静态应用安全测试（SAST），使用本地嵌入规则做多介质、多语言安全扫描，并输出覆盖声明与噪声分桶。
+description: 多语言多介质静态应用安全扫描（SAST）— 自动检测 RCE/SQLi/XSS/XXE/SSRF/命令注入/反序列化/路径穿越等结构化漏洞模式，覆盖源码、XML 配置、模板文件，输出覆盖声明与分桶结果。
 tags: code-audit,sast,semgrep
 when-to-use: 当需要对代码进行静态安全扫描、建立高价值漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时
 allowed-tools: bash,read_file,list_files,rg
