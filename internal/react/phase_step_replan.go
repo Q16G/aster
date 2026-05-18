@@ -237,18 +237,20 @@ func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.St
 		planVersion = 1
 	}
 	record := &builtin_tools.StepContextRecord{
-		ContextKey:      strings.TrimSpace(outcome.ContextKey),
-		Namespace:       builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
-		StepID:          stepID,
-		PlanVersion:     planVersion,
-		ShortSummary:    strings.TrimSpace(outcome.ShortSummary),
-		KeyFacts:        builtin_tools.CloneStringSlice(outcome.KeyFacts),
-		ToolCallsDigest: builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
-		References:      builtin_tools.CloneStringSlice(outcome.References),
-		SummaryFile:     strings.TrimSpace(outcome.SummaryFile),
-		ResultFile:      strings.TrimSpace(outcome.ResultFile),
-		CreatedAt:       time.Now(),
+		ContextKey:        strings.TrimSpace(outcome.ContextKey),
+		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
+		StepID:            stepID,
+		PlanVersion:       planVersion,
+		ShortSummary:      strings.TrimSpace(outcome.ShortSummary),
+		KeyFacts:          builtin_tools.CloneStringSlice(outcome.KeyFacts),
+		ToolCallsDigest:   builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
+		References:        builtin_tools.CloneStringSlice(outcome.References),
+		SummaryFile:       strings.TrimSpace(outcome.SummaryFile),
+		ResultFile:        strings.TrimSpace(outcome.ResultFile),
+		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
+		CreatedAt:         time.Now(),
 	}
+	a.lastStepTranscriptBlobRef = ""
 	if err := a.workspaceRuntime.AppendStepContextRecords(
 		[]*builtin_tools.StepContextRecord{record},
 	); err != nil {

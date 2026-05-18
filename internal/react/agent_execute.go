@@ -378,7 +378,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	if a.state != nil {
-		if resume && v2Snap != nil && strings.TrimSpace(v2Snap.RuntimeStateBlobRef) != "" {
+		hasResumableState := v2Snap != nil && (strings.TrimSpace(v2Snap.RuntimeStateBlobRef) != "" ||
+			strings.TrimSpace(v2Snap.StepHistoryBlobRef) != "" ||
+			strings.TrimSpace(v2Snap.ConversationHistoryBlobRef) != "")
+		if resume && hasResumableState {
 			// Resume from a persisted runtime snapshot (primarily used for HIL / crash recovery).
 			if err := a.restoreRuntimeFromV2Snapshot(store, v2Snap); err != nil {
 				return nil, err
@@ -396,6 +399,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
+	a.lastStepTranscriptBlobRef = ""
 	a.resetRunHandoff()
 
 	if input != "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
@@ -1355,6 +1359,7 @@ func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string,
 	toolResultMsg := ai.NewToolCallResultMsgInfo(content, callID)
 	// Step phase: tool results are step-local transcript and should not be persisted to long-term ai.history.
 	a.stepHistory = append(a.stepHistory, toolResultMsg)
+	a.persistInFlightStepHistory()
 }
 
 // InjectAgentToolExtra 注入 Agent 工具额外信息
