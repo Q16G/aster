@@ -42,7 +42,7 @@ func TestTruncateToolOutput_UsesWorkspaceRootDir(t *testing.T) {
 	for i := 0; i < 2200; i++ {
 		builder.WriteString("line " + strings.Repeat("x", 40) + "\n")
 	}
-	out := react.TruncateToolOutput("rg", builder.String(), workspaceRoot)
+	out, _ := react.TruncateToolOutput("rg", builder.String(), workspaceRoot)
 
 	wantDir := filepath.Join(workspaceRoot, "tool-output")
 	if !strings.Contains(out, wantDir) {

@@ -10,9 +10,12 @@ import (
 )
 
 func TestTruncateToolOutput_NoTruncate(t *testing.T) {
-	got := TruncateToolOutput("demo", "ok\n", "")
+	got, truncated := TruncateToolOutput("demo", "ok\n", "")
 	if got != "ok\n" {
 		t.Fatalf("unexpected content: %q", got)
+	}
+	if truncated {
+		t.Fatal("expected no truncation")
 	}
 }
 
@@ -23,7 +26,10 @@ func TestTruncateToolOutput_WritesToWorkspaceToolOutputDir(t *testing.T) {
 		lines = append(lines, "line")
 	}
 
-	got := TruncateToolOutput("demo", strings.Join(lines, "\n"), workspaceRoot)
+	got, truncated := TruncateToolOutput("demo", strings.Join(lines, "\n"), workspaceRoot)
+	if !truncated {
+		t.Fatal("expected truncation")
+	}
 	if !strings.Contains(got, "The tool call succeeded but the output was truncated.") {
 		t.Fatalf("expected truncation hint, got %q", got)
 	}
@@ -50,7 +56,7 @@ func TestTruncateToolOutput_UsesTempFallbackDir(t *testing.T) {
 		lines = append(lines, "line")
 	}
 
-	got := TruncateToolOutput("demo", strings.Join(lines, "\n"), "")
+	got, _ := TruncateToolOutput("demo", strings.Join(lines, "\n"), "")
 	if !strings.Contains(got, filepath.Join(os.TempDir(), "sastpro-tool-output")) {
 		t.Fatalf("expected temp fallback dir in content, got %q", got)
 	}
