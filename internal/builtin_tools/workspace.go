@@ -81,4 +81,5 @@ type StepContextRecord struct {
 	InheritedContextKeys []string  `json:"inherited_context_keys,omitempty"`
 	InheritedRefIDs      []string  `json:"inherited_ref_ids,omitempty"`
 	CreatedAt            time.Time `json:"created_at,omitempty"`
+	TranscriptBlobRef    string    `json:"transcript_blob_ref,omitempty"`
 }
