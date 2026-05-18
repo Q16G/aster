@@ -77,8 +77,10 @@
 
 ## 决策原则
 
-- **原则 1**：若现有计划中后续步骤已能覆盖当前 step 暴露的未解决事项，不需要触发重规划。
-- **原则 2**：若当前 step 暴露了 open_questions、warnings、unresolved 中提到的未完成分析或未覆盖领域，且后续步骤不覆盖，输出 `should_replan=true`。
+- **原则 1**：判断"后续步骤是否已覆盖"时，将后续 pending 步骤与 agent 的角色指令（<AGENT_INSTRUCTION>）做完整性比对。若后续 pending 步骤已完整涵盖 agent instruction 要求的全部职责维度，则视为已覆盖，不需要触发重规划；若后续 pending 步骤相对于 agent instruction 存在缺漏（有维度/方面未被任何后续步骤描述），则不能视为已覆盖，应触发重规划来补齐。
+- **原则 1.1**：若旧计划中存在报告输出/汇总整理类步骤（且仍为 pending），不影响重规划决策——replan 触发后 planner 会在末尾重新安排报告步骤。
+- **原则 2**：缺口识别不限于 step outcome 中显式标记的 open_questions/warnings/unresolved。你还必须根据 agent 的角色指令（<AGENT_INSTRUCTION>）和已完成步骤的产出，主动推理：按照该角色的职责范围，还有哪些方面/维度尚未被触及？将这些隐含缺口与显式信号一并纳入缺口判断。
+- **原则 2.1**：若识别出的缺口（无论显式还是推理所得）不被后续步骤完整覆盖，输出 `should_replan=true`。
 - **原则 3**：`replan_reason` 在 `should_replan=false` 时填空字符串，在 `should_replan=true` 时填一句人类可读的总括说明。
 - **原则 4**：`next_goal` 在 `should_replan=false` 时填空字符串，在 `should_replan=true` 时填明确的下一轮目标。
 
