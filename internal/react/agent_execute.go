@@ -1207,8 +1207,19 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.Cha
 	}
 	content := ""
 	if msg.Content != nil {
-		if s, ok := msg.Content.(string); ok {
-			content = s
+		switch v := msg.Content.(type) {
+		case string:
+			content = v
+		case []interface{}:
+			var parts []string
+			for _, block := range v {
+				if m, ok := block.(map[string]interface{}); ok {
+					if t, _ := m["text"].(string); t != "" {
+						parts = append(parts, t)
+					}
+				}
+			}
+			content = strings.Join(parts, "")
 		}
 	}
 	if emitSummaryThink && msg.ReasoningOutput != "" {
