@@ -14,7 +14,7 @@ import (
 )
 
 func newViewTestModel() Model {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, tuicontext.NewSyncStore())
+	m := NewModel(ModelDeps{SyncStore: tuicontext.NewSyncStore()})
 	m.width = 80
 	m.height = 24
 	m.footer.SetWorkdir("/tmp")

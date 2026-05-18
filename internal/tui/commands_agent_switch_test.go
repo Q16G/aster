@@ -27,7 +27,7 @@ func TestCmdAgent_SyncsRuntimeState(t *testing.T) {
 	reg.Register(defB)
 
 	ctx := &AgentExecContext{Definition: defA}
-	m := NewModel(store, ctx, nil, reg, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{Store: store, AgentCtx: ctx, ProfileRegistry: reg})
 	m.currentSessionID = rec.ID
 	m.sessionMeta.ActiveSkillNames = []string{"user-skill"}
 

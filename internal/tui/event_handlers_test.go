@@ -9,7 +9,7 @@ import (
 )
 
 func TestHandleAgentEventLogDoesNotOverwriteStatus(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	m.statusText = "thinking..."
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -25,7 +25,7 @@ func TestHandleAgentEventLogDoesNotOverwriteStatus(t *testing.T) {
 }
 
 func TestHandleAgentEventStateChangePrefersStatusSummary(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	m.statusText = "thinking..."
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -42,7 +42,7 @@ func TestHandleAgentEventStateChangePrefersStatusSummary(t *testing.T) {
 }
 
 func TestHandleAgentEventStepReplanPhaseShowsPanelAndThinkContent(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeStateChange,
@@ -72,7 +72,7 @@ func TestHandleAgentEventStepReplanPhaseShowsPanelAndThinkContent(t *testing.T) 
 }
 
 func TestHandleAgentEventRetryUpdatesRetryState(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	next := time.Now().Add(2 * time.Second)
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -94,7 +94,7 @@ func TestHandleAgentEventRetryUpdatesRetryState(t *testing.T) {
 }
 
 func TestHandleAgentEventStateChangeDoesNotOverrideRetryLabel(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeRetry,
 		Payload: map[string]any{
@@ -126,7 +126,7 @@ func TestHandleAgentEventStateChangeDoesNotOverrideRetryLabel(t *testing.T) {
 }
 
 func TestHandleAgentEventStateChangeTracksExternalInterrupt(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeStateChange,
 		Payload: map[string]any{
@@ -150,7 +150,7 @@ func TestHandleAgentEventStateChangeTracksExternalInterrupt(t *testing.T) {
 }
 
 func TestHandleAgentEventToolUpdateAddsStepResultPart(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeToolUpdate,
@@ -177,7 +177,7 @@ func TestHandleAgentEventToolUpdateAddsStepResultPart(t *testing.T) {
 }
 
 func TestHandleAgentEventStepReplanResultAddsPart(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeStepReplanResult,
@@ -211,7 +211,7 @@ func TestHandleAgentEventStepReplanResultAddsPart(t *testing.T) {
 }
 
 func TestHandleAgentEventFinalAnswerShowsFullContentByDefault(t *testing.T) {
-	m := NewModel(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{})
 	m.chat.SetSize(100, 20)
 	content := strings.Repeat("A", 70) + "TAIL-XYZ"
 

@@ -19,6 +19,7 @@ import (
 	"aster/internal/provider"
 	"aster/internal/react"
 	"aster/internal/runtimelog"
+	"aster/internal/selfupdate"
 	"aster/internal/service"
 	"aster/internal/tui"
 	tuicontext "aster/internal/tui/context"
@@ -59,6 +60,7 @@ func main() {
 			return nil
 		},
 	})
+	rootCmd.AddCommand(updateCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -132,6 +134,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		providerCfg.Variant = variant
 		providerCfg.VariantOptions = vopts
 	}
+
+	updateChecker := selfupdate.NewUpdateChecker(
+		Version,
+		filepath.Join(appDir, "cache", "update.json"),
+		selfupdate.WithProxy(providerCfg.Proxy),
+	)
+	updateChecker.StartBackgroundCheck(ctx)
 
 	aiClient := newProviderClient(providerCfg, providerRegistry, retryCallback, "")
 	clientFactory := ai.NewSimpleClientFactory(aiClient, func(mid string) ai.ChatClient {
@@ -216,7 +225,22 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	appModel := tui.NewModel(store, agentCtx, humanBridge, profileRegistry, skillService, mcpManager, providerRegistry, credStore, appCfg, providerCfg, localProv, syncStore)
+	appModel := tui.NewModel(tui.ModelDeps{
+		Store:           store,
+		AgentCtx:        agentCtx,
+		HumanBridge:     humanBridge,
+		ProfileRegistry: profileRegistry,
+		SkillService:    skillService,
+		MCPManager:      mcpManager,
+		Registry:        providerRegistry,
+		CredStore:       credStore,
+		AppCfg:          appCfg,
+		ProviderCfg:     providerCfg,
+		LocalProv:       localProv,
+		SyncStore:       syncStore,
+		CurrentVersion:  Version,
+		UpdateChecker:   updateChecker,
+	})
 
 	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
