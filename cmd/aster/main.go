@@ -133,9 +133,9 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		providerCfg.VariantOptions = vopts
 	}
 
-	aiClient := newProviderClient(providerCfg, retryCallback, "")
+	aiClient := newProviderClient(providerCfg, providerRegistry, retryCallback, "")
 	clientFactory := ai.NewSimpleClientFactory(aiClient, func(mid string) ai.ChatClient {
-		return newProviderClient(providerCfg, retryCallback, mid)
+		return newProviderClient(providerCfg, providerRegistry, retryCallback, mid)
 	})
 
 	projectRoot, err := os.Getwd()
@@ -206,9 +206,9 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		MCPManager:  mcpManager,
 		ProjectRoot: projectRoot,
 		RebuildClient: func(provider *tui.ProviderState) {
-			newClient := newProviderClient(provider, retryCallback, "")
+			newClient := newProviderClient(provider, providerRegistry, retryCallback, "")
 			newFactory := ai.NewSimpleClientFactory(newClient, func(mid string) ai.ChatClient {
-				return newProviderClient(provider, retryCallback, mid)
+				return newProviderClient(provider, providerRegistry, retryCallback, mid)
 			})
 			factory.UpdateDefaultClient(newClient)
 			factory.UpdateClientFactory(newFactory)
@@ -268,19 +268,35 @@ func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 	}
 }
 
-func newProviderClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) ai.ChatClient {
+const defaultMaxOutputTokens = 16384
+
+func resolveMaxOutputTokens(reg *provider.Registry, modelID string) int {
+	if reg != nil && strings.TrimSpace(modelID) != "" {
+		if _, outputLimit, found := reg.ResolveContextBudget(modelID); found && outputLimit > 0 {
+			return outputLimit
+		}
+	}
+	return defaultMaxOutputTokens
+}
+
+func newProviderClient(ps *tui.ProviderState, reg *provider.Registry, retryCallback openai.RetryCallback, modelOverride string) ai.ChatClient {
 	if ps == nil {
 		ps = &tui.ProviderState{}
 	}
+	effectiveModel := modelOverride
+	if effectiveModel == "" {
+		effectiveModel = ps.ModelID
+	}
+	maxTokens := resolveMaxOutputTokens(reg, effectiveModel)
 	switch ps.Protocol {
 	case "anthropic":
-		return newAnthropicClient(ps, modelOverride)
+		return newAnthropicClient(ps, modelOverride, maxTokens)
 	default:
-		return newOpenAIClient(ps, retryCallback, modelOverride)
+		return newOpenAIClient(ps, retryCallback, modelOverride, maxTokens)
 	}
 }
 
-func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string) *openai.Client {
+func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string, maxTokens int) *openai.Client {
 	modelID := modelOverride
 	if modelID == "" {
 		modelID = ps.ModelID
@@ -292,6 +308,7 @@ func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, 
 		openai.WithModel(modelID),
 		openai.WithStream(true),
 		openai.WithRetryCallback(retryCallback),
+		openai.WithMaxTokens(maxTokens),
 	}
 	if ps.Proxy != "" {
 		opts = append(opts, openai.WithProxy(ps.Proxy))
@@ -308,7 +325,7 @@ func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, 
 	return openai.NewClient(opts...)
 }
 
-func newAnthropicClient(ps *tui.ProviderState, modelOverride string) *anthropic.Client {
+func newAnthropicClient(ps *tui.ProviderState, modelOverride string, maxTokens int) *anthropic.Client {
 	modelID := modelOverride
 	if modelID == "" {
 		modelID = ps.ModelID
@@ -317,6 +334,7 @@ func newAnthropicClient(ps *tui.ProviderState, modelOverride string) *anthropic.
 		anthropic.WithURL(ps.BaseURL),
 		anthropic.WithAPIKey(ps.APIKey),
 		anthropic.WithModel(modelID),
+		anthropic.WithMaxTokens(maxTokens),
 	}
 	if ps.Proxy != "" {
 		opts = append(opts, anthropic.WithProxy(ps.Proxy))
