@@ -33,6 +33,7 @@
 - [外部依赖](#外部依赖)
 - [项目结构](#项目结构)
 - [开发](#开发)
+- [路线图](#路线图)
 - [致谢](#致谢)
 - [License](#license)
 
@@ -583,6 +584,33 @@ graph TB
 | `allow_bash` | 是否启用 bash 工具 | true |
 | `enable_history_compaction` | Token 超限时压缩历史 | true |
 | `result_source` | 结果提取策略 | latest_step_result |
+
+---
+
+## 路线图
+
+> 以下为计划中的功能方向，按优先级排列。标记 ✅ 表示已有基础设施，需完善集成。
+
+### 近期 — 报告与集成
+
+- [ ] **结果导出** — 支持 SARIF / JSON / HTML 格式输出，便于归档和合规审计
+- [ ] **Headless 模式** — 非交互式运行，接受 CLI 参数指定 Agent、目标、输出路径
+- [ ] **CI/CD 集成** — 提供 GitHub Actions 示例，扫描结果作为 PR Check 反馈
+- [x] **自动更新** — 基于 GitHub Release 的版本检测与二进制替换（✅ 核心已实现，待接入 TUI）
+
+### 中期 — Agent 能力增强
+
+- [ ] **`/agent create`** — TUI 内交互式创建 Agent，免手动编辑 YAML
+- [ ] **子 Agent 并行执行** — 同级多个子 Agent 并发运行，加速大型项目扫描
+- [ ] **Agent 导入/导出** — 单文件打包分享 Agent 定义 + 关联技能配置
+- [x] **Token 用量与费用统计** — 按会话/Agent 维度的用量面板（✅ 计费基础已就绪，待 UI 呈现）
+
+### 远期 — 平台化
+
+- [ ] **工作流 DSL** — 声明式步骤编排，支持条件分支与并行依赖
+- [ ] **自定义工具插件** — 通过 MCP 或本地插件协议扩展工具集
+- [ ] **REST API** — 提供 HTTP 接口，支持外部系统调度扫描任务
+- [ ] **IDE 插件** — VSCode / JetBrains 集成，编辑器内触发安全扫描
 
 ---
 
