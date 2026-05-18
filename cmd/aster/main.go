@@ -268,11 +268,17 @@ func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 	}
 }
 
-const defaultMaxOutputTokens = 16384
+const (
+	defaultMaxOutputTokens = 16384
+	maxOutputTokensCap     = 65536
+)
 
 func resolveMaxOutputTokens(reg *provider.Registry, modelID string) int {
 	if reg != nil && strings.TrimSpace(modelID) != "" {
 		if _, outputLimit, found := reg.ResolveContextBudget(modelID); found && outputLimit > 0 {
+			if outputLimit > maxOutputTokensCap {
+				return maxOutputTokensCap
+			}
 			return outputLimit
 		}
 	}
