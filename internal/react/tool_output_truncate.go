@@ -16,17 +16,16 @@ const (
 	toolOutputRetention        = 7 * 24 * time.Hour
 )
 
-func TruncateToolOutput(toolName string, output string, workspaceRootDir string) string {
+func TruncateToolOutput(toolName string, output string, workspaceRootDir string) (string, bool) {
 	if strings.TrimSpace(output) == "" {
-		return output
+		return output, false
 	}
 
 	res, err := truncateToolOutput(output, resolveToolOutputDir(workspaceRootDir))
 	if err != nil {
-		// Best-effort: if truncation fails, return original output to preserve behavior.
-		return output
+		return output, false
 	}
-	return res.Content
+	return res.Content, res.Truncated
 }
 
 type toolOutputResult struct {
