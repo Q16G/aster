@@ -1296,8 +1296,17 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	if err != nil {
 		errText = err.Error()
 	}
-	out = TruncateToolOutput(toolName, out, a.workspaceRootDir)
-	errText = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
+	var outTruncated, errTruncated bool
+	out, outTruncated = TruncateToolOutput(toolName, out, a.workspaceRootDir)
+	errText, errTruncated = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
+	if outTruncated || errTruncated {
+		a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{
+			"event":         "tool_output_truncated",
+			"tool":          toolName,
+			"out_truncated": outTruncated,
+			"err_truncated": errTruncated,
+		})
+	}
 
 	// 一些前端仅展示 result 字段而忽略 error 字段；为了避免"失败但无输出"，把错误信息也放进展示结果里。
 	displayOut := out
