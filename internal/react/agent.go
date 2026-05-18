@@ -1,6 +1,7 @@
 package react
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -33,14 +34,15 @@ type Agent struct {
 	tools         *utils.OrderMapx[string, Tool]
 	promptManager PromptManager
 	state         *StateTracker
-	history       []*ai.MsgInfo
-	// StepHistory stores the in-step tool calling transcript (assistant messages + tool results).
-	// It is cleared when the current step changes so tool outputs do not leak across steps.
-	stepHistory        []*ai.MsgInfo
-	stepHistoryStepID  string
-	stepHistoryPhase   builtin_tools.AgentPhase
-	stepHistoryPlanVer int
-	currentRunID       string
+	// history and stepHistory are only accessed from the scheduler goroutine (runSchedulerLoop).
+	// No mutex is needed as long as this single-writer invariant holds.
+	history                   []*ai.MsgInfo
+	stepHistory               []*ai.MsgInfo
+	stepHistoryStepID         string
+	stepHistoryPhase          builtin_tools.AgentPhase
+	stepHistoryPlanVer        int
+	lastStepTranscriptBlobRef string
+	currentRunID              string
 	// V2 persistence: session-scoped event store + per-turn correlation id.
 	v2Store       *persistv2.Store
 	currentTurnID string
@@ -253,6 +255,98 @@ func (a *Agent) resetStepHistory() {
 	a.stepHistoryPlanVer = 0
 }
 
+func (a *Agent) persistStepTranscriptBlob() {
+	if a == nil || a.v2Store == nil || len(a.stepHistory) == 0 {
+		return
+	}
+	raw, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory))
+	if err != nil {
+		a.emitPersistenceWarning("marshal_step_transcript", err)
+		return
+	}
+	ref, err := a.v2Store.WriteBlob(raw)
+	if err != nil {
+		a.emitPersistenceWarning("write_blob_step_transcript", err)
+		return
+	}
+	a.lastStepTranscriptBlobRef = strings.TrimSpace(ref)
+}
+
+func (a *Agent) persistInFlightStepHistory() {
+	if a == nil || a.v2Store == nil {
+		return
+	}
+
+	var runtimeRef, stepRef, convRef string
+
+	if a.state != nil {
+		rawState, err := json.Marshal(a.state.Snapshot())
+		if err == nil && len(rawState) > 0 {
+			ref, werr := a.v2Store.WriteBlob(rawState)
+			if werr != nil {
+				a.emitPersistenceWarning("inflight_write_blob_runtime_state", werr)
+			} else {
+				runtimeRef = strings.TrimSpace(ref)
+			}
+		} else if err != nil {
+			a.emitPersistenceWarning("inflight_marshal_runtime_state", err)
+		}
+	}
+
+	if len(a.stepHistory) > 0 {
+		rawStep, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory))
+		if err == nil && len(rawStep) > 0 {
+			ref, werr := a.v2Store.WriteBlob(rawStep)
+			if werr != nil {
+				a.emitPersistenceWarning("inflight_write_blob_step_history", werr)
+			} else {
+				stepRef = strings.TrimSpace(ref)
+			}
+		} else if err != nil {
+			a.emitPersistenceWarning("inflight_marshal_step_history", err)
+		}
+	}
+
+	if len(a.history) > 0 {
+		rawConv, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.history))
+		if err == nil && len(rawConv) > 0 {
+			ref, werr := a.v2Store.WriteBlob(rawConv)
+			if werr != nil {
+				a.emitPersistenceWarning("inflight_write_blob_conversation_history", werr)
+			} else {
+				convRef = strings.TrimSpace(ref)
+			}
+		} else if err != nil {
+			a.emitPersistenceWarning("inflight_marshal_conversation_history", err)
+		}
+	}
+
+	if runtimeRef == "" && stepRef == "" && convRef == "" {
+		return
+	}
+
+	snap, err := a.v2Store.LoadSnapshot()
+	if err != nil {
+		a.emitPersistenceWarning("inflight_load_snapshot", err)
+		return
+	}
+	if snap == nil {
+		snap = &persistv2.Snapshot{}
+	}
+	if runtimeRef != "" {
+		snap.RuntimeStateBlobRef = runtimeRef
+	}
+	if stepRef != "" {
+		snap.StepHistoryBlobRef = stepRef
+	}
+	if convRef != "" {
+		snap.ConversationHistoryBlobRef = convRef
+	}
+	if err := a.v2Store.SaveSnapshotAtomic(snap); err != nil {
+		a.emitPersistenceWarning("inflight_save_snapshot", err)
+	}
+}
+
 func (a *Agent) ensureStepHistoryForStep(stepID string) {
 	if a == nil {
 		return
@@ -267,6 +361,7 @@ func (a *Agent) ensureStepHistoryForStep(stepID string) {
 	}
 	// New step: clear the previous step transcript.
 	a.stepHistory = nil
+	a.lastStepTranscriptBlobRef = "" // prevent stale ref from associating with the wrong step (no replan follows direct step switch)
 	a.stepHistoryStepID = stepID
 }
 
@@ -282,6 +377,7 @@ func (a *Agent) syncStepHistoryLayer(snapshot builtin_tools.StateSnapshot) {
 
 	if currentPhase != builtin_tools.AgentPhaseStep {
 		if prevStepID != "" || prevLayerLen > 0 {
+			a.persistStepTranscriptBlob()
 			a.emitRuntimeLog("info", "step history layer cleared", snapshot, map[string]any{
 				"event":                   "step_history_layer_transition",
 				"history_transition_name": "leave_step_phase_clear",
