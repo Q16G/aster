@@ -687,7 +687,7 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 	merged := make([]*builtin_tools.PlanItem, 0, len(prev)+len(next))
 	preserved := make(map[string]struct{}, len(prev))
 	for _, item := range prev {
-		if item == nil || item.Status != builtin_tools.PlanStepCompleted {
+		if item == nil || (item.Status != builtin_tools.PlanStepCompleted && item.Status != builtin_tools.PlanStepInProgress) {
 			continue
 		}
 		clone := &builtin_tools.PlanItem{
