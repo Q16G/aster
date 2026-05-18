@@ -156,7 +156,7 @@ func DefaultConfig() *Config {
 		Version:    "2023-06-01",
 		Timeout:    120 * time.Second,
 		MaxRetries: 3,
-		MaxTokens:  4096,
+		MaxTokens:  16384,
 		Headers:    map[string]string{},
 	}
 }
