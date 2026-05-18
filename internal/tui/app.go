@@ -18,6 +18,7 @@ import (
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/provider"
+	"aster/internal/selfupdate"
 	"aster/internal/service"
 	tuicontext "aster/internal/tui/context"
 	tuiui "aster/internal/tui/ui"
@@ -104,6 +105,9 @@ type Model struct {
 	sessionUsage ai.TokenUsage
 	sessionCost  float64
 
+	currentVersion string
+	updateChecker  *selfupdate.UpdateChecker
+
 	syncStore       *tuicontext.SyncStore
 	themeProvider   *tuicontext.ThemeProvider
 	keybindProvider *tuicontext.KeybindProvider
@@ -117,42 +121,50 @@ type Model struct {
 	filePicker      *tuiui.FilePickerModel
 }
 
-func NewModel(
-	store *SessionStore,
-	agentCtx *AgentExecContext,
-	humanBridge *HumanInputBridge,
-	profileRegistry *ProfileRegistry,
-	skillService *service.SkillService,
-	mcpManager *mcp.Manager,
-	reg *provider.Registry,
-	credStore *CredentialStore,
-	appCfg *AppConfig,
-	providerCfg *ProviderState,
-	localProv *tuicontext.LocalProvider,
-	syncStore *tuicontext.SyncStore,
-) Model {
+type ModelDeps struct {
+	Store           *SessionStore
+	AgentCtx        *AgentExecContext
+	HumanBridge     *HumanInputBridge
+	ProfileRegistry *ProfileRegistry
+	SkillService    *service.SkillService
+	MCPManager      *mcp.Manager
+	Registry        *provider.Registry
+	CredStore       *CredentialStore
+	AppCfg          *AppConfig
+	ProviderCfg     *ProviderState
+	LocalProv       *tuicontext.LocalProvider
+	SyncStore       *tuicontext.SyncStore
+	CurrentVersion  string
+	UpdateChecker   *selfupdate.UpdateChecker
+}
+
+func NewModel(deps ModelDeps) Model {
+	localProv := deps.LocalProv
 	if localProv == nil {
 		localProv = tuicontext.NewLocalProvider()
 	}
 	m := Model{
-		store:           store,
+		store:           deps.Store,
 		chat:            NewChatModel(),
 		input:           NewInputModel(),
 		sidebar:         NewSidebarModel(),
 		thinkingPanel:   NewThinkingPanelModel(),
-		agentCtx:        agentCtx,
-		humanBridge:     humanBridge,
-		profileRegistry: profileRegistry,
-		skillService:    skillService,
-		mcpManager:      mcpManager,
-		registry:        reg,
-		credStore:       credStore,
-		appCfg:          appCfg,
-		providerCfg:     providerCfg,
+		agentCtx:        deps.AgentCtx,
+		humanBridge:     deps.HumanBridge,
+		profileRegistry: deps.ProfileRegistry,
+		skillService:    deps.SkillService,
+		mcpManager:      deps.MCPManager,
+		registry:        deps.Registry,
+		credStore:       deps.CredStore,
+		appCfg:          deps.AppCfg,
+		providerCfg:     deps.ProviderCfg,
 		statusText:      "ready",
 		focus:           FocusInput,
 
-		syncStore:       syncStore,
+		currentVersion: deps.CurrentVersion,
+		updateChecker:  deps.UpdateChecker,
+
+		syncStore:       deps.SyncStore,
 		themeProvider:   tuicontext.NewThemeProvider(),
 		keybindProvider: tuicontext.NewKeybindProvider(),
 		localProvider:   localProv,
@@ -1081,6 +1093,15 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	snap.ActiveMCPs = m.sessionMeta.ActiveMCPServers
 	snap.DismissedGettingStarted = m.localProvider.Get().DismissedGettingStarted
 	snap.Workdir = m.footer.Workdir()
+
+	if m.currentVersion != "" {
+		snap.Version = m.currentVersion
+	}
+	if m.updateChecker != nil && m.updateChecker.IsUpdateAvailable() {
+		if rel := m.updateChecker.Latest(); rel != nil {
+			snap.UpdateAvailable = rel.TagName
+		}
+	}
 
 	return snap
 }

@@ -22,8 +22,9 @@ type SidebarSnapshot struct {
 	HasProvider             bool
 	DismissedGettingStarted bool
 
-	Workdir string
-	Version string
+	Workdir         string
+	Version         string
+	UpdateAvailable string
 }
 
 type MCPStatusEntry struct {

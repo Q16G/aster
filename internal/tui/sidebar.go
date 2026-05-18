@@ -319,6 +319,11 @@ func (m *SidebarModel) renderWorkdirSection(sb *strings.Builder, w int) {
 		sb.WriteString(snap.Version)
 		sb.WriteString("\n")
 	}
+	if snap.UpdateAvailable != "" {
+		updateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+		sb.WriteString(updateStyle.Render("  ⬆ "+snap.UpdateAvailable+" available (aster update)"))
+		sb.WriteString("\n")
+	}
 }
 
 func truncSidebar(s string, maxWidth int) string {

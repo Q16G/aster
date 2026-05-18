@@ -20,9 +20,11 @@ func TestMergeDistinctNames_DedupesAndPreservesOrder(t *testing.T) {
 }
 
 func TestToggleSessionSkill_CannotDisablePreloadedSkill(t *testing.T) {
-	m := NewModel(nil, &AgentExecContext{
-		Definition: react.AgentDefinition{PreloadSkills: []string{"skill-a"}},
-	}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{PreloadSkills: []string{"skill-a"}},
+		},
+	})
 
 	m.sessionMeta.ActiveSkillNames = []string{"skill-a"}
 	m.toggleSessionSkill("skill-a", false)
