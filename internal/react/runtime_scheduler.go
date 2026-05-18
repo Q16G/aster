@@ -1010,6 +1010,10 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	callID := strings.TrimSpace(tc.Id)
 	toolName := strings.TrimSpace(tc.Function.Name)
 	if toolName == "" {
+		a.emitRuntimeLog("warn", "empty tool name in tool call, skipping", a.state.Snapshot(), map[string]any{
+			"event":   "empty_tool_name",
+			"call_id": callID,
+		})
 		return nil
 	}
 	prevSnapshot := a.state.Snapshot()
