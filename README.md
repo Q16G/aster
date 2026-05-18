@@ -1,51 +1,111 @@
-# ASTER
+<h1 align="center">ASTER</h1>
 
-**A**gent-based **S**ecurity **T**esting & **E**valuation **R**untime
+<p align="center">
+  <strong>A</strong>gent-based <strong>S</strong>ecurity <strong>T</strong>esting & <strong>E</strong>valuation <strong>R</strong>untime
+</p>
 
-基于 ReAct 框架的安全分析 Agent TUI。集成 Semgrep SAST 扫描、SyntaxFlow 数据流追踪、MCP 工具协议和多 LLM Provider 支持，覆盖代码审计、渗透测试、主机防护三大安全场景。
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white" alt="Go 1.25">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey" alt="Platform">
+</p>
 
-## 特性速览
+<p align="center">
+基于 ReAct 框架的安全分析 Agent，在终端中完成代码审计、渗透测试、主机防护。<br>
+内置 Semgrep 规则集 + SyntaxFlow 数据流追踪 + MCP 工具协议 + 多 LLM Provider 支持。
+</p>
 
-- **三大安全 Agent** — 代码审计 / 渗透测试 / 主机防护，YAML 一键自定义
-- **ReAct 执行引擎** — 四阶段循环（Plan → Step → Summary → FinalAnswer），支持子 Agent 委派
-- **Semgrep SAST** — 内嵌本地安全规则集（覆盖 Go/Java/Python/JS/PHP/C，持续扩展中）
-- **SyntaxFlow 数据流** — 通过 yak SSA 引擎进行 topdef/bottomUse 追踪验证
-- **MCP 协议** — stdio / SSE / Streamable HTTP，全局或按 Agent 挂载外部工具
-- **7 大 LLM Provider** — OpenAI、Anthropic、DeepSeek、Groq、OpenRouter、Together、Ollama
-- **26+ 个安全技能** — 按需注入 Agent 上下文，运行时动态启用/禁用
-- **终端 TUI** — Bubbletea 交互界面，会话管理、主题切换、快捷键操作
+<!-- TODO: 在这里放一张终端运行截图或 GIF -->
+<!-- <p align="center"><img src="docs/assets/demo.gif" width="720"></p> -->
+
+---
+
+## 目录
+
+- [快速开始](#快速开始)
+- [核心特性](#核心特性)
+- [安装](#安装)
+- [配置](#配置)
+- [使用指南](#使用指南)
+- [Agent 系统](#agent-系统)
+- [技能系统](#技能系统)
+- [MCP 集成](#mcp-集成)
+- [外部依赖](#外部依赖)
+- [项目结构](#项目结构)
+- [开发](#开发)
+- [致谢](#致谢)
+- [License](#license)
 
 ---
 
 ## 快速开始
 
-### 安装
-
 ```bash
-# 从源码构建
+# 1. 构建
 git clone <repo-url> && cd sastx
 go build -o aster ./cmd/aster
 
-# 或 go install
+# 2. 配置 API Key（任选一个 Provider）
+export OPENAI_API_KEY=sk-your-key
+
+# 3. 启动
+./aster
+```
+
+启动后进入 TUI 交互界面，输入自然语言即可开始安全分析。默认使用 `code-audit` Agent。
+
+---
+
+## 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| **三大安全 Agent** | 代码审计 / 渗透测试 / 主机防护，YAML 声明式定义，支持自定义 |
+| **ReAct 执行引擎** | Plan → Think-Act-Observe → Summary → FinalAnswer 四阶段循环 |
+| **Semgrep SAST** | 内嵌本地规则集，覆盖 Go / Java / Python / JS / PHP / C |
+| **SyntaxFlow 数据流** | 通过 yak SSA 引擎的 topdef/bottomUse 追踪验证 |
+| **MCP 协议** | stdio / SSE / Streamable HTTP 三种传输，全局或按 Agent 挂载 |
+| **7 大 LLM Provider** | OpenAI、Anthropic、DeepSeek、Groq、OpenRouter、Together、Ollama |
+| **26+ 安全技能** | 按需注入 Agent 上下文，运行时动态启用/禁用 |
+| **终端 TUI** | Bubbletea 交互界面，会话管理、主题切换、快捷键操作 |
+| **子 Agent 委派** | 支持任务拆解后委派给子 Agent 独立执行 |
+| **历史压缩** | Token 超限时自动摘要压缩，支持长对话 |
+
+---
+
+## 安装
+
+### 从源码构建（推荐）
+
+```bash
+git clone <repo-url> && cd sastx
+make build    # 输出 ./aster 二进制
+```
+
+### go install
+
+```bash
 go install aster/cmd/aster@latest
 ```
 
-### 首次配置
+> 要求 Go 1.25+
 
-首次运行 `aster`，自动生成 `~/.aster/` 目录及默认配置。你只需设置一个 Provider 的 API Key：
+---
 
-```bash
-# 方式一：环境变量（最快）
-export OPENAI_API_KEY=sk-your-key
-aster
+## 配置
 
-# 方式二：编辑配置文件
-vim ~/.aster/config.yaml
+### 配置优先级
+
+```
+CLI 参数 > ASTER_* 环境变量 > ~/.aster/config.yaml > Provider 内置默认 > 硬编码兜底
 ```
 
-最小 `config.yaml`：
+### 最小配置
+
+首次运行 `aster` 自动生成 `~/.aster/` 目录。只需提供一个 Provider 的 API Key：
 
 ```yaml
+# ~/.aster/config.yaml
 default_provider: openai
 
 providers:
@@ -53,28 +113,12 @@ providers:
     base_url: https://api.openai.com/v1
     api_key: sk-your-key
     default_model: gpt-4o
-    # env:
-    #   HTTPS_PROXY: http://127.0.0.1:7890
 ```
 
-### 运行
+或通过环境变量：
 
 ```bash
-aster
-```
-
-启动后进入 TUI 交互界面，默认加载 `code-audit` Agent。通过 `/agent` 切换到渗透测试或主机防护模式。
-
----
-
-## 配置详解
-
-### 配置优先级
-
-从高到低，首个非空值生效：
-
-```
-CLI 参数 > ASTER_* 环境变量 > config.yaml > Provider 内置默认 > 硬编码兜底(openai/gpt-4o)
+export OPENAI_API_KEY=sk-your-key
 ```
 
 ### CLI 参数
@@ -105,7 +149,21 @@ aster --provider deepseek --model deepseek-chat --api-key sk-xxx --base-url http
 | `OPENROUTER_API_KEY` | OpenRouter 专用 |
 | `TOGETHER_API_KEY` | Together 专用 |
 
-### config.yaml 完整结构
+### 内置 Provider
+
+| Provider | Base URL | 默认模型 |
+|----------|----------|----------|
+| openai | `https://api.openai.com/v1` | gpt-4o |
+| anthropic | `https://api.anthropic.com/v1` | claude-sonnet-4 |
+| deepseek | `https://api.deepseek.com/v1` | deepseek-chat |
+| groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile |
+| openrouter | `https://openrouter.ai/api/v1` | anthropic/claude-sonnet-4 |
+| together | `https://api.together.xyz/v1` | meta-llama/Llama-3-70b-chat-hf |
+| ollama | `http://localhost:11434/v1` | qwen2.5:latest |
+
+所有 Provider 通过 OpenAI 兼容协议接入。运行时通过 `/provider` 命令在线切换。
+
+### 完整 config.yaml 结构
 
 ```yaml
 default_provider: openai
@@ -116,439 +174,31 @@ providers:
     api_key: <key|${ENV_VAR}>    # 密钥，支持环境变量引用
     default_model: <model_id>    # 该 Provider 的默认模型
     env:                         # Provider 级环境配置（可选）
-      HTTPS_PROXY: <proxy_url>   # 常用于代理；也可作为本 Provider 的变量源
+      HTTPS_PROXY: <proxy_url>
     headers:                     # 额外请求头（可选）
       X-Foo: bar
 
 mcp_servers:
   <name>:
-    description: <string>        # 描述（可选）
+    description: <string>
     type: stdio|sse|streamable-http
-    command: <path>              # stdio 模式：可执行文件路径
-    args: [<arg1>, ...]          # stdio 模式：命令参数
-    url: <url>                   # HTTP 模式：服务器 URL
-    headers:                     # HTTP 模式：请求头（可选）
+    command: <path>              # stdio 模式
+    args: [<arg1>, ...]          # stdio 模式
+    url: <url>                   # HTTP 模式
+    headers:                     # HTTP 模式
       Authorization: "Bearer ${TOKEN}"
     env:                         # 额外环境变量（可选）
       KEY: value
-    resident: false              # 是否常驻连接（默认 false）
+    resident: false              # 是否常驻连接
 ```
 
-`providers.<name>.env` 不会修改整个进程的全局环境，而是作为该 Provider 的局部环境源使用：
-
-- 可被同一 Provider 下的 `api_key`、`base_url`、`headers` 中的 `${VAR}` 引用。
-- 会自动识别 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`，并映射到该 Provider 的 HTTP client 代理配置。
-
-示例：
-
-```yaml
-default_provider: openai
-
-providers:
-  openai:
-    env:
-      OPENAI_TOKEN: ${OPENAI_API_KEY}
-      HTTPS_PROXY: http://127.0.0.1:7890
-    api_key: ${OPENAI_TOKEN}
-    default_model: gpt-4o
-```
-
-### 内置 Provider
-
-| Provider | Base URL | 环境变量 | 默认模型 |
-|----------|----------|----------|----------|
-| **openai** | `https://api.openai.com/v1` | `OPENAI_API_KEY` | gpt-4o |
-| **anthropic** | `https://api.anthropic.com/v1` | `ANTHROPIC_API_KEY` | claude-sonnet-4 |
-| **deepseek** | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` | deepseek-chat |
-| **groq** | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | llama-3.3-70b-versatile |
-| **openrouter** | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | anthropic/claude-sonnet-4 |
-| **together** | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | meta-llama/Llama-3-70b-chat-hf |
-| **ollama** | `http://localhost:11434/v1` | — | qwen2.5:latest |
-
-所有 Provider 通过 OpenAI 兼容协议接入。运行时通过 `/provider` 命令或 `Ctrl+K` 在线切换。
+> `providers.<name>.env` 不修改全局环境，仅作为该 Provider 的局部变量源，支持 `${VAR}` 引用和自动代理配置。
 
 ---
 
-## 权限模式
+## 使用指南
 
-控制 Agent 执行 Bash 命令时的授权策略。通过 `/mode` 命令切换。
-
-### 三种模式
-
-| 模式 | 行为 | 适用场景 |
-|------|------|----------|
-| **YOLO** | 所有命令自动执行，无需确认 | 可信隔离环境、CTF |
-| **MANUAL** | 每条命令都需人工确认 | 生产环境、敏感操作（默认） |
-| **AI** | 基于风险评估自动决策 | 日常使用推荐 |
-
-### AI 模式决策流程
-
-```
-命令提交
-  │
-  ├─ 命中 allowlist？ ─── 是 ──→ 自动执行
-  │
-  └─ 否 ──→ 风险评估
-              │
-              ├─ risk: low ──→ 自动执行
-              └─ risk: high/uncertain ──→ 请求人工确认
-```
-
----
-
-## Agent 系统
-
-### 内置 Agent
-
-| Agent | 定位 | 核心技能 |
-|-------|------|----------|
-| **code-audit** | 代码安全审计 — 攻击面盘点 + 多介质 SAST + 数据流复核 | `security-code-analysis`, `sast-scan`, `dataflow-analysis` |
-| **pentest** | 渗透测试 — 浏览器自动化 + Web 漏洞检测 | `agent-browser`, SQL 注入/XSS/IDOR 等 12 项 |
-| **host-defense** | 主机防护 — 基线检查 + 入侵检测 + 应急响应 | `baseline-check`, `intrusion-detection`, `malware-detect` |
-
-Agent 定义文件位于 `~/.aster/agents/`，启动时按字母序加载，第一个为默认 Agent。
-默认优先加载 `name: code-audit`（如果存在），否则回退到加载序中的第一个 Agent。
-
-### Agent YAML Schema
-
-```yaml
-name: my-agent                    # Agent 标识名
-role: |                           # 角色定义
-  安全代码审计专家
-background: |                     # 能力背景
-  精通 OWASP Top 10，熟悉多种语言的安全编码规范
-instruction: |                    # 行为指令
-  1. 先扫描再分析
-  2. 每个发现必须有数据流证据
-
-# 模型覆盖（可选，不设则用全局默认）
-model_id: gpt-4o
-
-# 可用工具
-tool_names:
-  - list_files
-  - read_file
-  - rg
-  - bash
-  - list_skills
-  - load_skills
-
-# 可用技能（Agent 上下文中可加载的技能列表）
-skill_names:
-  - sast-scan
-  - dataflow-analysis
-
-# 强制预加载技能（总是注入 prompt，无法通过 /skill disable 禁用）
-preload_skills:
-  - security-code-analysis
-
-# Agent 专属 MCP 服务器（仅该 Agent 可用）
-mcp_servers:
-  - name: syntaxflow
-    type: stdio
-    command: yak
-    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
-
-# 执行策略
-policies:
-  max_iterations: 1000            # 最大迭代次数
-  allow_bash: true                # 是否启用 bash 工具
-  enable_history_compaction: true # Token 超限时自动压缩历史
-  result_source: latest_step_result  # 结果提取策略
-
-```
-
-### 自定义 Agent 示例
-
-创建 `~/.aster/agents/api-audit.yaml`：
-
-```yaml
-name: api-audit
-role: API 接口安全审计专家
-background: |
-  专注于 REST/GraphQL API 的认证、授权、输入校验和速率限制审计。
-  熟悉 JWT、OAuth2、RBAC 等安全机制。
-instruction: |
-  1. 先用 list_files 了解项目结构
-  2. 用 rg 搜索路由定义和中间件配置
-  3. 加载 sast-scan 技能进行静态分析
-  4. 重点关注：未鉴权端点、SQL 注入、越权访问
-  5. 输出结构化审计报告
-
-skill_names:
-  - sast-scan
-  - sql-injection-comprehensive
-  - auth-comprehensive
-  - idor-detection
-
-tool_names:
-  - list_files
-  - read_file
-  - rg
-  - bash
-  - list_skills
-  - load_skills
-
-policies:
-  max_iterations: 500
-  allow_bash: true
-  enable_history_compaction: true
-```
-
-保存后重启 aster，即可通过 `/agent api-audit` 切换。
-
-### Agent 切换
-
-```
-/agent                  # 打开 Agent 选择器
-/agent code-audit       # 直接切换到 code-audit
-Ctrl+K                  # 快捷键打开选择器
-```
-
----
-
-## 技能系统
-
-24 个内嵌安全分析技能，按 Agent 的 `skill_names` 字段控制可用范围：
-
-| 类别 | 技能 |
-|------|------|
-| **SAST** | `sast-scan` — Semgrep 多通道扫描（本地规则集，覆盖 6 语言） |
-| **数据流** | `dataflow-analysis` — SyntaxFlow MCP 追踪（topdef/bottomUse） |
-| **Web 安全** | `sql-injection-comprehensive`, `file-upload`, `cors-misconfiguration`, `jwt-weakness`, `idor-detection`, `vertical-privilege-escalation`, `unauthorized-access` |
-| **认证安全** | `auth-comprehensive`, `registration-abuse`, `notification-abuse` |
-| **隐私安全** | `sensitive-info-exposure`, `secret-detection` |
-| **主机安全** | `baseline-check`, `intrusion-detection`, `malware-detect`, `emergency-response`, `log-analysis` |
-| **浏览器** | `agent-browser` — Web 安全浏览器自动化 |
-| **依赖** | `dependency-audit` — 第三方组件审计 |
-
-### 加载机制
-
-```
-Agent YAML: skill_names → SkillsCatalog 构建可用列表
-                              ↓
-运行时: Agent 调用 load_skills 工具 → 技能指令注入当前 prompt context
-                              ↓
-两种执行模式:
-  - inline: 技能指令直接注入当前 Agent 上下文
-  - fork:   启动子 Agent 独立执行技能任务
-```
-
-### 第二阶段框架层规则补充
-
-当前自建规则已经补到一批高价值的框架/API 入口，重点覆盖“通用漏洞类别已存在，但主流框架入口仍缺席”的空位：
-
-- Go：`http.Redirect`、`gin.Context.Redirect`、`Header().Set/Add(...)`、`sqlx`、`reform`、`pop`、`ent`、Beego / gin 上传落盘路径
-- Java：Spring MVC `redirect:`、`RedirectView`、`ModelAndView("redirect:...")`、`GroovyShell.evaluate`、`ScriptEngine.eval`、`Part.write(...)`、下载响应头文件名注入、Controller 视图名可控 SSTI
-- Python：Flask / Django / FastAPI `redirect(...)`、`render_template_string(...)`、`jinja2.Template(...).render(...)`、Django Storage / FastAPI UploadFile 保存路径
-- JavaScript / TypeScript：Koa / Fastify / Next.js `redirect(...)`、Vue `v-html` 存储型 XSS 入口、`undici` SSRF sink
-
-当前 README 不再手写维护规则总数，具体覆盖范围以 `semgrep-rules/` 目录和对应最小样例为准。
-
-### 运行时管理
-
-```
-/skill                        # 查看所有技能状态
-/skill enable sast-scan       # 启用技能
-/skill disable sast-scan      # 禁用技能
-```
-
-> 说明：若某技能被当前 Agent 配置在 `preload_skills` 中，则属于“强制启用”，运行时不可禁用。
-
----
-
-## MCP 集成
-
-### 全局 MCP vs Agent 专属 MCP
-
-| 类型 | 定义位置 | 可见范围 | 适用场景 |
-|------|----------|----------|----------|
-| **全局** | `~/.aster/config.yaml` 的 `mcp_servers` | 所有 Agent | 通用工具（如 SyntaxFlow） |
-| **Agent 专属** | Agent YAML 的 `mcp_servers` 字段 | 仅该 Agent | 特定场景工具 |
-
-### 三种传输协议
-
-**stdio — 本地子进程**
-
-```yaml
-mcp_servers:
-  syntaxflow:
-    type: stdio
-    command: /usr/local/bin/yak
-    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
-    resident: false
-```
-
-**sse — Server-Sent Events**
-
-```yaml
-mcp_servers:
-  remote-tool:
-    type: sse
-    url: https://mcp.example.com/sse
-    headers:
-      Authorization: "Bearer ${MCP_TOKEN}"
-```
-
-**streamable-http — 流式 HTTP**
-
-```yaml
-mcp_servers:
-  cloud-tool:
-    type: streamable-http
-    url: https://mcp.example.com/api
-    headers:
-      Authorization: "Bearer ${MCP_TOKEN}"
-```
-
-### 将 MCP 挂载到指定 Agent
-
-在 Agent YAML 中添加 `mcp_servers` 字段，该 MCP 仅对此 Agent 可用：
-
-```yaml
-# ~/.aster/agents/code-audit.yaml
-name: code-audit
-role: 代码安全审计专家
-skill_names:
-  - sast-scan
-  - dataflow-analysis
-tool_names:
-  - list_files
-  - read_file
-  - rg
-  - bash
-
-# 专属 MCP：仅 code-audit 可使用
-mcp_servers:
-  - name: syntaxflow
-    description: SyntaxFlow 数据流分析引擎
-    type: stdio
-    command: yak
-    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
-```
-
-全局 MCP 对所有 Agent 可见，Agent 专属 MCP 仅在切换到该 Agent 时加载。两者的工具都会注册到 Agent 的可用工具列表中。
-
-### 运行时管理
-
-```
-/mcp                          # 查看所有 MCP 服务器状态
-/mcp connect syntaxflow       # 连接 MCP 服务器
-/mcp disconnect syntaxflow    # 断开连接
-```
-
----
-
-## ReAct 执行引擎
-
-### 四阶段架构
-
-```
-用户输入
-  │
-  ▼
-┌─────────────────────────────────────────────────┐
-│  Plan Phase — 任务分解                            │
-│  将用户输入拆解为有序步骤（简单任务自动跳过）          │
-└────────────────────────┬────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────┐
-│  Step Phase — Think-Act-Observe 循环              │
-│                                                   │
-│  Think: LLM 分析当前状态，决定下一步行动            │
-│    ↓                                              │
-│  Act: 调用工具（bash/read_file/rg/MCP/sub_agent） │
-│    ↓                                              │
-│  Observe: 获取工具执行结果，判断是否完成            │
-│    ↓                                              │
-│  未完成 → 回到 Think（直到 max_iterations）        │
-└────────────────────────┬────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────┐
-│  Summary Phase — 步骤结果摘要                      │
-└────────────────────────┬────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────┐
-│  FinalAnswer Phase — 输出结构化结果                 │
-└─────────────────────────────────────────────────┘
-```
-
-### 执行策略参数
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `max_iterations` | 最大迭代次数 | 1000 |
-| `allow_bash` | 是否启用 bash 工具 | true |
-| `enable_history_compaction` | Token 超限时压缩历史 | true |
-| `result_source` | 结果提取策略：`latest_step_result` / `final_answer` / `step_summary` | latest_step_result |
-
-### 子 Agent 委派
-
-Agent 可通过 `sub_agent` 工具将子任务委派给其他 Agent：
-
-- 子 Agent 继承父级的工具、MCP 和 bash 权限
-- 独立的工作空间命名空间（`agents/skill-{name}-{callId}`）
-- 递归深度限制防止无限嵌套
-
----
-
-## 外部依赖
-
-ASTER 核心功能开箱即用，以下外部工具可增强特定场景能力：
-
-### 渗透测试 — agent-browser
-
-`pentest` Agent 依赖 [agent-browser](https://github.com/vercel-labs/agent-browser) 进行浏览器自动化、HAR 流量抓取和交互式 Web 安全测试。
-
-```bash
-# npm（推荐）
-npm install -g agent-browser && agent-browser install
-
-# Homebrew (macOS)
-brew install agent-browser && agent-browser install
-
-# Cargo (Rust)
-cargo install agent-browser && agent-browser install
-```
-
-**系统要求：** Chrome 浏览器（首次 `agent-browser install` 自动下载）。
-
-> 未安装时：pentest Agent 的浏览器自动化技能不可用，但 SQL 注入、IDOR、CORS 等检测技能仍可工作。
-
-### 代码分析 — yak 引擎（SyntaxFlow SSA）
-
-`dataflow-analysis` 技能通过 MCP 调用 [yak 引擎](https://github.com/yaklang/yaklang) 的 SSA 编译与 SyntaxFlow 查询，实现数据流追踪。
-
-```bash
-# macOS / Linux
-bash <(curl -sS -L http://oss.yaklang.io/install-latest-yak.sh)
-
-# 验证
-yak version
-```
-
-**支持分析语言：** Java、PHP、JavaScript、Go、Python、C
-
-安装后配置 `~/.aster/config.yaml`：
-
-```yaml
-mcp_servers:
-  syntaxflow:
-    type: stdio
-    command: /usr/local/bin/yak  # 替换为 `which yak` 输出
-    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
-```
-
-> 未安装时：`sast-scan`（Semgrep）仍可独立工作，但 `dataflow-analysis` 不可用。
-
----
-
-## TUI 操作
-
-### 斜杠命令
+### TUI 命令
 
 | 命令 | 说明 |
 |------|------|
@@ -579,58 +229,374 @@ mcp_servers:
 | `Ctrl+L` | 清空聊天 |
 | `Ctrl+C` | 取消/退出 |
 
+### 权限模式
+
+控制 Agent 执行 Bash 命令时的授权策略，通过 `/mode` 切换：
+
+| 模式 | 行为 | 适用场景 |
+|------|------|----------|
+| **YOLO** | 所有命令自动执行 | 可信隔离环境、CTF |
+| **MANUAL** | 每条命令需人工确认 | 生产环境、敏感操作（默认） |
+| **AI** | 基于风险评估自动决策 | 日常使用推荐 |
+
+AI 模式会先检查 allowlist，未命中则进行风险评估：low risk 自动执行，high/uncertain 请求确认。
+
 ---
 
-## 目录结构
+## Agent 系统
+
+### 内置 Agent
+
+| Agent | 定位 | 核心技能 |
+|-------|------|----------|
+| **code-audit** | 代码安全审计 | `security-code-analysis`, `sast-scan`, `dataflow-analysis` |
+| **pentest** | 渗透测试 | `agent-browser`, SQL 注入/XSS/IDOR 等 |
+| **host-defense** | 主机防护 | `baseline-check`, `intrusion-detection`, `malware-detect` |
+
+Agent 定义位于 `~/.aster/agents/`，启动时加载。默认优先加载 `code-audit`。
+
+### 自定义 Agent
+
+创建 `~/.aster/agents/api-audit.yaml`：
+
+```yaml
+name: api-audit
+role: API 接口安全审计专家
+background: |
+  专注于 REST/GraphQL API 的认证、授权、输入校验和速率限制审计。
+instruction: |
+  1. 先了解项目结构
+  2. 搜索路由定义和中间件
+  3. 加载 sast-scan 进行静态分析
+  4. 重点关注：未鉴权端点、SQL 注入、越权访问
+
+skill_names:
+  - sast-scan
+  - sql-injection-comprehensive
+  - auth-comprehensive
+  - idor-detection
+
+tool_names:
+  - list_files
+  - read_file
+  - rg
+  - bash
+  - list_skills
+  - load_skills
+
+policies:
+  max_iterations: 500
+  allow_bash: true
+  enable_history_compaction: true
+```
+
+保存后重启，通过 `/agent api-audit` 切换使用。
+
+### Agent YAML 字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `name` | Agent 标识名 |
+| `role` | 角色定义 |
+| `background` | 能力背景描述 |
+| `instruction` | 行为指令 |
+| `model_id` | 模型覆盖（可选） |
+| `tool_names` | 可用工具列表 |
+| `skill_names` | 可加载的技能列表 |
+| `preload_skills` | 强制预加载技能（不可禁用） |
+| `mcp_servers` | Agent 专属 MCP 服务器 |
+| `policies` | 执行策略参数 |
+
+---
+
+## 技能系统
+
+26+ 个内嵌安全分析技能，按 Agent 的 `skill_names` 配置控制可用范围：
+
+| 类别 | 技能 |
+|------|------|
+| **SAST** | `sast-scan` — Semgrep 多语言扫描（本地规则集） |
+| **数据流** | `dataflow-analysis` — SyntaxFlow topdef/bottomUse 追踪 |
+| **Web 安全** | `sql-injection-comprehensive`, `file-upload`, `cors-misconfiguration`, `jwt-weakness`, `idor-detection`, `vertical-privilege-escalation`, `unauthorized-access` |
+| **认证** | `auth-comprehensive`, `registration-abuse`, `notification-abuse` |
+| **隐私** | `sensitive-info-exposure`, `secret-detection` |
+| **主机** | `baseline-check`, `intrusion-detection`, `malware-detect`, `emergency-response`, `log-analysis` |
+| **浏览器** | `agent-browser` — Web 安全浏览器自动化 |
+| **依赖** | `dependency-audit` — 第三方组件审计 |
+
+### 技能加载机制
 
 ```
-~/.aster/
-├── config.yaml              # 全局配置（Provider + MCP）
-├── agents/                  # Agent YAML 定义
-│   ├── code-audit.yaml
-│   ├── pentest.yaml
-│   ├── host-defense.yaml
-│   └── example.yaml
-├── data.db                  # 会话存储（SQLite）
-└── sessions/                # 会话数据
+Agent YAML skill_names → 构建可用列表
+                          ↓
+运行时: Agent 调用 load_skills → 技能指令注入 prompt
+                          ↓
+执行模式:
+  - inline: 注入当前 Agent 上下文
+  - fork:   启动子 Agent 独立执行
+```
+
+### 运行时管理
+
+```
+/skill                        # 查看所有技能状态
+/skill enable sast-scan       # 启用
+/skill disable sast-scan      # 禁用
+```
+
+> `preload_skills` 中的技能为强制启用，不可通过 `/skill disable` 禁用。
+
+---
+
+## MCP 集成
+
+### 全局 vs Agent 专属
+
+| 类型 | 定义位置 | 可见范围 |
+|------|----------|----------|
+| 全局 | `config.yaml` 的 `mcp_servers` | 所有 Agent |
+| Agent 专属 | Agent YAML 的 `mcp_servers` | 仅该 Agent |
+
+### 传输协议
+
+**stdio — 本地子进程**
+
+```yaml
+mcp_servers:
+  syntaxflow:
+    type: stdio
+    command: /usr/local/bin/yak
+    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
+```
+
+**sse — Server-Sent Events**
+
+```yaml
+mcp_servers:
+  remote-tool:
+    type: sse
+    url: https://mcp.example.com/sse
+    headers:
+      Authorization: "Bearer ${MCP_TOKEN}"
+```
+
+**streamable-http — 流式 HTTP**
+
+```yaml
+mcp_servers:
+  cloud-tool:
+    type: streamable-http
+    url: https://mcp.example.com/api
+```
+
+### 运行时管理
+
+```
+/mcp                          # 查看状态
+/mcp connect syntaxflow       # 连接
+/mcp disconnect syntaxflow    # 断开
+```
+
+---
+
+## 外部依赖
+
+ASTER 核心功能开箱即用。以下外部工具可增强特定场景：
+
+### agent-browser（渗透测试）
+
+`pentest` Agent 依赖 [agent-browser](https://github.com/anthropics/agent-browser) 进行浏览器自动化和 Web 安全测试。
+
+```bash
+npm install -g agent-browser && agent-browser install
+```
+
+> 未安装时：浏览器自动化不可用，但 SQL 注入、IDOR 等检测技能仍可工作。
+
+### yak 引擎（数据流分析）
+
+`dataflow-analysis` 技能通过 MCP 调用 [yak 引擎](https://github.com/yaklang/yaklang) 的 SyntaxFlow SSA 实现数据流追踪。
+
+```bash
+bash <(curl -sS -L http://oss.yaklang.io/install-latest-yak.sh)
+```
+
+安装后在 `config.yaml` 中配置 MCP：
+
+```yaml
+mcp_servers:
+  syntaxflow:
+    type: stdio
+    command: yak
+    args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
+```
+
+> 未安装时：`sast-scan` 仍可独立工作，但 `dataflow-analysis` 不可用。
+
+---
+
+## 项目结构
+
+```
+~/.aster/                        # 用户配置目录
+├── config.yaml                  # Provider + MCP 配置
+├── agents/                      # Agent YAML 定义
+├── data.db                      # 会话存储（SQLite）
+└── sessions/                    # 会话数据
 ```
 
 ```
-源码:
-cmd/aster/                   # CLI 入口
+源码结构:
+cmd/aster/                       # CLI 入口
 internal/
-  react/                     # ReAct Agent 框架（执行引擎、调度器、工厂）
-  ai/                        # LLM 抽象层（OpenAI 兼容协议）
-  tui/                       # 终端 UI（Bubbletea）
-  mcp/                       # MCP 服务器管理
-  builtin_tools/             # 内置工具集
-  builtin_providers/         # Provider 预设
-  service/                   # 技能服务
-  memory/                    # Agent 时间线记忆
-skills/                      # 内嵌技能定义（按 agent 分组）
-  common/                    # 通用技能
-  code-audit/                # 代码审计技能
-  pentest/                   # 渗透测试技能
-  host-defense/              # 主机防御技能
-semgrep-rules/               # SAST 规则（6 语言，本地自建 + 社区精选）
+├── react/                       # ReAct Agent 框架（执行引擎、调度器）
+├── ai/                          # LLM 抽象层
+├── tui/                         # 终端 UI（Bubbletea）
+├── mcp/                         # MCP 服务器管理
+├── builtin_tools/               # 内置工具（bash, read_file, rg 等）
+├── builtin_providers/           # Provider 预设
+├── service/                     # 技能服务
+└── utils/                       # 通用工具
+skills/                          # 内嵌技能定义
+├── common/                      # 通用技能
+├── code-audit/                  # 代码审计技能
+├── pentest/                     # 渗透测试技能
+└── host-defense/                # 主机防御技能
+semgrep-rules/                   # SAST 规则集（6 语言）
 ```
+
+---
+
+## 开发
+
+### 前置要求
+
+- Go 1.25+
+- Make
+
+### 构建与测试
+
+```bash
+make build          # 编译 → ./aster
+make test           # go test ./... -race -timeout 300s
+make vet            # go vet ./...
+```
+
+### 架构概览
+
+```mermaid
+graph TB
+    subgraph UI ["表示层 — Terminal TUI"]
+        ChatView[Chat View<br>对话渲染 · 流式输出]
+        InputModel[Input Model<br>用户输入 · 斜杠命令]
+        Sidebar[Sidebar<br>会话列表 · Agent 切换]
+        ThinkingPanel[Thinking Panel<br>推理过程展示]
+    end
+
+    subgraph Engine ["执行层 — ReAct Agent Engine"]
+        Scheduler[Runtime Scheduler<br>阶段调度 · 迭代控制]
+        Planner[Task Planner<br>任务分解]
+        StepRunner[Step Runner<br>Think-Act-Observe 循环]
+        Compressor[History Compressor<br>Token 预算 · 上下文压缩]
+        Emitter[Event Emitter<br>状态变更 · 流式事件]
+
+        Scheduler --> Planner
+        Scheduler --> StepRunner
+        Scheduler --> Compressor
+        Scheduler --> Emitter
+    end
+
+    subgraph Capabilities ["能力层"]
+        direction LR
+        subgraph Tools ["Builtin Tools"]
+            Bash[bash<br>命令执行 · 权限控制]
+            ReadFile[read_file]
+            Rg[rg<br>代码搜索]
+            ListFiles[list_files]
+            SubAgent[sub_agent<br>子 Agent 委派]
+        end
+
+        subgraph Skills ["Skill System"]
+            SkillCatalog[Skills Catalog<br>技能注册 · 过滤]
+            SkillLoader[Skill Loader<br>YAML 解析 · Prompt 注入]
+            BuiltinSkills[26+ 内嵌技能<br>SAST · 数据流 · Web 安全<br>认证 · 主机防护]
+        end
+
+        subgraph MCP ["MCP Protocol"]
+            MCPManager[MCP Manager<br>连接管理 · 工具适配]
+            StdioTransport[stdio<br>本地子进程]
+            SSETransport[SSE<br>Server-Sent Events]
+            HTTPTransport[Streamable HTTP]
+        end
+    end
+
+    subgraph AI ["AI 层 — LLM Abstraction"]
+        AIClient[AI Client<br>ChatClient · StreamingChatClient]
+        ProviderRegistry[Provider Registry<br>模型发现 · 能力查询]
+
+        subgraph Providers ["Providers"]
+            direction LR
+            OpenAI[OpenAI]
+            Anthropic[Anthropic]
+            DeepSeek[DeepSeek]
+            Others[Groq · OpenRouter<br>Together · Ollama]
+        end
+
+        AIClient --> Providers
+        ProviderRegistry --> Providers
+    end
+
+    subgraph Storage ["持久层"]
+        direction LR
+        SessionStore[Session Store<br>SQLite]
+        EventLog[Event Log<br>追加写入]
+        BlobStore[Blob Store<br>状态快照 · 历史备份]
+        SemgrepRules[Semgrep Rules<br>6 语言本地规则集]
+    end
+
+    InputModel --> Scheduler
+    Emitter --> ChatView
+    Emitter --> ThinkingPanel
+
+    StepRunner --> Tools
+    StepRunner --> MCP
+    Planner --> SkillCatalog
+    SkillLoader --> StepRunner
+
+    StepRunner --> AIClient
+    Planner --> AIClient
+
+    MCPManager --> StdioTransport
+    MCPManager --> SSETransport
+    MCPManager --> HTTPTransport
+
+    Scheduler --> SessionStore
+    Scheduler --> EventLog
+    Scheduler --> BlobStore
+```
+
+### 执行策略参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `max_iterations` | 最大迭代次数 | 1000 |
+| `allow_bash` | 是否启用 bash 工具 | true |
+| `enable_history_compaction` | Token 超限时压缩历史 | true |
+| `result_source` | 结果提取策略 | latest_step_result |
 
 ---
 
 ## 致谢
 
-ASTER 的构建离不开以下开源项目：
-
 | 项目 | 用途 | 许可证 |
 |------|------|--------|
-| [Yaklang](https://github.com/yaklang/yaklang) | SyntaxFlow SSA 数据流分析引擎 | AGPL-3.0 |
-| [agent-browser](https://github.com/vercel-labs/agent-browser) | AI 浏览器自动化 CLI | Apache-2.0 |
-| [Semgrep](https://github.com/semgrep/semgrep) | SAST 静态分析扫描引擎 | LGPL-2.1 |
-| [Bubbletea](https://github.com/charmbracelet/bubbletea) / [Lipgloss](https://github.com/charmbracelet/lipgloss) | 终端 TUI 框架与样式库 | MIT |
+| [Yaklang](https://github.com/yaklang/yaklang) | SyntaxFlow SSA 数据流分析 | AGPL-3.0 |
+| [Semgrep](https://github.com/semgrep/semgrep) | SAST 静态分析引擎 | LGPL-2.1 |
+| [Bubbletea](https://github.com/charmbracelet/bubbletea) | 终端 TUI 框架 | MIT |
 | [mcp-go](https://github.com/mark3labs/mcp-go) | Go MCP 协议实现 | MIT |
 
 ---
 
 ## License
 
-MIT
+本项目基于 [MIT License](LICENSE) 开源。详见 [LICENSE](LICENSE) 文件。
