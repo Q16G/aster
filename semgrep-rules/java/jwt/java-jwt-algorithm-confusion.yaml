@@ -1,0 +1,96 @@
+rules:
+  # ============================================================
+  # auth0 / java-jwt:
+  #   JWT.decode(token) 只解码不验签；之后 require(...).build() 时
+  #   开发者必须传入与签名 alg 匹配的 Algorithm.HMAC* 或 RSA*。
+  #
+  # 常见反模式：根据 jwt.getAlgorithm() 动态选择算法 → 攻击者把
+  #   alg 改成 HS256，服务端用 RSA 公钥当密钥校验，伪造成功。
+  # ============================================================
+
+  - id: java-jwt-algorithm-confusion-from-header
+    severity: ERROR
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT algorithm confusion (CWE-347): the verification algorithm is
+      derived from the token header (e.g. via DecodedJWT#getAlgorithm)
+      and then passed to JWT.require(...). An attacker can change the
+      header alg to HS256 and use the server's public key as the HMAC
+      shared secret to forge tokens.
+
+      Mitigation:
+        * Hardcode the expected algorithm at verification time:
+            JWT.require(Algorithm.RSA256(publicKey, null)).build()
+        * Reject tokens whose header alg differs from the configured one.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              DecodedJWT $JWT = com.auth0.jwt.JWT.decode($T);
+              ...
+              $V = com.auth0.jwt.JWT.require($JWT.getAlgorithm());
+          - pattern: |
+              DecodedJWT $JWT = JWT.decode($T);
+              ...
+              $V = JWT.require($JWT.getAlgorithm());
+          - pattern: |
+              Algorithm $A = Algorithm.HMAC256($PUBKEY.getEncoded());
+          - pattern: |
+              Algorithm $A = Algorithm.HMAC256($JWT.getAlgorithm());
+      # 绑定明确算法的安全用法不报告
+      - pattern-not: |
+          $V = JWT.require(Algorithm.RSA256(...));
+      - pattern-not: |
+          $V = JWT.require(Algorithm.RSA384(...));
+      - pattern-not: |
+          $V = JWT.require(Algorithm.RSA512(...));
+      - pattern-not: |
+          $V = JWT.require(Algorithm.ECDSA256(...));
+      - pattern-not: |
+          $V = JWT.require(Algorithm.ECDSA384(...));
+      - pattern-not: |
+          $V = JWT.require(Algorithm.ECDSA512(...));
+
+  # ============================================================
+  # jjwt: parser().setSigningKey(publicKey) + 不限定算法
+  #   → 同样会被 alg=HS256 攻击。0.11 起推荐 verifyWith(Key) +
+  #   onlyVerifyWith(SignatureAlgorithm)。
+  # ============================================================
+
+  - id: java-jwt-jjwt-algorithm-confusion
+    severity: ERROR
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      Possible JWT algorithm confusion in jjwt: parser is configured with
+      setSigningKey(...) but does not restrict the accepted signing
+      algorithm. If the key is an RSA / EC public key, attacker-supplied
+      tokens with alg=HS256 may be accepted.
+
+      Mitigation:
+        * Use Jwts.parser().verifyWith(publicKey).build() (jjwt >= 0.12)
+          which is bound to the key type, OR
+        * Pin the algorithm via the JwtParserBuilder API (e.g.
+          .require("alg", "RS256")) and reject mismatches.
+    patterns:
+      - pattern-either:
+          - pattern: Jwts.parser().setSigningKey($KEY).parse(...)
+          - pattern: Jwts.parser().setSigningKey($KEY).parseClaimsJws(...)
+          - pattern: Jwts.parserBuilder().setSigningKey($KEY).build().parse(...)
+          - pattern: Jwts.parserBuilder().setSigningKey($KEY).build().parseClaimsJws(...)
+      - pattern-not: Jwts.parser().setSigningKey("...").parse(...)
+      - pattern-not: Jwts.parserBuilder().setSigningKey("...").build().parse(...)

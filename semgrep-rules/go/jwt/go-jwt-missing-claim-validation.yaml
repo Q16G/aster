@@ -1,0 +1,69 @@
+rules:
+  # ============================================================
+  # 解析后未校验关键 claims：exp / iss / aud。
+  #
+  # golang-jwt v5 起，jwt.Parse 默认会自动校验 exp/nbf/iat（如果
+  # claim 存在），但仍 NOT 校验 iss / aud。许多代码使用 v4，且会在
+  # ParseWithClaims 之后只读 token.Claims 字段而不调用 Valid()。
+  #
+  # 这条规则做"启发式"检测：在解析后若没有出现以下任一项，就告警：
+  #   * jwt.NewParser(jwt.WithIssuer / WithAudience)
+  #   * claims.VerifyIssuer / claims.VerifyAudience / claims.VerifyExpiresAt
+  #   * jwt.WithValidMethods + RegisteredClaims (v5 默认走时间校验)
+  # ============================================================
+
+  - id: go-jwt-missing-claim-validation
+    severity: WARNING
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-345
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      JWT claim validation appears incomplete (CWE-345). The token is
+      parsed but neither issuer nor audience is verified. Tokens signed
+      by the same key but issued for a different application/tenant can
+      then be accepted by this service.
+
+      Mitigation:
+        * Construct a parser with jwt.NewParser(
+            jwt.WithIssuer("https://your-issuer/"),
+            jwt.WithAudience("your-api"),
+            jwt.WithExpirationRequired(),
+          ) and use it for parsing.
+        * Or call claims.VerifyIssuer / claims.VerifyAudience explicitly.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOK, $ERR := jwt.Parse($T, ...)
+              ...
+          - pattern: |
+              $TOK, $ERR := jwt.ParseWithClaims($T, ...)
+              ...
+      - pattern-not-inside: |
+          jwt.NewParser(..., jwt.WithIssuer(...), ...)
+          ...
+      - pattern-not-inside: |
+          jwt.NewParser(..., jwt.WithAudience(...), ...)
+          ...
+      # 显式校验也排除
+      - pattern-not: |
+          $TOK, $ERR := jwt.Parse($T, ...)
+          ...
+          $C.VerifyIssuer(...)
+      - pattern-not: |
+          $TOK, $ERR := jwt.Parse($T, ...)
+          ...
+          $C.VerifyAudience(...)
+      - pattern-not: |
+          $TOK, $ERR := jwt.ParseWithClaims($T, ...)
+          ...
+          $C.VerifyIssuer(...)
+      - pattern-not: |
+          $TOK, $ERR := jwt.ParseWithClaims($T, ...)
+          ...
+          $C.VerifyAudience(...)
