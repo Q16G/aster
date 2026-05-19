@@ -1,0 +1,138 @@
+rules:
+  - id: javascript-download-arbitrary-file
+    mode: taint
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73): a user-controlled
+      value flows into a filesystem path or download helper. Attackers can
+      supply absolute paths, "/etc/passwd", or path traversal sequences
+      ("../../") to read arbitrary files from the server.
+
+      Mitigation:
+        * Map user input to a server-side allowlist of identifiers -> real paths.
+        * Resolve against a fixed base directory and verify the result with
+          path.resolve + startsWith(base).
+        * Strip the path component with path.basename() before use.
+        * For express's res.sendFile / res.download, set the "root" option and
+          enable dotfiles: "deny".
+    pattern-sources:
+      # ---------- Express / Koa / Fastify ----------
+      - pattern: $REQ.query.$NAME
+      - pattern: $REQ.query[$NAME]
+      - pattern: $REQ.params.$NAME
+      - pattern: $REQ.params[$NAME]
+      - pattern: $REQ.body.$NAME
+      - pattern: $REQ.body[$NAME]
+      - pattern: $REQ.headers.$NAME
+      - pattern: $REQ.headers[$NAME]
+      - pattern: $REQ.cookies.$NAME
+      - pattern: $REQ.cookies[$NAME]
+      - pattern: $REQ.url
+      - pattern: $REQ.originalUrl
+      - pattern: $REQ.path
+      - pattern: $REQ.get($X)
+      - pattern: $REQ.header($X)
+      # ---------- NestJS / 框架装饰器（TS） ----------
+      - patterns:
+          - pattern: $X
+          - pattern-inside: |
+              function $F(..., @Query(...) $X, ...) { ... }
+      - patterns:
+          - pattern: $X
+          - pattern-inside: |
+              function $F(..., @Param(...) $X, ...) { ... }
+      - patterns:
+          - pattern: $X
+          - pattern-inside: |
+              function $F(..., @Body(...) $X, ...) { ... }
+      - patterns:
+          - pattern: $X
+          - pattern-inside: |
+              function $F(..., @Headers(...) $X, ...) { ... }
+      # ---------- URL 解析 ----------
+      - pattern: new URL($URL).searchParams.get(...)
+      - pattern: $URL_OBJ.searchParams.get(...)
+      # ---------- Node.js 命令行 / 环境变量 ----------
+      - pattern: process.argv[$IDX]
+      - pattern: process.env.$NAME
+      - pattern: process.env[$NAME]
+
+    pattern-propagators:
+      - pattern: $A.push($T)
+        from: $T
+        to: $A
+      - pattern: $A.concat($T)
+        from: $T
+        to: $A
+
+    pattern-sanitizers:
+      - pattern: path.basename(...)
+      - pattern: parseInt(...)
+      - pattern: Number(...)
+      # 自定义校验
+      - patterns:
+          - pattern-either:
+              - pattern: validatePath(...)
+              - pattern: sanitizePath(...)
+              - pattern: cleanPath(...)
+              - pattern: checkPathTraversal(...)
+              - pattern: $X.validatePath(...)
+              - pattern: $X.sanitizePath(...)
+
+    pattern-sinks:
+      # ---------- fs ----------
+      - pattern: fs.readFile($X, ...)
+      - pattern: fs.readFileSync($X, ...)
+      - pattern: fs.createReadStream($X, ...)
+      - pattern: fs.open($X, ...)
+      - pattern: fs.openSync($X, ...)
+      - pattern: fs.stat($X, ...)
+      - pattern: fs.statSync($X)
+      - pattern: fs.lstat($X, ...)
+      - pattern: fs.access($X, ...)
+      - pattern: fs.copyFile($X, ...)
+      - pattern: fs.copyFileSync($X, ...)
+      - pattern: fs.promises.readFile($X, ...)
+      - pattern: fs.promises.open($X, ...)
+      - pattern: fs.promises.stat($X)
+      - pattern: fs.promises.copyFile($X, ...)
+      # ---------- fs-extra ----------
+      - pattern: fse.readFile($X, ...)
+      - pattern: fse.createReadStream($X, ...)
+      - pattern: fse.copy($X, ...)
+      - pattern: fse.move($X, ...)
+      - pattern: fse.readJson($X, ...)
+      - pattern: fse.readJsonSync($X)
+      # ---------- path 直接操作（resolve 后被传给 fs）----------
+      - pattern: path.resolve($X)
+      - pattern: path.join($DIR, $X)
+      # ---------- Express / Koa 下载 ----------
+      - pattern: $RES.sendFile($X, ...)
+      - pattern: $RES.download($X, ...)
+      - pattern: $RES.attachment($X)
+      # Koa
+      - pattern: $CTX.attachment($X)
+      # Fastify
+      - pattern: $REPLY.sendFile($X, ...)
+      # ---------- NestJS ----------
+      - pattern: new StreamableFile(fs.createReadStream($X))
+      # ---------- 压缩 ----------
+      - pattern: new AdmZip($X)
+      - pattern: yauzl.open($X, ...)
+      - pattern: "tar.x({..., file: $X, ...})"
+      - pattern: "tar.extract({..., file: $X, ...})"
+      # ---------- require / import 动态文件 ----------
+      - pattern: require($X)
+      # ---------- 子进程 cat ----------
+      - pattern: child_process.exec('cat ' + $X, ...)
+      - pattern: child_process.execSync('cat ' + $X)
+      - pattern: exec('cat ' + $X, ...)
