@@ -1,0 +1,111 @@
+rules:
+  # ============================================================
+  # JWT Algorithm Confusion (CVE-2015-9235 类)
+  #
+  # golang-jwt / jwt-go 的 Parse 接收 keyFunc，调用方负责返回 key。
+  # 经典反模式：keyFunc 不检查 token.Method，直接返回 RSA 公钥。
+  # 攻击者可把 token header 改为 alg=HS256，于是服务端把"公钥字节"
+  # 当作 HMAC 共享密钥来验签——而公钥是公开数据，攻击者能伪造任意
+  # token。
+  #
+  # 安全写法是在 keyFunc 中显式断言:
+  #   if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok { ... }
+  # 或用 jwt.ParseWithClaims + WithValidMethods(["RS256"])。
+  # ============================================================
+
+  - id: go-jwt-algorithm-confusion
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT algorithm confusion (CWE-347): jwt.Parse / ParseWithClaims is
+      called with a keyFunc that returns an asymmetric public key without
+      first validating token.Method. An attacker can craft a token signed
+      with HS256 using the public key as the shared secret; the server
+      will accept it as valid.
+
+      Mitigation:
+        * Inside keyFunc, assert the signing method:
+            if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+              return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+            }
+        * Or call jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
+          and use that parser.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              jwt.Parse($T, func(...) (interface{}, error) {
+                ...
+                return $PUBKEY, ...
+              })
+          - pattern: |
+              jwt.ParseWithClaims($T, $C, func(...) (interface{}, error) {
+                ...
+                return $PUBKEY, ...
+              })
+      # 在 keyFunc 内部出现签名算法断言的就排除掉
+      - pattern-not: |
+          jwt.Parse($T, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodRSA); !ok {
+              ...
+            }
+            ...
+          })
+      - pattern-not: |
+          jwt.Parse($T, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodECDSA); !ok {
+              ...
+            }
+            ...
+          })
+      - pattern-not: |
+          jwt.Parse($T, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodEd25519); !ok {
+              ...
+            }
+            ...
+          })
+      - pattern-not: |
+          jwt.ParseWithClaims($T, $C, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodRSA); !ok {
+              ...
+            }
+            ...
+          })
+      - pattern-not: |
+          jwt.ParseWithClaims($T, $C, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodECDSA); !ok {
+              ...
+            }
+            ...
+          })
+      # 排除调用了 SigningMethodHMAC 校验的（说明应用本来就是 HMAC，
+      # keyFunc 返回的就是真共享密钥）
+      - pattern-not: |
+          jwt.Parse($T, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodHMAC); !ok {
+              ...
+            }
+            ...
+          })
+      - pattern-not: |
+          jwt.ParseWithClaims($T, $C, func(...) (interface{}, error) {
+            ...
+            if _, ok := $TOK.Method.(*jwt.SigningMethodHMAC); !ok {
+              ...
+            }
+            ...
+          })
