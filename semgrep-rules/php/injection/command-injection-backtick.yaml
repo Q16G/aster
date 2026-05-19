@@ -1,23 +1,31 @@
 rules:
   - id: php-injection-command-injection-backtick
-    patterns:
-      - pattern-either:
-          - pattern: |
-              $OUTPUT = `...{$VAR}...`;
-          - pattern: |
-              $OUTPUT = `...$VAR...`;
-          - pattern: |
-              echo `...$VAR...`;
-    message: >
-      OS command injection via the backtick operator with variable
-      interpolation. The backtick operator in PHP executes the enclosed
-      string as a shell command. If user-controlled data is interpolated,
-      an attacker may inject arbitrary commands. Use escapeshellarg() to
-      sanitize input or avoid shell execution entirely.
+    mode: taint
+    severity: ERROR
+    languages: [php]
     metadata:
       cwe: CWE-78
       owasp: "A03:2021"
       confidence: MEDIUM
       needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    message: >
+      OS command injection via the backtick operator or shell_exec with
+      variable interpolation. If user-controlled data is interpolated,
+      an attacker may inject arbitrary commands. Use escapeshellarg() to
+      sanitize input or avoid shell execution entirely.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER
+    pattern-sinks:
+      - pattern: shell_exec($X)
+      - pattern: exec($X)
+      - pattern: system($X)
+      - pattern: passthru($X)
+      - pattern: popen($X, ...)
+      - pattern: proc_open($X, ...)
+    pattern-sanitizers:
+      - pattern: escapeshellarg(...)
+      - pattern: escapeshellcmd(...)
