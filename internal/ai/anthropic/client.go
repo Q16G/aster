@@ -232,11 +232,11 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 			return choices, nil
 		}
 		lastErr = err
-		if attempt >= c.config.MaxRetries {
-			break
-		}
 		if !isRetryable(err) {
 			return nil, err
+		}
+		if attempt >= c.config.MaxRetries {
+			break
 		}
 		waitDuration := time.Duration(math.Min(30, math.Pow(2, float64(attempt)))) * time.Second
 		select {
