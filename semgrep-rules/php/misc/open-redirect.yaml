@@ -2,9 +2,12 @@ rules:
   - id: php-misc-open-redirect
     patterns:
       - pattern-either:
-          - pattern: header("Location: " . $_GET[$KEY]);
-          - pattern: header("Location: " . $_POST[$KEY]);
-          - pattern: header("Location: " . $_REQUEST[$KEY]);
+          - pattern: |
+              header("Location: " . $_GET[$KEY]);
+          - pattern: |
+              header("Location: " . $_POST[$KEY]);
+          - pattern: |
+              header("Location: " . $_REQUEST[$KEY]);
           - pattern: |
               header("Location: " . $URL);
           - pattern: |
@@ -19,9 +22,38 @@ rules:
               $URL = $_REQUEST[$KEY];
               ...
               header("Location: " . $URL);
-          - pattern: header("Location: $_GET[$KEY]");
-          - pattern: header("Location: $_POST[$KEY]");
-          - pattern: header("Location: $_REQUEST[$KEY]");
+          - pattern: |
+              header("Location: $_GET[$KEY]");
+          - pattern: |
+              header("Location: $_POST[$KEY]");
+          - pattern: |
+              header("Location: $_REQUEST[$KEY]");
+          - pattern: |
+              header("location: " . $_GET[$KEY]);
+          - pattern: |
+              header("location: " . $_POST[$KEY]);
+          - pattern: |
+              header("location: " . $_REQUEST[$KEY]);
+          - pattern: |
+              header("location: " . $URL);
+          - pattern: |
+              $URL = $_GET[$KEY];
+              ...
+              header("location: " . $URL);
+          - pattern: |
+              $URL = $_POST[$KEY];
+              ...
+              header("location: " . $URL);
+          - pattern: |
+              $URL = $_REQUEST[$KEY];
+              ...
+              header("location: " . $URL);
+          - pattern: |
+              header("location: $_GET[$KEY]");
+          - pattern: |
+              header("location: $_POST[$KEY]");
+          - pattern: |
+              header("location: $_REQUEST[$KEY]");
     message: >
       Open redirect via header("Location: ...") with user-controlled
       URL. An attacker can craft a link that redirects users to a
