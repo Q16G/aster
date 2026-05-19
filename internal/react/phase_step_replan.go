@@ -46,17 +46,22 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
 	stepContextsPath := a.resolveStepContextsPath()
+	stepTranscriptPath := ""
+	if ref := strings.TrimSpace(a.lastStepTranscriptBlobRef); ref != "" && a.v2Store != nil {
+		stepTranscriptPath = a.v2Store.BlobPath(ref)
+	}
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":       snapshot.CurrentGoal,
-		"current_step":       current,
-		"step_outcome":       rawOutcome,
-		"task_plan":          snapshot.Plan,
-		"step_outcomes":      snapshot.StepOutcomes,
-		"warnings":           snapshot.Warnings,
-		"unresolved":         snapshot.Unresolved,
-		"step_result_path":   stepResultPath,
-		"step_contexts_path": stepContextsPath,
+		"current_goal":         snapshot.CurrentGoal,
+		"current_step":         current,
+		"step_outcome":         rawOutcome,
+		"task_plan":            snapshot.Plan,
+		"step_outcomes":        snapshot.StepOutcomes,
+		"warnings":             snapshot.Warnings,
+		"unresolved":           snapshot.Unresolved,
+		"step_result_path":     stepResultPath,
+		"step_contexts_path":   stepContextsPath,
+		"step_transcript_path": stepTranscriptPath,
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
@@ -366,4 +371,3 @@ func parseSubmitReplanArgs(args any) (stepReplanModelOutput, error) {
 	}
 	return result, nil
 }
-

@@ -162,16 +162,8 @@ func TestAgentAICallProxy_CompressesHistoryAfterResponse(t *testing.T) {
 		t.Fatalf("expected compaction result, got %#v", result)
 	}
 
-	if len(client.seenMessages) != 4 {
-		t.Fatalf("expected raw history to be sent before compaction, got %d messages", len(client.seenMessages))
-	}
-	for _, msg := range client.seenMessages {
-		if msg == nil {
-			continue
-		}
-		if msg.Type == HistoryCompactionRequestType || msg.Type == HistoryCompactionSummaryType {
-			t.Fatalf("unexpected compaction marker before model call: %#v", msg)
-		}
+	if len(client.seenMessages) != 0 {
+		t.Fatalf("expected no raw history to be sent to the model, got %d messages", len(client.seenMessages))
 	}
 
 	var stepFinish *AgentOutputEvent
