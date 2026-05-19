@@ -1,38 +1,32 @@
 rules:
   - id: php-xss-echo-print
-    patterns:
-      - pattern-either:
-          - pattern: echo $_GET[$KEY];
-          - pattern: echo $_POST[$KEY];
-          - pattern: echo $_REQUEST[$KEY];
-          - pattern: echo $_GET[$KEY] . ...;
-          - pattern: echo $_POST[$KEY] . ...;
-          - pattern: echo $_REQUEST[$KEY] . ...;
-          - pattern: echo "..." . $_GET[$KEY] . "...";
-          - pattern: echo "..." . $_POST[$KEY] . "...";
-          - pattern: echo "..." . $_REQUEST[$KEY] . "...";
-          - pattern: echo "...$_GET[$KEY]...";
-          - pattern: echo "...$_POST[$KEY]...";
-          - pattern: echo "...$_REQUEST[$KEY]...";
-          - pattern: print $_GET[$KEY];
-          - pattern: print $_POST[$KEY];
-          - pattern: print $_REQUEST[$KEY];
-          - pattern: print("..." . $_GET[$KEY] . "...");
-          - pattern: print("..." . $_POST[$KEY] . "...");
-          - pattern: print("..." . $_REQUEST[$KEY] . "...");
-      - pattern-not: echo htmlspecialchars(...);
-      - pattern-not: echo htmlentities(...);
-      - pattern-not: print htmlspecialchars(...);
-      - pattern-not: print htmlentities(...);
-    message: >
-      Cross-site scripting (XSS) via echo or print of unsanitized
-      superglobal ($_GET, $_POST, $_REQUEST). User input is output
-      directly without HTML encoding. Use htmlspecialchars($input,
-      ENT_QUOTES, 'UTF-8') to properly escape output.
+    mode: taint
+    severity: ERROR
+    languages: [php]
     metadata:
       cwe: CWE-79
       owasp: "A03:2021"
       confidence: HIGH
       needs_dataflow_confirmation: false
-    severity: ERROR
-    languages: [php]
+    message: >
+      Cross-site scripting (XSS) via echo or print of unsanitized
+      superglobal ($_GET, $_POST, $_REQUEST). User input is output
+      directly without HTML encoding. Use htmlspecialchars($input,
+      ENT_QUOTES, 'UTF-8') to properly escape output.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER
+    pattern-sinks:
+      - pattern: echo $X;
+      - pattern: print($X);
+      - pattern: print $X;
+      - pattern: printf($FMT, ..., $X, ...);
+    pattern-sanitizers:
+      - pattern: htmlspecialchars(...)
+      - pattern: htmlentities(...)
+      - pattern: strip_tags(...)
+      - pattern: intval(...)
+      - pattern: (int)$X

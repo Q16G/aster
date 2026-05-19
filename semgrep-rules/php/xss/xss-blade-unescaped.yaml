@@ -1,16 +1,33 @@
 rules:
   - id: php-xss-blade-unescaped
-    pattern: '{!! ... !!}'
-    message: >
-      Cross-site scripting (XSS) via Laravel Blade unescaped output
-      syntax {!! !!}. This outputs the expression without HTML encoding.
-      If user-controlled data reaches this expression, an attacker can
-      inject malicious scripts. Use the escaped {{ }} syntax instead,
-      or ensure the data is explicitly sanitized before rendering.
+    mode: taint
+    severity: WARNING
+    languages: [php]
     metadata:
       cwe: CWE-79
       owasp: "A03:2021"
-      confidence: LOW
+      confidence: MEDIUM
       needs_dataflow_confirmation: true
-    severity: WARNING
-    languages: [php]
+    message: >
+      Cross-site scripting (XSS) via Laravel Blade unescaped output.
+      Using {!! !!} outputs the expression without HTML encoding.
+      If user-controlled data reaches this expression, an attacker can
+      inject malicious scripts. Use the escaped {{ }} syntax instead,
+      or ensure the data is explicitly sanitized before rendering.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $request->input(...)
+      - pattern: $request->query(...)
+      - pattern: $request->get(...)
+    pattern-sinks:
+      - pattern: echo $X;
+      - pattern: print($X);
+      - pattern: print $X;
+    pattern-sanitizers:
+      - pattern: htmlspecialchars(...)
+      - pattern: htmlentities(...)
+      - pattern: e(...)
+      - pattern: strip_tags(...)

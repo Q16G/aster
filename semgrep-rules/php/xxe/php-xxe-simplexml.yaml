@@ -1,25 +1,30 @@
 rules:
   - id: php-xxe-simplexml
-    patterns:
-      - pattern-either:
-          - pattern: simplexml_load_string($INPUT, ...)
-          - pattern: simplexml_load_file($INPUT, ...)
-          - pattern: new SimpleXMLElement($INPUT, ...)
-      - pattern-not: |
-          libxml_disable_entity_loader(true);
-          ...
-          simplexml_load_string($INPUT, ...);
-    message: >
-      XML external entity (XXE) injection via SimpleXML. Loading
-      user-controlled XML without disabling external entities allows
-      file disclosure, SSRF, and denial of service. Call
-      libxml_disable_entity_loader(true) before parsing (PHP < 8.0),
-      or use LIBXML_NOENT in combination with LIBXML_NONET flag,
-      or migrate to XMLReader with proper configuration.
+    mode: taint
+    severity: ERROR
+    languages: [php]
     metadata:
       cwe: CWE-611
       owasp: "A05:2021"
       confidence: HIGH
       needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    message: >
+      XML external entity (XXE) injection via SimpleXML. Loading
+      user-controlled XML without disabling external entities allows
+      file disclosure, SSRF, and denial of service. Call
+      libxml_disable_entity_loader(true) before parsing (PHP < 8.0),
+      or pass LIBXML_NONET flag.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: file_get_contents("php://input")
+    pattern-sinks:
+      - pattern: simplexml_load_string($X)
+      - pattern: simplexml_load_string($X, ...)
+      - pattern: simplexml_load_file($X)
+      - pattern: simplexml_load_file($X, ...)
+      - pattern: new SimpleXMLElement($X)
+      - pattern: new SimpleXMLElement($X, ...)
+    pattern-sanitizers:
+      - pattern: libxml_disable_entity_loader(true)
