@@ -1,0 +1,92 @@
+rules:
+  - id: go-crypto-weak-algorithm
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-328
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Weak cryptographic algorithm (CWE-327): DES, RC4, MD5, or SHA1 is
+      used in a security-sensitive context. These algorithms are broken
+      or deprecated and should not be used for encryption, signing, or
+      password hashing.
+
+      Mitigation:
+        * Encryption: use AES-GCM (crypto/aes + crypto/cipher).
+        * Hashing: use SHA-256+ (crypto/sha256, crypto/sha512).
+        * Password hashing: use bcrypt / argon2 (golang.org/x/crypto).
+    patterns:
+      - pattern-either:
+          # DES
+          - pattern: des.NewCipher(...)
+          - pattern: des.NewTripleDESCipher(...)
+          # RC4
+          - pattern: rc4.NewCipher(...)
+          # MD5 用于安全场景
+          - pattern: md5.New()
+          - pattern: md5.Sum(...)
+          # SHA1 用于安全场景
+          - pattern: sha1.New()
+          - pattern: sha1.Sum(...)
+
+  - id: go-crypto-insecure-random
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-330
+        - CWE-338
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Insecure random number generator (CWE-338): math/rand is not
+      cryptographically secure. Using it to generate tokens, keys,
+      nonces, or session IDs allows attackers to predict values.
+
+      Mitigation:
+        * Use crypto/rand.Read or crypto/rand.Int for all security-
+          sensitive random values.
+    patterns:
+      - pattern-either:
+          - pattern: rand.Intn(...)
+          - pattern: rand.Int63(...)
+          - pattern: rand.Int63n(...)
+          - pattern: rand.Int31(...)
+          - pattern: rand.Int31n(...)
+          - pattern: rand.Float64(...)
+          - pattern: rand.Read(...)
+          - pattern: rand.New(rand.NewSource(...))
+      # 排除 crypto/rand（包名不同，但 semgrep 不区分 import path）
+      # 通过 pattern-not-inside 排除 import "crypto/rand" 的文件
+      - pattern-not-inside: |
+          import "crypto/rand"
+          ...
+
+  - id: go-crypto-tls-insecure-skip-verify
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-295
+      owasp:
+        - "A07:2021 - Identification and Authentication Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      TLS certificate verification disabled (CWE-295):
+      InsecureSkipVerify = true disables server certificate validation,
+      making the connection vulnerable to man-in-the-middle attacks.
+
+      Mitigation:
+        * Remove InsecureSkipVerify or set it to false.
+        * If connecting to internal services with self-signed certs,
+          configure a custom RootCAs pool instead.
+    patterns:
+      - pattern: "InsecureSkipVerify: true"
