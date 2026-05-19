@@ -1,0 +1,109 @@
+rules:
+  - id: java-redos-tainted-pattern
+    mode: taint
+    severity: ERROR
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-1333
+        - CWE-400
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Regex DoS (CWE-1333 / CWE-400): a user-controlled value is used as
+      a regular expression pattern. java.util.regex (Pattern / Matcher /
+      String#matches / String#split / String#replaceAll) uses a
+      backtracking NFA, so an attacker-supplied pattern can produce
+      exponential blowup ("catastrophic backtracking") and stall the
+      thread, leading to denial of service.
+
+      Mitigation:
+        * Do NOT accept regex patterns from external input.
+        * If unavoidable, run Matcher#find inside a thread that can be
+          cancelled, validate pattern length and forbid nested
+          quantifiers like (a+)+ / (a|aa)+.
+        * Consider RE2/J (com.google.re2j) which is linear-time.
+
+    pattern-sources:
+      # ---------- Servlet / JSP ----------
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getInputStream()
+      - pattern: $REQ.getReader()
+      - pattern: $COOKIE.getValue()
+      # ---------- Spring 注解 ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.PathVariable(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestHeader(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestBody $T $NAME, ...) {
+                ...
+              }
+      # ---------- JAX-RS ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+
+    pattern-sanitizers:
+      - pattern: java.util.regex.Pattern.quote(...)
+      - pattern: Pattern.quote(...)
+      # 强类型解析后字符串集受限
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+      - pattern: java.util.UUID.fromString(...)
+
+    pattern-sinks:
+      - pattern: java.util.regex.Pattern.compile($X)
+      - pattern: java.util.regex.Pattern.compile($X, ...)
+      - pattern: java.util.regex.Pattern.matches($X, ...)
+      - pattern: Pattern.compile($X)
+      - pattern: Pattern.compile($X, ...)
+      - pattern: Pattern.matches($X, ...)
+      - pattern: $S.matches($X)
+      - pattern: $S.split($X)
+      - pattern: $S.split($X, ...)
+      - pattern: $S.replaceAll($X, ...)
+      - pattern: $S.replaceFirst($X, ...)

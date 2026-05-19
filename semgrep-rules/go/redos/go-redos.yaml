@@ -1,0 +1,57 @@
+rules:
+  # ============================================================
+  # 注：Go 的 regexp 包基于 RE2，不存在指数级回溯，因此 Go 中真正
+  # 的 ReDoS 主要来自：
+  #   1) 用户输入被当作正则表达式编译（regexp / regexp/syntax）—— RE2
+  #      仍是线性，但攻击者可构造"超大/超慢"模式，一次匹配仍能拖
+  #      慢服务（CWE-1333 表面 + DoS 风险）；
+  #   2) 通过 cgo 调用 PCRE / re2 第三方库，存在传统 ReDoS。
+  # ============================================================
+
+  - id: go-redos-tainted-pattern
+    mode: taint
+    severity: WARNING
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-1333
+        - CWE-400
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      Regex DoS / pattern injection (CWE-1333): a user-controlled value
+      is compiled as a regular expression. Go's RE2 prevents catastrophic
+      backtracking, but an attacker-supplied pattern can still trigger
+      memory blowups or very slow matches, and arbitrary user regex is
+      effectively a logic injection.
+
+      Mitigation:
+        * Do NOT take regex patterns from user input.
+        * If unavoidable, validate length / required prefix and run the
+          compile / match within a timeout-protected goroutine.
+    pattern-sources:
+      - pattern: $REQ.URL.Query().Get(...)
+      - pattern: $REQ.FormValue(...)
+      - pattern: $REQ.PostFormValue(...)
+      - pattern: $REQ.Header.Get(...)
+      - pattern: $C.Query(...)
+      - pattern: $C.Param(...)
+      - pattern: $C.PostForm(...)
+      - pattern: $C.GetHeader(...)
+      - pattern: $E.QueryParam(...)
+      - pattern: $E.Param(...)
+      - pattern: $F.Query(...)
+      - pattern: $F.Params(...)
+      - pattern: chi.URLParam(...)
+      - pattern: mux.Vars(...)[...]
+    pattern-sinks:
+      - pattern: regexp.Compile($X)
+      - pattern: regexp.MustCompile($X)
+      - pattern: regexp.CompilePOSIX($X)
+      - pattern: regexp.MustCompilePOSIX($X)
+      - pattern: regexp.Match($X, ...)
+      - pattern: regexp.MatchString($X, ...)
+      - pattern: regexp.MatchReader($X, ...)
+      - pattern: syntax.Parse($X, ...)

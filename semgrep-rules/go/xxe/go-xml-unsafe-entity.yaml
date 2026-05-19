@@ -1,0 +1,100 @@
+rules:
+  # ============================================================
+  # 注：Go 标准库 encoding/xml 默认 NOT 解析 DOCTYPE 与外部实体，
+  # 所以经典 XXE 在标准库下不存在。本规则覆盖以下真实风险面：
+  #   1) Decoder.Entity 自定义实体表，map 来源若受用户控制可注入实体；
+  #   2) Decoder.Strict = false，会放宽 XML 语法解析，可能导致解析
+  #      不一致（XML round-trip / parser confusion）；
+  #   3) cgo / 第三方库（libxml2、gokogiri、lestrrat-go/libxml2）等
+  #      启用 DTD/外部实体的真 XXE。
+  # ============================================================
+
+  - id: go-xml-decoder-entity-tainted
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-611
+        - CWE-776
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XML entity expansion misuse (CWE-611 / CWE-776): Decoder.Entity is
+      assigned a non-builtin entity map. Entity values are inlined verbatim
+      during parsing and can be used for XML bomb (billion laughs) style
+      DoS or for crafting XML round-trip / parser-confusion exploits.
+
+      Mitigation:
+        * Do NOT set Decoder.Entity unless you fully understand its impact.
+        * Validate the map content server-side; never let users contribute
+          entity definitions.
+        * Limit input size via io.LimitReader before xml.NewDecoder.
+    patterns:
+      - pattern: $D.Entity = $X
+      - pattern-not: $D.Entity = xml.HTMLEntity
+      - pattern-not: $D.Entity = nil
+
+  - id: go-xml-decoder-strict-disabled
+    severity: WARNING
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-1287
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      XML parser strict mode disabled: Decoder.Strict = false relaxes
+      well-formedness checks. Combined with non-canonical XML this can
+      cause round-trip mismatches or signature-wrapping style attacks
+      where the parser sees different structure than another consumer.
+
+      Mitigation:
+        * Keep Decoder.Strict at its default value (true).
+        * If lenient parsing is required for legacy data, perform the
+          parse in an isolated path that never feeds into trust /
+          authentication decisions.
+    patterns:
+      - pattern-either:
+          - pattern: $D.Strict = false
+          - pattern: |
+              $D := xml.NewDecoder(...)
+              ...
+              $D.Strict = false
+
+  - id: go-xml-libxml2-dtd-enabled
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-611
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XXE via cgo libxml2 wrapper: parser is constructed with DTD load
+      / network entity flags enabled. libxml2 (unlike Go's encoding/xml)
+      DOES resolve external entities and DTDs by default, so this
+      configuration permits classic XXE attacks: local file disclosure,
+      SSRF, and DoS.
+
+      Mitigation:
+        * Do NOT pass XMLParseDTDLoad / XMLParseNoEnt / XMLParseDTDAttr.
+        * Prefer libxml2 parse options that explicitly disable network
+          access (XML_PARSE_NONET) and DTD loading.
+    patterns:
+      - pattern-either:
+          # lestrrat-go/libxml2
+          - pattern: libxml2.Parse($X, libxml2.XMLParseDTDLoad)
+          - pattern: libxml2.Parse($X, ..., libxml2.XMLParseDTDLoad, ...)
+          - pattern: libxml2.Parse($X, libxml2.XMLParseNoEnt)
+          - pattern: libxml2.Parse($X, ..., libxml2.XMLParseNoEnt, ...)
+          - pattern: parser.ParseString($X, parser.XMLParseDTDLoad)
+          - pattern: parser.ParseString($X, ..., parser.XMLParseNoEnt, ...)
+          # jbowtie/gokogiri
+          - pattern: gokogiri.ParseXml($X, ..., libxml2.XML_PARSE_DTDLOAD, ...)
+          - pattern: gokogiri.ParseXml($X, ..., libxml2.XML_PARSE_NOENT, ...)
