@@ -165,3 +165,280 @@ func TestChatExWithOptions_ParsesToolUseBlocks(t *testing.T) {
 		t.Fatalf("unexpected tool call: %#v", call)
 	}
 }
+
+func TestChatExWithOptions_ImageContentConverted(t *testing.T) {
+	var capturedMessages []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		capturedMessages, _ = req["messages"].([]any)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_img",
+			"type":        "message",
+			"role":        "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "I see an image"}},
+		})
+	}))
+	defer server.Close()
+
+	client := anthropic.NewClient(
+		anthropic.WithURL(server.URL),
+		anthropic.WithModel("claude-sonnet"),
+		anthropic.WithTimeout(5*time.Second),
+	)
+
+	_, err := client.ChatEx(context.Background(), []*ai.MsgInfo{
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "text", Text: "what is in this image?"},
+				{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,iVBORw0KGgo="}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+
+	if len(capturedMessages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(capturedMessages))
+	}
+	msg := capturedMessages[0].(map[string]any)
+	content, ok := msg["content"].([]any)
+	if !ok {
+		t.Fatalf("expected content array, got %T", msg["content"])
+	}
+	if len(content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(content))
+	}
+
+	textBlock := content[0].(map[string]any)
+	if textBlock["type"] != "text" || textBlock["text"] != "what is in this image?" {
+		t.Fatalf("unexpected text block: %#v", textBlock)
+	}
+
+	imageBlock := content[1].(map[string]any)
+	if imageBlock["type"] != "image" {
+		t.Fatalf("expected image block type, got %v", imageBlock["type"])
+	}
+	source, ok := imageBlock["source"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected source map, got %T", imageBlock["source"])
+	}
+	if source["type"] != "base64" {
+		t.Fatalf("expected base64 source type, got %v", source["type"])
+	}
+	if source["media_type"] != "image/png" {
+		t.Fatalf("expected image/png media_type, got %v", source["media_type"])
+	}
+	if source["data"] != "iVBORw0KGgo=" {
+		t.Fatalf("expected base64 data, got %v", source["data"])
+	}
+}
+
+func TestChatExWithOptions_URLImageContentConverted(t *testing.T) {
+	var capturedMessages []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		capturedMessages, _ = req["messages"].([]any)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_url",
+			"type":        "message",
+			"role":        "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+		})
+	}))
+	defer server.Close()
+
+	client := anthropic.NewClient(
+		anthropic.WithURL(server.URL),
+		anthropic.WithModel("claude-sonnet"),
+		anthropic.WithTimeout(5*time.Second),
+	)
+
+	_, err := client.ChatEx(context.Background(), []*ai.MsgInfo{
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "image_url", ImageURL: map[string]any{"url": "https://example.com/image.png"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+
+	if len(capturedMessages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(capturedMessages))
+	}
+	msg := capturedMessages[0].(map[string]any)
+	content := msg["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(content))
+	}
+
+	imageBlock := content[0].(map[string]any)
+	if imageBlock["type"] != "image" {
+		t.Fatalf("expected image block, got %v", imageBlock["type"])
+	}
+	source := imageBlock["source"].(map[string]any)
+	if source["type"] != "url" || source["url"] != "https://example.com/image.png" {
+		t.Fatalf("unexpected source: %#v", source)
+	}
+}
+
+func TestChatExWithOptions_ToolResultImageContentConverted(t *testing.T) {
+	var capturedMessages []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		capturedMessages, _ = req["messages"].([]any)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_tr",
+			"type":        "message",
+			"role":        "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+		})
+	}))
+	defer server.Close()
+
+	client := anthropic.NewClient(
+		anthropic.WithURL(server.URL),
+		anthropic.WithModel("claude-sonnet"),
+		anthropic.WithTimeout(5*time.Second),
+	)
+
+	toolCallMsg := ai.NewAIMsgInfo("")
+	toolCallMsg.ToolCalls = []*ai.FunctionTool{{
+		Id:   "toolu_img",
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:      "screenshot",
+			Arguments: "{}",
+		},
+	}}
+
+	toolResultMsg := ai.NewToolCallResultMsgInfo([]*ai.ChatContext{
+		{Type: "text", Text: "screenshot captured"},
+		{Type: "image_url", ImageURL: map[string]any{"url": "data:image/jpeg;base64,/9j/4AAQ"}},
+	}, "toolu_img")
+
+	_, err := client.ChatEx(context.Background(), []*ai.MsgInfo{
+		ai.NewUserMsgInfo("take a screenshot"),
+		toolCallMsg,
+		toolResultMsg,
+	})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+
+	// Find the tool_result message (role=user with tool_result content).
+	var toolResultContent []any
+	for _, m := range capturedMessages {
+		msg := m.(map[string]any)
+		content, ok := msg["content"].([]any)
+		if !ok || len(content) == 0 {
+			continue
+		}
+		block := content[0].(map[string]any)
+		if block["type"] == "tool_result" {
+			toolResultContent, _ = block["content"].([]any)
+			break
+		}
+	}
+	if toolResultContent == nil {
+		t.Fatalf("tool_result content not found or not an array")
+	}
+	if len(toolResultContent) != 2 {
+		t.Fatalf("expected 2 content blocks in tool_result, got %d", len(toolResultContent))
+	}
+
+	textBlock := toolResultContent[0].(map[string]any)
+	if textBlock["type"] != "text" || textBlock["text"] != "screenshot captured" {
+		t.Fatalf("unexpected text block: %#v", textBlock)
+	}
+
+	imageBlock := toolResultContent[1].(map[string]any)
+	if imageBlock["type"] != "image" {
+		t.Fatalf("expected image block, got %v", imageBlock["type"])
+	}
+	source := imageBlock["source"].(map[string]any)
+	if source["type"] != "base64" || source["media_type"] != "image/jpeg" {
+		t.Fatalf("unexpected source: %#v", source)
+	}
+}
+
+func TestChatExWithOptions_Base64WithNewlines(t *testing.T) {
+	var capturedMessages []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		capturedMessages, _ = req["messages"].([]any)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_nl",
+			"type":        "message",
+			"role":        "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+		})
+	}))
+	defer server.Close()
+
+	client := anthropic.NewClient(
+		anthropic.WithURL(server.URL),
+		anthropic.WithModel("claude-sonnet"),
+		anthropic.WithTimeout(5*time.Second),
+	)
+
+	base64WithNewlines := "iVBORw0KGgo=\nAAAANSUhEUg==\nAAAADAAAAA=="
+	_, err := client.ChatEx(context.Background(), []*ai.MsgInfo{
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "image_url", ImageURL: map[string]any{
+					"url": "data:image/png;base64," + base64WithNewlines,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+
+	if len(capturedMessages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(capturedMessages))
+	}
+	msg := capturedMessages[0].(map[string]any)
+	content := msg["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(content))
+	}
+
+	imageBlock := content[0].(map[string]any)
+	if imageBlock["type"] != "image" {
+		t.Fatalf("expected image block, got %v", imageBlock["type"])
+	}
+	source := imageBlock["source"].(map[string]any)
+	if source["type"] != "base64" {
+		t.Fatalf("expected base64 source, got %v", source["type"])
+	}
+	if source["data"] != base64WithNewlines {
+		t.Fatalf("expected base64 data with newlines preserved, got %v", source["data"])
+	}
+}

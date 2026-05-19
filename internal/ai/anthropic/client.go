@@ -341,7 +341,7 @@ func splitMessages(infos []*ai.MsgInfo, options *ai.RequestOptions) ([]anthropic
 					{
 						"type":        "tool_result",
 						"tool_use_id": strings.TrimSpace(info.ToolCallID),
-						"content":     anyToText(info.Content),
+						"content":     buildToolResultContent(info),
 					},
 				},
 			})
@@ -368,7 +368,23 @@ func buildAnthropicContent(info *ai.MsgInfo) []map[string]any {
 		return nil
 	}
 	content := make([]map[string]any, 0, 1+len(info.ToolCalls))
-	if text := strings.TrimSpace(anyToText(info.Content)); text != "" {
+	if contexts := extractChatContexts(info.Content); len(contexts) > 0 {
+		for _, ctx := range contexts {
+			if ctx == nil {
+				continue
+			}
+			switch ctx.Type {
+			case "text":
+				if t := strings.TrimSpace(ctx.Text); t != "" {
+					content = append(content, map[string]any{"type": "text", "text": t})
+				}
+			case "image_url":
+				if src := convertImageURLToAnthropicSource(ctx.ImageURL); src != nil {
+					content = append(content, map[string]any{"type": "image", "source": src})
+				}
+			}
+		}
+	} else if text := strings.TrimSpace(anyToText(info.Content)); text != "" {
 		content = append(content, map[string]any{
 			"type": "text",
 			"text": text,
@@ -392,6 +408,31 @@ func buildAnthropicContent(info *ai.MsgInfo) []map[string]any {
 		})
 	}
 	return content
+}
+
+func buildToolResultContent(info *ai.MsgInfo) any {
+	if contexts := extractChatContexts(info.Content); len(contexts) > 0 {
+		var blocks []map[string]any
+		for _, ctx := range contexts {
+			if ctx == nil {
+				continue
+			}
+			switch ctx.Type {
+			case "text":
+				if t := strings.TrimSpace(ctx.Text); t != "" {
+					blocks = append(blocks, map[string]any{"type": "text", "text": t})
+				}
+			case "image_url":
+				if src := convertImageURLToAnthropicSource(ctx.ImageURL); src != nil {
+					blocks = append(blocks, map[string]any{"type": "image", "source": src})
+				}
+			}
+		}
+		if len(blocks) > 0 {
+			return blocks
+		}
+	}
+	return anyToText(info.Content)
 }
 
 func normalizeAnthropicRole(role string) string {
@@ -583,6 +624,19 @@ func anyToText(v any) string {
 	switch typed := v.(type) {
 	case string:
 		return typed
+	case []*ai.ChatContext:
+		var parts []string
+		for _, ctx := range typed {
+			if ctx == nil {
+				continue
+			}
+			if ctx.Type == "text" && strings.TrimSpace(ctx.Text) != "" {
+				parts = append(parts, strings.TrimSpace(ctx.Text))
+			} else if ctx.Type == "image_url" {
+				parts = append(parts, "[image]")
+			}
+		}
+		return strings.Join(parts, "\n")
 	default:
 		raw, err := json.Marshal(typed)
 		if err != nil {
@@ -591,3 +645,88 @@ func anyToText(v any) string {
 		return string(raw)
 	}
 }
+
+func parseDataURI(rawURL string) (mediaType string, data string, ok bool) {
+	const marker = ";base64,"
+	idx := strings.Index(rawURL, marker)
+	if idx < 0 || !strings.HasPrefix(rawURL, "data:") {
+		return "", "", false
+	}
+	mediaType = rawURL[len("data:"):idx]
+	data = rawURL[idx+len(marker):]
+	if mediaType == "" || data == "" {
+		return "", "", false
+	}
+	return mediaType, data, true
+}
+
+func extractChatContexts(content any) []*ai.ChatContext {
+	switch v := content.(type) {
+	case []*ai.ChatContext:
+		return v
+	case []any:
+		var result []*ai.ChatContext
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			raw, err := json.Marshal(m)
+			if err != nil {
+				continue
+			}
+			var ctx ai.ChatContext
+			if err := json.Unmarshal(raw, &ctx); err != nil {
+				continue
+			}
+			if ctx.Type != "" {
+				result = append(result, &ctx)
+			}
+		}
+		return result
+	case map[string]any:
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil
+		}
+		var ctx ai.ChatContext
+		if err := json.Unmarshal(raw, &ctx); err != nil {
+			return nil
+		}
+		if ctx.Type != "" {
+			return []*ai.ChatContext{&ctx}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func convertImageURLToAnthropicSource(imageURL map[string]any) map[string]any {
+	if imageURL == nil {
+		return nil
+	}
+	rawURL, _ := imageURL["url"].(string)
+	if rawURL == "" {
+		return nil
+	}
+	if strings.HasPrefix(rawURL, "data:") {
+		mediaType, data, ok := parseDataURI(rawURL)
+		if !ok {
+			return nil
+		}
+		return map[string]any{
+			"type":       "base64",
+			"media_type": mediaType,
+			"data":       data,
+		}
+	}
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return map[string]any{
+			"type": "url",
+			"url":  rawURL,
+		}
+	}
+	return nil
+}
+
