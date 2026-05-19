@@ -98,12 +98,40 @@ func EnsureAppDefaults() error {
 	}
 	for name, content := range defaultAgentFiles {
 		agentPath := filepath.Join(agentsDir, name)
-		if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write agent %s: %w", name, err)
+		if _, err := os.Stat(agentPath); errors.Is(err, os.ErrNotExist) {
+			if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
+				return fmt.Errorf("write agent %s: %w", name, err)
+			}
 		}
 	}
 
 	return nil
+}
+
+func ResetAgentDefaults() ([]string, error) {
+	agentsDir := filepath.Join(DefaultAppDir(), "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create agents dir: %w", err)
+	}
+	names := DefaultAgentNames()
+	reset := make([]string, 0, len(names))
+	for _, name := range names {
+		agentPath := filepath.Join(agentsDir, name)
+		if err := os.WriteFile(agentPath, []byte(defaultAgentFiles[name]), 0o644); err != nil {
+			return reset, fmt.Errorf("write agent %s: %w", name, err)
+		}
+		reset = append(reset, name)
+	}
+	return reset, nil
+}
+
+func DefaultAgentNames() []string {
+	names := make([]string, 0, len(defaultAgentFiles))
+	for name := range defaultAgentFiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func ParseDefaultAgentProfiles() []ProfileYAML {
@@ -248,7 +276,8 @@ background: |
   依赖已知漏洞（SCA）、敏感信息硬编码
 
   审计要求：
-  - 分析手段和顺序根据项目实际情况和可用工具集灵活安排
+  - 首先加载 security-code-analysis（P0 总控路由），它定义了信号路由表和覆盖维度，指导后续 skill 的加载和编排
+  - 分析手段和顺序根据项目实际情况和可用工具集灵活安排，但必须满足 P0 Router 定义的 MUST 覆盖维度
   - 所有发现的候选漏洞必须经过数据流分析验证（source-to-sink 可达性确认），
     未经数据流验证或数据流不可达的漏洞需在结论中明确标识，留待人工复核
   - 给出覆盖声明明确、分桶清晰的审计结论
@@ -259,11 +288,21 @@ skill_names:
   - security-code-analysis
   - sast-scan
   - dataflow-analysis
+  - stored-xss-detection
+  - auth-authz
   - business-logic-auth-review
-  - dependency-audit
+  - session-security
+  - client-side-sec
+  - csp-audit
+  - client-js-audit
+  - config-sec
   - secret-detection
+  - security-header-audit
+  - dangerous-config
+  - dependency-audit
   - result-with-file
 preload_skills:
+  - security-code-analysis
   - result-with-file
 mcp_servers:
   - name: yak
@@ -288,21 +327,46 @@ background: |
   主动探索页面结构、交互流程和 API 接口，捕获真实网络流量并进行深度安全分析。
   掌握 SQL 注入、XSS、IDOR、CORS、文件上传、JWT 等全面的 Web 安全检测技术。
   遵循 OWASP 测试指南和 PTES 标准。
+
+  测试要求：
+  - 首先加载 web-security-testing（P0 总控路由），它定义了信号路由表和覆盖维度，指导后续 skill 的加载和编排
+  - 通过侦察阶段收集目标信号，按信号路由表加载对应 P1 Router 和 Topic Skill
+  - 所有发现必须形成完整证据链（前置条件/输入 → 系统处理 → 实际效果/危害 → 可复核证据）
+  - 给出覆盖声明明确的测试结论
 policies:
   result_source: latest_step_result
 skill_names:
+  - web-security-testing
   - agent-browser
+  - recon-methodology
+  - injection-testing
   - SQL注入-多策略综合检测
+  - xss-testing
+  - command-injection
+  - ssrf-testing
+  - xxe-testing
+  - ssti-testing
+  - access-control
+  - 认证安全综合检测
   - 越权访问-IDOR检测
   - 越权访问-垂直越权检测
   - 越权访问-未授权访问检测
+  - csrf-testing
+  - file-and-path-sec
+  - 文件上传-多策略综合检测
+  - path-traversal-lfi
+  - http-protocol-sec
+  - open-redirect-testing
+  - api-token-sec
   - CORS-配置错误检测
   - JWT-弱密钥与信息泄露检测
-  - 文件上传-多策略综合检测
-  - 认证安全综合检测
+  - business-logic-testing
   - 通知滥用-邮箱短信轰炸检测
-  - 隐私保护-敏感信息未脱敏检测
   - 注册机制-批量注册检测
+  - race-condition
+  - 隐私保护-敏感信息未脱敏检测
+preload_skills:
+  - web-security-testing
 tool_names:
   - list_files
   - read_file
