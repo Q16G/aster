@@ -34,7 +34,6 @@ type RetryEvent struct {
 	Delay       time.Duration
 	Next        time.Time
 	Message     string
-	RetryAfter  time.Duration
 }
 
 func NewClient(opts ...Option) *Client {
@@ -186,7 +185,7 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 			attemptCtx, cancelAttempt = context.WithTimeout(ctx, attemptTimeout)
 		}
 
-		choices, retryAfter, err := c.doRequest(attemptCtx, reqBody)
+		choices, _, err := c.doRequest(attemptCtx, reqBody)
 		cancelAttempt()
 		if err == nil {
 			return choices, nil
@@ -200,25 +199,14 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 		}
 
 		if attempt < c.config.MaxRetries {
-			waitDuration := retryAfter
-			if waitDuration <= 0 {
-				waitDuration = c.backoffDuration(attempt + 1)
-			}
+			waitDuration := c.backoffDuration(attempt + 1)
 			c.reportRetryAttempt(RetryEvent{
 				Attempt:     attempt + 1,
 				MaxAttempts: c.config.MaxRetries + 1,
 				Delay:       waitDuration,
 				Next:        time.Now().Add(waitDuration),
 				Message:     retryDecision.Message,
-				RetryAfter:  retryAfter,
 			}, err)
-		}
-
-		if attempt < c.config.MaxRetries {
-			waitDuration := retryAfter
-			if waitDuration <= 0 {
-				waitDuration = c.backoffDuration(attempt + 1)
-			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -238,15 +226,11 @@ func (c *Client) reportRetryAttempt(event RetryEvent, err error) {
 		c.config.RetryCallback(event)
 		return
 	}
-	nextAttempt := event.Attempt + 1
-	backoff := c.backoffDuration(nextAttempt - 1)
 	log.Printf(
-		"[openai.retry] current_attempt=%d max_attempts=%d next_attempt=%d backoff=%s retry_after=%s error=%v",
+		"[openai.retry] attempt=%d/%d delay=%s error=%v",
 		event.Attempt,
 		event.MaxAttempts,
-		nextAttempt,
-		backoff,
-		event.RetryAfter,
+		event.Delay,
 		err,
 	)
 }
@@ -358,11 +342,9 @@ func (c *Client) doRequest(ctx context.Context, reqBody map[string]any) ([]*ai.C
 	}
 	defer resp.Body.Close()
 
-	retryAfter := parseRetryAfterHeader(resp.Header)
-
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, retryAfter, &HTTPError{
+		return nil, 0, &HTTPError{
 			StatusCode: resp.StatusCode,
 			Body:       string(body),
 		}
@@ -881,31 +863,6 @@ func AttemptTimeoutForAttempt(base time.Duration, attempt int) time.Duration {
 	return timeout
 }
 
-func parseRetryAfterHeader(headers http.Header) time.Duration {
-	if headers == nil {
-		return 0
-	}
-	if retryAfterMS := strings.TrimSpace(headers.Get("Retry-After-Ms")); retryAfterMS != "" {
-		if ms, err := strconv.ParseInt(retryAfterMS, 10, 64); err == nil && ms > 0 {
-			return time.Duration(ms) * time.Millisecond
-		}
-	}
-
-	header := strings.TrimSpace(headers.Get("Retry-After"))
-	if header == "" {
-		return 0
-	}
-	if seconds, err := strconv.ParseInt(header, 10, 64); err == nil && seconds > 0 {
-		return time.Duration(seconds) * time.Second
-	}
-	if retryAt, err := http.ParseTime(header); err == nil {
-		wait := time.Until(retryAt)
-		if wait > 0 {
-			return wait
-		}
-	}
-	return 0
-}
 
 func extractContent(choice *ai.ChatChoices) string {
 	if choice == nil || choice.Message == nil {
@@ -967,7 +924,6 @@ func (c *Client) Embedding(ctx context.Context, texts []string, model string) ([
 		attemptCtx := ctx
 		cancelAttempt := func() {}
 		var attemptErr error
-		retryAfter := time.Duration(0)
 		if attemptTimeout > 0 {
 			attemptCtx, cancelAttempt = context.WithTimeout(ctx, attemptTimeout)
 		}
@@ -993,7 +949,6 @@ func (c *Client) Embedding(ctx context.Context, texts []string, model string) ([
 		} else {
 			respBody, readErr := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			retryAfter = parseRetryAfterHeader(resp.Header)
 			cancelAttempt()
 			if readErr != nil {
 				attemptErr = fmt.Errorf("read response: %w", readErr)
@@ -1020,24 +975,14 @@ func (c *Client) Embedding(ctx context.Context, texts []string, model string) ([
 			return nil, attemptErr
 		}
 		if attempt < c.config.MaxRetries {
-			waitDuration := retryAfter
-			if waitDuration <= 0 {
-				waitDuration = c.backoffDuration(attempt + 1)
-			}
+			waitDuration := c.backoffDuration(attempt + 1)
 			c.reportRetryAttempt(RetryEvent{
 				Attempt:     attempt + 1,
 				MaxAttempts: c.config.MaxRetries + 1,
 				Delay:       waitDuration,
 				Next:        time.Now().Add(waitDuration),
 				Message:     retryDecision.Message,
-				RetryAfter:  retryAfter,
 			}, attemptErr)
-		}
-		if attempt < c.config.MaxRetries {
-			waitDuration := retryAfter
-			if waitDuration <= 0 {
-				waitDuration = c.backoffDuration(attempt + 1)
-			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

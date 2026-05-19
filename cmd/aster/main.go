@@ -288,7 +288,7 @@ func newRetryCallback(emitter *react.Emitter) openai.RetryCallback {
 		return nil
 	}
 	return func(event openai.RetryEvent) {
-		emitter.EmitRetry(event.Attempt, event.MaxAttempts, event.Delay, event.Next, event.Message, event.RetryAfter)
+		emitter.EmitRetry(event.Attempt, event.MaxAttempts, event.Delay, event.Next, event.Message)
 	}
 }
 
