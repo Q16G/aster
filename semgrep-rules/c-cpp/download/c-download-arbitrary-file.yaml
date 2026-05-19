@@ -1,0 +1,114 @@
+rules:
+  - id: c-download-arbitrary-file
+    patterns:
+      - pattern-either:
+          # ---------- C 标准库（POSIX）----------
+          - pattern: fopen($INPUT, ...)
+          - pattern: freopen($INPUT, ...)
+          - pattern: open($INPUT, ...)
+          - pattern: openat($DIRFD, $INPUT, ...)
+          - pattern: stat($INPUT, ...)
+          - pattern: lstat($INPUT, ...)
+          - pattern: access($INPUT, ...)
+          - pattern: readlink($INPUT, ...)
+          - pattern: realpath($INPUT, ...)
+          - pattern: opendir($INPUT)
+          - pattern: creat($INPUT, ...)
+          - pattern: chmod($INPUT, ...)
+          - pattern: chown($INPUT, ...)
+          - pattern: remove($INPUT)
+          - pattern: unlink($INPUT)
+          - pattern: rename($INPUT, ...)
+
+          # ---------- C++ filesystem ----------
+          - pattern: std::filesystem::path($INPUT)
+          - pattern: std::filesystem::directory_iterator($INPUT)
+          - pattern: std::filesystem::recursive_directory_iterator($INPUT)
+          - pattern: std::filesystem::exists($INPUT)
+          - pattern: std::filesystem::file_size($INPUT)
+          - pattern: std::filesystem::is_regular_file($INPUT)
+          - pattern: std::filesystem::is_directory($INPUT)
+          - pattern: std::filesystem::copy($INPUT, ...)
+          - pattern: std::filesystem::copy_file($INPUT, ...)
+          - pattern: std::filesystem::remove($INPUT)
+          - pattern: std::filesystem::remove_all($INPUT)
+          - pattern: std::filesystem::rename($INPUT, ...)
+          - pattern: std::filesystem::canonical($INPUT)
+          - pattern: std::filesystem::absolute($INPUT)
+
+          # ---------- C++ I/O 流 (拆分 open 形式) ----------
+          - pattern: $STREAM.open($INPUT, ...)
+
+          # ---------- Qt ----------
+          - pattern: QFile($INPUT)
+          - pattern: new QFile($INPUT)
+          - pattern: QFile::exists($INPUT)
+          - pattern: QFileInfo($INPUT)
+
+          # ---------- 间接拼接：snprintf -> fopen/open ----------
+          - pattern: |
+              snprintf($BUF, $N, $FMT, ..., $INPUT, ...);
+              ...
+              fopen($BUF, ...);
+          - pattern: |
+              snprintf($BUF, $N, $FMT, ..., $INPUT, ...);
+              ...
+              open($BUF, ...);
+          - pattern: |
+              sprintf($BUF, $FMT, ..., $INPUT, ...);
+              ...
+              fopen($BUF, ...);
+          - pattern: |
+              snprintf($BUF, $N, "cat %s", $INPUT);
+              ...
+              system($BUF);
+
+      # 排除字面量字符串
+      - pattern-not: fopen("...", ...)
+      - pattern-not: freopen("...", ...)
+      - pattern-not: open("...", ...)
+      - pattern-not: stat("...", ...)
+      - pattern-not: lstat("...", ...)
+      - pattern-not: access("...", ...)
+      - pattern-not: opendir("...")
+      - pattern-not: realpath("...", ...)
+      - pattern-not: std::filesystem::path("...")
+      - pattern-not: std::filesystem::directory_iterator("...")
+      - pattern-not: std::filesystem::copy("...", ...)
+      - pattern-not: std::filesystem::exists("...")
+      - pattern-not: QFile("...")
+      - pattern-not: QFileInfo("...")
+      - pattern-not: $STREAM.open("...", ...)
+      - pattern-not: $STREAM.open("...")
+
+      # 排除 basename() 净化（用 ... 通配避免 metavar 绑定差异）
+      - pattern-not: fopen(basename(...), ...)
+      - pattern-not: open(basename(...), ...)
+      - pattern-not: stat(basename(...), ...)
+      - pattern-not: $STREAM.open(basename(...), ...)
+
+    message: |
+      Arbitrary file read / path traversal (CWE-22 / CWE-73): a variable
+      path (often from argv, getenv, a CGI parameter, a network buffer or
+      another untrusted source) is passed to a file-opening function.
+      Attackers can supply absolute paths, "/etc/passwd", or path
+      traversal sequences ("../../") to read arbitrary files from the host.
+
+      Mitigation:
+        * Resolve the path with realpath() and verify it begins with a
+          fixed base directory.
+        * Use basename() to strip the directory component.
+        * Map untrusted input to a server-side allowlist of identifiers ->
+          real paths.
+        * In setuid binaries, drop privileges before opening user-supplied
+          paths.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [c, cpp]

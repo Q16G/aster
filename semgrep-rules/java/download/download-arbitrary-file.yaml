@@ -1,0 +1,350 @@
+rules:
+  # ============================================================
+  # Rule A — 直接型（HIGH severity）
+  #   用户输入直接作为完整文件路径或资源定位符。攻击者完全控制路径，
+  #   可以传绝对路径、file:// URI 或路径穿越串读取任意文件。
+  # ============================================================
+  - id: java-download-arbitrary-file
+    mode: taint
+    severity: ERROR
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: HIGH
+      sink-shape: direct
+      needs_dataflow_confirmation: false
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73, direct full-path):
+      a user-controlled value is used directly as a complete filesystem
+      path, URL, or classpath resource locator. The attacker controls the
+      entire path and can supply absolute paths, "file://" URIs, UNC paths
+      or path-traversal sequences to read arbitrary files from the host.
+
+      Mitigation:
+        * Map user input to a server-side allowlist of identifiers -> real paths.
+        * Resolve the path against a fixed base directory and verify the
+          normalized result still starts with that base (Path#normalize +
+          Path#toAbsolutePath + Path#startsWith).
+        * Strip the path component with FilenameUtils.getName() or
+          Path#getFileName() before use.
+
+    # ----------- 污点源（覆盖主流 Web 框架） -----------
+    pattern-sources: &sources
+      # ---------- Servlet / JSP ----------
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getPathTranslated()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getRequestURL()
+      - pattern: $REQ.getInputStream()
+      - pattern: $REQ.getReader()
+      - pattern: $COOKIE.getValue()
+
+      # ---------- Spring MVC / WebFlux 注解 ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.PathVariable(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestHeader(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.CookieValue(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestBody $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.MatrixVariable(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.ModelAttribute(...) $T $NAME, ...) {
+                ...
+              }
+      - pattern: $REQ.queryParam(...)
+      - pattern: $REQ.pathVariable(...)
+
+      # ---------- JAX-RS / Jersey (javax.* + jakarta.*) ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.HeaderParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.FormParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.CookieParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.MatrixParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.HeaderParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.FormParam(...) $T $NAME, ...) {
+                ...
+              }
+
+      # ---------- Struts2 ----------
+      - pattern: org.apache.struts2.ServletActionContext.getRequest().getParameter(...)
+      - pattern: org.apache.struts2.ServletActionContext.getRequest().getHeader(...)
+      - pattern: com.opensymphony.xwork2.ActionContext.getContext().getParameters().get(...)
+
+      # ---------- JFinal ----------
+      - pattern: $CTRL.getPara(...)
+      - pattern: $CTRL.getParaValues(...)
+      - pattern: $CTRL.getParaMap()
+      - pattern: $CTRL.getKv()
+
+      # ---------- 文件上传中的客户端文件名 ----------
+      - pattern: $FILE.getOriginalFilename()
+      - pattern: $PART.getSubmittedFileName()
+      - pattern: $ITEM.getName()
+
+    # ----------- 污点传播器：处理默认流追踪不到的 mutation -----------
+    pattern-propagators: &propagators
+      # StringBuilder/StringBuffer.append 是 mutation，默认不会被追踪
+      - pattern: $SB.append($T)
+        from: $T
+        to: $SB
+      # Path.resolve 返回新 Path，但 IDE 中常见的 base.resolve(taint) 链
+      # 会把 base 也视作污染，便于跨方法调用追踪
+      - pattern: $P.resolve($T)
+        from: $T
+        to: $P
+      # Collection 注入污点
+      - pattern: $LIST.add($T)
+        from: $T
+        to: $LIST
+      - pattern: $MAP.put($K, $T)
+        from: $T
+        to: $MAP
+
+    # ----------- 净化器：常见的安全包装 -----------
+    pattern-sanitizers: &sanitizers
+      - pattern: org.apache.commons.io.FilenameUtils.getName(...)
+      - pattern: $P.getFileName()
+      - pattern: $P.getFileName().toString()
+      # 强类型转换 = 不可能含有 ../
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+      - pattern: java.lang.Integer.parseInt(...)
+      - pattern: java.lang.Long.parseLong(...)
+      - pattern: UUID.fromString(...)
+      - pattern: java.util.UUID.fromString(...)
+      # 数值再 toString / valueOf 也是安全的
+      - pattern: String.valueOf(Integer.parseInt(...))
+      - pattern: String.valueOf(Long.parseLong(...))
+      - pattern: String.valueOf(UUID.fromString(...))
+      - pattern: Integer.toString(Integer.parseInt(...))
+      - pattern: Long.toString(Long.parseLong(...))
+      # 用户可能自定义的 path-traversal 校验函数（按命名约定识别）
+      - patterns:
+          - pattern-either:
+              - pattern: $X.checkPathTraversal(...)
+              - pattern: $X.validatePath(...)
+              - pattern: $X.sanitizePath(...)
+              - pattern: $X.cleanPath(...)
+              - pattern: $X.normalizePath(...)
+
+    # ----------- 危险汇聚点：1-arg 完整路径 -----------
+    pattern-sinks:
+      # ---------- java.io ----------
+      - pattern: new java.io.File($X)
+      - pattern: new java.io.FileInputStream($X)
+      - pattern: new java.io.FileReader($X)
+      - pattern: new java.io.RandomAccessFile($X, ...)
+      - pattern: new java.io.BufferedReader(new java.io.FileReader($X))
+
+      # ---------- java.nio ----------
+      - pattern: java.nio.file.Paths.get($X)
+      - pattern: java.nio.file.Path.of($X)
+      - pattern: java.nio.file.Files.newInputStream($X, ...)
+      - pattern: java.nio.file.Files.newBufferedReader($X, ...)
+      - pattern: java.nio.file.Files.newByteChannel($X, ...)
+      - pattern: java.nio.file.Files.readAllBytes($X)
+      - pattern: java.nio.file.Files.readAllLines($X, ...)
+      - pattern: java.nio.file.Files.readString($X, ...)
+      - pattern: java.nio.file.Files.copy($X, ...)
+      - pattern: java.nio.file.Files.lines($X, ...)
+      - pattern: java.nio.file.Files.size($X)
+      - pattern: java.nio.channels.FileChannel.open($X, ...)
+
+      # ---------- Apache Commons IO ----------
+      - pattern: org.apache.commons.io.FileUtils.readFileToByteArray($X)
+      - pattern: org.apache.commons.io.FileUtils.readFileToString($X, ...)
+      - pattern: org.apache.commons.io.FileUtils.openInputStream($X)
+      - pattern: org.apache.commons.io.FileUtils.readLines($X, ...)
+      - pattern: org.apache.commons.io.FileUtils.copyFile($X, ...)
+      - pattern: org.apache.commons.io.FileUtils.copyFileToDirectory($X, ...)
+      - pattern: org.apache.commons.io.IOUtils.toByteArray(new java.io.FileInputStream($X))
+
+      # ---------- Hutool ----------
+      - pattern: cn.hutool.core.io.FileUtil.readBytes($X)
+      - pattern: cn.hutool.core.io.FileUtil.readString($X, ...)
+      - pattern: cn.hutool.core.io.FileUtil.readUtf8String($X)
+      - pattern: cn.hutool.core.io.FileUtil.readLines($X, ...)
+      - pattern: cn.hutool.core.io.FileUtil.getInputStream($X)
+      - pattern: cn.hutool.core.io.FileUtil.file($X)
+      - pattern: cn.hutool.core.io.FileUtil.touch($X)
+      - pattern: cn.hutool.core.io.FileUtil.copy($X, ...)
+
+      # ---------- Spring Resource ----------
+      - pattern: new org.springframework.core.io.FileSystemResource($X)
+      - pattern: new org.springframework.core.io.PathResource($X)
+      - pattern: new org.springframework.core.io.UrlResource($X)
+      - pattern: new org.springframework.core.io.InputStreamResource($X)
+      - pattern: org.springframework.util.ResourceUtils.getFile($X)
+      - pattern: org.springframework.util.ResourceUtils.getURL($X)
+
+      # ---------- ServletContext / ClassLoader ----------
+      - pattern: $CTX.getRealPath($X)
+      - pattern: $CTX.getResourceAsStream($X)
+      - pattern: $CTX.getResource($X)
+      - pattern: $CL.getResourceAsStream($X)
+      - pattern: $CL.getResource($X)
+
+      # ---------- 压缩 / Jar 解析 ----------
+      - pattern: new java.util.zip.ZipFile($X)
+      - pattern: new java.util.zip.ZipInputStream(new java.io.FileInputStream($X))
+      - pattern: new java.util.jar.JarFile($X)
+
+      # ---------- Apache Tika ----------
+      - pattern: org.apache.tika.Tika.parseToString(new java.io.File($X))
+
+  # ============================================================
+  # Rule B — 拼接型（MEDIUM severity）
+  #   用户输入和服务器侧 base dir 拼成路径。仍可被 ../ 穿越逃逸，
+  #   但路径前缀受限，因此降级为 WARNING / MEDIUM 置信度。
+  #   metavariable-regex 用来确认 $DIR 是字符串字面量并以 / 或 \ 结尾，
+  #   避免对 "name" + "suffix" 这类业务字符串误报。
+  # ============================================================
+  - id: java-download-arbitrary-file-joined
+    mode: taint
+    severity: WARNING
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: MEDIUM
+      sink-shape: joined
+      needs_dataflow_confirmation: true
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73, base+input):
+      a user-controlled value is appended to a base directory and used as
+      a filesystem path. The fixed prefix limits where files come from,
+      but a "../" sequence in the input can still escape the base
+      directory. Confirm the resolved path is normalized AND validated
+      with Path#startsWith(base); otherwise treat as exploitable.
+
+      Mitigation:
+        * Use Path#normalize + Path#toAbsolutePath + startsWith(base) to
+          reject results that escape the base directory.
+        * Strip the user value to FilenameUtils.getName() before joining.
+        * Prefer an allowlist of safe filenames or IDs.
+    pattern-sources: *sources
+    pattern-propagators: *propagators
+    pattern-sanitizers: *sanitizers
+    pattern-sinks:
+      # 双参数构造器（API 语义本身就是 base + child）
+      - pattern: new java.io.File($DIR, $X)
+      - pattern: java.nio.file.Paths.get($DIR, $X)
+      - pattern: java.nio.file.Path.of($DIR, $X)
+
+      # 字符串拼接：仅在 $DIR 是路径前缀字面量时才报告，过滤掉
+      # `name + suffix` 之类的业务拼接误报
+      - patterns:
+          - pattern: new java.io.File($DIR + $X)
+          - metavariable-regex:
+              metavariable: $DIR
+              regex: '^"[^"]*[/\\]"$'
+      - patterns:
+          - pattern: new java.io.FileInputStream($DIR + $X)
+          - metavariable-regex:
+              metavariable: $DIR
+              regex: '^"[^"]*[/\\]"$'
+      - patterns:
+          - pattern: new java.io.FileReader($DIR + $X)
+          - metavariable-regex:
+              metavariable: $DIR
+              regex: '^"[^"]*[/\\]"$'
+      - patterns:
+          - pattern: java.nio.file.Paths.get($DIR + $X)
+          - metavariable-regex:
+              metavariable: $DIR
+              regex: '^"[^"]*[/\\]"$'

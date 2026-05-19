@@ -1,0 +1,236 @@
+rules:
+  # ============================================================
+  # Rule A — 直接型（HIGH severity）
+  #   用户输入直接作为完整文件路径或资源定位符
+  # ============================================================
+  - id: python-download-arbitrary-file
+    mode: taint
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: HIGH
+      sink-shape: direct
+      needs_dataflow_confirmation: false
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73, direct full-path):
+      a user-controlled value is used directly as a complete filesystem
+      path. Attackers can supply absolute paths, "/etc/passwd", or path
+      traversal sequences ("../../") to read arbitrary files.
+
+      Mitigation:
+        * Map user input to a server-side allowlist of identifiers -> real paths.
+        * Resolve against a fixed base directory and verify the canonicalized
+          result is still inside the base (os.path.realpath +
+          str.startswith / pathlib.Path.is_relative_to).
+        * Strip the path component with os.path.basename() before use.
+
+    pattern-sources: &sources
+      # ---------- Flask ----------
+      - pattern: flask.request.args.get(...)
+      - pattern: flask.request.args[...]
+      - pattern: flask.request.form.get(...)
+      - pattern: flask.request.form[...]
+      - pattern: flask.request.values.get(...)
+      - pattern: flask.request.values[...]
+      - pattern: flask.request.json.get(...)
+      - pattern: flask.request.json[...]
+      - pattern: flask.request.get_json(...)
+      - pattern: flask.request.headers.get(...)
+      - pattern: flask.request.headers[...]
+      - pattern: flask.request.cookies.get(...)
+      - pattern: flask.request.cookies[...]
+      - pattern: flask.request.files[...]
+      - pattern: flask.request.path
+      - pattern: flask.request.full_path
+      - pattern: flask.request.query_string
+      - pattern: flask.request.data
+      - pattern: request.args.get(...)
+      - pattern: request.args[...]
+      - pattern: request.form.get(...)
+      - pattern: request.form[...]
+      - pattern: request.values.get(...)
+      - pattern: request.values[...]
+      - pattern: request.json.get(...)
+      - pattern: request.json[...]
+      - pattern: request.get_json(...)
+      - pattern: request.headers.get(...)
+      - pattern: request.headers[...]
+      - pattern: request.cookies.get(...)
+      - pattern: request.cookies[...]
+      - pattern: request.path
+      - pattern: request.full_path
+      - pattern: request.data
+
+      # ---------- Django ----------
+      - pattern: $REQ.GET.get(...)
+      - pattern: $REQ.GET[...]
+      - pattern: $REQ.POST.get(...)
+      - pattern: $REQ.POST[...]
+      - pattern: $REQ.FILES.get(...)
+      - pattern: $REQ.FILES[...]
+      - pattern: $REQ.META.get(...)
+      - pattern: $REQ.META[...]
+      - pattern: $REQ.COOKIES.get(...)
+      - pattern: $REQ.COOKIES[...]
+      - pattern: $REQ.body
+      - pattern: $REQ.path_info
+
+      # ---------- FastAPI / Starlette ----------
+      # FastAPI 把路由函数的所有 str 参数当作 query/path 参数，按风险源处理
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              @$APP.get(...)
+              def $FUNC(..., $NAME, ...):
+                  ...
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              @$APP.post(...)
+              def $FUNC(..., $NAME, ...):
+                  ...
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              @$APP.put(...)
+              def $FUNC(..., $NAME, ...):
+                  ...
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              @$APP.delete(...)
+              def $FUNC(..., $NAME, ...):
+                  ...
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              @$APP.api_route(...)
+              def $FUNC(..., $NAME, ...):
+                  ...
+      - pattern: $REQ.query_params.get(...)
+      - pattern: $REQ.query_params[...]
+      - pattern: $REQ.path_params[...]
+      - pattern: $REQ.path_params.get(...)
+
+      # ---------- Tornado ----------
+      - pattern: $SELF.get_argument(...)
+      - pattern: $SELF.get_arguments(...)
+      - pattern: $SELF.get_query_argument(...)
+      - pattern: $SELF.get_body_argument(...)
+      - pattern: $SELF.get_cookie(...)
+
+      # ---------- Bottle ----------
+      - pattern: bottle.request.query.get(...)
+      - pattern: bottle.request.query[...]
+      - pattern: bottle.request.forms.get(...)
+      - pattern: bottle.request.forms[...]
+      - pattern: bottle.request.params.get(...)
+      - pattern: bottle.request.params[...]
+
+      # ---------- aiohttp ----------
+      - pattern: $REQ.match_info.get(...)
+      - pattern: $REQ.match_info[...]
+      - pattern: $REQ.rel_url.query.get(...)
+
+      # ---------- 命令行参数 / 环境变量（CLI 也常被审计）----------
+      - pattern: sys.argv[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.environ[...]
+
+    pattern-propagators: &propagators
+      - pattern: $L.append($T)
+        from: $T
+        to: $L
+      - pattern: $D[$K] = $T
+        from: $T
+        to: $D
+
+    pattern-sanitizers: &sanitizers
+      # 基础净化：取文件名 / 限制为整数 / UUID
+      - pattern: os.path.basename(...)
+      - pattern: pathlib.Path(...).name
+      - pattern: $P.name
+      - pattern: int(...)
+      - pattern: float(...)
+      - pattern: uuid.UUID(...)
+      # 自定义校验函数
+      - patterns:
+          - pattern-either:
+              - pattern: validate_path(...)
+              - pattern: sanitize_path(...)
+              - pattern: clean_path(...)
+              - pattern: check_path_traversal(...)
+              - pattern: $X.validate_path(...)
+              - pattern: $X.sanitize_path(...)
+              - pattern: $X.clean_path(...)
+              - pattern: $X.check_path_traversal(...)
+
+    pattern-sinks:
+      # ---------- 内置 IO ----------
+      - pattern: open($X, ...)
+      # ---------- os ----------
+      - pattern: os.open($X, ...)
+      - pattern: os.stat($X)
+      - pattern: os.lstat($X)
+      - pattern: os.remove($X)
+      - pattern: os.unlink($X)
+      - pattern: os.rename($X, ...)
+      - pattern: os.path.isfile($X)
+      - pattern: os.path.exists($X)
+      - pattern: os.path.realpath($X)
+      # ---------- pathlib ----------
+      - pattern: pathlib.Path($X)
+      - pattern: pathlib.PosixPath($X)
+      - pattern: pathlib.WindowsPath($X)
+      - pattern: pathlib.PurePath($X)
+      - pattern: $P.read_text(...)
+      - pattern: $P.read_bytes(...)
+      - pattern: $P.open(...)
+      # ---------- shutil ----------
+      - pattern: shutil.copy($X, ...)
+      - pattern: shutil.copy2($X, ...)
+      - pattern: shutil.copyfile($X, ...)
+      - pattern: shutil.copyfileobj(open($X, ...), ...)
+      - pattern: shutil.move($X, ...)
+      - pattern: shutil.unpack_archive($X, ...)
+      # ---------- Flask 静态文件下载 ----------
+      - pattern: flask.send_file($X, ...)
+      - pattern: flask.send_from_directory($DIR, $X, ...)
+      - pattern: send_file($X, ...)
+      - pattern: send_from_directory($DIR, $X, ...)
+      # ---------- Django ----------
+      - pattern: django.http.FileResponse(open($X, ...))
+      - pattern: FileResponse(open($X, ...))
+      - pattern: django.http.HttpResponse(open($X, ...).read(), ...)
+      # ---------- FastAPI / Starlette ----------
+      - pattern: starlette.responses.FileResponse($X, ...)
+      - pattern: fastapi.responses.FileResponse($X, ...)
+      - pattern: FileResponse($X, ...)
+      # ---------- aiofiles ----------
+      - pattern: aiofiles.open($X, ...)
+      # ---------- 压缩 / 序列化 ----------
+      - pattern: zipfile.ZipFile($X, ...)
+      - pattern: tarfile.open($X, ...)
+      - pattern: gzip.open($X, ...)
+      - pattern: bz2.open($X, ...)
+      - pattern: lzma.open($X, ...)
+      - pattern: pickle.load(open($X, ...))
+      - pattern: yaml.load(open($X, ...), ...)
+      - pattern: yaml.safe_load(open($X, ...))
+      # ---------- pandas / numpy（数据分析场景）----------
+      - pattern: pandas.read_csv($X, ...)
+      - pattern: pandas.read_excel($X, ...)
+      - pattern: pandas.read_json($X, ...)
+      - pattern: pandas.read_parquet($X, ...)
+      - pattern: pd.read_csv($X, ...)
+      - pattern: pd.read_excel($X, ...)
+      - pattern: numpy.load($X, ...)
+      - pattern: np.load($X, ...)
+      # ---------- 子进程 cat / type 等读取行为 ----------
+      - pattern: subprocess.check_output(["cat", $X], ...)
+      - pattern: subprocess.run(["cat", $X], ...)
