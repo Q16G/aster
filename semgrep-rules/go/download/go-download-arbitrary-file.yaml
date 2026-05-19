@@ -1,0 +1,125 @@
+rules:
+  - id: go-download-arbitrary-file
+    mode: taint
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73): a user-controlled
+      value flows into a filesystem path used to read content. Attackers
+      can supply absolute paths, "/etc/passwd", or path traversal sequences
+      ("../../") to read arbitrary files from the server.
+
+      Mitigation:
+        * Map user input to a server-side allowlist of identifiers -> real paths.
+        * Resolve against a fixed base directory and verify the result with
+          filepath.Clean + filepath.Abs + strings.HasPrefix(base).
+        * Strip the path component with filepath.Base() before use.
+        * For http.ServeFile, ensure the path is sanitized first; ServeFile
+          does NOT prevent traversal by itself.
+    pattern-sources:
+      # ---------- net/http ----------
+      - pattern: $REQ.URL.Query().Get(...)
+      - pattern: $REQ.URL.Query()[...]
+      - pattern: $REQ.FormValue(...)
+      - pattern: $REQ.PostFormValue(...)
+      - pattern: $REQ.Form.Get(...)
+      - pattern: $REQ.PostForm.Get(...)
+      - pattern: $REQ.Header.Get(...)
+      - pattern: $REQ.Cookie(...)
+      - pattern: $REQ.URL.Path
+      - pattern: $REQ.URL.RawQuery
+      - pattern: $REQ.Body
+      # ---------- gin ----------
+      - pattern: $C.Query(...)
+      - pattern: $C.DefaultQuery(...)
+      - pattern: $C.Param(...)
+      - pattern: $C.PostForm(...)
+      - pattern: $C.DefaultPostForm(...)
+      - pattern: $C.GetHeader(...)
+      - pattern: $C.GetString(...)
+      - pattern: $C.QueryArray(...)
+      - pattern: $C.Cookie(...)
+      # ---------- echo ----------
+      - pattern: $E.QueryParam(...)
+      - pattern: $E.Param(...)
+      - pattern: $E.FormValue(...)
+      - pattern: $E.Cookie(...)
+      # ---------- fiber ----------
+      - pattern: $F.Query(...)
+      - pattern: $F.Params(...)
+      - pattern: $F.FormValue(...)
+      - pattern: $F.Get(...)
+      - pattern: $F.Cookies(...)
+      # ---------- chi / gorilla mux ----------
+      - pattern: chi.URLParam(...)
+      - pattern: mux.Vars(...)[...]
+      # ---------- 命令行 / 环境变量 ----------
+      - pattern: os.Args[...]
+      - pattern: os.Getenv(...)
+
+    pattern-propagators:
+      - pattern: $SB.WriteString($T)
+        from: $T
+        to: $SB
+      - pattern: $SB.Write($T)
+        from: $T
+        to: $SB
+
+    pattern-sanitizers:
+      - pattern: filepath.Base(...)
+      - pattern: path.Base(...)
+      - pattern: strconv.Atoi(...)
+      - pattern: strconv.ParseInt(...)
+      - pattern: strconv.ParseUint(...)
+      - patterns:
+          - pattern-either:
+              - pattern: validatePath(...)
+              - pattern: sanitizePath(...)
+              - pattern: cleanPath(...)
+              - pattern: checkPathTraversal(...)
+
+    pattern-sinks:
+      # ---------- os ----------
+      - pattern: os.Open($X)
+      - pattern: os.OpenFile($X, ...)
+      - pattern: os.ReadFile($X)
+      - pattern: os.Stat($X)
+      - pattern: os.Lstat($X)
+      - pattern: os.Create($X)
+      # ---------- ioutil（旧版）----------
+      - pattern: ioutil.ReadFile($X)
+      - pattern: ioutil.ReadDir($X)
+      # ---------- filepath / path ----------
+      - pattern: filepath.Join($DIR, $X)
+      - pattern: filepath.Walk($X, ...)
+      # ---------- net/http 静态文件 ----------
+      - pattern: http.ServeFile($W, $REQ, $X)
+      - pattern: http.Dir($X)
+      # ---------- gin 下载 ----------
+      - pattern: $C.File($X)
+      - pattern: $C.FileAttachment($X, ...)
+      # ---------- echo 下载 ----------
+      - pattern: $E.File($X)
+      - pattern: $E.Attachment($X, ...)
+      - pattern: $E.Inline($X, ...)
+      # ---------- fiber 下载 ----------
+      - pattern: $F.SendFile($X, ...)
+      - pattern: $F.Download($X, ...)
+      # ---------- 压缩 ----------
+      - pattern: zip.OpenReader($X)
+      - pattern: archive/zip.OpenReader($X)
+      # ---------- 模板加载（也可读任意文件）----------
+      - pattern: template.ParseFiles($X)
+      - pattern: html/template.ParseFiles($X)
+      - pattern: text/template.ParseFiles($X)
+      # ---------- 子进程读取 ----------
+      - pattern: exec.Command("cat", $X)
+      - pattern: exec.Command("type", $X)

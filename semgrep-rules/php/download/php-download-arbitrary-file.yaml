@@ -1,0 +1,74 @@
+rules:
+  - id: php-download-arbitrary-file
+    patterns:
+      - pattern-either:
+          # ---------- 直接读取并输出 ----------
+          - pattern: readfile($INPUT)
+          - pattern: file_get_contents($INPUT)
+          - pattern: file($INPUT)
+          - pattern: fopen($INPUT, ...)
+          - pattern: fread(fopen($INPUT, ...), ...)
+          - pattern: fpassthru(fopen($INPUT, ...))
+          - pattern: new SplFileObject($INPUT, ...)
+          # ---------- finfo / mime_content_type 探测 ----------
+          - pattern: mime_content_type($INPUT)
+          - pattern: finfo_file($FINFO, $INPUT)
+          # ---------- 压缩文件 ----------
+          - pattern: zip_open($INPUT)
+          - pattern: gzopen($INPUT, ...)
+          - pattern: bzopen($INPUT, ...)
+          - pattern: $ZIP->open($INPUT, ...)
+          # ---------- Laravel 下载 ----------
+          - pattern: response()->download($INPUT, ...)
+          - pattern: response()->file($INPUT, ...)
+          - pattern: Storage::download($INPUT, ...)
+          - pattern: \Storage::download($INPUT, ...)
+          - pattern: Storage::get($INPUT)
+          - pattern: \Storage::get($INPUT)
+          - pattern: Storage::disk(...)->get($INPUT)
+          - pattern: Storage::disk(...)->download($INPUT, ...)
+          - pattern: File::get($INPUT)
+          - pattern: \File::get($INPUT)
+          # ---------- Symfony BinaryFileResponse ----------
+          - pattern: new BinaryFileResponse($INPUT, ...)
+          - pattern: BinaryFileResponse::create($INPUT, ...)
+          - pattern: new \Symfony\Component\HttpFoundation\BinaryFileResponse($INPUT, ...)
+          # ---------- ThinkPHP ----------
+          - pattern: download($INPUT, ...)
+      # 排除字面量字符串和已净化的输入
+      - metavariable-pattern:
+          metavariable: $INPUT
+          patterns:
+            # 仅排除纯字面量串（避免误把所有表达式都排除）
+            - pattern-not-regex: '^"[^"$]*"$'
+            - pattern-not-regex: "^'[^'$]*'$"
+            # 排除字面量拼字面量
+            - pattern-not-regex: '^"[^"$]*"\s*\.\s*"[^"$]*"$'
+            # 排除已用 basename() / pathinfo() 净化（任何位置出现都视为安全）
+            - pattern-not-regex: '\bbasename\s*\('
+            - pattern-not-regex: '\bpathinfo\s*\([^,)]+,\s*PATHINFO_BASENAME'
+            # 排除显式整数转换
+            - pattern-not-regex: '\(int\)'
+            - pattern-not-regex: '\bintval\s*\('
+    message: |
+      Arbitrary file download / read (CWE-22 / CWE-73): a variable path is
+      used to read a file. Together with PHP stream wrappers (php://filter,
+      data://, expect://, phar://) and path traversal sequences, this can
+      enable reading arbitrary files, source disclosure, deserialization,
+      or even code execution.
+
+      Mitigation:
+        * Use a server-side allowlist mapping IDs -> safe paths.
+        * Strip the path component with basename() or pathinfo($p, PATHINFO_BASENAME).
+        * Resolve with realpath() and check it begins with a fixed base directory.
+        * Set allow_url_include=Off and disable dangerous wrappers in php.ini.
+    metadata:
+      cwe:
+        - CWE-22
+        - CWE-73
+      owasp:
+        - "A01:2021 - Broken Access Control"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [php]
