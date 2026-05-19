@@ -25,6 +25,7 @@ type ProviderConfig struct {
 	Env            map[string]string            `yaml:"env,omitempty"`
 	SupportsVision *bool                        `yaml:"supports_vision,omitempty"`
 	SupportsAudio  *bool                        `yaml:"supports_audio,omitempty"`
+	Timeout        *int                         `yaml:"timeout,omitempty"`
 }
 
 type AppConfig struct {
@@ -59,6 +60,7 @@ type ProviderState struct {
 	Proxy          string
 	SupportsVision *bool
 	SupportsAudio  *bool
+	Timeout        *int
 }
 
 const (
@@ -528,6 +530,7 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 		Proxy:          providerProxyFromEnv(resolvedEnv),
 		SupportsVision: p.SupportsVision,
 		SupportsAudio:  p.SupportsAudio,
+		Timeout:        p.Timeout,
 	}
 }
 
