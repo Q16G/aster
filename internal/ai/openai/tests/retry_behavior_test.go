@@ -302,7 +302,7 @@ func TestChatEx_LogsRetryAttempt(t *testing.T) {
 	if !strings.Contains(out, "[openai.retry]") {
 		t.Fatalf("expected retry log, got %q", out)
 	}
-	if !strings.Contains(out, "current_attempt=1") || !strings.Contains(out, "next_attempt=2") {
+	if !strings.Contains(out, "attempt=1/2") {
 		t.Fatalf("expected retry attempt metadata, got %q", out)
 	}
 }
@@ -438,10 +438,58 @@ func TestChatEx_UsesRetryCallbackForRateLimit(t *testing.T) {
 	if retryEvents[0].Message != "Too Many Requests" {
 		t.Fatalf("unexpected retry message: %#v", retryEvents[0])
 	}
-	if retryEvents[0].RetryAfter != time.Millisecond || retryEvents[0].Delay != time.Millisecond {
-		t.Fatalf("expected 1ms retry delay, got %#v", retryEvents[0])
+	if retryEvents[0].Delay <= 0 {
+		t.Fatalf("expected positive retry delay, got %#v", retryEvents[0])
 	}
 	if retryEvents[0].Next.IsZero() {
 		t.Fatalf("expected retry next timestamp, got %#v", retryEvents[0])
+	}
+}
+
+func TestChatEx_IgnoresLargeRetryAfterHeader(t *testing.T) {
+	transport := &retryRoundTripper{
+		steps: []retryRoundTripStep{
+			{
+				statusCode: http.StatusTooManyRequests,
+				body:       `{"error":{"message":"Too many requests"}}`,
+				header: http.Header{
+					"Retry-After": []string{"67603"},
+				},
+			},
+			{body: `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`},
+		},
+	}
+
+	var retryEvents []RetryEvent
+	client := newRetryTestClient(
+		transport,
+		WithStream(false),
+		WithMaxRetries(1),
+		WithRetryCallback(func(event RetryEvent) {
+			retryEvents = append(retryEvents, event)
+		}),
+	)
+
+	start := time.Now()
+	choices, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+	if len(choices) != 1 || choices[0].Message.Content != "ok" {
+		t.Fatalf("unexpected choices: %#v", choices)
+	}
+	if transport.Calls() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", transport.Calls())
+	}
+
+	if len(retryEvents) != 1 {
+		t.Fatalf("expected 1 retry event, got %d", len(retryEvents))
+	}
+	if retryEvents[0].Delay > 30*time.Second {
+		t.Fatalf("retry delay %s exceeds backoff cap 30s — Retry-After header was not ignored", retryEvents[0].Delay)
+	}
+	if elapsed > 60*time.Second {
+		t.Fatalf("total elapsed %s suggests Retry-After header was honored", elapsed)
 	}
 }
