@@ -3,7 +3,7 @@
 !README.md
 !skills/**/SKILL.md
 .ace-tool/
-aster
+/aster
 .DS_Store
 *.db
 *.sqlite
