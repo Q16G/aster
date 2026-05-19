@@ -1,0 +1,47 @@
+rules:
+  - id: php-session-fixation-no-regenerate
+    severity: WARNING
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-384
+      owasp:
+        - "A07:2021 - Identification and Authentication Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: >
+      Session fixation risk (CWE-384). session_start() is called but
+      session_regenerate_id() is never called in the same function.
+      After authentication, always call session_regenerate_id(true) to
+      prevent session fixation attacks where an attacker pre-sets the
+      session ID.
+    patterns:
+      - pattern: session_start();
+      - pattern-not-inside: |
+          ...
+          session_regenerate_id(...);
+          ...
+
+  - id: php-session-id-from-user-input
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-384
+      owasp:
+        - "A07:2021 - Identification and Authentication Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: >
+      Session fixation via user-controlled session ID (CWE-384).
+      session_id() is called with user input, allowing an attacker to
+      set the session ID to a known value. Never accept session IDs
+      from user input; let PHP generate them.
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+    pattern-sinks:
+      - pattern: session_id($X);
