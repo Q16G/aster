@@ -1,0 +1,78 @@
+rules:
+  - id: python-jwt-algorithm-confusion-no-algorithms
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT algorithm confusion (CWE-347): jwt.decode is called without the
+      algorithms keyword argument. PyJWT 2.x raises an error in this case
+      (good), but PyJWT 1.x and older python-jose versions accept the
+      header alg as authoritative. If the key passed in is an RSA / EC
+      public key, the attacker can flip alg to HS256 and use the public
+      key as the HMAC shared secret to forge tokens.
+
+      Mitigation:
+        * Always pass an explicit allowlist:
+            jwt.decode(token, public_key, algorithms=["RS256"])
+        * Pin algorithms server-side; never trust the token header.
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode($T, $K)
+          - pattern: jwt.decode($T, key=$K)
+          - pattern: jose.jwt.decode($T, $K)
+      - pattern-not: jwt.decode($T, $K, algorithms=[...])
+      - pattern-not: jwt.decode($T, key=$K, algorithms=[...])
+      - pattern-not: jose.jwt.decode($T, $K, algorithms=[...])
+
+  - id: python-jwt-algorithms-allows-none
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT verification accepts the unsigned 'none' algorithm. Any caller
+      can present a token with alg=none and an empty signature; the
+      library will return the decoded payload as if it were verified.
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode(..., algorithms=[..., "none", ...])
+          - pattern: jwt.decode(..., algorithms=[..., 'none', ...])
+          - pattern: jose.jwt.decode(..., algorithms=[..., "none", ...])
+
+  - id: python-jwt-verify-disabled
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT signature verification disabled: verify=False or
+      options={"verify_signature": False}. The token is decoded as
+      plaintext and any attacker-controlled payload is trusted.
+
+      Mitigation:
+        * Always verify signatures. If you only need the payload, run
+          jwt.decode with verification first; do not bypass it.
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode(..., verify=False)
+          - pattern: 'jwt.decode(..., options={..., "verify_signature": False, ...})'
+          - pattern: "jwt.decode(..., options={..., 'verify_signature': False, ...})"
+          - pattern: 'jose.jwt.decode(..., options={..., "verify_signature": False, ...})'

@@ -1,0 +1,68 @@
+rules:
+  # ============================================================
+  # node jsonwebtoken: jwt.verify(token, key, options)
+  #   - 若不传 algorithms 选项，库会从 header.alg 取值；当 key 是
+  #     RSA 公钥（PEM 字符串/cert/Buffer）时，alg=HS256 攻击成立。
+  #   - 修复：options.algorithms = ['RS256'] 或 ['ES256'] 等显式列表。
+  # ============================================================
+
+  - id: js-jwt-algorithm-confusion-no-algorithms
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT algorithm confusion (CWE-347): jwt.verify is called without
+      the algorithms option. node-jsonwebtoken will accept whatever alg
+      the token header advertises. If the secret/key is an RSA / EC
+      public key (e.g. read from a .pem file), an attacker can flip alg
+      to HS256 and use the public key as the HMAC shared secret to forge
+      tokens.
+
+      Mitigation:
+        * Always pass options with an explicit algorithms whitelist:
+            jwt.verify(token, publicKey, { algorithms: ['RS256'] })
+        * Reject tokens whose header alg is not in the list.
+    patterns:
+      - pattern-either:
+          - pattern: jwt.verify($T, $K)
+          - pattern: jwt.verify($T, $K, $CB)
+          - pattern: jsonwebtoken.verify($T, $K)
+          - pattern: jsonwebtoken.verify($T, $K, $CB)
+      - pattern-not: "jwt.verify($T, $K, {..., algorithms: [...], ...})"
+      - pattern-not: "jwt.verify($T, $K, {..., algorithms: [...], ...}, $CB)"
+      - pattern-not: "jsonwebtoken.verify($T, $K, {..., algorithms: [...], ...})"
+      - pattern-not: "jsonwebtoken.verify($T, $K, {..., algorithms: [...], ...}, $CB)"
+
+  # ============================================================
+  # 接受 alg=none：options.algorithms 显式包含 'none'，或者
+  # jwt.decode 替代 jwt.verify。
+  # ============================================================
+
+  - id: js-jwt-algorithms-allows-none
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      JWT verification accepts the unsigned 'none' algorithm. Any caller
+      can present a token with alg=none and an empty signature; the
+      library will return the decoded payload as if it were verified.
+    patterns:
+      - pattern-either:
+          - pattern: "jwt.verify($T, $K, {..., algorithms: [..., 'none', ...], ...})"
+          - pattern: 'jwt.verify($T, $K, {..., algorithms: [..., "none", ...], ...})'
+          - pattern: "jsonwebtoken.verify($T, $K, {..., algorithms: [..., 'none', ...], ...})"
+          - pattern: 'jsonwebtoken.verify($T, $K, {..., algorithms: [..., "none", ...], ...})'

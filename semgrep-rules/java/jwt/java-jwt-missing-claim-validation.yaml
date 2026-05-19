@@ -1,0 +1,52 @@
+rules:
+  - id: java-jwt-missing-claim-validation
+    severity: WARNING
+    languages: [java]
+    metadata:
+      cwe:
+        - CWE-345
+        - CWE-347
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      JWT claim validation appears incomplete (CWE-345). java-jwt /
+      jjwt parsers verify the signature but do NOT enforce iss / aud /
+      exp unless explicitly configured. Tokens issued for another
+      tenant or for another service can be accepted by this server.
+
+      Mitigation:
+        * java-jwt: chain withIssuer(...) and withAudience(...) on
+          JWT.require(...) before .build().
+        * jjwt: configure the parser with .requireIssuer(...) and
+          .requireAudience(...).
+        * Always require an exp claim and reject tokens lacking it.
+    patterns:
+      - pattern-either:
+          # auth0 java-jwt: 解码后只用 getClaim，未走 require/verify
+          - pattern: |
+              DecodedJWT $JWT = com.auth0.jwt.JWT.decode($T);
+              ...
+              $X = $JWT.getClaim(...);
+          - pattern: |
+              DecodedJWT $JWT = JWT.decode($T);
+              ...
+              $X = $JWT.getClaim(...);
+          - pattern: |
+              DecodedJWT $JWT = com.auth0.jwt.JWT.decode($T);
+              ...
+              return $JWT.getClaim(...);
+          - pattern: |
+              DecodedJWT $JWT = JWT.decode($T);
+              ...
+              return $JWT.getClaim(...);
+      # 安全：随后调用了 require(...).build().verify($T)
+      - pattern-not: |
+          DecodedJWT $JWT = JWT.decode($T);
+          ...
+          JWT.require(...).withIssuer(...).build().verify($T);
+      - pattern-not: |
+          DecodedJWT $JWT = JWT.decode($T);
+          ...
+          JWT.require(...).withAudience(...).build().verify($T);
