@@ -1,0 +1,65 @@
+rules:
+  - id: php-redos-tainted-pattern
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-1333
+        - CWE-400
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Regex DoS / pattern injection (CWE-1333): a user-controlled value
+      is used as the pattern argument to preg_* / mb_ereg_*. PHP's PCRE
+      engine performs backtracking and is vulnerable to catastrophic
+      blowup on attacker-supplied patterns. Even when the pattern is not
+      malicious, allowing user-supplied delimiters and modifiers (notably
+      the `e` modifier in older PHP) can lead to code execution.
+
+      Mitigation:
+        * Do NOT take regex patterns from user input.
+        * Validate length / required prefix and use a constant pattern.
+        * Set pcre.backtrack_limit / pcre.recursion_limit conservatively.
+    patterns:
+      - pattern-either:
+          - pattern: preg_match($PAT, ...)
+          - pattern: preg_match_all($PAT, ...)
+          - pattern: preg_replace($PAT, ...)
+          - pattern: preg_replace_callback($PAT, ...)
+          - pattern: preg_split($PAT, ...)
+          - pattern: preg_grep($PAT, ...)
+          - pattern: preg_filter($PAT, ...)
+          - pattern: mb_ereg($PAT, ...)
+          - pattern: mb_eregi($PAT, ...)
+          - pattern: mb_ereg_match($PAT, ...)
+          - pattern: mb_ereg_replace($PAT, ...)
+      # 字面量不报告
+      - pattern-not: preg_match("...", ...)
+      - pattern-not: preg_match('...', ...)
+      - pattern-not: preg_match_all("...", ...)
+      - pattern-not: preg_match_all('...', ...)
+      - pattern-not: preg_replace("...", ...)
+      - pattern-not: preg_replace('...', ...)
+      - pattern-not: preg_split("...", ...)
+      - pattern-not: preg_split('...', ...)
+      - pattern-not: preg_grep("...", ...)
+      - pattern-not: preg_grep('...', ...)
+      # 仅当 $PAT 实际来自超全局变量 / Laravel request 时才报告
+      - metavariable-pattern:
+          metavariable: $PAT
+          patterns:
+            - pattern-either:
+                - pattern: $_GET[...]
+                - pattern: $_POST[...]
+                - pattern: $_REQUEST[...]
+                - pattern: $_COOKIE[...]
+                - pattern: $_SERVER[...]
+                - pattern: $request->input(...)
+                - pattern: $request->query(...)
+                - pattern: $request->post(...)
+                - pattern: $request->get(...)
+                - pattern: $request->header(...)
+                - pattern: request(...)
+                - pattern: Input::get(...)
