@@ -1,0 +1,60 @@
+rules:
+  - id: php-type-juggling-loose-comparison
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-697
+        - CWE-1024
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: >
+      PHP type juggling via loose comparison (CWE-697). Using == or !=
+      to compare password hashes, tokens, or HMAC values allows bypass
+      via type coercion (e.g. "0e123..." == "0e456..." evaluates to
+      true). Use hash_equals() for constant-time comparison or strict
+      === operator.
+    patterns:
+      - pattern-either:
+          - pattern: md5($X) == $Y
+          - pattern: $Y == md5($X)
+          - pattern: sha1($X) == $Y
+          - pattern: $Y == sha1($X)
+          - pattern: hash(...) == $Y
+          - pattern: $Y == hash(...)
+          - pattern: hash_hmac(...) == $Y
+          - pattern: $Y == hash_hmac(...)
+          - pattern: md5($X) != $Y
+          - pattern: sha1($X) != $Y
+          - pattern: hash(...) != $Y
+          - pattern: hash_hmac(...) != $Y
+
+  - id: php-type-juggling-strcmp-bypass
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-697
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: >
+      strcmp() type juggling bypass (CWE-697). When an array is passed
+      to strcmp() (e.g. via $_POST['password'][]=), it returns NULL
+      which loosely equals 0. Use strict comparison (===) with
+      hash_equals() instead of strcmp() for security-sensitive
+      comparisons.
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+    pattern-sinks:
+      - pattern: strcmp($X, ...)
+      - pattern: strcmp(..., $X)
+      - pattern: strcasecmp($X, ...)
+      - pattern: strcasecmp(..., $X)
