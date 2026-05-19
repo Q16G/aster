@@ -242,8 +242,6 @@ func (f *AgentFactory) resolveTools(names []string) ([]Tool, error) {
 		if name == "" {
 			continue
 		}
-		// ToolContext is nil during factory build — tools that need it (e.g. bash)
-		// should be configured via Policies.BashPermissionContext instead.
 		tool, err := f.toolRegistry.Resolve(name, nil)
 		if err != nil {
 			return nil, err
