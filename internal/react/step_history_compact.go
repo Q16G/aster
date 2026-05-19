@@ -197,7 +197,7 @@ func (c *AIStepHistoryCompactor) Compact(ctx context.Context, aiClient ai.ChatCl
 				break
 			}
 
-			excerpt := working[compressStart:compressEnd]
+			excerpt := stripImagesFromExcerpt(working[compressStart:compressEnd])
 			next, err := summarizeHistoryCompaction(ctx, aiClient, manager, strings.TrimSpace(instruction), strings.TrimSpace(prevSummary), excerpt)
 			if err != nil || strings.TrimSpace(next) == "" {
 				// Shrink first, then shift.
@@ -407,16 +407,48 @@ func shortenOldToolResults(stepHistory []*ai.MsgInfo, keepLastRounds int, maxRun
 			if msg == nil || strings.TrimSpace(msg.Role) != "tool" {
 				continue
 			}
-			s, ok := msg.Content.(string)
-			if !ok {
-				continue
+			switch content := msg.Content.(type) {
+			case string:
+				next, changed := shortenToolResultText(content, maxRunes)
+				if !changed {
+					continue
+				}
+				msg.Content = next
+				did = true
+			case []*ai.ChatContext:
+				var stripped []*ai.ChatContext
+				changed := false
+				for _, ctx := range content {
+					if ctx == nil {
+						continue
+					}
+					if ctx.Type == "image_url" {
+						changed = true
+						continue
+					}
+					if ctx.Type == "text" {
+						next, c := shortenToolResultText(ctx.Text, maxRunes)
+						if c {
+							changed = true
+							newCtx := *ctx
+							newCtx.Text = next
+							stripped = append(stripped, &newCtx)
+						} else {
+							stripped = append(stripped, ctx)
+						}
+						continue
+					}
+					stripped = append(stripped, ctx)
+				}
+				if changed {
+					if len(stripped) == 0 {
+						msg.Content = "[content truncated]"
+					} else {
+						msg.Content = stripped
+					}
+					did = true
+				}
 			}
-			next, changed := shortenToolResultText(s, maxRunes)
-			if !changed {
-				continue
-			}
-			msg.Content = next
-			did = true
 		}
 	}
 	return NormalizeHistoryMsgInfos(stepHistory), did
@@ -499,4 +531,37 @@ func maxInt(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+func stripImagesFromExcerpt(msgs []*ai.MsgInfo) []*ai.MsgInfo {
+	out := make([]*ai.MsgInfo, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
+		contexts, ok := msg.Content.([]*ai.ChatContext)
+		if !ok {
+			out = append(out, msg)
+			continue
+		}
+		var textOnly []*ai.ChatContext
+		for _, ctx := range contexts {
+			if ctx == nil {
+				continue
+			}
+			if ctx.Type == "image_url" {
+				textOnly = append(textOnly, &ai.ChatContext{Type: "text", Text: "[image]"})
+				continue
+			}
+			textOnly = append(textOnly, ctx)
+		}
+		clone := *msg
+		if len(textOnly) == 0 {
+			clone.Content = "[image]"
+		} else {
+			clone.Content = textOnly
+		}
+		out = append(out, &clone)
+	}
+	return out
 }
