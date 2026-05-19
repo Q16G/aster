@@ -1,0 +1,117 @@
+rules:
+  - id: go-xss-responsewriter
+    mode: taint
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-79
+      owasp:
+        - "A03:2021 - Injection"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Potential XSS (CWE-79): a user-controlled value flows directly into
+      the HTTP response body without HTML encoding. When the response
+      Content-Type is text/html the attacker can inject script tags.
+
+      Mitigation:
+        * Use html/template (NOT text/template); it escapes by context
+          when the data is interpolated through {{ . }}.
+        * Set Content-Type to application/json / text/plain when serving
+          non-HTML content so browsers do not treat the body as HTML.
+        * If the response truly is HTML and must contain user data, encode
+          with html.EscapeString before writing.
+    pattern-sources:
+      # ---------- net/http ----------
+      - pattern: $REQ.URL.Query().Get(...)
+      - pattern: $REQ.URL.Query()[...]
+      - pattern: $REQ.FormValue(...)
+      - pattern: $REQ.PostFormValue(...)
+      - pattern: $REQ.Form.Get(...)
+      - pattern: $REQ.PostForm.Get(...)
+      - pattern: $REQ.Header.Get(...)
+      - pattern: $REQ.Cookie(...)
+      - pattern: $REQ.URL.Path
+      - pattern: $REQ.URL.RawQuery
+      # ---------- gin ----------
+      - pattern: $C.Query(...)
+      - pattern: $C.DefaultQuery(...)
+      - pattern: $C.Param(...)
+      - pattern: $C.PostForm(...)
+      - pattern: $C.DefaultPostForm(...)
+      - pattern: $C.GetHeader(...)
+      - pattern: $C.GetString(...)
+      - pattern: $C.QueryArray(...)
+      - pattern: $C.Cookie(...)
+      # ---------- echo ----------
+      - pattern: $E.QueryParam(...)
+      - pattern: $E.Param(...)
+      - pattern: $E.FormValue(...)
+      - pattern: $E.Cookie(...)
+      # ---------- fiber ----------
+      - pattern: $F.Query(...)
+      - pattern: $F.Params(...)
+      - pattern: $F.FormValue(...)
+      - pattern: $F.Get(...)
+      - pattern: $F.Cookies(...)
+      # ---------- chi / gorilla mux ----------
+      - pattern: chi.URLParam(...)
+      - pattern: mux.Vars(...)[...]
+
+    pattern-propagators:
+      - pattern: $SB.WriteString($T)
+        from: $T
+        to: $SB
+      - pattern: $SB.Write($T)
+        from: $T
+        to: $SB
+
+    pattern-sanitizers:
+      # 标准 HTML 转义
+      - pattern: html.EscapeString(...)
+      - pattern: template.HTMLEscapeString(...)
+      - pattern: template.JSEscapeString(...)
+      - pattern: template.URLQueryEscaper(...)
+      # 强类型解析后回写不会含 < > "
+      - pattern: strconv.Atoi(...)
+      - pattern: strconv.ParseInt(...)
+      - pattern: strconv.ParseUint(...)
+      - pattern: strconv.ParseFloat(...)
+      - pattern: strconv.ParseBool(...)
+      # 用户自定义清理
+      - patterns:
+          - pattern-either:
+              - pattern: sanitizeHTML(...)
+              - pattern: escapeHTML(...)
+              - pattern: bluemonday.UGCPolicy().Sanitize(...)
+              - pattern: bluemonday.StrictPolicy().Sanitize(...)
+
+    pattern-sinks:
+      # ---------- net/http: ResponseWriter 直写 ----------
+      - patterns:
+          - pattern-either:
+              - pattern: $W.Write([]byte($X))
+              - pattern: $W.Write($X)
+              - pattern: io.WriteString($W, $X)
+              - pattern: fmt.Fprint($W, $X)
+              - pattern: fmt.Fprintln($W, $X)
+              - pattern: fmt.Fprintf($W, $FMT, ..., $X, ...)
+          - pattern-inside: |
+              func $F(..., $W http.ResponseWriter, ...) {
+                ...
+              }
+      # ---------- gin / echo / fiber: HTML 输出 ----------
+      - pattern: $C.HTML($STATUS, $TPL, $X)
+      - pattern: $C.Render(...)
+      - pattern: $C.String(http.StatusOK, $X)
+      - pattern: $C.String(http.StatusOK, "...", $X, ...)
+      - pattern: $E.HTML($STATUS, $X)
+      - pattern: $E.HTMLBlob($STATUS, $X)
+      - pattern: $F.SendString($X)
+      # ---------- text/template (无自动 HTML 转义) ----------
+      - pattern: text_template.New(...).Parse($X)
+      - pattern: |
+          $T := text_template.New(...)
+          ...
+          $T.Execute($W, $X)

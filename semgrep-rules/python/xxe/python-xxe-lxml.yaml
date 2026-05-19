@@ -1,0 +1,76 @@
+rules:
+  - id: python-xxe-lxml-default
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-611
+        - CWE-776
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XXE via lxml default parser (CWE-611): lxml.etree.parse /
+      fromstring / XMLParser default to resolve_entities=True and will
+      load DTDs / external entities from disk and network. This permits
+      classic XXE: arbitrary file read, SSRF, and billion-laughs DoS.
+
+      Mitigation:
+        * Use defusedxml.lxml.parse / fromstring (recommended).
+        * Or build an explicit safe parser:
+            etree.XMLParser(resolve_entities=False, no_network=True,
+                            load_dtd=False, dtd_validation=False,
+                            huge_tree=False)
+          and pass it to parse(...).
+    patterns:
+      - pattern-either:
+          - pattern: lxml.etree.parse(...)
+          - pattern: lxml.etree.fromstring(...)
+          - pattern: lxml.etree.XML(...)
+          - pattern: lxml.etree.iterparse(...)
+          - pattern: etree.parse(...)
+          - pattern: etree.fromstring(...)
+          - pattern: etree.XML(...)
+          - pattern: etree.iterparse(...)
+      # 显式传入安全 parser 的写法不报告
+      - pattern-not: lxml.etree.parse($X, $P)
+      - pattern-not: lxml.etree.fromstring($X, $P)
+      - pattern-not: etree.parse($X, $P)
+      - pattern-not: etree.fromstring($X, $P)
+      # 用 defusedxml 也不报告（导入名通常是 defusedxml.lxml）
+      - pattern-not: defusedxml.lxml.parse(...)
+      - pattern-not: defusedxml.lxml.fromstring(...)
+
+  - id: python-xxe-lxml-unsafe-parser
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-611
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Unsafe lxml XMLParser configuration: resolve_entities is enabled
+      OR load_dtd / no_network / dtd_validation are explicitly set to
+      values that allow external entity / DTD processing. This parser
+      is XXE-exploitable.
+
+      Mitigation:
+        * resolve_entities=False
+        * no_network=True
+        * load_dtd=False
+        * dtd_validation=False
+        * huge_tree=False (or set explicit limits)
+    patterns:
+      - pattern-either:
+          - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
+          - pattern: etree.XMLParser(..., resolve_entities=True, ...)
+          - pattern: lxml.etree.XMLParser(..., no_network=False, ...)
+          - pattern: etree.XMLParser(..., no_network=False, ...)
+          - pattern: lxml.etree.XMLParser(..., load_dtd=True, ...)
+          - pattern: etree.XMLParser(..., load_dtd=True, ...)
+          - pattern: lxml.etree.XMLParser(..., dtd_validation=True, ...)
+          - pattern: etree.XMLParser(..., dtd_validation=True, ...)
