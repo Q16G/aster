@@ -379,17 +379,16 @@ func (e *Emitter) EmitToolUpdate(payload map[string]any) {
 	})
 }
 
-func (e *Emitter) EmitRetry(attempt int, maxAttempts int, delay time.Duration, next time.Time, message string, retryAfter time.Duration) {
+func (e *Emitter) EmitRetry(attempt int, maxAttempts int, delay time.Duration, next time.Time, message string) {
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeRetry,
 		NodeID: "retry",
 		Payload: map[string]any{
-			"attempt":        attempt,
-			"max_attempts":   maxAttempts,
-			"delay_ms":       delay.Milliseconds(),
-			"next_unix_ms":   next.UnixMilli(),
-			"message":        strings.TrimSpace(message),
-			"retry_after_ms": retryAfter.Milliseconds(),
+			"attempt":      attempt,
+			"max_attempts": maxAttempts,
+			"delay_ms":     delay.Milliseconds(),
+			"next_unix_ms": next.UnixMilli(),
+			"message":      strings.TrimSpace(message),
 		},
 	})
 }
