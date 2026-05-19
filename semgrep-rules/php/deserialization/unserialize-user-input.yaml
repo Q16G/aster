@@ -1,31 +1,13 @@
 rules:
   - id: php-deserialization-unserialize-user-input
-    patterns:
-      - pattern-either:
-          - pattern: unserialize($_GET[$KEY]);
-          - pattern: unserialize($_POST[$KEY]);
-          - pattern: unserialize($_REQUEST[$KEY]);
-          - pattern: unserialize($_COOKIE[$KEY]);
-          - pattern: |
-              $DATA = $_GET[$KEY];
-              ...
-              unserialize($DATA);
-          - pattern: |
-              $DATA = $_POST[$KEY];
-              ...
-              unserialize($DATA);
-          - pattern: |
-              $DATA = $_REQUEST[$KEY];
-              ...
-              unserialize($DATA);
-          - pattern: |
-              $DATA = $_COOKIE[$KEY];
-              ...
-              unserialize($DATA);
-          - pattern: |
-              $DATA = file_get_contents("php://input");
-              ...
-              unserialize($DATA);
+    mode: taint
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe: CWE-502
+      owasp: "A08:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
     message: >
       Insecure deserialization via unserialize() with user-controlled
       input. An attacker can craft a malicious serialized payload to
@@ -33,10 +15,13 @@ rules:
       __destruct, __toString). Use json_decode() for data interchange,
       or if unserialize is required, use the allowed_classes option
       (PHP 7.0+) to restrict instantiable classes.
-    metadata:
-      cwe: CWE-502
-      owasp: "A08:2021"
-      confidence: HIGH
-      needs_dataflow_confirmation: false
-    severity: ERROR
-    languages: [php]
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: file_get_contents("php://input")
+    pattern-sinks:
+      - pattern: unserialize($X)
+    pattern-sanitizers:
+      - pattern: json_decode(...)
