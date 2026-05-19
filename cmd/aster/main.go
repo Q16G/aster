@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -353,6 +354,9 @@ func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, 
 	if len(ps.VariantOptions) > 0 {
 		opts = append(opts, openai.WithExtraBody(ps.VariantOptions))
 	}
+	if ps.Timeout != nil && *ps.Timeout > 0 {
+		opts = append(opts, openai.WithTimeout(time.Duration(*ps.Timeout)*time.Second))
+	}
 	return openai.NewClient(opts...)
 }
 
@@ -389,6 +393,9 @@ func newAnthropicClient(ps *tui.ProviderState, modelOverride string, maxTokens i
 		if len(variantHeaders) > 0 {
 			opts = append(opts, anthropic.WithHeaders(variantHeaders))
 		}
+	}
+	if ps.Timeout != nil && *ps.Timeout > 0 {
+		opts = append(opts, anthropic.WithTimeout(time.Duration(*ps.Timeout)*time.Second))
 	}
 	return anthropic.NewClient(opts...)
 }
