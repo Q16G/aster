@@ -34,6 +34,7 @@ const (
 	DefaultOutputReserveTokens = 32000
 	SessionOutputTokenMax      = 32768
 	openCodeCompactionBuffer   = 20000
+	imageTokenEstimate         = 800
 )
 
 type ContextBudget struct {
@@ -83,6 +84,11 @@ var knownModelTokenProfiles = []knownModelTokenProfile{
 	{Name: "glm-4.5", Family: "chatglm", MatchPatterns: []string{"glm-4.5", "chatglm-4.5", "chatglm4"}, ContextWindowTokens: 131072, OutputTokenLimit: 98304},
 	{Name: "chatglm3", Family: "chatglm", MatchPatterns: []string{"chatglm3", "chatglm-3"}, ContextWindowTokens: 32768, OutputTokenLimit: 8192},
 	{Name: "chatglm", Family: "chatglm", MatchPatterns: []string{"chatglm"}, ContextWindowTokens: 131072, OutputTokenLimit: 32768},
+	// Anthropic Claude
+	{Name: "claude-opus-4", Family: "claude", MatchPatterns: []string{"claude-opus-4"}, ContextWindowTokens: 200000, OutputTokenLimit: 32000, SupportsVision: ai.BoolPtr(true)},
+	{Name: "claude-sonnet-4", Family: "claude", MatchPatterns: []string{"claude-sonnet-4"}, ContextWindowTokens: 200000, OutputTokenLimit: 16000, SupportsVision: ai.BoolPtr(true)},
+	{Name: "claude-haiku-3.5", Family: "claude", MatchPatterns: []string{"claude-haiku-3", "claude-3-5-haiku", "claude-3.5-haiku"}, ContextWindowTokens: 200000, OutputTokenLimit: 8192, SupportsVision: ai.BoolPtr(true)},
+	{Name: "claude-sonnet-3.5", Family: "claude", MatchPatterns: []string{"claude-3-5-sonnet", "claude-3.5-sonnet"}, ContextWindowTokens: 200000, OutputTokenLimit: 8192, SupportsVision: ai.BoolPtr(true)},
 }
 
 func resolveContextBudget(client ai.ChatClient) ContextBudget {
@@ -251,7 +257,21 @@ func estimateMsgTokens(msg *ai.MsgInfo) int {
 		estimateStringTokens(msg.ReasoningOutput)
 
 	if msg.Content != nil {
-		tokens += estimateStringTokens(FormatMsgContent(msg.Content))
+		if contexts, ok := msg.Content.([]*ai.ChatContext); ok {
+			for _, ctx := range contexts {
+				if ctx == nil {
+					continue
+				}
+				switch ctx.Type {
+				case "text":
+					tokens += estimateStringTokens(ctx.Text)
+				case "image_url":
+					tokens += imageTokenEstimate
+				}
+			}
+		} else {
+			tokens += estimateStringTokens(FormatMsgContent(msg.Content))
+		}
 	}
 
 	if len(msg.ToolCalls) > 0 {

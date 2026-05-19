@@ -179,3 +179,251 @@ func TestAIStepHistoryCompactor_DynamicWindowShrinkOnEmptySummary(t *testing.T) 
 		t.Fatalf("expected valid tool call sequence after compaction, got: %v", err)
 	}
 }
+
+func TestShortenOldToolResults_ChatContextWithImages(t *testing.T) {
+	tc := &ai.FunctionTool{
+		Id:   "call-img",
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:      "screenshot",
+			Arguments: "{}",
+		},
+	}
+	assistant := ai.NewAIMsgInfo("")
+	assistant.ToolCalls = []*ai.FunctionTool{tc}
+
+	toolMsg := ai.NewToolCallResultMsgInfo([]*ai.ChatContext{
+		{Type: "text", Text: strings.Repeat("x", 200)},
+		{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+	}, "call-img")
+
+	keepRound := makeToolRound("call-keep", "kept")
+	history := []*ai.MsgInfo{assistant, toolMsg}
+	history = append(history, keepRound...)
+
+	result, did := shortenOldToolResults(history, 1, 50)
+	if !did {
+		t.Fatalf("expected shortenOldToolResults to modify history")
+	}
+
+	for _, msg := range result {
+		if msg == nil || strings.TrimSpace(msg.ToolCallID) != "call-img" {
+			continue
+		}
+		switch content := msg.Content.(type) {
+		case []*ai.ChatContext:
+			for _, ctx := range content {
+				if ctx.Type == "image_url" {
+					t.Fatalf("expected images to be stripped from old tool result")
+				}
+			}
+			for _, ctx := range content {
+				if ctx.Type == "text" && !strings.Contains(ctx.Text, stepHistoryToolResultShortenedHint) {
+					t.Fatalf("expected text to be shortened with hint, got %q", ctx.Text)
+				}
+			}
+		case string:
+			if !strings.Contains(content, stepHistoryToolResultShortenedHint) {
+				t.Fatalf("expected shortened hint in string content, got %q", content)
+			}
+		default:
+			t.Fatalf("unexpected content type %T", msg.Content)
+		}
+	}
+}
+
+func TestStripImagesFromExcerpt(t *testing.T) {
+	msgs := []*ai.MsgInfo{
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "text", Text: "analyze this"},
+				{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+			},
+		},
+		{
+			Role:    "assistant",
+			Content: "ok I see the image",
+		},
+	}
+
+	result := stripImagesFromExcerpt(msgs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(result))
+	}
+
+	contexts, ok := result[0].Content.([]*ai.ChatContext)
+	if !ok {
+		t.Fatalf("expected []*ai.ChatContext, got %T", result[0].Content)
+	}
+	for _, ctx := range contexts {
+		if ctx.Type == "image_url" {
+			t.Fatalf("expected image_url to be replaced with [image] placeholder")
+		}
+	}
+	hasPlaceholder := false
+	for _, ctx := range contexts {
+		if ctx.Type == "text" && ctx.Text == "[image]" {
+			hasPlaceholder = true
+		}
+	}
+	if !hasPlaceholder {
+		t.Fatalf("expected [image] placeholder in stripped content")
+	}
+
+	// String content should be unchanged.
+	if result[1].Content != "ok I see the image" {
+		t.Fatalf("expected string content to be preserved, got %v", result[1].Content)
+	}
+}
+
+func TestStripImagesFromExcerpt_DoesNotMutateOriginal(t *testing.T) {
+	original := &ai.MsgInfo{
+		Role: "user",
+		Content: []*ai.ChatContext{
+			{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+		},
+	}
+	msgs := []*ai.MsgInfo{original}
+
+	result := stripImagesFromExcerpt(msgs)
+
+	origContexts := original.Content.([]*ai.ChatContext)
+	if origContexts[0].Type != "image_url" {
+		t.Fatalf("original message was mutated")
+	}
+
+	resultContexts, ok := result[0].Content.([]*ai.ChatContext)
+	if !ok {
+		t.Fatalf("expected []*ai.ChatContext result")
+	}
+	if resultContexts[0].Type != "text" || resultContexts[0].Text != "[image]" {
+		t.Fatalf("expected [image] placeholder, got %+v", resultContexts[0])
+	}
+}
+
+func TestShortenOldToolResults_ChatContextImageOnly(t *testing.T) {
+	tc := &ai.FunctionTool{
+		Id:   "call-imgonly",
+		Type: "function",
+		Function: &ai.FunctionDetail{Name: "screenshot", Arguments: "{}"},
+	}
+	assistant := ai.NewAIMsgInfo("")
+	assistant.ToolCalls = []*ai.FunctionTool{tc}
+
+	toolMsg := ai.NewToolCallResultMsgInfo([]*ai.ChatContext{
+		{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+	}, "call-imgonly")
+
+	keepRound := makeToolRound("call-keep2", "kept")
+	history := []*ai.MsgInfo{assistant, toolMsg}
+	history = append(history, keepRound...)
+
+	result, did := shortenOldToolResults(history, 1, 50)
+	if !did {
+		t.Fatalf("expected modification")
+	}
+
+	for _, msg := range result {
+		if msg == nil || strings.TrimSpace(msg.ToolCallID) != "call-imgonly" {
+			continue
+		}
+		s, ok := msg.Content.(string)
+		if !ok {
+			t.Fatalf("expected string content when all images stripped, got %T", msg.Content)
+		}
+		if s != "[content truncated]" {
+			t.Fatalf("unexpected content: %q", s)
+		}
+	}
+}
+
+func TestShortenOldToolResults_ChatContextPreservesDetail(t *testing.T) {
+	tc := &ai.FunctionTool{
+		Id:   "call-detail",
+		Type: "function",
+		Function: &ai.FunctionDetail{Name: "tool", Arguments: "{}"},
+	}
+	assistant := ai.NewAIMsgInfo("")
+	assistant.ToolCalls = []*ai.FunctionTool{tc}
+
+	toolMsg := ai.NewToolCallResultMsgInfo([]*ai.ChatContext{
+		{Type: "text", Text: "short", Detail: "high"},
+		{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+	}, "call-detail")
+
+	keepRound := makeToolRound("call-k", "kept")
+	history := []*ai.MsgInfo{assistant, toolMsg}
+	history = append(history, keepRound...)
+
+	result, did := shortenOldToolResults(history, 1, 5000)
+	if !did {
+		t.Fatalf("expected modification due to image removal")
+	}
+
+	for _, msg := range result {
+		if msg == nil || strings.TrimSpace(msg.ToolCallID) != "call-detail" {
+			continue
+		}
+		contexts, ok := msg.Content.([]*ai.ChatContext)
+		if !ok {
+			t.Fatalf("expected []*ai.ChatContext, got %T", msg.Content)
+		}
+		if len(contexts) != 1 {
+			t.Fatalf("expected 1 context, got %d", len(contexts))
+		}
+		if contexts[0].Detail != "high" {
+			t.Fatalf("expected Detail preserved, got %q", contexts[0].Detail)
+		}
+	}
+}
+
+func TestStripImagesFromExcerpt_AllImages(t *testing.T) {
+	msgs := []*ai.MsgInfo{
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,A"}},
+				{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,B"}},
+			},
+		},
+	}
+	result := stripImagesFromExcerpt(msgs)
+	contexts, ok := result[0].Content.([]*ai.ChatContext)
+	if !ok {
+		t.Fatalf("expected []*ai.ChatContext, got %T", result[0].Content)
+	}
+	if len(contexts) != 2 {
+		t.Fatalf("expected 2 placeholders, got %d", len(contexts))
+	}
+	for _, ctx := range contexts {
+		if ctx.Type != "text" || ctx.Text != "[image]" {
+			t.Fatalf("expected [image] placeholder, got %+v", ctx)
+		}
+	}
+}
+
+func TestStripImagesFromExcerpt_NilMessages(t *testing.T) {
+	msgs := []*ai.MsgInfo{nil, nil}
+	result := stripImagesFromExcerpt(msgs)
+	if len(result) != 0 {
+		t.Fatalf("expected empty, got %d", len(result))
+	}
+}
+
+func TestStripImagesFromExcerpt_EmptyChatContext(t *testing.T) {
+	msgs := []*ai.MsgInfo{
+		{
+			Role:    "user",
+			Content: []*ai.ChatContext{},
+		},
+	}
+	result := stripImagesFromExcerpt(msgs)
+	s, ok := result[0].Content.(string)
+	if !ok {
+		t.Fatalf("expected string for empty contexts, got %T", result[0].Content)
+	}
+	if s != "[image]" {
+		t.Fatalf("unexpected: %q", s)
+	}
+}
