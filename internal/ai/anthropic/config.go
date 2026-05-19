@@ -151,12 +151,14 @@ func WithUsagePricing(model aiusage.PricingModel) Option {
 }
 
 func DefaultConfig() *Config {
+	supportsVision := true
 	return &Config{
-		URL:        "https://api.anthropic.com/v1/messages",
-		Version:    "2023-06-01",
-		Timeout:    120 * time.Second,
-		MaxRetries: 3,
-		MaxTokens:  16384,
-		Headers:    map[string]string{},
+		URL:            "https://api.anthropic.com/v1/messages",
+		Version:        "2023-06-01",
+		Timeout:        300 * time.Second,
+		MaxRetries:     3,
+		MaxTokens:      16384,
+		Headers:        map[string]string{},
+		SupportsVision: &supportsVision,
 	}
 }
