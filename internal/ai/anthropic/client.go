@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -39,6 +40,36 @@ type anthropicResponse struct {
 type anthropicError struct {
 	Type    string `json:"type,omitempty"`
 	Message string `json:"message,omitempty"`
+}
+
+type httpError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *httpError) Error() string {
+	return fmt.Sprintf("anthropic api error: status=%d body=%s", e.StatusCode, e.Body)
+}
+
+var retryableStatusCodes = map[int]bool{
+	429: true, 500: true, 502: true, 503: true, 504: true,
+}
+
+func isRetryable(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		return retryableStatusCodes[he.StatusCode]
+	}
+	if strings.Contains(err.Error(), "http request:") {
+		return true
+	}
+	return false
 }
 
 type anthropicUsage struct {
@@ -189,7 +220,7 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 
 	var lastErr error
 	for attempt := 0; attempt <= c.config.MaxRetries; attempt++ {
-		attemptTimeout := c.config.Timeout
+		attemptTimeout := ai.AttemptTimeoutForAttempt(c.config.Timeout, attempt)
 		attemptCtx := ctx
 		cancelAttempt := func() {}
 		if attemptTimeout > 0 {
@@ -204,7 +235,10 @@ func (c *Client) ChatExWithOptions(ctx context.Context, infos []*ai.MsgInfo, opt
 		if attempt >= c.config.MaxRetries {
 			break
 		}
-		waitDuration := time.Duration(math.Min(8, math.Pow(2, float64(attempt)))) * time.Second
+		if !isRetryable(err) {
+			return nil, err
+		}
+		waitDuration := time.Duration(math.Min(30, math.Pow(2, float64(attempt)))) * time.Second
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -435,7 +469,7 @@ func (c *Client) doRequest(ctx context.Context, reqBody map[string]any) ([]*ai.C
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("anthropic api error: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, &httpError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
 
 	var parsed anthropicResponse
