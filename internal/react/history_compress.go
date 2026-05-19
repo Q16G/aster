@@ -191,7 +191,7 @@ func (c *AIHistoryCompressor) Compress(ctx context.Context, aiClient ai.ChatClie
 			promptManager,
 			strings.TrimSpace(instruction),
 			strings.TrimSpace(summary),
-			working[compressStart:compressEnd],
+			stripImagesFromExcerpt(working[compressStart:compressEnd]),
 		)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -459,6 +459,19 @@ func FormatMsgContent(content any) string {
 		return strings.TrimSpace(v)
 	case []byte:
 		return strings.TrimSpace(string(v))
+	case []*ai.ChatContext:
+		var parts []string
+		for _, ctx := range v {
+			if ctx == nil {
+				continue
+			}
+			if ctx.Type == "text" && strings.TrimSpace(ctx.Text) != "" {
+				parts = append(parts, strings.TrimSpace(ctx.Text))
+			} else if ctx.Type == "image_url" {
+				parts = append(parts, "[image]")
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
 	default:
 		raw, err := json.Marshal(v)
 		if err != nil {
