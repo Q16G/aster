@@ -1,42 +1,29 @@
 rules:
   - id: php-injection-sql-injection-pdo
-    patterns:
-      - pattern-either:
-          - pattern: |
-              $PDO->query("..." . $INPUT . "...");
-          - pattern: |
-              $PDO->query("..." . $INPUT);
-          - pattern: |
-              $PDO->query($INPUT . "...");
-          - pattern: |
-              $PDO->exec("..." . $INPUT . "...");
-          - pattern: |
-              $PDO->exec("..." . $INPUT);
-          - pattern: |
-              $PDO->exec($INPUT . "...");
-          - pattern: |
-              $SQL = "..." . $INPUT . "...";
-              ...
-              $PDO->query($SQL);
-          - pattern: |
-              $SQL = "..." . $INPUT . "...";
-              ...
-              $PDO->exec($SQL);
-          - pattern: |
-              $PDO->query("...$INTERPOLATED...");
-          - pattern: |
-              $PDO->exec("...$INTERPOLATED...");
-      - pattern-not: |
-          $PDO->prepare(...);
-    message: >
-      SQL injection via PDO query() or exec() with string concatenation.
-      User-controlled data is concatenated into the SQL string instead of
-      using prepared statements. Use PDO::prepare() with bound parameters
-      to prevent SQL injection.
+    mode: taint
+    severity: ERROR
+    languages: [php]
     metadata:
       cwe: CWE-89
       owasp: "A03:2021"
       confidence: MEDIUM
       needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    message: >
+      SQL injection via PDO query() or exec() with string concatenation.
+      User-controlled data is concatenated into the SQL string instead of
+      using prepared statements. Use PDO::prepare() with bound parameters
+      to prevent SQL injection.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER
+    pattern-sinks:
+      - pattern: $PDO->query($X)
+      - pattern: $PDO->exec($X)
+    pattern-sanitizers:
+      - pattern: $PDO->prepare(...)
+      - pattern: $PDO->quote(...)
+      - pattern: intval(...)
+      - pattern: (int)$X
