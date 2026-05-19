@@ -254,7 +254,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		URL:             "https://api.openai.com/v1/chat/completions",
 		URLAutoComplete: true,
-		Timeout:         120 * time.Second,
+		Timeout:         300 * time.Second,
 		MaxRetries:      3,
 		RetryCodes:      append([]int(nil), defaultRetryCodes...),
 		Stream:          true,
