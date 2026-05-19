@@ -165,6 +165,9 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 			if name == "" {
 				continue
 			}
+			if policyManagedTools[name] {
+				continue
+			}
 			if parentSet[name] || (t.factory.toolRegistry != nil && t.factory.toolRegistry.Has(name)) {
 				result = append(result, name)
 			}
@@ -174,24 +177,43 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 	return t.parentDomainToolNames()
 }
 
+// policyManagedTools lists tools hard-wired by NewReActAgent / AgentFactory.Build
+// outside the ToolRegistry. They must be stripped from ToolNames so that
+// resolveChildToolNames never passes them to factory.resolveTools (which would
+// fail with "tool not registered").
+var policyManagedTools = map[string]bool{
+	builtin_tools.UpdateCurrentStepToolName: true,
+	builtin_tools.TaskStatusQueryToolName:   true,
+	builtin_tools.HumanConfirmToolName:      true,
+	builtin_tools.SubAgentToolName:          true,
+	builtin_tools.BashToolName:              true,
+	builtin_tools.SkillToolName:             true,
+}
+
+// excludeFromInheritance is the full set of platform / orchestration tools
+// that should NOT be auto-inherited when the child agent uses the default
+// (no explicit tools) path. It is a superset of policyManagedTools: registry-
+// resident skill-management tools are also excluded because sub-agents should
+// not manage skills by default.
+var excludeFromInheritance = map[string]bool{
+	builtin_tools.UpdateCurrentStepToolName: true,
+	builtin_tools.TaskStatusQueryToolName:   true,
+	builtin_tools.HumanConfirmToolName:      true,
+	builtin_tools.SubAgentToolName:          true,
+	builtin_tools.BashToolName:              true,
+	builtin_tools.SkillToolName:             true,
+	builtin_tools.LoadSkillsToolName:        true,
+	builtin_tools.ListSkillsToolName:        true,
+	builtin_tools.DeleteSkillToolName:       true,
+}
+
 func (t *SubAgentTool) parentDomainToolNames() []string {
 	if t.parentAgent == nil {
 		return nil
 	}
-	platformTools := map[string]bool{
-		builtin_tools.UpdateCurrentStepToolName: true,
-		builtin_tools.TaskStatusQueryToolName:   true,
-		builtin_tools.HumanConfirmToolName:      true,
-		builtin_tools.SubAgentToolName:          true,
-		builtin_tools.BashToolName:              true,
-		builtin_tools.LoadSkillsToolName:        true,
-		builtin_tools.ListSkillsToolName:        true,
-		builtin_tools.DeleteSkillToolName:       true,
-		builtin_tools.SkillToolName:             true,
-	}
 	var names []string
 	for _, name := range t.parentAgent.tools.Keys() {
-		if platformTools[name] {
+		if excludeFromInheritance[name] {
 			continue
 		}
 		names = append(names, name)
