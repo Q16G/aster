@@ -1,0 +1,80 @@
+rules:
+  - id: js-crypto-weak-algorithm
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-328
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      Weak cryptographic algorithm (CWE-327): DES, RC4, MD5, or SHA1 is
+      used via Node.js crypto module. These algorithms are broken or
+      deprecated.
+
+      Mitigation:
+        * Encryption: use aes-256-gcm or chacha20-poly1305.
+        * Hashing: use sha256 / sha512.
+        * Password hashing: use bcrypt / scrypt / argon2.
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createCipher("des", ...)
+          - pattern: crypto.createCipher("des-ede3", ...)
+          - pattern: crypto.createCipher("rc4", ...)
+          - pattern: crypto.createCipheriv("des", ...)
+          - pattern: crypto.createCipheriv("des-ede3", ...)
+          - pattern: crypto.createCipheriv("des-ede3-cbc", ...)
+          - pattern: crypto.createCipheriv("rc4", ...)
+          - pattern: crypto.createHash("md5")
+          - pattern: crypto.createHash("sha1")
+          - pattern: crypto.createHmac("md5", ...)
+          - pattern: crypto.createHmac("sha1", ...)
+
+  - id: js-crypto-insecure-random
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-330
+        - CWE-338
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      Insecure random number generator (CWE-338): Math.random() is not
+      cryptographically secure. Using it to generate tokens, session IDs,
+      or keys allows attackers to predict values.
+
+      Mitigation:
+        * Use crypto.randomBytes / crypto.randomUUID / crypto.randomInt.
+    patterns:
+      - pattern: Math.random()
+
+  - id: js-crypto-tls-reject-unauthorized-false
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - CWE-295
+      owasp:
+        - "A07:2021 - Identification and Authentication Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      TLS certificate verification disabled (CWE-295):
+      rejectUnauthorized: false disables server certificate validation,
+      enabling man-in-the-middle attacks.
+
+      Mitigation:
+        * Remove rejectUnauthorized or set it to true.
+        * For self-signed certs, configure a custom CA via the ca option.
+    patterns:
+      - pattern-either:
+          - pattern: "rejectUnauthorized: false"
+          - pattern: "process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'"
+          - pattern: 'process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"'
+          - pattern: "process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'"
