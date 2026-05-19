@@ -54,7 +54,7 @@
 {{.UNRESOLVED}}
 </UNRESOLVED>
 
-{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH}}
+{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH}}
 ### 可主动读取的文件
 {{if .STEP_RESULT_PATH}}
 - **当前 step result 文件**：`{{.STEP_RESULT_PATH}}`
@@ -63,6 +63,10 @@
 {{- if .STEP_CONTEXTS_PATH}}
 - **全局 step contexts 文件**：`{{.STEP_CONTEXTS_PATH}}`
   包含所有已执行 step 的执行记录索引（含 tool_calls_digest、references、key_facts）
+{{- end}}
+{{- if .STEP_TRANSCRIPT_PATH}}
+- **当前 step 执行对话记录**：`{{.STEP_TRANSCRIPT_PATH}}`
+  包含 step 执行期间的完整工具调用和响应记录（MsgInfo JSON 数组）。内容可能较大，仅在 STEP_OUTCOME 中的摘要信息不足以判断缺口时按需读取。
 {{- end}}
 
 如果注入的上下文不足以判断覆盖缺口，使用工具读取这些文件获取更多细节。

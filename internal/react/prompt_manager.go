@@ -32,16 +32,17 @@ type ThinkActPromptInput struct {
 }
 
 type StepReplanPromptInput struct {
-	AgentInstruction string
-	CurrentGoal      any
-	CurrentStep      any
-	StepOutcome      any
-	TaskPlan         any
-	StepOutcomes     any
-	Warnings         any
-	Unresolved       any
-	StepResultPath   string
-	StepContextsPath string
+	AgentInstruction   string
+	CurrentGoal        any
+	CurrentStep        any
+	StepOutcome        any
+	TaskPlan           any
+	StepOutcomes       any
+	Warnings           any
+	Unresolved         any
+	StepResultPath     string
+	StepContextsPath   string
+	StepTranscriptPath string
 }
 
 type FinalAnswerPromptInput struct {
@@ -94,13 +95,13 @@ type PromptManager interface {
 }
 
 type defaultPromptManager struct {
-	thinkActTmpl              *template.Template
-	stepReplanTmpl            *template.Template
-	finalAnswerTmpl           *template.Template
-	historyCompactionTmpl     *template.Template
-	taskPlannerTmpl           *template.Template
-	agentHandoffTmpl          *template.Template
-	stepOutcomesReducerTmpl   *template.Template
+	thinkActTmpl            *template.Template
+	stepReplanTmpl          *template.Template
+	finalAnswerTmpl         *template.Template
+	historyCompactionTmpl   *template.Template
+	taskPlannerTmpl         *template.Template
+	agentHandoffTmpl        *template.Template
+	stepOutcomesReducerTmpl *template.Template
 }
 
 func newDefaultPromptManager() (PromptManager, error) {
@@ -191,17 +192,18 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
-		"AGENT_INSTRUCTION":  strings.TrimSpace(input.AgentInstruction),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
 		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
-		"CURRENT_GOAL":      fmt.Sprint(input.CurrentGoal),
-		"CURRENT_STEP":      prettyJSON(input.CurrentStep),
-		"STEP_OUTCOME":      prettyJSON(input.StepOutcome),
-		"TASK_PLAN":         prettyJSON(input.TaskPlan),
-		"STEP_OUTCOMES":     prettyJSON(input.StepOutcomes),
-		"WARNINGS":          prettyJSON(input.Warnings),
-		"UNRESOLVED":        prettyJSON(input.Unresolved),
-		"STEP_RESULT_PATH":  input.StepResultPath,
-		"STEP_CONTEXTS_PATH": input.StepContextsPath,
+		"CURRENT_GOAL":          fmt.Sprint(input.CurrentGoal),
+		"CURRENT_STEP":          prettyJSON(input.CurrentStep),
+		"STEP_OUTCOME":          prettyJSON(input.StepOutcome),
+		"TASK_PLAN":             prettyJSON(input.TaskPlan),
+		"STEP_OUTCOMES":         prettyJSON(input.StepOutcomes),
+		"WARNINGS":              prettyJSON(input.Warnings),
+		"UNRESOLVED":            prettyJSON(input.Unresolved),
+		"STEP_RESULT_PATH":      input.StepResultPath,
+		"STEP_CONTEXTS_PATH":    input.StepContextsPath,
+		"STEP_TRANSCRIPT_PATH":  input.StepTranscriptPath,
 	}); err != nil {
 		return "", err
 	}
@@ -214,17 +216,17 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
-		"AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction) != "",
-		"STATUS":                    fmt.Sprint(input.Status),
-		"STATE_ERROR":               fmt.Sprint(input.StateError),
-		"INPUT_TIMELINE":            prettyJSON(input.InputTimeline),
-		"SHOW_PLAN_SECTION":         input.ShowPlanSection,
-		"PLAN":                      prettyJSON(input.Plan),
-		"PLAN_VERSION":              prettyJSON(input.PlanVersion),
-		"STEP_OUTCOMES":             prettyJSON(input.StepOutcomes),
-		"WARNINGS":                  prettyJSON(input.Warnings),
-		"UNRESOLVED":                prettyJSON(input.Unresolved),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
+		"STATUS":                fmt.Sprint(input.Status),
+		"STATE_ERROR":           fmt.Sprint(input.StateError),
+		"INPUT_TIMELINE":        prettyJSON(input.InputTimeline),
+		"SHOW_PLAN_SECTION":     input.ShowPlanSection,
+		"PLAN":                  prettyJSON(input.Plan),
+		"PLAN_VERSION":          prettyJSON(input.PlanVersion),
+		"STEP_OUTCOMES":         prettyJSON(input.StepOutcomes),
+		"WARNINGS":              prettyJSON(input.Warnings),
+		"UNRESOLVED":            prettyJSON(input.Unresolved),
 	}); err != nil {
 		return "", err
 	}
