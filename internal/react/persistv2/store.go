@@ -346,6 +346,20 @@ func (s *Store) ReadBlob(ref string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+func (s *Store) BlobPath(ref string) string {
+	if s == nil {
+		return ""
+	}
+	ref = strings.TrimSpace(ref)
+	if strings.HasPrefix(ref, "sha256:") {
+		ref = strings.TrimPrefix(ref, "sha256:")
+	}
+	if ref == "" {
+		return ""
+	}
+	return filepath.Join(s.blobsDir, ref)
+}
+
 // ReplayEvents scans events.jsonl and calls apply for each valid event.
 // It tolerates tail truncation: the first invalid line causes replay to stop,
 // and the returned diagnostics describe the degraded recovery.

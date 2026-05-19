@@ -41,10 +41,20 @@ type AgentConfig struct {
 
 	EnableStreaming bool
 
-	TaskPlanner         builtin_tools.TaskPlanner
+	TaskPlanner builtin_tools.TaskPlanner
 
 	HistoryCompressKeepLastRounds int
 	HistoryCompressor             HistoryCompressor
+
+	// StepHistoryCompactor 可选：在预算告警/接近上限时压缩 stepHistory（tool transcript）。
+	// 仅用于降低单个 phase 内的输入 tokens；不作为跨 turn 记忆。
+	StepHistoryCompactor StepHistoryCompactor
+	// StepHistoryCompressKeepLastRounds 压缩 stepHistory 时保留最近 K 个“工具回合”不动。
+	StepHistoryCompressKeepLastRounds int
+	// StepHistoryCompressTriggerRatio 触发 stepHistory 压缩的输入预算比例阈值（0~1）。
+	StepHistoryCompressTriggerRatio float64
+	// StepHistoryToolResultMaxRunes Layer 1：缩短旧 tool_result 的最大 rune 数。
+	StepHistoryToolResultMaxRunes int
 
 	SessionID string
 	AgentID   string
@@ -77,12 +87,15 @@ type Option func(*AgentConfig)
 
 func defaultAgentConfig(aiClient ai.ChatClient) *AgentConfig {
 	return &AgentConfig{
-		MaxIterations:       120,
-		AIClient:            aiClient,
-		OnHandoffFunc:       DefaultOnHandoffFunc,
+		MaxIterations: 120,
+		AIClient:      aiClient,
+		OnHandoffFunc: DefaultOnHandoffFunc,
 
-		HistoryCompressKeepLastRounds: 5,
-		StructuredOutput:              structuredoutput.DefaultConfig(),
+		HistoryCompressKeepLastRounds:     5,
+		StepHistoryCompressKeepLastRounds: 5,
+		StepHistoryCompressTriggerRatio:   0.90,
+		StepHistoryToolResultMaxRunes:     1024,
+		StructuredOutput:                  structuredoutput.DefaultConfig(),
 	}
 }
 
