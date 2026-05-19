@@ -1,14 +1,13 @@
 rules:
   - id: php-ssti-twig
-    patterns:
-      - pattern-either:
-          - pattern: $TWIG->createTemplate($INPUT)
-          - pattern: |
-              $TEMPLATE = $TWIG->createTemplate($INPUT);
-              ...
-              $TEMPLATE->render(...);
-          - pattern: |
-              $LOADER = new \Twig\Loader\ArrayLoader([... => $INPUT]);
+    mode: taint
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe: CWE-1336
+      owasp: "A03:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: true
     message: >
       Twig server-side template injection. Creating templates from user
       input via createTemplate() or ArrayLoader allows execution of Twig
@@ -16,10 +15,16 @@ rules:
       can call arbitrary PHP functions. Load templates from trusted files
       only and use Twig sandbox extension if dynamic templates are
       unavoidable.
-    metadata:
-      cwe: CWE-1336
-      owasp: "A03:2021"
-      confidence: HIGH
-      needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: file_get_contents("php://input")
+    pattern-sinks:
+      - pattern: $TWIG->createTemplate($X)
+      - pattern: new \Twig\Loader\ArrayLoader($X)
+      - pattern: new Twig_Loader_Array($X)
+    pattern-sanitizers:
+      - pattern: htmlspecialchars(...)
+      - pattern: strip_tags(...)

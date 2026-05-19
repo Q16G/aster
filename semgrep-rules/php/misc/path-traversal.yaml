@@ -1,44 +1,13 @@
 rules:
   - id: php-misc-path-traversal
-    patterns:
-      - pattern-either:
-          - pattern: include($_GET[$KEY]);
-          - pattern: include($_POST[$KEY]);
-          - pattern: include($_REQUEST[$KEY]);
-          - pattern: include("..." . $_GET[$KEY]);
-          - pattern: include("..." . $_POST[$KEY]);
-          - pattern: include("..." . $_REQUEST[$KEY]);
-          - pattern: require($_GET[$KEY]);
-          - pattern: require($_POST[$KEY]);
-          - pattern: require("..." . $_GET[$KEY]);
-          - pattern: require("..." . $_POST[$KEY]);
-          - pattern: include_once($_GET[$KEY]);
-          - pattern: require_once($_GET[$KEY]);
-          - pattern: fopen($_GET[$KEY], ...);
-          - pattern: fopen($_POST[$KEY], ...);
-          - pattern: fopen("..." . $_GET[$KEY], ...);
-          - pattern: readfile($_GET[$KEY]);
-          - pattern: readfile($_POST[$KEY]);
-          - pattern: |
-              $FILE = $_GET[$KEY];
-              ...
-              include($FILE);
-          - pattern: |
-              $FILE = $_GET[$KEY];
-              ...
-              require($FILE);
-          - pattern: |
-              $FILE = $_GET[$KEY];
-              ...
-              fopen($FILE, ...);
-          - pattern: |
-              $FILE = $_POST[$KEY];
-              ...
-              include($FILE);
-          - pattern: |
-              $FILE = $_POST[$KEY];
-              ...
-              fopen($FILE, ...);
+    mode: taint
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe: CWE-22
+      owasp: "A01:2021"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
     message: >
       Path traversal via include, require, fopen, or readfile with
       user-controlled path. An attacker can use ../ sequences to read
@@ -46,10 +15,20 @@ rules:
       enabled, load remote code (Remote File Inclusion). Validate paths
       against an allowlist, use basename() to strip directory components,
       and verify the resolved path with realpath().
-    metadata:
-      cwe: CWE-22
-      owasp: "A01:2021"
-      confidence: HIGH
-      needs_dataflow_confirmation: false
-    severity: ERROR
-    languages: [php]
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+    pattern-sinks:
+      - pattern: include($X)
+      - pattern: include_once($X)
+      - pattern: require($X)
+      - pattern: require_once($X)
+      - pattern: fopen($X, ...)
+      - pattern: readfile($X)
+      - pattern: file_get_contents($X)
+      - pattern: file($X)
+    pattern-sanitizers:
+      - pattern: basename(...)
+      - pattern: realpath(...)
