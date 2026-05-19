@@ -1,40 +1,33 @@
 rules:
   - id: php-injection-sql-injection-raw
-    patterns:
-      - pattern-either:
-          - pattern: |
-              mysqli_query($CONN, "..." . $INPUT . "...");
-          - pattern: |
-              mysqli_query($CONN, "..." . $INPUT);
-          - pattern: |
-              mysqli_query($CONN, $INPUT . "...");
-          - pattern: |
-              mysql_query("..." . $INPUT . "...");
-          - pattern: |
-              mysql_query("..." . $INPUT);
-          - pattern: |
-              mysql_query($INPUT . "...");
-          - pattern: |
-              $SQL = "..." . $INPUT . "...";
-              ...
-              mysqli_query($CONN, $SQL);
-          - pattern: |
-              $SQL = "..." . $INPUT . "...";
-              ...
-              mysql_query($SQL);
-          - pattern: |
-              mysqli_query($CONN, "...$INTERPOLATED...");
-          - pattern: |
-              mysql_query("...$INTERPOLATED...");
-    message: >
-      SQL injection via mysqli_query() or mysql_query() with variable
-      interpolation or string concatenation. User-controlled input may be
-      inserted directly into the SQL query. Use prepared statements with
-      parameterized queries (mysqli_prepare / bind_param) instead.
+    mode: taint
+    severity: ERROR
+    languages: [php]
     metadata:
       cwe: CWE-89
       owasp: "A03:2021"
       confidence: MEDIUM
       needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    message: >
+      SQL injection via mysqli_query() or mysql_query() with
+      user-controlled input. Use prepared statements with parameterized
+      queries (mysqli_prepare / bind_param) instead of string
+      concatenation or interpolation.
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER
+      - pattern: file_get_contents("php://input")
+    pattern-sinks:
+      - pattern: mysqli_query($CONN, $X)
+      - pattern: mysqli_multi_query($CONN, $X)
+      - pattern: mysql_query($X)
+      - pattern: mysql_query($X, ...)
+    pattern-sanitizers:
+      - pattern: mysqli_real_escape_string(...)
+      - pattern: mysql_real_escape_string(...)
+      - pattern: intval(...)
+      - pattern: (int)$X
+      - pattern: addslashes(...)

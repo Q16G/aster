@@ -1,13 +1,13 @@
 rules:
   - id: php-lfi-wrapper
-    patterns:
-      - pattern-either:
-          - pattern: file_get_contents($INPUT)
-          - pattern: fopen($INPUT, ...)
-          - pattern: readfile($INPUT)
-          - pattern: file($INPUT)
-      - pattern-not: file_get_contents("...")
-      - pattern-not: fopen("...", ...)
+    mode: taint
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe: CWE-073
+      owasp: "A03:2021"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
     message: >
       File operation with user-controlled path, potentially exploitable
       via PHP stream wrappers. Attackers can use php://filter,
@@ -15,10 +15,18 @@ rules:
       inject data, or execute commands. Validate and sanitize file paths,
       restrict to a base directory, and disable dangerous wrappers via
       allow_url_include=Off.
-    metadata:
-      cwe: CWE-073
-      owasp: "A03:2021"
-      confidence: MEDIUM
-      needs_dataflow_confirmation: true
-    severity: ERROR
-    languages: [php]
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+    pattern-sinks:
+      - pattern: file_get_contents($X)
+      - pattern: fopen($X, ...)
+      - pattern: readfile($X)
+      - pattern: file($X)
+      - pattern: file($X, ...)
+    pattern-sanitizers:
+      - pattern: basename(...)
+      - pattern: realpath(...)
+      - pattern: filter_var(..., FILTER_VALIDATE_URL)

@@ -1,0 +1,71 @@
+rules:
+  - id: php-crypto-weak-hash-for-password
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-327
+        - CWE-328
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: >
+      Weak hash algorithm used for password storage (CWE-327). MD5 and
+      SHA1 are fast hashes easily brute-forced with GPU/rainbow tables.
+      Use password_hash() with PASSWORD_BCRYPT or PASSWORD_ARGON2ID.
+    patterns:
+      - pattern-either:
+          - pattern: md5($X)
+          - pattern: sha1($X)
+          - pattern: hash("md5", $X)
+          - pattern: hash("sha1", $X)
+          - pattern: hash('md5', $X)
+          - pattern: hash('sha1', $X)
+
+  - id: php-crypto-insecure-random
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-330
+        - CWE-338
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: >
+      Insecure random number generator (CWE-338). rand() and mt_rand()
+      are not cryptographically secure. Use random_bytes() or
+      random_int() for tokens, keys, nonces, and session IDs.
+    patterns:
+      - pattern-either:
+          - pattern: rand()
+          - pattern: rand(...)
+          - pattern: mt_rand()
+          - pattern: mt_rand(...)
+          - pattern: uniqid()
+          - pattern: uniqid(...)
+
+  - id: php-crypto-ecb-mode
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - CWE-327
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: >
+      ECB mode encryption (CWE-327). ECB does not use an IV and
+      produces identical ciphertext for identical plaintext blocks,
+      leaking patterns. Use CBC, CTR, or GCM mode instead.
+    patterns:
+      - pattern-either:
+          - pattern: openssl_encrypt($DATA, "aes-128-ecb", ...)
+          - pattern: openssl_encrypt($DATA, "aes-256-ecb", ...)
+          - pattern: openssl_encrypt($DATA, 'aes-128-ecb', ...)
+          - pattern: openssl_encrypt($DATA, 'aes-256-ecb', ...)
+          - pattern: mcrypt_encrypt(MCRYPT_RIJNDAEL_128, $KEY, $DATA, MCRYPT_MODE_ECB)
+          - pattern: mcrypt_encrypt(MCRYPT_RIJNDAEL_256, $KEY, $DATA, MCRYPT_MODE_ECB)
