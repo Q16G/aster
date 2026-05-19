@@ -779,11 +779,11 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		// Only successful turns update LatestFinal.
 		if persistv2.TurnStatus(status) == persistv2.TurnStatusSucceeded {
 			snap.LatestFinal = &persistv2.FinalOutput{
-				TurnID:          a.currentTurnID,
-				Status:          status,
-				Content:         finalContent,
-				BlobRef:         finalBlob,
-				UpdatedAt:       time.Now().UnixMilli(),
+				TurnID:    a.currentTurnID,
+				Status:    status,
+				Content:   finalContent,
+				BlobRef:   finalBlob,
+				UpdatedAt: time.Now().UnixMilli(),
 			}
 		}
 		snap.LastSeq = lastSeq
@@ -1115,11 +1115,50 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 	}
 
 	systemMsg := ai.NewSystemMsgInfo(prompt)
-	msgs := make([]*ai.MsgInfo, 0, 1+len(a.history)+len(a.stepHistory))
+	// State-first: model input is system + in-phase transcript only.
+	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
+	msgs := make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
 	msgs = append(msgs, systemMsg)
-	msgs = append(msgs, a.history...)
 	msgs = append(msgs, a.stepHistory...)
 	requestOptions := a.buildPromptRequestOptions(promptFamilyThinkAct, prompt, true, tools...)
+
+	// StepHistory compaction: only when approaching the input token budget.
+	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.
+	if a.cfg.StepHistoryCompactor != nil && len(a.stepHistory) > 0 {
+		budget := resolveContextBudget(runClient)
+		triggerRatio := a.cfg.StepHistoryCompressTriggerRatio
+		if triggerRatio <= 0 || triggerRatio > 1 {
+			triggerRatio = 0.90
+		}
+		triggerTokens := int(float64(budget.UsableInputTokens) * triggerRatio)
+		if triggerTokens < 1 {
+			triggerTokens = budget.UsableInputTokens
+		}
+		if triggerTokens < 1 {
+			triggerTokens = 1
+		}
+		if estimateHistoryTokens(msgs) >= triggerTokens {
+			// Persist the full transcript snapshot before any in-memory compaction.
+			a.persistStepTranscriptBlob()
+			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, prompt, a.stepHistory)
+			if err != nil {
+				return nil, err
+			}
+			if compacted != nil && len(compacted.StepHistory) > 0 {
+				a.stepHistory = NormalizeHistoryMsgInfos(compacted.StepHistory)
+				a.persistInFlightStepHistory()
+				msgs = make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
+				msgs = append(msgs, systemMsg)
+				msgs = append(msgs, a.stepHistory...)
+			}
+			if compacted != nil && !compacted.CanContinue {
+				return nil, &CompactionTerminatedError{
+					Reason:  compacted.TerminalReason,
+					Message: firstNonEmpty(compacted.TerminalReason, "step history compaction stopped current run"),
+				}
+			}
+		}
+	}
 
 	if streamingClient, ok := runClient.(ai.StreamingChatClient); ok {
 		return a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, requestOptions, tools...)

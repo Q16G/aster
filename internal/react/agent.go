@@ -48,21 +48,21 @@ type Agent struct {
 	currentTurnID string
 	// currentGroupID is an aggregation key carried across a "logical execution chain"
 	// (e.g. interrupt raise -> resolve) so UI consumers can group related events.
-	currentGroupID            string
-	handoff                   *handoffState
-	emitter                   *Emitter
-	workspaceSessionID        string
-	workspaceRootDir          string
-	workspaceNamespace        string
-	frozenLineageByStep       map[string]*frozenStepLineage
-	currentResultSource       ResultSource
-	workspaceRuntime          builtin_tools.WorkspaceRuntime
-	runClientMu               sync.RWMutex
-	currentRunClientVal       ai.ChatClient
-	finishMu                  sync.Mutex
-	finishHooks               []func()
-	historyHookMu             sync.RWMutex
-	historyChangeHook         func(change *HistoryChange)
+	currentGroupID      string
+	handoff             *handoffState
+	emitter             *Emitter
+	workspaceSessionID  string
+	workspaceRootDir    string
+	workspaceNamespace  string
+	frozenLineageByStep map[string]*frozenStepLineage
+	currentResultSource ResultSource
+	workspaceRuntime    builtin_tools.WorkspaceRuntime
+	runClientMu         sync.RWMutex
+	currentRunClientVal ai.ChatClient
+	finishMu            sync.Mutex
+	finishHooks         []func()
+	historyHookMu       sync.RWMutex
+	historyChangeHook   func(change *HistoryChange)
 }
 
 // NewReActAgent 创建 ReAct Agent
@@ -99,6 +99,29 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	}
 	if compressor, ok := cfg.HistoryCompressor.(*AIHistoryCompressor); ok && compressor != nil {
 		compressor.promptManager = cfg.PromptManager
+	}
+	if cfg.StepHistoryCompressKeepLastRounds < 0 {
+		cfg.StepHistoryCompressKeepLastRounds = 0
+	}
+	if cfg.StepHistoryCompressKeepLastRounds == 0 {
+		cfg.StepHistoryCompressKeepLastRounds = cfg.HistoryCompressKeepLastRounds
+		if cfg.StepHistoryCompressKeepLastRounds <= 0 {
+			cfg.StepHistoryCompressKeepLastRounds = 5
+		}
+	}
+	if cfg.StepHistoryCompressTriggerRatio <= 0 || cfg.StepHistoryCompressTriggerRatio > 1 {
+		cfg.StepHistoryCompressTriggerRatio = 0.90
+	}
+	if cfg.StepHistoryToolResultMaxRunes <= 0 {
+		cfg.StepHistoryToolResultMaxRunes = 1024
+	}
+	if cfg.StepHistoryCompactor == nil {
+		cfg.StepHistoryCompactor = NewAIStepHistoryCompactor(
+			cfg.StepHistoryCompressTriggerRatio,
+			cfg.StepHistoryCompressKeepLastRounds,
+			cfg.StepHistoryToolResultMaxRunes,
+			cfg.PromptManager,
+		)
 	}
 	if cfg.TaskPlanner == nil {
 		cfg.TaskPlanner = NewDefaultTaskPlanner(aiClient, cfg.PromptManager)
@@ -257,6 +280,11 @@ func (a *Agent) resetStepHistory() {
 
 func (a *Agent) persistStepTranscriptBlob() {
 	if a == nil || a.v2Store == nil || len(a.stepHistory) == 0 {
+		return
+	}
+	// If step history was compacted mid-step, we keep the first full transcript snapshot
+	// for step_replan/backtracking. Do not overwrite it with a later compacted view.
+	if strings.TrimSpace(a.lastStepTranscriptBlobRef) != "" {
 		return
 	}
 	raw, err := json.Marshal(ai.NormalizeMsgInfoSlice(a.stepHistory))
