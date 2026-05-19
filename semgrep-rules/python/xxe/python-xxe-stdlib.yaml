@@ -1,0 +1,97 @@
+rules:
+  # ============================================================
+  # xml.sax / xml.dom.* 默认会解析 DTD 与外部实体；推荐 defusedxml。
+  # xml.etree 在 Python 3.7.1+ 起对 DTD 与实体扩展有了有限保护，
+  # 但将 ElementTree 用于解析不可信输入仍属于 CPython 文档明确不
+  # 推荐的做法（"NOT secure against maliciously constructed data"）。
+  # ============================================================
+
+  - id: python-xxe-sax
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-611
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XXE via xml.sax (CWE-611): xml.sax.make_parser() / parse()/
+      parseString() use the default expat parser which resolves DTDs
+      and external entities. Untrusted XML can read arbitrary files,
+      cause SSRF, or billion-laughs DoS.
+
+      Mitigation:
+        * Use defusedxml.sax (drop-in replacement).
+        * Or harden the parser:
+            p = xml.sax.make_parser()
+            p.setFeature(xml.sax.handler.feature_external_ges, False)
+            p.setFeature(xml.sax.handler.feature_external_pes, False)
+    patterns:
+      - pattern-either:
+          - pattern: xml.sax.make_parser(...)
+          - pattern: xml.sax.parse(...)
+          - pattern: xml.sax.parseString(...)
+          - pattern: sax.make_parser(...)
+          - pattern: sax.parse(...)
+          - pattern: sax.parseString(...)
+      - pattern-not: defusedxml.sax.make_parser(...)
+      - pattern-not: defusedxml.sax.parse(...)
+      - pattern-not: defusedxml.sax.parseString(...)
+
+  - id: python-xxe-minidom-pulldom
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-611
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XXE via xml.dom.minidom / xml.dom.pulldom (CWE-611): the underlying
+      expat parser will resolve DTDs and external entities by default.
+
+      Mitigation:
+        * Use defusedxml.minidom / defusedxml.pulldom.
+    patterns:
+      - pattern-either:
+          - pattern: xml.dom.minidom.parse(...)
+          - pattern: xml.dom.minidom.parseString(...)
+          - pattern: xml.dom.pulldom.parse(...)
+          - pattern: xml.dom.pulldom.parseString(...)
+          - pattern: minidom.parse(...)
+          - pattern: minidom.parseString(...)
+          - pattern: pulldom.parse(...)
+          - pattern: pulldom.parseString(...)
+      - pattern-not: defusedxml.minidom.parse(...)
+      - pattern-not: defusedxml.minidom.parseString(...)
+      - pattern-not: defusedxml.pulldom.parse(...)
+      - pattern-not: defusedxml.pulldom.parseString(...)
+
+  - id: python-xxe-xmlrpc-server
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - CWE-611
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      Possible XXE via xmlrpc.server / xmlrpc.client: the standard
+      library xmlrpc dispatcher relies on expat with default settings.
+
+      Mitigation:
+        * Use defusedxml.xmlrpc.monkey_patch() at startup, or wrap the
+          dispatcher with a safe parser.
+    patterns:
+      - pattern-either:
+          - pattern: xmlrpc.server.SimpleXMLRPCServer(...)
+          - pattern: xmlrpc.server.DocXMLRPCServer(...)
+          - pattern: xmlrpc.client.loads(...)
+          - pattern: SimpleXMLRPCServer(...)
+          - pattern: DocXMLRPCServer(...)

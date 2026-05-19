@@ -1,0 +1,77 @@
+rules:
+  # ============================================================
+  # html/template 误用：把 user input 强转为 template.HTML / JS / URL
+  # 等"已信任"类型，会跳过该上下文的自动转义。
+  # ============================================================
+  - id: go-xss-html-template-trusted-type
+    severity: ERROR
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-79
+      owasp:
+        - "A03:2021 - Injection"
+      confidence: HIGH
+      needs_dataflow_confirmation: false
+    message: |
+      XSS via html/template trusted-type bypass (CWE-79): converting a
+      string into template.HTML / template.JS / template.URL /
+      template.HTMLAttr / template.CSS marks the value as already-safe
+      and skips the auto-escaping that html/template normally applies.
+      If the converted value originates from user input, attackers can
+      inject script tags / javascript: URLs / event handlers.
+
+      Mitigation:
+        * Pass plain string values to html/template; let the engine
+          escape them based on the surrounding context.
+        * Only use template.HTML / template.JS / template.URL on
+          constants or values that have been sanitized server-side
+          (e.g. bluemonday.UGCPolicy().Sanitize(...)).
+    patterns:
+      - pattern-either:
+          - pattern: template.HTML($X)
+          - pattern: template.JS($X)
+          - pattern: template.JSStr($X)
+          - pattern: template.URL($X)
+          - pattern: template.HTMLAttr($X)
+          - pattern: template.CSS($X)
+          - pattern: template.Srcset($X)
+      # 不报告字面量
+      - pattern-not: template.HTML("...")
+      - pattern-not: template.JS("...")
+      - pattern-not: template.JSStr("...")
+      - pattern-not: template.URL("...")
+      - pattern-not: template.HTMLAttr("...")
+      - pattern-not: template.CSS("...")
+      - pattern-not: template.Srcset("...")
+
+  # ============================================================
+  # text/template 用作 HTML 输出：text/template 不做 HTML 转义。
+  # 当 ParseFiles 加载 .html / .tmpl / .gohtml 模板时极易踩坑。
+  # ============================================================
+  - id: go-xss-text-template-as-html
+    severity: WARNING
+    languages: [go]
+    metadata:
+      cwe:
+        - CWE-79
+      owasp:
+        - "A03:2021 - Injection"
+      confidence: MEDIUM
+      needs_dataflow_confirmation: true
+    message: |
+      Possible XSS: text/template does NOT perform context-aware HTML
+      escaping. If the rendered output is served as HTML, user-controlled
+      data can break out of attribute / tag contexts and inject scripts.
+
+      Mitigation:
+        * Use html/template instead of text/template for HTML output.
+        * Reserve text/template for non-HTML formats (config files,
+          shell scripts, code generation, etc.).
+    patterns:
+      - pattern-either:
+          - pattern: text_template.ParseFiles($F)
+          - pattern: text_template.ParseGlob($F)
+      - metavariable-regex:
+          metavariable: $F
+          regex: '^"[^"]*\.(html|tmpl|gohtml)"$'
