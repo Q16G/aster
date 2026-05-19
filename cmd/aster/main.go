@@ -61,6 +61,7 @@ func main() {
 		},
 	})
 	rootCmd.AddCommand(updateCmd())
+	rootCmd.AddCommand(agentCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

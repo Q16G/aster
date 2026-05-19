@@ -112,6 +112,170 @@ func TestSubAgentTool_DepthEnforcement(t *testing.T) {
 	}
 }
 
+// TestSubAgentTool_BashViaPolicy verifies that bash is available on a child
+// agent when configured via Policies (not ToolNames). "bash" must NOT appear
+// in ToolNames — it is not in the ToolRegistry and would cause a build error.
+func TestSubAgentTool_BashViaPolicy(t *testing.T) {
+	bashCfg := &BashToolConfig{
+		PermCtx: &builtin_tools.BashPermissionContext{
+			Mode:        builtin_tools.PermissionModeYOLO,
+			ProjectPath: "/tmp/test",
+		},
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubChatClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+
+	child, err := factory.Build(AgentDefinition{
+		Name:        "child-bash-test",
+		Instruction: "test bash forwarding",
+		ToolNames:   []string{"read_file"},
+		Policies: AgentPolicies{
+			MaxIterations:        10,
+			AllowBash:            true,
+			BashPermissionContext: bashCfg,
+		},
+	})
+	if err != nil {
+		t.Fatalf("factory.Build failed: %v", err)
+	}
+
+	if _, ok := child.GetTool(builtin_tools.BashToolName); !ok {
+		t.Fatal("child should have bash via policy")
+	}
+	if _, ok := child.GetTool("read_file"); !ok {
+		t.Fatal("child should have read_file from registry")
+	}
+}
+
+// TestSubAgentTool_ChildInheritsBash verifies that a sub-agent built by a
+// parent with bash can also use bash. We can't easily call Execute (it runs
+// the AI loop), so we verify the precondition: when the parent has BashTool
+// configured, factory.Build with the same policy produces a child that has bash.
+func TestSubAgentTool_ChildInheritsBash(t *testing.T) {
+	bashCfg := &BashToolConfig{
+		PermCtx: &builtin_tools.BashPermissionContext{
+			Mode:        builtin_tools.PermissionModeYOLO,
+			ProjectPath: "/tmp/test",
+		},
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubChatClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+
+	parent, err := factory.Build(AgentDefinition{
+		Name:        "parent-bash",
+		Instruction: "parent with bash",
+		ToolNames:   []string{"read_file"},
+		Policies: AgentPolicies{
+			AllowBash:            true,
+			BashPermissionContext: bashCfg,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build parent: %v", err)
+	}
+	if _, ok := parent.GetTool(builtin_tools.BashToolName); !ok {
+		t.Fatal("parent should have bash")
+	}
+
+	// Build a child WITHOUT bash in Policies — should NOT have bash.
+	childNoBash, err := factory.Build(AgentDefinition{
+		Name:        "child-no-bash",
+		Instruction: "child without bash policy",
+		ToolNames:   []string{"read_file"},
+		Policies:    AgentPolicies{MaxIterations: 10},
+	})
+	if err != nil {
+		t.Fatalf("build child-no-bash: %v", err)
+	}
+	if _, ok := childNoBash.GetTool(builtin_tools.BashToolName); ok {
+		t.Fatal("child without bash policy should NOT have bash")
+	}
+
+	// Build a child WITH bash in Policies (as SubAgentTool.Execute does) — should have bash.
+	childWithBash, err := factory.Build(AgentDefinition{
+		Name:        "child-with-bash",
+		Instruction: "child with inherited bash policy",
+		ToolNames:   []string{"read_file"},
+		Policies: AgentPolicies{
+			MaxIterations:        10,
+			AllowBash:            true,
+			BashPermissionContext: bashCfg,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build child-with-bash: %v", err)
+	}
+	if _, ok := childWithBash.GetTool(builtin_tools.BashToolName); !ok {
+		t.Fatal("child with bash policy should have bash")
+	}
+}
+
+// TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic verifies that
+// calling factory.Build with "bash" in ToolNames does not panic or error,
+// as long as AllowBash is set via Policies (the registry-based resolution
+// is expected to fail for policy-managed names, which resolveChildToolNames
+// strips before reaching the factory).
+func TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic(t *testing.T) {
+	bashCfg := &BashToolConfig{
+		PermCtx: &builtin_tools.BashPermissionContext{
+			Mode:        builtin_tools.PermissionModeYOLO,
+			ProjectPath: "/tmp/test",
+		},
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubChatClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+
+	// Only registry-resolvable tools in ToolNames; bash via policy.
+	child, err := factory.Build(AgentDefinition{
+		Name:        "child-clean",
+		Instruction: "test",
+		ToolNames:   []string{"read_file"},
+		Policies: AgentPolicies{
+			MaxIterations:        10,
+			AllowBash:            true,
+			BashPermissionContext: bashCfg,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build should succeed: %v", err)
+	}
+
+	if _, ok := child.GetTool(builtin_tools.BashToolName); !ok {
+		t.Fatal("child should have bash from policy")
+	}
+	if _, ok := child.GetTool("read_file"); !ok {
+		t.Fatal("child should have read_file from registry")
+	}
+
+	// With "bash" in ToolNames (not in registry) -> should error
+	// because resolveChildToolNames is the caller's responsibility.
+	_, err = factory.Build(AgentDefinition{
+		Name:        "child-bad",
+		Instruction: "test",
+		ToolNames:   []string{"bash", "read_file"},
+		Policies: AgentPolicies{
+			MaxIterations:        10,
+			AllowBash:            true,
+			BashPermissionContext: bashCfg,
+		},
+	})
+	if err == nil {
+		t.Fatal("factory.Build with 'bash' in ToolNames should fail (not in registry)")
+	}
+}
+
 func TestSubAgentTool_RegisteredViaFactory(t *testing.T) {
 	factory := NewAgentFactory(
 		WithFactoryDefaultAIClient(&stubChatClient{}),
