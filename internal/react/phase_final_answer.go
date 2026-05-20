@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"aster/internal/ai"
@@ -48,6 +49,15 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		stepOutcomes = reduced
 	}
 	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, stepOutcomes)
+	if a.workspaceRuntime != nil {
+		sharedDir := a.workspaceRuntime.SharedDir()
+		for i := range stepOutcomeViews {
+			stepID := stepOutcomeViews[i].StepID
+			if stepID != "" && stepTimelineExists(sharedDir, stepID) {
+				stepOutcomeViews[i].TimelineFile = filepath.Join(sharedDir, stepID, "timeline.jsonl")
+			}
+		}
+	}
 
 	payload := map[string]any{
 		"status":             stateStatus,

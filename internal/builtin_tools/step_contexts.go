@@ -66,6 +66,7 @@ func AppendWorkspaceStepContextRecords(workspaceRootDir string, records []*StepC
 		record.AgentProfile = strings.TrimSpace(record.AgentProfile)
 		record.SummaryFile = WorkspaceArtifactPath(workspaceRootDir, record.SummaryFile)
 		record.ResultFile = WorkspaceArtifactPath(workspaceRootDir, record.ResultFile)
+		record.TimelineFile = WorkspaceArtifactPath(workspaceRootDir, record.TimelineFile)
 		if record.ContextKey == "" || record.StepID == "" || record.PlanVersion <= 0 {
 			return fmt.Errorf("invalid step context record: context_key/step_id/plan_version is required")
 		}
@@ -131,6 +132,7 @@ func LoadWorkspaceStepContextRecords(workspaceRootDir string, limit int) ([]*Ste
 			}
 			record.SummaryFile = WorkspaceArtifactPath(workspaceRootDir, record.SummaryFile)
 			record.ResultFile = WorkspaceArtifactPath(workspaceRootDir, record.ResultFile)
+			record.TimelineFile = WorkspaceArtifactPath(workspaceRootDir, record.TimelineFile)
 			out = append(out, &record)
 		}
 		if err := scanner.Err(); err != nil {
@@ -156,6 +158,7 @@ func LoadWorkspaceStepContextRecords(workspaceRootDir string, limit int) ([]*Ste
 		}
 		record.SummaryFile = WorkspaceArtifactPath(workspaceRootDir, record.SummaryFile)
 		record.ResultFile = WorkspaceArtifactPath(workspaceRootDir, record.ResultFile)
+		record.TimelineFile = WorkspaceArtifactPath(workspaceRootDir, record.TimelineFile)
 		rec := record
 		if len(ring) < limit {
 			ring = append(ring, &rec)

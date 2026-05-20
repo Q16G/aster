@@ -60,7 +60,7 @@
 </SKILLS_INDEX>
 {{- end}}
 
-{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH}}
+{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH}}
 ### 可主动读取的文件
 {{if .STEP_RESULT_PATH}}
 - **当前 step result 文件**：`{{.STEP_RESULT_PATH}}`
@@ -73,6 +73,10 @@
 {{- if .STEP_TRANSCRIPT_PATH}}
 - **当前 step 执行对话记录**：`{{.STEP_TRANSCRIPT_PATH}}`
   包含 step 执行期间的完整工具调用和响应记录（MsgInfo JSON 数组）。内容可能较大，仅在 STEP_OUTCOME 中的摘要信息不足以判断缺口时按需读取。
+{{- end}}
+{{- if .STEP_TIMELINE_PATH}}
+- **当前 step timeline 事件日志**：`{{.STEP_TIMELINE_PATH}}`
+  包含 step 执行期间所有工具调用和人工确认事件的 jsonl 日志（按时间顺序）。当 step_result 中的摘要信息不足以判断具体操作细节时按需读取。
 {{- end}}
 
 如果注入的上下文不足以判断覆盖缺口，使用工具读取这些文件获取更多细节。

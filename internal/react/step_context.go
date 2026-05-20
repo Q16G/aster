@@ -27,6 +27,7 @@ type stepContextView struct {
 	SummaryFile     string   `json:"summary_file,omitempty"`
 	ResultFile      string   `json:"result_file,omitempty"`
 	ContextKey      string   `json:"context_key,omitempty"`
+	TimelineFile    string   `json:"timeline_file,omitempty"`
 }
 
 func collectStepContextViews(plan []*builtin_tools.PlanItem, outcomes []*builtin_tools.StepOutcome, completedOnly bool) []stepContextView {
@@ -185,6 +186,15 @@ func renderCompletedStepHandoffContext(plan []*builtin_tools.PlanItem, outcomes 
 		}
 		if shortSummary != "" && shortSummary != statusSummary {
 			parts = append(parts, "short_summary: "+truncateByRunes(shortSummary, 240))
+		}
+		if view.SummaryFile != "" {
+			parts = append(parts, "summary_file: "+view.SummaryFile)
+		}
+		if view.ResultFile != "" {
+			parts = append(parts, "result_file: "+view.ResultFile)
+		}
+		if view.ContextKey != "" {
+			parts = append(parts, "context_key: "+view.ContextKey)
 		}
 		if len(parts) > 0 {
 			b.WriteString(" | ")

@@ -33,6 +33,7 @@ type ExecuteConfig struct {
 	interruptResolution        *interruptResolution
 	interruptCancel            *interruptCancel
 	resultSource               ResultSource
+	parentWorkspaceRoot        string
 }
 
 type interruptResolution struct {
@@ -193,6 +194,15 @@ func WithResultSource(source ResultSource) ExecuteOption {
 	}
 }
 
+func WithParentWorkspace(rootDir string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.parentWorkspaceRoot = strings.TrimSpace(rootDir)
+	}
+}
+
 // Execute 执行 Agent
 func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
 	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
@@ -238,6 +248,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.workspaceSessionID = strings.TrimSpace(workspaceRuntime.SessionID())
 	a.workspaceRootDir = normalizeWorkspaceRootDir(workspaceRuntime.RootDir())
 	a.workspaceNamespace = builtin_tools.NormalizeWorkspaceNamespace(workspaceRuntime.Namespace())
+	a.parentWorkspaceRoot = strings.TrimSpace(cfg.parentWorkspaceRoot)
 	if sharedDir := workspaceRuntime.SharedDir(); sharedDir != "" {
 		_ = os.MkdirAll(sharedDir, 0o755)
 	}
@@ -523,6 +534,20 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				}
 
 			case cfg.interruptCancel != nil:
+				if sharedDir := ""; a.workspaceRuntime != nil {
+					sharedDir = a.workspaceRuntime.SharedDir()
+					if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); sharedDir != "" && stepID != "" {
+						_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+							TS:   time.Now().UTC(),
+							Type: "human_confirm_cancelled",
+							Key:  interruptID,
+							Payload: map[string]any{
+								"interrupt_id": interruptID,
+								"reason":       cfg.interruptCancel.Reason,
+							},
+						})
+					}
+				}
 				ev, err := store.AppendEvent(&persistv2.Event{
 					Type:        "INTERRUPT_CANCELLED",
 					GroupID:     strings.TrimSpace(a.currentGroupID),
@@ -551,6 +576,23 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 							return nil, err
 						}
 					}
+				}
+			}
+		}
+
+		if cfg.interruptResolution != nil {
+			if sharedDir := ""; a.workspaceRuntime != nil {
+				sharedDir = a.workspaceRuntime.SharedDir()
+				if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); sharedDir != "" && stepID != "" {
+					_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+						TS:   time.Now().UTC(),
+						Type: "human_confirm_resolved",
+						Key:  interruptID,
+						Payload: map[string]any{
+							"interrupt_id": interruptID,
+							"answer":       cfg.interruptResolution.Answer,
+						},
+					})
 				}
 			}
 		}

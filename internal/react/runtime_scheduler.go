@@ -1238,6 +1238,21 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		})
 		a.emitter.EmitStateChange(waitSnap)
 
+		if sd := ""; a.workspaceRuntime != nil {
+			sd = a.workspaceRuntime.SharedDir()
+			if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sd != "" && stepID != "" {
+				_ = appendStepTimeline(sd, stepID, &TimelineEvent{
+					TS:   time.Now().UTC(),
+					Type: "human_confirm",
+					Key:  interruptID,
+					Payload: map[string]any{
+						"question": question,
+						"status":   "pending",
+					},
+				})
+			}
+		}
+
 		// Mark the tool call as "waiting" in UI so it does not stay spinning forever.
 		a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
 			ID:         callID,
@@ -1315,6 +1330,20 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	}
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
 	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, displayOut, errText, isAgent)
+
+	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
+		_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+			TS:   time.Now().UTC(),
+			Type: "tool_call",
+			Key:  callID,
+			Payload: map[string]any{
+				"tool":   toolName,
+				"args":   argsMap,
+				"result": out,
+				"error":  errText,
+			},
+		})
+	}
 
 	a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
 		ID:         callID,

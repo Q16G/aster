@@ -26,6 +26,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		StepResultPath:     stringFromPayload(payload, "step_result_path"),
 		StepContextsPath:   stringFromPayload(payload, "step_contexts_path"),
 		StepTranscriptPath: stringFromPayload(payload, "step_transcript_path"),
+		StepTimelinePath:   stringFromPayload(payload, "step_timeline_path"),
 		SkillsContext:      skillsCtx,
 		HasSkillsTable:     skillsCtx != nil && skillsCtx.HasTable(),
 	})
