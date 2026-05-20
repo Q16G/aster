@@ -62,6 +62,7 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 		"unresolved":         []string{},
 		"step_result_path":   "/workspace/steps/step-1/result.json",
 		"step_contexts_path": "/workspace/step_contexts.jsonl",
+		"step_timeline_path": "/workspace/shared/step-1/timeline.jsonl",
 	})
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
@@ -84,6 +85,9 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "/workspace/step_contexts.jsonl") {
 		t.Fatalf("expected STEP_CONTEXTS_PATH in prompt, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "/workspace/shared/step-1/timeline.jsonl") {
+		t.Fatalf("expected STEP_TIMELINE_PATH in prompt, got:\n%s", prompt)
 	}
 }
 
