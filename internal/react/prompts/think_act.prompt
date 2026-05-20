@@ -64,6 +64,11 @@ workspace namespace: {{.WORKSPACE_NAMESPACE}}
 ---
 {{end}}
 
+{{- if .SUPPORTS_VISION}}
+### 5.1d 多模态能力
+你当前使用的模型支持视觉/图片输入。当工具返回截图、图片或包含可视化内容时，你可以直接理解和分析这些图片内容。
+{{- end}}
+
 {{if .HAS_TASK_CONTEXT}}
 ### 5.1c 任务上下文
 ---
