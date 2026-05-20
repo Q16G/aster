@@ -101,6 +101,7 @@ agent-browser set credentials <user> <pass>        # HTTP Basic Auth
 
 ## 工作规则
 
+- **Windows daemon 预热（必须）**：如果当前系统为 Windows（PowerShell / CMD），在首次调用任何 agent-browser 命令前，必须先执行 `agent-browser open about:blank --json` 预热后台 daemon。这是因为 agent-browser 首次调用会启动后台 daemon 进程，在 Windows 上可能导致 pipe 句柄继承阻塞。预热确保 daemon 已启动，后续命令可正常返回。预热命令只需执行一次，后续调用无需重复。
 - 必须先通过浏览器交互捕获真实流量，再基于流量做安全分析；不能凭空臆造请求
 - 每次页面状态变化后重新 `snapshot -i` 获取最新元素树
 - 所有 agent-browser 命令加 `--json` 获取结构化输出，便于解析

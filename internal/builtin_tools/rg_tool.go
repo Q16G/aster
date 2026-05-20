@@ -177,7 +177,7 @@ func (t *RgTool) Execute(ctx context.Context, args map[string]any) (string, erro
 		"mode":    rgCfg.Mode,
 	})
 
-	res := runCommandLimitedInDir(ctx, workDir, rgCfg.Command, runArgs, rgCaptureMaxBytes, rgCaptureStderrMaxBytes)
+	res := runCommandLimitedInDir(ctx, workDir, rgCfg.Command, runArgs, rgCaptureMaxBytes, rgCaptureStderrMaxBytes, bashDefaultWaitDelay)
 	if err := validateCommandRunResult("rg", res, 0, 1); err != nil {
 		EmitToolRuntimeError(ctx, "rg 执行失败", map[string]any{
 			"phase":     "result",

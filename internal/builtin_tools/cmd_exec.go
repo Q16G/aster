@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // CommandRunResult 命令执行结果
@@ -47,8 +48,11 @@ func (w *LimitedWriter) Write(p []byte) (int, error) {
 }
 
 // RunCommandLimited 在指定目录中执行命令，限制 stdout/stderr 大小
-func RunCommandLimited(ctx context.Context, dir, exe string, args []string, maxStdout, maxStderr int64) *CommandRunResult {
+func RunCommandLimited(ctx context.Context, dir, exe string, args []string, maxStdout, maxStderr int64, waitDelay time.Duration) *CommandRunResult {
 	cmd := exec.CommandContext(ctx, exe, args...)
+	if waitDelay > 0 {
+		cmd.WaitDelay = waitDelay
+	}
 	cmd.Dir = dir
 	stdout := &LimitedWriter{max: maxStdout}
 	stderr := &LimitedWriter{max: maxStderr}
