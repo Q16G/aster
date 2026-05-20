@@ -39,7 +39,6 @@ func TestPromptManager_BuildersDoNotRenderNonce(t *testing.T) {
 					HandoffTo:        "sub_agent",
 					AgentInstruction: "继续处理",
 					PrevSummary:      "已有交接",
-					Diff:             "新增约束",
 				})
 			},
 		},
