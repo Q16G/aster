@@ -9,6 +9,114 @@ import (
 	"aster/internal/builtin_tools"
 )
 
+func TestPreRegisterChildAgent_CreatesRunningEntry(t *testing.T) {
+	parentRoot := t.TempDir()
+	parentRuntime, err := newLocalWorkspaceRuntime("sess-1", parentRoot, "root")
+	if err != nil {
+		t.Fatalf("create parent runtime: %v", err)
+	}
+
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	parent.workspaceRuntime = parentRuntime
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	runtime := builtin_tools.ToolRuntimeInfo{CurrentStepID: "step-3"}
+	tool.preRegisterChildAgent(runtime, "sub-abc123", "/tmp/ws/sub_agents/sub-abc123")
+
+	state, err := parentRuntime.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	ptr := state.ChildAgents["sub-abc123"]
+	if ptr == nil {
+		t.Fatal("expected ChildAgents entry for sub-abc123")
+	}
+	if ptr.Status != "running" {
+		t.Fatalf("expected status=running, got %q", ptr.Status)
+	}
+	if ptr.ParentStepKey != "step-3" {
+		t.Fatalf("expected ParentStepKey=step-3, got %q", ptr.ParentStepKey)
+	}
+	if ptr.ArtifactRootDir != "/tmp/ws/sub_agents/sub-abc123" {
+		t.Fatalf("expected ArtifactRootDir, got %q", ptr.ArtifactRootDir)
+	}
+}
+
+func TestFinalizeChildAgent_UpdatesStatus(t *testing.T) {
+	parentRoot := t.TempDir()
+	parentRuntime, err := newLocalWorkspaceRuntime("sess-1", parentRoot, "root")
+	if err != nil {
+		t.Fatalf("create parent runtime: %v", err)
+	}
+
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	parent.workspaceRuntime = parentRuntime
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	runtime := builtin_tools.ToolRuntimeInfo{CurrentStepID: "step-5"}
+	tool.preRegisterChildAgent(runtime, "sub-xyz", "/tmp/ws/sub_agents/sub-xyz")
+
+	cases := []struct {
+		name       string
+		result     *builtin_tools.RunResult
+		wantStatus string
+	}{
+		{"success", &builtin_tools.RunResult{Success: true, Result: "done"}, "completed"},
+		{"failure", &builtin_tools.RunResult{Success: false, Error: "boom"}, "failed"},
+		{"nil result", nil, "failed"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tool.finalizeChildAgent(runtime, "sub-xyz", "/tmp/ws/sub_agents/sub-xyz", tc.result)
+
+			state, err := parentRuntime.LoadWorkspaceState()
+			if err != nil {
+				t.Fatalf("load state: %v", err)
+			}
+			ptr := state.ChildAgents["sub-xyz"]
+			if ptr == nil {
+				t.Fatal("expected ChildAgents entry")
+			}
+			if ptr.Status != tc.wantStatus {
+				t.Fatalf("expected status=%q, got %q", tc.wantStatus, ptr.Status)
+			}
+		})
+	}
+}
+
+func TestPreRegisterChildAgent_NilParentRuntime(t *testing.T) {
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	// Should not panic
+	tool.preRegisterChildAgent(builtin_tools.ToolRuntimeInfo{}, "sub-x", "/tmp/x")
+}
+
 type stubClient struct{}
 
 func (s *stubClient) Chat(_ context.Context, _ *ai.MsgInfo, _ ...*ai.FunctionTool) (string, error) {
