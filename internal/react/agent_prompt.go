@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"aster/internal/builtin_tools"
@@ -32,6 +33,14 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	workspaceSharedDir := ""
 	if a.workspaceRuntime != nil {
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
+	}
+	if workspaceSharedDir != "" {
+		for i := range dependencySummaries {
+			stepID := dependencySummaries[i].StepID
+			if stepID != "" && stepTimelineExists(workspaceSharedDir, stepID) {
+				dependencySummaries[i].TimelineFile = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
+			}
+		}
 	}
 
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
@@ -92,6 +101,7 @@ type stepSummaryCard struct {
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
 	References      []string `json:"references,omitempty"`
 	SummaryFile     string   `json:"summary_file,omitempty"`
+	TimelineFile    string   `json:"timeline_file,omitempty"`
 	StatusSummary   string   `json:"status_summary,omitempty"`
 	OpenQuestions   []string `json:"open_questions,omitempty"`
 }

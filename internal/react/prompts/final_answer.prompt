@@ -82,6 +82,8 @@
 </PLAN>
 {{end}}
 
+> 注意：部分 step 的 outcome 中包含 `timeline_file` 字段，指向该 step 的完整工具调用事件日志（jsonl 格式）。`user_message` 中如需引用详细操作记录，可指向该文件路径。
+
 <STEP_OUTCOMES>
 {{.STEP_OUTCOMES}}
 </STEP_OUTCOMES>

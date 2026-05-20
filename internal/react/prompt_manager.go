@@ -44,6 +44,7 @@ type StepReplanPromptInput struct {
 	StepResultPath     string
 	StepContextsPath   string
 	StepTranscriptPath string
+	StepTimelinePath   string
 	SkillsContext      *SkillsPromptContext
 	HasSkillsTable     bool
 }
@@ -70,7 +71,6 @@ type AgentHandoffPromptInput struct {
 	HandoffTo        string
 	AgentInstruction string
 	PrevSummary      string
-	Diff             string
 }
 
 type StepOutcomesReducerPromptInput struct {
@@ -208,6 +208,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_RESULT_PATH":      input.StepResultPath,
 		"STEP_CONTEXTS_PATH":    input.StepContextsPath,
 		"STEP_TRANSCRIPT_PATH":  input.StepTranscriptPath,
+		"STEP_TIMELINE_PATH":    input.StepTimelinePath,
 		"SKILLS_CONTEXT":        input.SkillsContext,
 		"HAS_SKILLS_TABLE":      input.HasSkillsTable,
 	}); err != nil {
@@ -281,7 +282,6 @@ func (m *defaultPromptManager) BuildAgentHandoffPrompt(input AgentHandoffPromptI
 		"HANDOFF_TO":        strings.TrimSpace(input.HandoffTo),
 		"AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction),
 		"PREV_SUMMARY":      strings.TrimSpace(input.PrevSummary),
-		"DIFF":              strings.TrimSpace(input.Diff),
 	}); err != nil {
 		return "", err
 	}

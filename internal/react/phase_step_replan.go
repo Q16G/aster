@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,6 +51,13 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if ref := strings.TrimSpace(a.lastStepTranscriptBlobRef); ref != "" && a.v2Store != nil {
 		stepTranscriptPath = a.v2Store.BlobPath(ref)
 	}
+	stepTimelinePath := ""
+	if a.workspaceRuntime != nil {
+		sd := a.workspaceRuntime.SharedDir()
+		if stepTimelineExists(sd, stepID) {
+			stepTimelinePath = filepath.Join(sd, stepID, "timeline.jsonl")
+		}
+	}
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
@@ -64,6 +72,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"step_result_path":     stepResultPath,
 		"step_contexts_path":   stepContextsPath,
 		"step_transcript_path": stepTranscriptPath,
+		"step_timeline_path":   stepTimelinePath,
 		"skills_context":       skillsCtx,
 	})
 	if err != nil {
@@ -244,6 +253,10 @@ func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.St
 	if planVersion <= 0 {
 		planVersion = 1
 	}
+	var timelineFile string
+	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
+		timelineFile = stepTimelineRelPath(stepID)
+	}
 	record := &builtin_tools.StepContextRecord{
 		ContextKey:        strings.TrimSpace(outcome.ContextKey),
 		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
@@ -256,6 +269,7 @@ func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.St
 		SummaryFile:       strings.TrimSpace(outcome.SummaryFile),
 		ResultFile:        strings.TrimSpace(outcome.ResultFile),
 		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
+		TimelineFile:      timelineFile,
 		CreatedAt:         time.Now(),
 	}
 	a.lastStepTranscriptBlobRef = ""

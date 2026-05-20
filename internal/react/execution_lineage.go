@@ -19,6 +19,7 @@ type executionContextCard struct {
 	ResultFile      string   `json:"result_file,omitempty"`
 	ResultKeys      []string `json:"result_keys,omitempty"`
 	References      []string `json:"references,omitempty"`
+	TimelineFile    string   `json:"timeline_file,omitempty"`
 }
 
 type frozenStepLineage struct {
@@ -115,6 +116,7 @@ func (a *Agent) ensureFrozenStepLineage(snapshot builtin_tools.StateSnapshot) (*
 			ResultFile:      strings.TrimSpace(rec.ResultFile),
 			ResultKeys:      builtin_tools.CloneStringSlice(rec.ResultKeys),
 			References:      builtin_tools.CloneStringSlice(rec.References),
+			TimelineFile:    strings.TrimSpace(rec.TimelineFile),
 		}
 		if len(card.KeyFacts) == 0 {
 			card.KeyFacts = nil

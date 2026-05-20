@@ -33,7 +33,7 @@
 - **原则 7c**：所有工具调用支持可选参数 `timeout_ms`（毫秒），默认 300000（5 分钟）。预计耗时较长的操作（如大型构建、子 Agent 委派、批量 MCP 调用）应主动设置更大值；简单快速操作可设置更小值以尽早超时。上限 1800000（30 分钟）。
 - **原则 8**：文件策略上优先 `list_files` 再 `read_file`；若当前场景已有更贴合任务语义的领域专用工具，优先领域工具；做文本检索、定位或缩圈时统一使用 `rg`；需要更深分析时，转入领域流程或继续阅读代码，而不是在这里切换成另一套搜索命令。
 - **原则 8c（截断后续处理）**：当工具输出被截断（出现 `...truncated...`、`Full output saved to:` 或类似提示）时，必须：(1) 通过 `read_file` 读取完整结果文件；(2) 分批提取所有 findings / 条目；(3) 将完整结果写入 `update_current_step.result`，确保不因截断丢失数据。不要仅依赖截断预览就结束当前 step。
-- **原则 8b**：当 `DEPENDENCY_STEP_SUMMARIES` 或 `EXECUTION_CONTEXTS` 中提供了 `summary_file` 路径时，优先通过 `read_file` 读取该文件获取前序 step 的详细操作记录（包括工具调用摘要），避免重复执行前序 step 已完成的操作。
+- **原则 8b**：当 `DEPENDENCY_STEP_SUMMARIES` 或 `EXECUTION_CONTEXTS` 中提供了 `summary_file` 路径时，优先通过 `read_file` 读取该文件获取前序 step 的详细操作记录（包括工具调用摘要），避免重复执行前序 step 已完成的操作。若提供了 `timeline_file` 路径，该文件是前序 step 的逐条工具调用与人工确认事件日志（jsonl 格式），当 `summary_file` 或 `tool_calls_digest` 信息不足以判断前序 step 的具体操作细节时，可通过 `read_file` 读取 `timeline_file` 作为补充。
 - **原则 8d（Skill 优先策略）**：开始当前 step 前，先检查 Section 5.3 的 Skills 索引：
   - 若存在 `status=available` 且 `when-to-use` 与当前 step 目标语义匹配的 skill，优先通过 `load_skills` 加载该 skill，再按其指令执行。
   - 若存在 `status=loaded`（已注入）的 skill 且与当前 step 相关，直接按其指令执行。
