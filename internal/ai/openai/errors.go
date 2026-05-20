@@ -103,21 +103,43 @@ func BuildRetryDecision(err error, retryCodes []int) RetryDecision {
 		}
 	}
 
-	// Retry on common network errors.
+	// Retry on common network errors (timeout, connection reset, broken pipe, etc.).
 	var netErr net.Error
-	if errors.As(err, &netErr) && netErr != nil && netErr.Timeout() {
+	if errors.As(err, &netErr) && netErr != nil {
+		if netErr.Timeout() {
+			return RetryDecision{
+				Retry:       true,
+				Message:     "Request timed out",
+				ReasonCode:  RetryReasonRequestTimeout,
+				UserMessage: "请求超时，系统会自动重试。",
+				SuggestedActions: []string{
+					"稍后重试当前请求",
+				},
+			}
+		}
 		return RetryDecision{
 			Retry:       true,
-			Message:     "Request timed out",
-			ReasonCode:  RetryReasonRequestTimeout,
-			UserMessage: "请求超时，系统会自动重试。",
+			Message:     "Connection error",
+			ReasonCode:  RetryReasonConnectionIssue,
+			UserMessage: "网络连接异常，系统会自动重试。",
 			SuggestedActions: []string{
 				"稍后重试当前请求",
+				"检查网络连通性或代理配置",
 			},
 		}
 	}
 
-	return RetryDecision{}
+	// All explicitly non-retryable cases (Canceled, auth, quota, context overflow) are
+	// handled above. Remaining unrecognized errors are assumed transient and retried.
+	return RetryDecision{
+		Retry:       true,
+		Message:     fmt.Sprintf("Transient error: %v", err),
+		ReasonCode:  RetryReasonProviderTransient,
+		UserMessage: "遇到临时错误，系统会自动重试。",
+		SuggestedActions: []string{
+			"稍后重试当前请求",
+		},
+	}
 }
 
 func BuildRetryDecisionFromText(text string, retryCodes []int) RetryDecision {

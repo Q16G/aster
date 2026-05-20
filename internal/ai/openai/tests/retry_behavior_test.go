@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -443,6 +444,52 @@ func TestChatEx_UsesRetryCallbackForRateLimit(t *testing.T) {
 	}
 	if retryEvents[0].Next.IsZero() {
 		t.Fatalf("expected retry next timestamp, got %#v", retryEvents[0])
+	}
+}
+
+func TestChatEx_RetriesConnectionResetUntilSuccess(t *testing.T) {
+	transport := &retryRoundTripper{
+		steps: []retryRoundTripStep{
+			{err: &net.OpError{
+				Op:  "read",
+				Net: "tcp",
+				Err: errors.New("read: connection reset by peer"),
+			}},
+			{body: `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"recovered"}}]}`},
+		},
+	}
+	client := newRetryTestClient(transport, WithStream(false), WithMaxRetries(1))
+
+	choices, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+	if transport.Calls() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", transport.Calls())
+	}
+	if got := choices[0].Message.Content; got != "recovered" {
+		t.Fatalf("expected recovered content, got %q", got)
+	}
+}
+
+func TestChatEx_RetriesGenericErrorUntilSuccess(t *testing.T) {
+	transport := &retryRoundTripper{
+		steps: []retryRoundTripStep{
+			{err: errors.New("some transient glitch")},
+			{body: `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`},
+		},
+	}
+	client := newRetryTestClient(transport, WithStream(false), WithMaxRetries(1))
+
+	choices, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+	if transport.Calls() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", transport.Calls())
+	}
+	if got := choices[0].Message.Content; got != "ok" {
+		t.Fatalf("expected ok content, got %q", got)
 	}
 }
 

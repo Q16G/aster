@@ -194,6 +194,32 @@ func TestChatEx_DoesNotRetryHTTP403(t *testing.T) {
 	}
 }
 
+func TestChatEx_RetriesHTTP529Overloaded(t *testing.T) {
+	counter := &callCounter{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		counter.Inc()
+		if counter.Count() == 1 {
+			w.WriteHeader(529)
+			w.Write([]byte(`{"error":{"type":"overloaded_error","message":"Overloaded"}}`))
+			return
+		}
+		json.NewEncoder(w).Encode(successResponse())
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL, anthropic.WithMaxRetries(1))
+	choices, err := client.ChatEx(context.Background(), []*ai.MsgInfo{ai.NewUserMsgInfo("hello")})
+	if err != nil {
+		t.Fatalf("ChatEx failed: %v", err)
+	}
+	if counter.Count() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", counter.Count())
+	}
+	if choices[0].Message.Content != "ok" {
+		t.Fatalf("unexpected content: %q", choices[0].Message.Content)
+	}
+}
+
 func TestChatEx_ReturnsMaxRetriesExceeded(t *testing.T) {
 	counter := &callCounter{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
