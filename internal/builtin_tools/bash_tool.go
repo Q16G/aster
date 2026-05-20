@@ -19,6 +19,7 @@ const (
 	bashCaptureMaxStdout   int64 = 1 * 1024 * 1024 // 1 MiB
 	bashCaptureMaxStderr   int64 = 1 * 1024 * 1024 // 1 MiB
 	bashTruncateHeadRatio        = 0.2
+	bashDefaultWaitDelay = 10 * time.Second
 )
 
 // BashTool bash 命令执行工具
@@ -60,6 +61,10 @@ func (t *BashTool) Parameters() any {
 			"timeout_ms": map[string]any{
 				"type":        "integer",
 				"description": "可选：超时毫秒（默认 120000，最大 900000）",
+			},
+			"wait_delay_ms": map[string]any{
+				"type":        "integer",
+				"description": "可选：进程退出后等待 I/O pipe 关闭的最大延迟毫秒（默认 10000）。当命令可能 spawn 后台 daemon 时建议设置更大值",
 			},
 			"description": map[string]any{
 				"type":        "string",
@@ -193,7 +198,8 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	res := RunCommandLimited(execCtx, workDir, exe, shellArgs, bashCaptureMaxStdout, bashCaptureMaxStderr)
+	waitDelay := t.resolveWaitDelay(args)
+	res := RunCommandLimited(execCtx, workDir, exe, shellArgs, bashCaptureMaxStdout, bashCaptureMaxStderr, waitDelay)
 
 	stdout := res.Stdout
 	stderr := res.Stderr
@@ -249,6 +255,15 @@ func (t *BashTool) resolveTimeout(args map[string]any, command string) int64 {
 		return bashBuildTestTimeoutMs
 	}
 	return bashDefaultTimeoutMs
+}
+
+func (t *BashTool) resolveWaitDelay(args map[string]any) time.Duration {
+	if v, ok := args["wait_delay_ms"]; ok && v != nil {
+		if ms, ok := asInt64Any(v); ok && ms > 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return bashDefaultWaitDelay
 }
 
 func isBuildTestCommand(base, command string) bool {
