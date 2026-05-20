@@ -87,6 +87,93 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 	}
 }
 
+func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
+	agent, err := NewReActAgent("skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+
+	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		"current_goal":       "侦察完成",
+		"current_step":       map[string]any{"id": "step-1", "step": "侦察"},
+		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
+		"task_plan":          []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
+		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":           []string{},
+		"unresolved":         []string{},
+		"step_result_path":   "",
+		"step_contexts_path": "",
+		"skills_context": &SkillsPromptContext{
+			Table: "| name | description |\n|------|-------------|\n| web-security-testing | P0 总控路由 |",
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildStepReplanPrompt failed: %v", err)
+	}
+
+	if !strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
+		t.Fatal("expected rendered <SKILLS_INDEX> block in prompt when skills_context is provided")
+	}
+	if !strings.Contains(prompt, "web-security-testing") {
+		t.Fatal("expected skill table content in prompt")
+	}
+}
+
+func TestBuildStepReplanPrompt_WithoutSkillsIndex(t *testing.T) {
+	agent, err := NewReActAgent("no-skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+
+	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		"current_goal":       "分析完成",
+		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
+		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
+		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
+		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":           []string{},
+		"unresolved":         []string{},
+		"step_result_path":   "",
+		"step_contexts_path": "",
+	})
+	if err != nil {
+		t.Fatalf("buildStepReplanPrompt failed: %v", err)
+	}
+
+	// The principle text references `<SKILLS_INDEX>` in backticks, so check for the actual
+	// rendered block (tag on its own line, not inside backtick-quoted text).
+	if strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
+		t.Fatal("did not expect rendered <SKILLS_INDEX> block in prompt when skills_context is nil")
+	}
+}
+
+func TestBuildStepReplanPrompt_EmptySkillsTable(t *testing.T) {
+	agent, err := NewReActAgent("empty-skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+
+	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		"current_goal":       "分析完成",
+		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
+		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
+		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
+		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":           []string{},
+		"unresolved":         []string{},
+		"step_result_path":   "",
+		"step_contexts_path": "",
+		"skills_context":     &SkillsPromptContext{Table: ""},
+	})
+	if err != nil {
+		t.Fatalf("buildStepReplanPrompt failed: %v", err)
+	}
+
+	if strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
+		t.Fatal("did not expect rendered <SKILLS_INDEX> block when skills_context has empty Table")
+	}
+}
+
 func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
 	agent, err := NewReActAgent("tool-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
 	if err != nil {
