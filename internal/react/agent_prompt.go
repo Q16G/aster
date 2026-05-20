@@ -34,6 +34,8 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
 	}
 
+	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
+
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
 		AgentInstruction:        strings.TrimSpace(a.cfg.Instruction),
 		TaskContext:             taskContext,
@@ -56,6 +58,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		Warnings:                snap.Warnings,
 		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
+		SupportsVision:          supportsVision,
 	})
 	if err == nil {
 		return prompt

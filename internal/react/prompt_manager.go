@@ -29,6 +29,7 @@ type ThinkActPromptInput struct {
 	Warnings                any
 	Unresolved              any
 	ExtraContext            string
+	SupportsVision          bool
 }
 
 type StepReplanPromptInput struct {
@@ -182,6 +183,7 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"WARNINGS":                      prettyJSON(input.Warnings),
 		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
+		"SUPPORTS_VISION":               input.SupportsVision,
 	}); err != nil {
 		return "", err
 	}
