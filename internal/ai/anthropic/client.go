@@ -51,25 +51,26 @@ func (e *httpError) Error() string {
 	return fmt.Sprintf("anthropic api error: status=%d body=%s", e.StatusCode, e.Body)
 }
 
-var retryableStatusCodes = map[int]bool{
-	429: true, 500: true, 502: true, 503: true, 504: true,
+var nonRetryableStatusCodes = map[int]bool{
+	400: true, 401: true, 403: true,
 }
 
 func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
 	if errors.Is(err, context.Canceled) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
 	var he *httpError
 	if errors.As(err, &he) {
-		return retryableStatusCodes[he.StatusCode]
-	}
-	if strings.Contains(err.Error(), "http request:") {
+		if nonRetryableStatusCodes[he.StatusCode] {
+			return false
+		}
 		return true
 	}
-	return false
+	// All non-HTTP errors (timeout, connection reset, EOF, etc.) are assumed transient.
+	return true
 }
 
 type anthropicUsage struct {
