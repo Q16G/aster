@@ -51,6 +51,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		stepTranscriptPath = a.v2Store.BlobPath(ref)
 	}
 
+	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
+
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":         snapshot.CurrentGoal,
 		"current_step":         current,
@@ -62,6 +64,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"step_result_path":     stepResultPath,
 		"step_contexts_path":   stepContextsPath,
 		"step_transcript_path": stepTranscriptPath,
+		"skills_context":       skillsCtx,
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)

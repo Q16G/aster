@@ -10,6 +10,10 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 	if a == nil || a.promptManager == nil {
 		return "", fmt.Errorf("step replan prompt manager is nil")
 	}
+	var skillsCtx *SkillsPromptContext
+	if sc, ok := payload["skills_context"].(*SkillsPromptContext); ok {
+		skillsCtx = sc
+	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
 		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
 		CurrentGoal:        payload["current_goal"],
@@ -22,6 +26,8 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		StepResultPath:     stringFromPayload(payload, "step_result_path"),
 		StepContextsPath:   stringFromPayload(payload, "step_contexts_path"),
 		StepTranscriptPath: stringFromPayload(payload, "step_transcript_path"),
+		SkillsContext:      skillsCtx,
+		HasSkillsTable:     skillsCtx != nil && skillsCtx.HasTable(),
 	})
 }
 

@@ -43,6 +43,8 @@ type StepReplanPromptInput struct {
 	StepResultPath     string
 	StepContextsPath   string
 	StepTranscriptPath string
+	SkillsContext      *SkillsPromptContext
+	HasSkillsTable     bool
 }
 
 type FinalAnswerPromptInput struct {
@@ -204,6 +206,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_RESULT_PATH":      input.StepResultPath,
 		"STEP_CONTEXTS_PATH":    input.StepContextsPath,
 		"STEP_TRANSCRIPT_PATH":  input.StepTranscriptPath,
+		"SKILLS_CONTEXT":        input.SkillsContext,
+		"HAS_SKILLS_TABLE":      input.HasSkillsTable,
 	}); err != nil {
 		return "", err
 	}

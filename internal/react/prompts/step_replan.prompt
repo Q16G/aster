@@ -53,6 +53,12 @@
 <UNRESOLVED>
 {{.UNRESOLVED}}
 </UNRESOLVED>
+{{- if .HAS_SKILLS_TABLE}}
+
+<SKILLS_INDEX>
+{{.SKILLS_CONTEXT.Table}}
+</SKILLS_INDEX>
+{{- end}}
 
 {{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH}}
 ### 可主动读取的文件
@@ -87,6 +93,7 @@
 - **原则 2.1**：若识别出的缺口（无论显式还是推理所得）不被后续步骤完整覆盖，输出 `should_replan=true`。
 - **原则 3**：`replan_reason` 在 `should_replan=false` 时填空字符串，在 `should_replan=true` 时填一句人类可读的总括说明。
 - **原则 4**：`next_goal` 在 `should_replan=false` 时填空字符串，在 `should_replan=true` 时填明确的下一轮目标。
+- **原则 5（技能感知）**：当侦察/发现步骤完成后发现新的攻击面或信号时，参考 `<SKILLS_INDEX>`（如已注入）判断是否有对应 skill 可以覆盖。若有 skill 可覆盖但后续 pending 步骤未涉及，将其纳入 `missing_items` 并触发 replan。
 
 ## 输出要求
 
