@@ -12,7 +12,8 @@ import (
 //go:embed prompts/agent_handoff.prompt
 var agentHandoffPrompt string
 
-func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager PromptManager, handoffTo string, agentInstruction string, prevSummary string, diff string) (string, error) {
+// Deprecated: summarizeAgentHandoff 无调用方。实际 handoff 走 handoff_state.go → defaultOnHandoff。
+func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager PromptManager, handoffTo string, agentInstruction string, prevSummary string) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("agent handoff summarizer is nil")
 	}
@@ -22,13 +23,9 @@ func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager Pr
 	handoffTo = strings.TrimSpace(handoffTo)
 	agentInstruction = strings.TrimSpace(agentInstruction)
 	prevSummary = strings.TrimSpace(prevSummary)
-	diff = strings.TrimSpace(diff)
 
-	if prevSummary == "" && diff == "" {
+	if prevSummary == "" {
 		return "", nil
-	}
-	if diff == "" {
-		return prevSummary, nil
 	}
 	if manager == nil {
 		return "", fmt.Errorf("agent handoff prompt manager is nil")
@@ -37,7 +34,6 @@ func summarizeAgentHandoff(ctx context.Context, client ai.ChatClient, manager Pr
 		HandoffTo:        handoffTo,
 		AgentInstruction: agentInstruction,
 		PrevSummary:      prevSummary,
-		Diff:             diff,
 	})
 	if err != nil {
 		return "", fmt.Errorf("build agent handoff prompt failed: %w", err)

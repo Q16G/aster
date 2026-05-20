@@ -53,6 +53,7 @@ type Agent struct {
 	emitter             *Emitter
 	workspaceSessionID  string
 	workspaceRootDir    string
+	parentWorkspaceRoot string
 	workspaceNamespace  string
 	frozenLineageByStep map[string]*frozenStepLineage
 	currentResultSource ResultSource

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"aster/internal/builtin_tools"
@@ -98,11 +99,11 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		childDef.Policies.BashPermissionContext = t.parentAgent.cfg.BashTool
 	}
 
-	namespace := fmt.Sprintf("agents/%s", childName)
+	childRootDir := filepath.Join(t.parentAgent.workspaceRootDir, "sub_agents", childName)
 	childRuntime, err := newLocalWorkspaceRuntime(
 		t.parentAgent.workspaceSessionID,
-		t.parentAgent.workspaceRootDir,
-		namespace,
+		childRootDir,
+		"root",
 	)
 	if err != nil {
 		return "", fmt.Errorf("create child workspace: %w", err)
@@ -113,16 +114,18 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		return "", fmt.Errorf("build sub agent: %w", err)
 	}
 
+	t.preRegisterChildAgent(runtime, childName, childRootDir)
+
 	result, err := childAgent.Execute(ctx, instruction,
 		WithWorkspaceRuntime(childRuntime),
-		WithResultSource(ResultSourceLatestStepResult),
+		WithParentWorkspace(t.parentAgent.workspaceRootDir),
 		WithSkipIntentPrelude(),
 	)
+	t.finalizeChildAgent(runtime, childName, childRootDir, result)
 	if err != nil {
 		return "", fmt.Errorf("sub agent execution: %w", err)
 	}
-
-	return formatSubAgentResult(childName, namespace, result), nil
+	return formatSubAgentResult(childName, childRootDir, result), nil
 }
 
 func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskContextEntry {
@@ -149,6 +152,42 @@ func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskC
 
 func (t *SubAgentTool) childMaxIterations() int {
 	return defaultSubAgentMaxIter
+}
+
+func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string) {
+	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
+		return
+	}
+	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
+	if err != nil || parentState == nil {
+		return
+	}
+	parentState.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
+		Status:          "running",
+		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
+		ArtifactRootDir: childRootDir,
+	}
+	_ = t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState)
+}
+
+func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string, result *builtin_tools.RunResult) {
+	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
+		return
+	}
+	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
+	if err != nil || parentState == nil {
+		return
+	}
+	status := "completed"
+	if result == nil || !result.Success {
+		status = "failed"
+	}
+	parentState.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
+		Status:          status,
+		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
+		ArtifactRootDir: childRootDir,
+	}
+	_ = t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState)
 }
 
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
@@ -232,7 +271,7 @@ func truncateID(id string, maxLen int) string {
 	return id
 }
 
-func formatSubAgentResult(agentName, namespace string, result *builtin_tools.RunResult) string {
+func formatSubAgentResult(agentName, workspaceRoot string, result *builtin_tools.RunResult) string {
 	status := "completed"
 	summary := ""
 	errText := ""
@@ -251,12 +290,12 @@ func formatSubAgentResult(agentName, namespace string, result *builtin_tools.Run
 		errText = "no result"
 	}
 	out, _ := json.Marshal(map[string]any{
-		"ok":         ok,
-		"agent_name": agentName,
-		"namespace":  namespace,
-		"status":     status,
-		"summary":    summary,
-		"error":      errText,
+		"ok":             ok,
+		"agent_name":     agentName,
+		"workspace_root": workspaceRoot,
+		"status":         status,
+		"summary":        summary,
+		"error":          errText,
 	})
 	return string(out)
 }

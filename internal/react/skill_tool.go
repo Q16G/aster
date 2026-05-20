@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"aster/internal/builtin_tools"
@@ -138,11 +139,11 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 		childDef.Policies.BashPermissionContext = t.parentAgent.cfg.BashTool
 	}
 
-	namespace := fmt.Sprintf("agents/%s", childName)
+	childRootDir := filepath.Join(t.parentAgent.workspaceRootDir, "sub_agents", childName)
 	childRuntime, err := newLocalWorkspaceRuntime(
 		t.parentAgent.workspaceSessionID,
-		t.parentAgent.workspaceRootDir,
-		namespace,
+		childRootDir,
+		"root",
 	)
 	if err != nil {
 		return "", fmt.Errorf("create child workspace: %w", err)
@@ -162,7 +163,7 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 		return "", fmt.Errorf("skill fork execution: %w", err)
 	}
 
-	return formatSubAgentResult(childName, namespace, result), nil
+	return formatSubAgentResult(childName, childRootDir, result), nil
 }
 
 func (t *SkillTool) resolveToolNames(allowedTools []string) []string {

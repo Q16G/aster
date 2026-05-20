@@ -229,8 +229,8 @@ func selectDirectInheritedContextKeys(records []*builtin_tools.StepContextRecord
 	}
 
 	// 3) If this is a child agent and there is no local context yet, inherit the parent step context.
-	if len(out) == 0 && strings.HasPrefix(namespace, "agents/") && agent != nil {
-		parentContextKey := agent.parentContextKeyForChildNamespace(namespace)
+	if len(out) == 0 && agent != nil && agent.parentWorkspaceRoot != "" {
+		parentContextKey := agent.parentContextKeyFromParentWorkspace()
 		add(parentContextKey)
 	}
 
@@ -240,55 +240,44 @@ func selectDirectInheritedContextKeys(records []*builtin_tools.StepContextRecord
 	return out
 }
 
-func (a *Agent) parentContextKeyForChildNamespace(namespace string) string {
+func (a *Agent) parentContextKeyFromParentWorkspace() string {
 	if a == nil {
 		return ""
 	}
-	namespace = builtin_tools.NormalizeWorkspaceNamespace(namespace)
-	if !strings.HasPrefix(namespace, "agents/") {
+	parentRoot := strings.TrimSpace(a.parentWorkspaceRoot)
+	if parentRoot == "" {
 		return ""
 	}
-	workspaceRoot := strings.TrimSpace(a.workspaceRootDir)
-	if workspaceRoot == "" {
-		return ""
+	childName := strings.TrimSpace(a.agentName)
+	if childName == "" {
+		return latestRootContextKey(parentRoot)
 	}
 
-	rootRuntime, err := newLocalWorkspaceRuntime(a.workspaceSessionID, workspaceRoot, "root")
+	parentRuntime, err := newLocalWorkspaceRuntime(a.workspaceSessionID, parentRoot, "root")
 	if err != nil {
 		return ""
 	}
-	rootWriter, err := newArtifactWriter(rootRuntime)
-	if err != nil {
-		return ""
-	}
-	rootState, err := rootWriter.LoadWorkspaceState()
-	if err != nil || rootState == nil || len(rootState.ChildAgents) == 0 {
-		return ""
+	parentState, err := parentRuntime.LoadWorkspaceState()
+	if err != nil || parentState == nil || len(parentState.ChildAgents) == 0 {
+		return latestRootContextKey(parentRoot)
 	}
 
-	childKey := strings.TrimPrefix(namespace, "agents/")
-	childKey = strings.Trim(childKey, "/")
-	if childKey == "" {
-		childKey = "unknown"
-	}
-	childPtr := rootState.ChildAgents[childKey]
+	childPtr := parentState.ChildAgents[childName]
 	if childPtr == nil {
-		return ""
+		return latestRootContextKey(parentRoot)
 	}
 	parentStepKey := strings.TrimSpace(childPtr.ParentStepKey)
-	if parentStepKey == "" || rootState.LatestStepOutcomes == nil {
-		return ""
+	if parentStepKey == "" || parentState.LatestStepOutcomes == nil {
+		return latestRootContextKey(parentRoot)
 	}
-	parentOutcome := rootState.LatestStepOutcomes[parentStepKey]
+	parentOutcome := parentState.LatestStepOutcomes[parentStepKey]
 	if parentOutcome == nil {
-		return latestRootContextKey(workspaceRoot)
+		return latestRootContextKey(parentRoot)
 	}
 	if ck := strings.TrimSpace(parentOutcome.ContextKey); ck != "" {
 		return ck
 	}
-	// Parent step may still be in-progress (no context_key yet). Fallback to the latest
-	// completed root context so child agents still get a usable coarse result.
-	return latestRootContextKey(workspaceRoot)
+	return latestRootContextKey(parentRoot)
 }
 
 func latestRootContextKey(workspaceRoot string) string {
