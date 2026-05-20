@@ -2,6 +2,7 @@ package react
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 )
 
@@ -27,6 +28,19 @@ func (a *Agent) defaultOnHandoff(ctx context.Context, handoffTo string) string {
 	next := renderCompletedStepHandoffContext(snapshot.Plan, snapshot.StepOutcomes)
 	if strings.TrimSpace(next) == "" {
 		return current
+	}
+
+	if rootDir := strings.TrimSpace(a.workspaceRootDir); rootDir != "" {
+		var wsPointers strings.Builder
+		wsPointers.WriteString("\n\n工作区路径指针：\n")
+		wsPointers.WriteString("parent_workspace_root: " + rootDir + "\n")
+		wsPointers.WriteString("parent_step_contexts_path: " + filepath.Join(rootDir, "workspace", "step_contexts.jsonl") + "\n")
+		ns := strings.TrimSpace(a.workspaceNamespace)
+		if ns == "" {
+			ns = "root"
+		}
+		wsPointers.WriteString("parent_plan_current_path: " + filepath.Join(rootDir, "artifacts", ns, "plan", "current.json") + "\n")
+		next = next + wsPointers.String()
 	}
 
 	a.handoff.summary = next

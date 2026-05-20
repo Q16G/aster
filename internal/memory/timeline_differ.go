@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// Deprecated: TimelineMemoryDiffer 不再被 react 执行循环使用，保留用于向后兼容。
 // TimelineMemoryDiffer 用于计算 TimelineMemory 的增量 diff
 type TimelineMemoryDiffer struct {
 	timeline *TimelineMemory

@@ -59,7 +59,7 @@ type ToolPart struct {
 	IsAgent    bool          `json:"is_agent,omitempty"`
 	StackDepth int           `json:"stack_depth,omitempty"`
 	AgentName  string        `json:"agent_name,omitempty"`
-	Namespace  string        `json:"namespace,omitempty"`
+	WorkspaceRoot string     `json:"workspace_root,omitempty"`
 	Summary    string        `json:"summary,omitempty"`
 	ChildRef   string        `json:"child_ref,omitempty"`
 }
@@ -127,8 +127,8 @@ type SubAgentPart struct {
 	CallID    string        `json:"call_id,omitempty"`
 	Status    string        `json:"status"`
 	Summary   string        `json:"summary,omitempty"`
-	Namespace string        `json:"namespace,omitempty"`
-	ChildRef  string        `json:"child_ref,omitempty"`
+	WorkspaceRoot string    `json:"workspace_root,omitempty"`
+	ChildRef      string    `json:"child_ref,omitempty"`
 	Duration  time.Duration `json:"duration,omitempty"`
 }
 

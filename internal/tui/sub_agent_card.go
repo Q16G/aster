@@ -51,8 +51,8 @@ func renderSubAgentCard(sa *SubAgentPart, maxWidth int, expanded, selected bool)
 	if sa.Duration > 0 {
 		content.WriteString(" (" + formatDuration(sa.Duration) + ")")
 	}
-	if sa.Namespace != "" {
-		content.WriteString("\n  Namespace: " + sa.Namespace)
+	if sa.WorkspaceRoot != "" {
+		content.WriteString("\n  Workspace: " + sa.WorkspaceRoot)
 	}
 	if sa.Summary != "" {
 		content.WriteString("\n  Summary: " + sa.Summary)

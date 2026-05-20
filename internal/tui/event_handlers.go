@@ -692,8 +692,8 @@ func (m *Model) parseSubAgentResult(t *ToolPart, result string) {
 	if name, ok := parsed["agent_name"].(string); ok {
 		t.AgentName = name
 	}
-	if ns, ok := parsed["namespace"].(string); ok {
-		t.Namespace = ns
+	if ns, ok := parsed["workspace_root"].(string); ok {
+		t.WorkspaceRoot = ns
 	}
 	if s, ok := parsed["summary"].(string); ok {
 		t.Summary = s
@@ -720,8 +720,8 @@ func (m *Model) updateSubAgentByCallID(callID, result, errStr string) {
 		if name, ok := parsed["agent_name"].(string); ok {
 			sa.AgentName = name
 		}
-		if ns, ok := parsed["namespace"].(string); ok {
-			sa.Namespace = ns
+		if ns, ok := parsed["workspace_root"].(string); ok {
+			sa.WorkspaceRoot = ns
 		}
 		if s, ok := parsed["status"].(string); ok {
 			sa.Status = s
