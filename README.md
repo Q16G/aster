@@ -627,4 +627,19 @@ graph TB
 
 ## License
 
-本项目基于 [MIT License](LICENSE) 开源。详见 [LICENSE](LICENSE) 文件。
+本项目源代码基于 [MIT License](LICENSE) 开源。
+
+### 外部工具声明
+
+ASTER 通过子进程 / MCP 协议调用以下外部工具，**不引入、不链接、不修改**其源代码，也不随本项目分发这些工具的二进制文件——用户需自行安装：
+
+| 工具 | 用途 | 工具自身许可证 | 集成方式 |
+|------|------|---------------|---------|
+| [Semgrep](https://github.com/semgrep/semgrep) | SAST 静态分析引擎 | LGPL-2.1 | CLI 子进程 |
+| [Yaklang](https://github.com/yaklang/yaklang) | SyntaxFlow SSA 数据流分析 | AGPL-3.0 | MCP stdio |
+
+> Semgrep（LGPL-2.1）和 Yaklang（AGPL-3.0）的 copyleft 条款不适用于本项目——它们作为独立程序通过进程间通信被调用，不构成衍生作品或组合作品（参见 [GNU GPL FAQ](https://www.gnu.org/licenses/gpl-faq.html#MereAggregation)）。
+
+### 内置规则
+
+`semgrep-rules/` 目录中的 SAST 规则由 ASTER 团队独立编写，随项目以 MIT 协议发布。
