@@ -115,9 +115,7 @@ func (a *Agent) reduceStepOutcomesInState(ctx context.Context, client ai.ChatCli
 	if err != nil {
 		return
 	}
-	if len(reduced) < len(outcomes) {
-		a.state.ReplaceStepOutcomes(reduced)
-	}
+	a.state.ReplaceStepOutcomes(reduced)
 }
 
 func (a *Agent) runStepOutcomesReducer(ctx context.Context, client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) ([]*builtin_tools.StepOutcome, error) {
