@@ -34,6 +34,7 @@ type ExecuteConfig struct {
 	interruptCancel            *interruptCancel
 	resultSource               ResultSource
 	parentWorkspaceRoot        string
+	skipIntentClassification   bool
 }
 
 type interruptResolution struct {
@@ -179,10 +180,13 @@ func WithInterruptCancel(interruptID string, reason string) ExecuteOption {
 	}
 }
 
-// WithSkipIntentPrelude is kept for backward compatibility; it's now a no-op
-// since the Intent Prelude system has been removed.
 func WithSkipIntentPrelude() ExecuteOption {
-	return func(cfg *ExecuteConfig) {}
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.skipIntentClassification = true
+	}
 }
 
 func WithResultSource(source ResultSource) ExecuteOption {
@@ -389,16 +393,21 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	if a.state != nil {
-		hasResumableState := v2Snap != nil && (strings.TrimSpace(v2Snap.RuntimeStateBlobRef) != "" ||
-			strings.TrimSpace(v2Snap.StepHistoryBlobRef) != "" ||
-			strings.TrimSpace(v2Snap.ConversationHistoryBlobRef) != "")
-		if resume && hasResumableState {
-			// Resume from a persisted runtime snapshot (primarily used for HIL / crash recovery).
+		intent, needsClassification := resolveResumeIntent(v2Snap, cfg, input != "")
+
+		switch intent {
+		case ResumeIntentFullResume:
 			if err := a.restoreRuntimeFromV2Snapshot(store, v2Snap); err != nil {
 				return nil, err
 			}
-		} else {
-			// Fresh turn: reset the runtime state machine.
+
+		case ResumeIntentContextCarry, ResumeIntentContextReplan:
+			a.softResetWithContext(ctx, runClient, store, v2Snap)
+			if needsClassification && !cfg.skipIntentClassification {
+				_ = a.state.SetPhase(builtin_tools.AgentPhaseIntentClassification)
+			}
+
+		default: // ResumeIntentColdStart
 			a.state.Reset()
 		}
 
@@ -769,14 +778,38 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}
 	}
 
+	// Persist runtime state and conversation history blobs for context carry on next turn.
+	var turnRuntimeBlobRef, turnConvHistoryBlobRef string
+	if runResult != nil && runResult.Success && a.state != nil {
+		if rtRaw, merr := json.Marshal(a.state.Snapshot()); merr == nil && len(rtRaw) > 0 {
+			if ref, berr := store.WriteBlob(rtRaw); berr == nil {
+				turnRuntimeBlobRef = ref
+			}
+		}
+		if len(a.history) > 0 {
+			if chRaw, merr := json.Marshal(a.history); merr == nil && len(chRaw) > 0 {
+				if ref, berr := store.WriteBlob(chRaw); berr == nil {
+					turnConvHistoryBlobRef = ref
+				}
+			}
+		}
+	}
+
+	turnFinishedPayload := map[string]any{
+		"status": status,
+		"error":  firstNonEmpty(runResultErrorText(runResult), ""),
+	}
+	if turnRuntimeBlobRef != "" {
+		turnFinishedPayload["runtime_state_blob_ref"] = turnRuntimeBlobRef
+	}
+	if turnConvHistoryBlobRef != "" {
+		turnFinishedPayload["conversation_history_blob_ref"] = turnConvHistoryBlobRef
+	}
 	finishedEv, err := store.AppendEvent(&persistv2.Event{
 		Type:    "TURN_FINISHED",
 		GroupID: strings.TrimSpace(a.currentGroupID),
 		TurnID:  a.currentTurnID,
-		Payload: map[string]any{
-			"status": status,
-			"error":  firstNonEmpty(runResultErrorText(runResult), ""),
-		},
+		Payload: turnFinishedPayload,
 	})
 	if err != nil {
 		a.emitPersistenceError("append_event", err)
@@ -814,8 +847,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		default:
 			snap.SessionState = persistv2.SessionStateIdle
 			snap.PendingInterrupt = nil
-			snap.RuntimeStateBlobRef = ""
 			snap.StepHistoryBlobRef = ""
+			// Preserve runtime state + conversation history for context carry on next turn.
+			snap.RuntimeStateBlobRef = turnRuntimeBlobRef
+			snap.ConversationHistoryBlobRef = turnConvHistoryBlobRef
 		}
 
 		// Only successful turns update LatestFinal.

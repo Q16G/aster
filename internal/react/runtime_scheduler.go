@@ -84,6 +84,10 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			if err := a.runStepReplanPhase(ctx, iter, runClient); err != nil {
 				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
 			}
+		case builtin_tools.AgentPhaseIntentClassification:
+			if err := a.runIntentClassificationPhase(ctx, iter, runClient); err != nil {
+				return a.handlePhaseError(ctx, err, iter, maxIterations, runClient)
+			}
 		case builtin_tools.AgentPhaseFinalAnswer:
 			if _, err := a.runFinalAnswerPhase(ctx, iter, runClient); err != nil {
 				return nil, err
@@ -127,7 +131,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
 	switch snapshot.Phase {
-	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan, builtin_tools.AgentPhaseFinalAnswer:
+	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan, builtin_tools.AgentPhaseFinalAnswer, builtin_tools.AgentPhaseIntentClassification:
 		return snapshot.Phase
 	default:
 		return builtin_tools.AgentPhasePlan
