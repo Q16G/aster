@@ -34,23 +34,26 @@ type reducedStepOutcome struct {
 	Error           string   `json:"error,omitempty"`
 }
 
-func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) ([]*builtin_tools.StepOutcome, error) {
+func stepOutcomesExceedBudget(client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) (totalTokens int, tokenBudget int, exceeded bool) {
 	if len(outcomes) <= stepOutcomesReducerKeepLast {
-		return outcomes, nil
+		return 0, 0, false
 	}
-
 	budget := resolveContextBudget(client)
-	tokenBudget := int(float64(budget.UsableInputTokens) * stepOutcomesReducerBudgetRatio)
+	tokenBudget = int(float64(budget.UsableInputTokens) * stepOutcomesReducerBudgetRatio)
 	if tokenBudget <= 0 {
-		return outcomes, nil
+		return 0, 0, false
 	}
-
 	outcomesJSON, err := json.Marshal(outcomes)
 	if err != nil {
-		return outcomes, nil
+		return 0, tokenBudget, false
 	}
-	totalTokens := countTokens(string(outcomesJSON))
-	if totalTokens <= tokenBudget {
+	totalTokens = countTokens(string(outcomesJSON))
+	return totalTokens, tokenBudget, totalTokens > tokenBudget
+}
+
+func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) ([]*builtin_tools.StepOutcome, error) {
+	totalTokens, tokenBudget, exceeded := stepOutcomesExceedBudget(client, outcomes)
+	if !exceeded {
 		return outcomes, nil
 	}
 
@@ -98,20 +101,8 @@ func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatCl
 func (a *Agent) reduceStepOutcomesInState(ctx context.Context, client ai.ChatClient) {
 	snapshot := a.state.Snapshot()
 	outcomes := snapshot.StepOutcomes
-	if len(outcomes) <= stepOutcomesReducerKeepLast {
-		return
-	}
 
-	budget := resolveContextBudget(client)
-	tokenBudget := int(float64(budget.UsableInputTokens) * stepOutcomesReducerBudgetRatio)
-	if tokenBudget <= 0 {
-		return
-	}
-	outcomesJSON, err := json.Marshal(outcomes)
-	if err != nil {
-		return
-	}
-	if countTokens(string(outcomesJSON)) <= tokenBudget {
+	if _, _, exceeded := stepOutcomesExceedBudget(client, outcomes); !exceeded {
 		return
 	}
 

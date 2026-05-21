@@ -1,7 +1,10 @@
 package react
 
 import (
+	"strings"
 	"testing"
+
+	"aster/internal/builtin_tools"
 )
 
 func TestParseReducedOutcomes_PreservesAllFields(t *testing.T) {
@@ -66,5 +69,89 @@ func TestParseReducedOutcomes_EmptyOptionalFields(t *testing.T) {
 	}
 	if o.ToolCallsDigest != nil {
 		t.Errorf("ToolCallsDigest should be nil, got %v", o.ToolCallsDigest)
+	}
+}
+
+func TestStepOutcomesExceedBudget_BelowThreshold(t *testing.T) {
+	client := &intentTestClient{}
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "s1", Summary: "short"},
+		{StepID: "s2", Summary: "short"},
+		{StepID: "s3", Summary: "short"},
+		{StepID: "s4", Summary: "short"},
+	}
+	_, _, exceeded := stepOutcomesExceedBudget(client, outcomes)
+	if exceeded {
+		t.Error("small outcomes should not exceed budget")
+	}
+}
+
+func TestStepOutcomesExceedBudget_TooFewOutcomes(t *testing.T) {
+	client := &intentTestClient{}
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "s1", Summary: "a"},
+		{StepID: "s2", Summary: "b"},
+	}
+	_, _, exceeded := stepOutcomesExceedBudget(client, outcomes)
+	if exceeded {
+		t.Error("outcomes <= keepLast should never exceed")
+	}
+}
+
+func TestStepOutcomesExceedBudget_LargeOutcomes(t *testing.T) {
+	client := &intentTestClient{}
+	// 128k × 0.8 = 102,400 tokens; use enough data to reliably exceed
+	big := strings.Repeat("analysis result data point ", 10000)
+	outcomes := make([]*builtin_tools.StepOutcome, 5)
+	for i := range outcomes {
+		outcomes[i] = &builtin_tools.StepOutcome{
+			StepID:  "s",
+			Summary: big,
+		}
+	}
+	_, _, exceeded := stepOutcomesExceedBudget(client, outcomes)
+	if !exceeded {
+		t.Error("500k+ chars should exceed 80% of 128k token budget")
+	}
+}
+
+func TestReplaceStepOutcomes_WritesBack(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{
+			{StepID: "s1", Summary: "old1"},
+			{StepID: "s2", Summary: "old2"},
+		},
+		nil,
+	)
+
+	agent.state.ReplaceStepOutcomes([]*builtin_tools.StepOutcome{
+		{StepID: "s1-reduced", Summary: "compressed"},
+	})
+
+	snap := agent.state.Snapshot()
+	if len(snap.StepOutcomes) != 1 {
+		t.Fatalf("StepOutcomes len = %d, want 1", len(snap.StepOutcomes))
+	}
+	if snap.StepOutcomes[0].StepID != "s1-reduced" {
+		t.Errorf("StepID = %q, want s1-reduced", snap.StepOutcomes[0].StepID)
+	}
+}
+
+func TestReplaceStepOutcomes_PreservesOtherState(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1"}},
+		[]*builtin_tools.TimelineInput{{Content: "hello"}},
+	)
+
+	agent.state.ReplaceStepOutcomes([]*builtin_tools.StepOutcome{{StepID: "s1-new"}})
+
+	snap := agent.state.Snapshot()
+	if len(snap.InputTimeline) != 1 || snap.InputTimeline[0].Content != "hello" {
+		t.Errorf("InputTimeline should be preserved, got %v", snap.InputTimeline)
+	}
+	if snap.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase should be preserved, got %q", snap.Phase)
 	}
 }
