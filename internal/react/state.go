@@ -352,8 +352,6 @@ func (t *StateTracker) SetExternalInterrupt(info *builtin_tools.ExternalInterrup
 
 // UpdatePlan 更新计划
 func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation string, needsPlanning bool) builtin_tools.StateSnapshot {
-	_ = strings.TrimSpace(explanation)
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	builtin_tools.HydratePlanRelations(plan)

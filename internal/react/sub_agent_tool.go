@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/runtimelog"
 	"aster/internal/utils/argx"
 )
 
@@ -167,7 +168,13 @@ func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeIn
 		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
 		ArtifactRootDir: childRootDir,
 	}
-	_ = t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState)
+	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+		runtimelog.LogJSON("warning", map[string]any{
+			"event": "pre_register_child_agent_save_failed",
+			"child": childName,
+			"error": err.Error(),
+		})
+	}
 }
 
 func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string, result *builtin_tools.RunResult) {
@@ -187,7 +194,13 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
 		ArtifactRootDir: childRootDir,
 	}
-	_ = t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState)
+	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+		runtimelog.LogJSON("warning", map[string]any{
+			"event": "finalize_child_agent_save_failed",
+			"child": childName,
+			"error": err.Error(),
+		})
+	}
 }
 
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
