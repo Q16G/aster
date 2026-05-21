@@ -457,6 +457,7 @@ type plannerStepOutcomeView struct {
 	Status        string   `json:"status,omitempty"`
 	UpdatedAt     string   `json:"updated_at,omitempty"`
 	ShortSummary  string   `json:"short_summary,omitempty"`
+	LongSummary   string   `json:"long_summary,omitempty"`
 	KeyFacts      []string `json:"key_facts,omitempty"`
 	OpenQuestions []string `json:"open_questions,omitempty"`
 	References    []string `json:"references,omitempty"`
@@ -573,6 +574,7 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 				Status:        strings.TrimSpace(string(outcome.Status)),
 				UpdatedAt:     outcome.UpdatedAt.Format(time.RFC3339),
 				ShortSummary:  short,
+				LongSummary:   strings.TrimSpace(outcome.LongSummary),
 				KeyFacts:      cloneAndTruncateStrings(outcome.KeyFacts, 20, 240),
 				OpenQuestions: cloneAndTruncateStrings(outcome.OpenQuestions, 12, 240),
 				References:    builtin_tools.CloneStringSlice(outcome.References),

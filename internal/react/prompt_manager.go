@@ -92,12 +92,22 @@ type IntentClassificationPromptInput struct {
 	CompletedCount int
 	TotalCount     int
 	RecentOutcomes []IntentOutcomeSummary
+	PendingSteps   []IntentPendingStep
 	InputTimeline  []IntentTimelineEntry
 }
 
+type IntentPendingStep struct {
+	ID   string
+	Step string
+}
+
 type IntentOutcomeSummary struct {
-	StepID       string
-	ShortSummary string
+	StepID        string
+	Status        string
+	ShortSummary  string
+	LongSummary   string
+	KeyFacts      []string
+	OpenQuestions []string
 }
 
 type IntentTimelineEntry struct {
@@ -332,12 +342,14 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.intentClassificationTmpl.Execute(buf, map[string]any{
-		"PREVIOUS_GOAL":      strings.TrimSpace(input.PreviousGoal),
-		"COMPLETED_COUNT":    input.CompletedCount,
-		"TOTAL_COUNT":        input.TotalCount,
+		"PREVIOUS_GOAL":       strings.TrimSpace(input.PreviousGoal),
+		"COMPLETED_COUNT":     input.CompletedCount,
+		"TOTAL_COUNT":         input.TotalCount,
 		"HAS_RECENT_OUTCOMES": len(input.RecentOutcomes) > 0,
-		"RECENT_OUTCOMES":    input.RecentOutcomes,
-		"INPUT_TIMELINE":     input.InputTimeline,
+		"RECENT_OUTCOMES":     input.RecentOutcomes,
+		"HAS_PENDING_STEPS":   len(input.PendingSteps) > 0,
+		"PENDING_STEPS":       input.PendingSteps,
+		"INPUT_TIMELINE":      input.InputTimeline,
 	}); err != nil {
 		return "", err
 	}
