@@ -733,6 +733,16 @@ func (t *StateTracker) SoftReset(outcomes []*builtin_tools.StepOutcome, timeline
 	}
 }
 
+// ReplaceStepOutcomes 原子替换 state 中的 StepOutcomes（用于 reducer 写回压缩结果）。
+func (t *StateTracker) ReplaceStepOutcomes(outcomes []*builtin_tools.StepOutcome) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.state != nil {
+		t.state.StepOutcomes = outcomes
+		t.state.UpdatedAt = time.Now()
+	}
+}
+
 // SetReplanContext 原子设置 ReplanContext（不触发 outcome 更新等副作用）。
 func (t *StateTracker) SetReplanContext(ctx *builtin_tools.ReplanContext) {
 	t.mu.Lock()

@@ -52,6 +52,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		_ = a.state.SetIteration(iter)
 
+		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
 		phase := currentPhase(snapshot)
 		if phase != snapshot.Phase {
