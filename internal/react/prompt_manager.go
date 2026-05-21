@@ -87,6 +87,24 @@ type TaskPlannerPromptInput struct {
 	MCPOverflowPath    string
 }
 
+type IntentClassificationPromptInput struct {
+	PreviousGoal   string
+	CompletedCount int
+	TotalCount     int
+	RecentOutcomes []IntentOutcomeSummary
+	InputTimeline  []IntentTimelineEntry
+}
+
+type IntentOutcomeSummary struct {
+	StepID       string
+	ShortSummary string
+}
+
+type IntentTimelineEntry struct {
+	Time    string
+	Content string
+}
+
 type PromptManager interface {
 	BuildThinkActPrompt(input ThinkActPromptInput) (string, error)
 	BuildStepReplanPrompt(input StepReplanPromptInput) (string, error)
@@ -95,16 +113,18 @@ type PromptManager interface {
 	BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (string, error)
 	BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error)
 	BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error)
+	BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (string, error)
 }
 
 type defaultPromptManager struct {
-	thinkActTmpl            *template.Template
-	stepReplanTmpl          *template.Template
-	finalAnswerTmpl         *template.Template
-	historyCompactionTmpl   *template.Template
-	taskPlannerTmpl         *template.Template
-	agentHandoffTmpl        *template.Template
-	stepOutcomesReducerTmpl *template.Template
+	thinkActTmpl               *template.Template
+	stepReplanTmpl             *template.Template
+	finalAnswerTmpl            *template.Template
+	historyCompactionTmpl      *template.Template
+	taskPlannerTmpl            *template.Template
+	agentHandoffTmpl           *template.Template
+	stepOutcomesReducerTmpl    *template.Template
+	intentClassificationTmpl   *template.Template
 }
 
 func newDefaultPromptManager() (PromptManager, error) {
@@ -136,14 +156,19 @@ func newDefaultPromptManager() (PromptManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse step_outcomes_reducer prompt failed: %w", err)
 	}
+	intentClassificationTmpl, err := template.New("intent_classification").Parse(intentClassificationPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("parse intent_classification prompt failed: %w", err)
+	}
 	return &defaultPromptManager{
-		thinkActTmpl:            thinkActTmpl,
-		stepReplanTmpl:          stepReplanTmpl,
-		finalAnswerTmpl:         finalAnswerTmpl,
-		historyCompactionTmpl:   historyCompactionTmpl,
-		taskPlannerTmpl:         taskPlannerTmpl,
-		agentHandoffTmpl:        agentHandoffTmpl,
-		stepOutcomesReducerTmpl: stepOutcomesReducerTmpl,
+		thinkActTmpl:               thinkActTmpl,
+		stepReplanTmpl:             stepReplanTmpl,
+		finalAnswerTmpl:            finalAnswerTmpl,
+		historyCompactionTmpl:      historyCompactionTmpl,
+		taskPlannerTmpl:            taskPlannerTmpl,
+		agentHandoffTmpl:           agentHandoffTmpl,
+		stepOutcomesReducerTmpl:    stepOutcomesReducerTmpl,
+		intentClassificationTmpl:   intentClassificationTmpl,
 	}, nil
 }
 
@@ -295,6 +320,24 @@ func (m *defaultPromptManager) BuildStepOutcomesReducerPrompt(input StepOutcomes
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepOutcomesReducerTmpl.Execute(buf, map[string]any{
 		"STEP_OUTCOMES": strings.TrimSpace(input.StepOutcomes),
+	}); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (string, error) {
+	if m == nil || m.intentClassificationTmpl == nil {
+		return "", fmt.Errorf("intent classification template is nil")
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := m.intentClassificationTmpl.Execute(buf, map[string]any{
+		"PREVIOUS_GOAL":      strings.TrimSpace(input.PreviousGoal),
+		"COMPLETED_COUNT":    input.CompletedCount,
+		"TOTAL_COUNT":        input.TotalCount,
+		"HAS_RECENT_OUTCOMES": len(input.RecentOutcomes) > 0,
+		"RECENT_OUTCOMES":    input.RecentOutcomes,
+		"INPUT_TIMELINE":     input.InputTimeline,
 	}); err != nil {
 		return "", err
 	}
