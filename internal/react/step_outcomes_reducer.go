@@ -22,14 +22,16 @@ const (
 )
 
 type reducedStepOutcome struct {
-	StepID        string   `json:"step_id"`
-	Status        string   `json:"status"`
-	Summary       string   `json:"summary"`
-	KeyFacts      []string `json:"key_facts,omitempty"`
-	LongSummary   string   `json:"long_summary,omitempty"`
-	References    []string `json:"references,omitempty"`
-	StatusSummary string   `json:"status_summary,omitempty"`
-	Error         string   `json:"error,omitempty"`
+	StepID          string   `json:"step_id"`
+	Status          string   `json:"status"`
+	Summary         string   `json:"summary"`
+	KeyFacts        []string `json:"key_facts,omitempty"`
+	LongSummary     string   `json:"long_summary,omitempty"`
+	OpenQuestions   []string `json:"open_questions,omitempty"`
+	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
+	References      []string `json:"references,omitempty"`
+	StatusSummary   string   `json:"status_summary,omitempty"`
+	Error           string   `json:"error,omitempty"`
 }
 
 func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) ([]*builtin_tools.StepOutcome, error) {
@@ -141,14 +143,16 @@ func parseReducedOutcomes(raw string) ([]*builtin_tools.StepOutcome, error) {
 	out := make([]*builtin_tools.StepOutcome, 0, len(reduced))
 	for _, r := range reduced {
 		out = append(out, &builtin_tools.StepOutcome{
-			StepID:        strings.TrimSpace(r.StepID),
-			Status:        builtin_tools.StepOutcomeStatus(strings.TrimSpace(r.Status)),
-			Summary:       strings.TrimSpace(r.Summary),
-			KeyFacts:      r.KeyFacts,
-			LongSummary:   strings.TrimSpace(r.LongSummary),
-			References:    r.References,
-			StatusSummary: strings.TrimSpace(r.StatusSummary),
-			Error:         strings.TrimSpace(r.Error),
+			StepID:          strings.TrimSpace(r.StepID),
+			Status:          builtin_tools.StepOutcomeStatus(strings.TrimSpace(r.Status)),
+			Summary:         strings.TrimSpace(r.Summary),
+			KeyFacts:        r.KeyFacts,
+			LongSummary:     strings.TrimSpace(r.LongSummary),
+			OpenQuestions:   r.OpenQuestions,
+			ToolCallsDigest: r.ToolCallsDigest,
+			References:      r.References,
+			StatusSummary:   strings.TrimSpace(r.StatusSummary),
+			Error:           strings.TrimSpace(r.Error),
 		})
 	}
 	return out, nil

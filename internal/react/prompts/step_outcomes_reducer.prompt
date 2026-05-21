@@ -43,6 +43,8 @@
   "summary": "...",
   "key_facts": ["..."],
   "long_summary": "...",
+  "open_questions": ["..."],
+  "tool_calls_digest": ["..."],
   "references": ["..."],
   "status_summary": "...",
   "error": "..."
