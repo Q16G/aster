@@ -33,7 +33,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	}
 
 	callCtx, callCancel := context.WithCancel(ctx)
-	callResult, err := a.AICallProxy(callCtx, iter, runClient, prompt)
+	callResult, err := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition)
 	callCancel()
 	if err != nil {
 		a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{

@@ -1180,7 +1180,7 @@ type aiCallProxyResult struct {
 	Compaction    *HistoryCompactionResult
 }
 
-func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, prompt string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, prompt string, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if a == nil || a.cfg == nil {
 		return nil, fmt.Errorf("agent not initialized")
 	}
@@ -1191,13 +1191,17 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		return nil, fmt.Errorf("ai client is nil")
 	}
 
+	if promptFamily == "" {
+		promptFamily = promptFamilyThinkAct
+	}
+
 	systemMsg := ai.NewSystemMsgInfo(prompt)
 	// State-first: model input is system + in-phase transcript only.
 	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
 	msgs := make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
 	msgs = append(msgs, systemMsg)
 	msgs = append(msgs, a.stepHistory...)
-	requestOptions := a.buildPromptRequestOptions(promptFamilyThinkAct, prompt, true, tools...)
+	requestOptions := a.buildPromptRequestOptions(promptFamily, prompt, true, tools...)
 
 	// StepHistory compaction: only when approaching the input token budget.
 	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.

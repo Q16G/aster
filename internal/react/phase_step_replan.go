@@ -97,7 +97,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		}
 
 		replanCtx, replanCancel := context.WithCancel(ctx)
-		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, fnTools...)
+		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, "", fnTools...)
 		replanCancel()
 		if err != nil {
 			return fmt.Errorf("step replan AICallProxy failed: %w", err)
