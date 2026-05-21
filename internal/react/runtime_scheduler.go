@@ -762,13 +762,6 @@ func cloneAndTruncateStrings(items []string, maxItems int, maxRunesPerItem int) 
 	return out
 }
 
-func min(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (a *Agent) extractPlanToolCallsDigest() []string {
 	if a == nil || len(a.stepHistory) == 0 {
 		return nil

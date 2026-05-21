@@ -2,13 +2,12 @@ package react
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"fmt"
 
 	"aster/internal/ai/openai"
 	"aster/internal/builtin_tools"
