@@ -39,7 +39,7 @@ func TestResolveResumeIntent_ColdStart_ZeroSeq(t *testing.T) {
 
 func TestResolveResumeIntent_FullResume_Busy(t *testing.T) {
 	snap := &persistv2.Snapshot{SessionState: persistv2.SessionStateBusy, LastSeq: 3}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, true)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, true)
 	if intent != ResumeIntentFullResume || needs {
 		t.Errorf("got (%q, %v), want (full_resume, false)", intent, needs)
 	}
@@ -47,7 +47,7 @@ func TestResolveResumeIntent_FullResume_Busy(t *testing.T) {
 
 func TestResolveResumeIntent_FullResume_Recovering(t *testing.T) {
 	snap := &persistv2.Snapshot{SessionState: persistv2.SessionStateRecovering, LastSeq: 2}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, false)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, false)
 	if intent != ResumeIntentFullResume || needs {
 		t.Errorf("got (%q, %v), want (full_resume, false)", intent, needs)
 	}
@@ -55,7 +55,7 @@ func TestResolveResumeIntent_FullResume_Recovering(t *testing.T) {
 
 func TestResolveResumeIntent_FullResume_WaitingForHuman(t *testing.T) {
 	snap := &persistv2.Snapshot{SessionState: persistv2.SessionStateWaitingForHuman, LastSeq: 1}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, true)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, true)
 	if intent != ResumeIntentFullResume || needs {
 		t.Errorf("got (%q, %v), want (full_resume, false)", intent, needs)
 	}
@@ -67,7 +67,7 @@ func TestResolveResumeIntent_Idle_NeedsClassification(t *testing.T) {
 		RuntimeStateBlobRef: "sha256:abc",
 		LastSeq:             10,
 	}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, true)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, true)
 	if intent != ResumeIntentContextCarry {
 		t.Errorf("got intent=%q, want context_carry", intent)
 	}
@@ -81,7 +81,7 @@ func TestResolveResumeIntent_Idle_NoBlobRef(t *testing.T) {
 		SessionState: persistv2.SessionStateIdle,
 		LastSeq:      5,
 	}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, true)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, true)
 	if intent != ResumeIntentColdStart || needs {
 		t.Errorf("got (%q, %v), want (cold_start, false)", intent, needs)
 	}
@@ -93,7 +93,7 @@ func TestResolveResumeIntent_Idle_NoInput(t *testing.T) {
 		RuntimeStateBlobRef: "sha256:abc",
 		LastSeq:             5,
 	}
-	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{}, false)
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: true}, false)
 	if intent != ResumeIntentColdStart || needs {
 		t.Errorf("got (%q, %v), want (cold_start, false) when no input", intent, needs)
 	}
@@ -105,9 +105,36 @@ func TestResolveResumeIntent_ForceCold_OverridesAll(t *testing.T) {
 		RuntimeStateBlobRef: "sha256:abc",
 		LastSeq:             10,
 	}
-	cfg := &ExecuteConfig{forceColdStart: true}
+	cfg := &ExecuteConfig{forceColdStart: true, resumeExecutionIntent: true}
 	intent, needs := resolveResumeIntent(snap, cfg, true)
 	if intent != ResumeIntentColdStart || needs {
 		t.Errorf("forceColdStart should override BUSY: got (%q, %v)", intent, needs)
+	}
+}
+
+func TestResolveResumeIntent_NoResumeIntent_ColdStart(t *testing.T) {
+	snap := &persistv2.Snapshot{
+		SessionState:        persistv2.SessionStateIdle,
+		RuntimeStateBlobRef: "sha256:abc",
+		LastSeq:             10,
+	}
+	intent, needs := resolveResumeIntent(snap, &ExecuteConfig{resumeExecutionIntent: false}, true)
+	if intent != ResumeIntentColdStart || needs {
+		t.Errorf("without resumeExecutionIntent should be cold_start: got (%q, %v)", intent, needs)
+	}
+}
+
+func TestResolveResumeIntent_InterruptResolution_FullResume(t *testing.T) {
+	snap := &persistv2.Snapshot{
+		SessionState: persistv2.SessionStateBusy,
+		LastSeq:      5,
+	}
+	cfg := &ExecuteConfig{
+		resumeExecutionIntent: false,
+		interruptResolution:   &interruptResolution{InterruptID: "int-1", Answer: "yes"},
+	}
+	intent, needs := resolveResumeIntent(snap, cfg, true)
+	if intent != ResumeIntentFullResume || needs {
+		t.Errorf("interrupt resolution should trigger full_resume: got (%q, %v)", intent, needs)
 	}
 }

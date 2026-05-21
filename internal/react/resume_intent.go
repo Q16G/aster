@@ -20,6 +20,11 @@ const (
 // needsClassification=true 时 intent 为默认值 context_carry，
 // 调用方应设置 Phase = AgentPhaseIntentClassification 交由调度器处理阶段 2。
 func resolveResumeIntent(v2Snap *persistv2.Snapshot, cfg *ExecuteConfig, hasInput bool) (ResumeIntent, bool) {
+	if cfg != nil && !cfg.resumeExecutionIntent &&
+		cfg.interruptResolution == nil && cfg.interruptCancel == nil {
+		return ResumeIntentColdStart, false
+	}
+
 	if cfg != nil && cfg.forceColdStart {
 		return ResumeIntentColdStart, false
 	}
