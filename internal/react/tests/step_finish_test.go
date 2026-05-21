@@ -154,7 +154,7 @@ func TestAgentAICallProxy_CompressesHistoryAfterResponse(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt")
+	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestAgentAICallProxy_StreamsReasoningDeltasBeforeStepFinish(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt")
+	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestAgentAICallProxy_NormalizesSnapshotStyleReasoningDeltas(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt")
+	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestAgentAICallProxy_StreamToolCallArgumentsRemainDeduplicated(t *testing.T
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt")
+	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}

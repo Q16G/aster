@@ -356,7 +356,7 @@ func TestAgentAICallProxy_EmitsHistoryCompactedEvent(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt")
+	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}
