@@ -3,6 +3,7 @@ package react_test
 import (
 	. "aster/internal/react"
 	"testing"
+	"time"
 
 	"aster/internal/builtin_tools"
 )
@@ -123,5 +124,83 @@ func TestStateTracker_UpdatePlan_ClearsReplanContext(t *testing.T) {
 	}
 	if snapshot.CurrentStepID != "step-2" {
 		t.Fatalf("expected next runnable step selected, got %q", snapshot.CurrentStepID)
+	}
+}
+
+func TestStateTracker_SoftReset_PreservesOutcomesAndTimeline(t *testing.T) {
+	tracker := NewStateTracker()
+	tracker.UpdatePlan([]*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "第一步", Status: builtin_tools.PlanStepCompleted},
+	}, "", true)
+	tracker.SetPhase(builtin_tools.AgentPhaseStep)
+
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "step-1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "done"},
+	}
+	timeline := []*builtin_tools.TimelineInput{
+		{Content: "analyze main.go", CreatedAt: time.Now()},
+	}
+
+	tracker.SoftReset(outcomes, timeline)
+	snap := tracker.Snapshot()
+
+	if snap.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", snap.Phase)
+	}
+	if snap.Status != builtin_tools.TaskStatusPreparing {
+		t.Errorf("Status = %q, want preparing", snap.Status)
+	}
+	if len(snap.StepOutcomes) != 1 || snap.StepOutcomes[0].StepID != "step-1" {
+		t.Errorf("StepOutcomes not preserved: %+v", snap.StepOutcomes)
+	}
+	if len(snap.InputTimeline) != 1 || snap.InputTimeline[0].Content != "analyze main.go" {
+		t.Errorf("InputTimeline not preserved: %+v", snap.InputTimeline)
+	}
+}
+
+func TestStateTracker_SoftReset_ClearsExecutionState(t *testing.T) {
+	tracker := NewStateTracker()
+	tracker.UpdatePlan([]*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "第一步", Status: builtin_tools.PlanStepPending},
+	}, "goal", true)
+	tracker.SetPhase(builtin_tools.AgentPhaseStep)
+
+	tracker.SoftReset(nil, nil)
+	snap := tracker.Snapshot()
+
+	if len(snap.Plan) != 0 {
+		t.Errorf("Plan should be cleared, got %d items", len(snap.Plan))
+	}
+	if snap.CurrentStepID != "" {
+		t.Errorf("CurrentStepID should be empty, got %q", snap.CurrentStepID)
+	}
+	if snap.CurrentGoal != "" {
+		t.Errorf("CurrentGoal should be empty, got %q", snap.CurrentGoal)
+	}
+	if snap.ReplanContext != nil {
+		t.Errorf("ReplanContext should be nil, got %+v", snap.ReplanContext)
+	}
+}
+
+func TestStateTracker_SetReplanContext(t *testing.T) {
+	tracker := NewStateTracker()
+	tracker.SetReplanContext(&builtin_tools.ReplanContext{
+		Reason:         "user wants different approach",
+		NextGoal:       "new goal",
+		ReplacePending: true,
+	})
+
+	snap := tracker.Snapshot()
+	if snap.ReplanContext == nil {
+		t.Fatal("ReplanContext should not be nil")
+	}
+	if snap.ReplanContext.Reason != "user wants different approach" {
+		t.Errorf("Reason = %q", snap.ReplanContext.Reason)
+	}
+	if snap.ReplanContext.NextGoal != "new goal" {
+		t.Errorf("NextGoal = %q", snap.ReplanContext.NextGoal)
+	}
+	if !snap.ReplanContext.ReplacePending {
+		t.Error("ReplacePending should be true")
 	}
 }
