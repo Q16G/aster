@@ -779,8 +779,11 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 
 	// Persist runtime state and conversation history blobs for context carry on next turn.
+	// Also persist when the turn failed but made partial progress (StepOutcomes non-empty),
+	// so the next turn can context_carry instead of cold_start.
 	var turnRuntimeBlobRef, turnConvHistoryBlobRef string
-	if runResult != nil && runResult.Success && a.state != nil {
+	hasProgress := a.state != nil && len(a.state.Snapshot().StepOutcomes) > 0
+	if runResult != nil && (runResult.Success || hasProgress) && a.state != nil {
 		if rtRaw, merr := json.Marshal(a.state.Snapshot()); merr == nil && len(rtRaw) > 0 {
 			if ref, berr := store.WriteBlob(rtRaw); berr == nil {
 				turnRuntimeBlobRef = ref
