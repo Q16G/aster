@@ -176,3 +176,51 @@ func TestSoftResetWithContext_HistoryRestored(t *testing.T) {
 		t.Errorf("history[0] = %+v, want user/task1", agent.history[0])
 	}
 }
+
+func TestSoftResetWithContext_PartialBlobFail(t *testing.T) {
+	root := t.TempDir()
+	store, err := persistv2.Open(root, "sess-soft-partial")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "ok"},
+	}
+	timeline := []*builtin_tools.TimelineInput{
+		{Content: "task", CreatedAt: time.Now()},
+	}
+	rtState := builtin_tools.StateSnapshot{
+		StepOutcomes:  outcomes,
+		InputTimeline: timeline,
+	}
+	rtRaw, _ := json.Marshal(rtState)
+	rtRef, err := store.WriteBlob(rtRaw)
+	if err != nil {
+		t.Fatalf("WriteBlob: %v", err)
+	}
+
+	snap := &persistv2.Snapshot{
+		RuntimeStateBlobRef:        rtRef,
+		ConversationHistoryBlobRef: "sha256:nonexistent",
+	}
+
+	client := &intentTestClient{}
+	agent, aerr := NewReActAgent("test-soft-partial", client, WithEmitter(NewDummyEmitter()))
+	if aerr != nil {
+		t.Fatalf("NewReActAgent: %v", aerr)
+	}
+
+	agent.softResetWithContext(context.Background(), client, store, snap)
+
+	state := agent.State()
+	if len(state.StepOutcomes) != 1 {
+		t.Errorf("StepOutcomes len = %d, want 1 (should be restored despite history blob fail)", len(state.StepOutcomes))
+	}
+	if len(state.InputTimeline) != 1 {
+		t.Errorf("InputTimeline len = %d, want 1", len(state.InputTimeline))
+	}
+	if len(agent.history) != 0 {
+		t.Errorf("history len = %d, want 0 (conversation blob failed)", len(agent.history))
+	}
+}
