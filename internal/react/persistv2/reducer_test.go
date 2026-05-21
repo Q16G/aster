@@ -244,7 +244,37 @@ func TestReducer_TurnFinishedNonInterrupted_ClearsBlobRefs(t *testing.T) {
 	}
 }
 
-// TC5: TURN_STARTED with real user input clears stale PendingInterrupt from prior session
+// TC5: TURN_FINISHED(succeeded) with blob refs in payload preserves them in snapshot
+func TestReducer_TurnFinishedSucceeded_PreservesBlobRefs(t *testing.T) {
+	events := []*Event{
+		makeEvent("SESSION_CREATED"),
+		makeEvent("TURN_STARTED", withTurn("t1"), withPayload(map[string]any{"input": "task"})),
+		makeEvent("TURN_FINISHED", withTurn("t1"), withPayload(map[string]any{
+			"status":                        "succeeded",
+			"runtime_state_blob_ref":        "sha256:rt-ok",
+			"conversation_history_blob_ref": "sha256:conv-ok",
+		})),
+	}
+
+	snap, err := BuildSnapshotFromEvents("sess-1", events, nil)
+	if err != nil {
+		t.Fatalf("BuildSnapshotFromEvents: %v", err)
+	}
+	if snap.RuntimeStateBlobRef != "sha256:rt-ok" {
+		t.Errorf("RuntimeStateBlobRef = %q, want sha256:rt-ok", snap.RuntimeStateBlobRef)
+	}
+	if snap.ConversationHistoryBlobRef != "sha256:conv-ok" {
+		t.Errorf("ConversationHistoryBlobRef = %q, want sha256:conv-ok", snap.ConversationHistoryBlobRef)
+	}
+	if snap.StepHistoryBlobRef != "" {
+		t.Errorf("StepHistoryBlobRef = %q, want empty", snap.StepHistoryBlobRef)
+	}
+	if snap.SessionState != SessionStateIdle {
+		t.Errorf("SessionState = %q, want %q", snap.SessionState, SessionStateIdle)
+	}
+}
+
+// TC6: TURN_STARTED with real user input clears stale PendingInterrupt from prior session
 func TestReducer_TurnStartedWithInput_ClearsStalePendingInterrupt(t *testing.T) {
 	events := []*Event{
 		makeEvent("SESSION_CREATED"),
