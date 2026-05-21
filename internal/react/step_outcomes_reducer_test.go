@@ -115,6 +115,82 @@ func TestStepOutcomesExceedBudget_LargeOutcomes(t *testing.T) {
 	}
 }
 
+func TestStepOutcomesExceedBudget_ExactlyKeepLast(t *testing.T) {
+	client := &intentTestClient{}
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "s1", Summary: "a"},
+		{StepID: "s2", Summary: "b"},
+		{StepID: "s3", Summary: "c"},
+	}
+	_, _, exceeded := stepOutcomesExceedBudget(client, outcomes)
+	if exceeded {
+		t.Error("outcomes == keepLast (3) should not exceed")
+	}
+}
+
+func TestReduceStepOutcomesInState_SkipsWhenFewOutcomes(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{
+			{StepID: "s1", Summary: "a"},
+			{StepID: "s2", Summary: "b"},
+		},
+		nil,
+	)
+
+	client := &intentTestClient{}
+	agent.reduceStepOutcomesInState(nil, client)
+
+	snap := agent.state.Snapshot()
+	if len(snap.StepOutcomes) != 2 {
+		t.Errorf("StepOutcomes should be unchanged, got %d", len(snap.StepOutcomes))
+	}
+	if snap.StepOutcomes[0].StepID != "s1" {
+		t.Errorf("StepID[0] = %q, want s1", snap.StepOutcomes[0].StepID)
+	}
+}
+
+func TestReduceStepOutcomesInState_SkipsWhenBelowThreshold(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{
+			{StepID: "s1", Summary: "short"},
+			{StepID: "s2", Summary: "short"},
+			{StepID: "s3", Summary: "short"},
+			{StepID: "s4", Summary: "short"},
+		},
+		nil,
+	)
+
+	client := &intentTestClient{}
+	agent.reduceStepOutcomesInState(nil, client)
+
+	snap := agent.state.Snapshot()
+	if len(snap.StepOutcomes) != 4 {
+		t.Errorf("StepOutcomes should be unchanged, got %d", len(snap.StepOutcomes))
+	}
+	for i, o := range snap.StepOutcomes {
+		if o.Summary != "short" {
+			t.Errorf("StepOutcomes[%d].Summary = %q, want 'short'", i, o.Summary)
+		}
+	}
+}
+
+func TestReplaceStepOutcomes_NilOutcomes(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1"}},
+		nil,
+	)
+
+	agent.state.ReplaceStepOutcomes(nil)
+
+	snap := agent.state.Snapshot()
+	if snap.StepOutcomes != nil {
+		t.Errorf("StepOutcomes should be nil, got %v", snap.StepOutcomes)
+	}
+}
+
 func TestReplaceStepOutcomes_WritesBack(t *testing.T) {
 	agent := newMinimalAgent(t)
 	agent.state.SoftReset(
