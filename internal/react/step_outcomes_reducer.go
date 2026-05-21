@@ -18,7 +18,7 @@ var stepOutcomesReducerPrompt string
 
 const (
 	stepOutcomesReducerKeepLast    = 3
-	stepOutcomesReducerBudgetRatio = 0.4
+	stepOutcomesReducerBudgetRatio = 0.8
 )
 
 type reducedStepOutcome struct {
@@ -93,6 +93,27 @@ func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatCl
 	})
 
 	return result, nil
+}
+
+func (a *Agent) reduceStepOutcomesInState(ctx context.Context, client ai.ChatClient) {
+	snapshot := a.state.Snapshot()
+	outcomes := snapshot.StepOutcomes
+	if len(outcomes) <= stepOutcomesReducerKeepLast {
+		return
+	}
+
+	a.emitter.EmitLogPayload(map[string]any{
+		"event": "step_outcomes_reducing",
+		"total": len(outcomes),
+	})
+
+	reduced, err := a.reduceStepOutcomesIfNeeded(ctx, client, outcomes)
+	if err != nil {
+		return
+	}
+	if len(reduced) < len(outcomes) {
+		a.state.ReplaceStepOutcomes(reduced)
+	}
 }
 
 func (a *Agent) runStepOutcomesReducer(ctx context.Context, client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) ([]*builtin_tools.StepOutcome, error) {

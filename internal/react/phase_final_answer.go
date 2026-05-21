@@ -44,11 +44,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	errText := strings.TrimSpace(snapshot.Error)
 	externalInterrupt := builtin_tools.CloneExternalInterrupt(snapshot.ExternalInterrupt)
 
-	stepOutcomes := snapshot.StepOutcomes
-	if reduced, err := a.reduceStepOutcomesIfNeeded(ctx, runClient, stepOutcomes); err == nil {
-		stepOutcomes = reduced
-	}
-	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, stepOutcomes)
+	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, snapshot.StepOutcomes)
 	if a.workspaceRuntime != nil {
 		sharedDir := a.workspaceRuntime.SharedDir()
 		for i := range stepOutcomeViews {
