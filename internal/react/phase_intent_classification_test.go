@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 )
 
@@ -127,5 +128,103 @@ func TestIsValidIntentAction(t *testing.T) {
 		if isValidIntentAction(v) {
 			t.Errorf("expected %q to be invalid", v)
 		}
+	}
+}
+
+func newMinimalAgent(t *testing.T) *Agent {
+	t.Helper()
+	client := &intentTestClient{}
+	agent, err := NewReActAgent("test-apply", client, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+	return agent
+}
+
+func TestApplyIntentClassification_Carry(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1", ShortSummary: "done"}},
+		[]*builtin_tools.TimelineInput{{Content: "input1"}},
+	)
+
+	snapshot := agent.state.Snapshot()
+	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "continue"})
+	if err != nil {
+		t.Fatalf("applyIntentClassification: %v", err)
+	}
+
+	state := agent.State()
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if len(state.StepOutcomes) != 1 {
+		t.Errorf("StepOutcomes should be preserved, got %d", len(state.StepOutcomes))
+	}
+	if len(state.InputTimeline) != 1 {
+		t.Errorf("InputTimeline should be preserved, got %d", len(state.InputTimeline))
+	}
+}
+
+func TestApplyIntentClassification_Replan(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1", ShortSummary: "done"}},
+		[]*builtin_tools.TimelineInput{{Content: "change approach", CreatedAt: time.Now()}},
+	)
+
+	snapshot := agent.state.Snapshot()
+	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "replan", Reason: "user wants different direction"})
+	if err != nil {
+		t.Fatalf("applyIntentClassification: %v", err)
+	}
+
+	state := agent.State()
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if state.ReplanContext == nil {
+		t.Fatal("ReplanContext should be set for replan")
+	}
+	if state.ReplanContext.Reason != "user wants different direction" {
+		t.Errorf("ReplanContext.Reason = %q", state.ReplanContext.Reason)
+	}
+	if !state.ReplanContext.ReplacePending {
+		t.Error("ReplanContext.ReplacePending should be true")
+	}
+	if len(state.StepOutcomes) != 1 {
+		t.Errorf("StepOutcomes should be preserved, got %d", len(state.StepOutcomes))
+	}
+}
+
+func TestApplyIntentClassification_ColdStart(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1", ShortSummary: "old"}},
+		[]*builtin_tools.TimelineInput{{Content: "new unrelated task", CreatedAt: time.Now()}},
+	)
+	agent.history = []*ai.MsgInfo{{Role: "user", Content: "old"}}
+
+	snapshot := agent.state.Snapshot()
+	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "cold_start", Reason: "unrelated"})
+	if err != nil {
+		t.Fatalf("applyIntentClassification: %v", err)
+	}
+
+	state := agent.State()
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if len(state.StepOutcomes) != 0 {
+		t.Errorf("StepOutcomes should be cleared, got %d", len(state.StepOutcomes))
+	}
+	if len(state.InputTimeline) != 1 {
+		t.Errorf("InputTimeline should have latest input only, got %d", len(state.InputTimeline))
+	}
+	if state.InputTimeline[0].Content != "new unrelated task" {
+		t.Errorf("InputTimeline[0].Content = %q, want 'new unrelated task'", state.InputTimeline[0].Content)
+	}
+	if len(agent.history) != 1 || agent.history[0].Content != "new unrelated task" {
+		t.Errorf("history should be reset to latest input only")
 	}
 }

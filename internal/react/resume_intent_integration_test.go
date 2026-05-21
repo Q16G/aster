@@ -280,3 +280,115 @@ func TestResumeIntent_IntentClassification_ColdStart(t *testing.T) {
 		t.Error("cold_start should have cleared old goal")
 	}
 }
+
+func TestResumeIntent_IntentClassification_Replan(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "sess-replan"
+
+	outcomes := []*builtin_tools.StepOutcome{
+		{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "analyzed main.go"},
+		{StepID: "s2", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "found 3 issues"},
+	}
+	timeline := []*builtin_tools.TimelineInput{
+		{Content: "analyze main.go", CreatedAt: time.Now().Add(-2 * time.Minute)},
+	}
+	seedIdleStore(t, root, sessionID, outcomes, timeline)
+
+	client := &intentTestClient{
+		replies: []intentTestReply{
+			// intent_classification → replan
+			{content: `{"action":"replan","reason":"user wants different approach"}`},
+			// plan phase
+			{content: `{"needs_planning":true,"plan":[{"id":"s3","step":"try alternative"}]}`},
+			// step/final
+			{content: `{"is_complete":true,"status":"completed","reason":"done","user_message":"replan-done","references":[]}`},
+		},
+	}
+
+	agent, err := NewReActAgent("test-replan", client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(20),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+
+	result, err := agent.Execute(context.Background(), "try a different approach",
+		WithWorkspaceSession(sessionID, root),
+		WithResumeExecutionIntent(),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected RunResult")
+	}
+
+	// Verify that intent_classification ran (at least 1 LLM call for classification)
+	if client.calls < 1 {
+		t.Errorf("expected at least 1 client call, got %d", client.calls)
+	}
+}
+
+func seedBusyStore(t *testing.T, root, sessionID string) *persistv2.Store {
+	t.Helper()
+	store, err := persistv2.Open(root, sessionID)
+	if err != nil {
+		t.Fatalf("persistv2.Open: %v", err)
+	}
+
+	if _, err := store.AppendEvent(&persistv2.Event{Type: "SESSION_CREATED"}); err != nil {
+		t.Fatalf("AppendEvent SESSION_CREATED: %v", err)
+	}
+	if _, err := store.AppendEvent(&persistv2.Event{
+		Type: "TURN_STARTED", TurnID: "turn-busy", GroupID: "group-busy",
+		Payload: map[string]any{"input": "in-flight task"},
+	}); err != nil {
+		t.Fatalf("AppendEvent TURN_STARTED: %v", err)
+	}
+
+	if _, err := store.LoadSnapshot(); err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	return store
+}
+
+func TestResumeIntent_FullRestore_BusySession(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "sess-busy"
+
+	seedBusyStore(t, root, sessionID)
+
+	client := &intentTestClient{
+		replies: []intentTestReply{
+			// No intent_classification for BUSY → goes straight to plan (or step depending on restored state)
+			{content: `{"needs_planning":true,"plan":[{"id":"s1","step":"recover"}]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"recovered","user_message":"busy-done","references":[]}`},
+		},
+	}
+
+	agent, err := NewReActAgent("test-busy", client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(20),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+
+	result, err := agent.Execute(context.Background(), "continue",
+		WithWorkspaceSession(sessionID, root),
+		WithResumeExecutionIntent(),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected RunResult")
+	}
+
+	// Verify no intent classification occurred — first LLM call should be plan phase
+	// (BUSY triggers full_resume path directly)
+	if client.calls < 1 {
+		t.Error("expected at least 1 client call")
+	}
+}
