@@ -64,9 +64,10 @@ func ReduceSnapshot(snap *Snapshot, ev *Event) error {
 			snap.SessionState = SessionStateWaitingForHuman
 		default:
 			snap.SessionState = SessionStateIdle
-			snap.RuntimeStateBlobRef = ""
 			snap.StepHistoryBlobRef = ""
-			snap.ConversationHistoryBlobRef = ""
+			// Preserve runtime state + conversation history refs from payload for context carry.
+			snap.RuntimeStateBlobRef = payloadText(ev.Payload, "runtime_state_blob_ref")
+			snap.ConversationHistoryBlobRef = payloadText(ev.Payload, "conversation_history_blob_ref")
 		}
 
 	case "TURN_ABORT_REQUESTED":
