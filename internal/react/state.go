@@ -720,6 +720,27 @@ func (t *StateTracker) Reset() {
 	}
 }
 
+// SoftReset 保留 outcomes 和 timeline 上下文，清空执行状态（Plan、CurrentStepID、FinalAnswer 等）。
+func (t *StateTracker) SoftReset(outcomes []*builtin_tools.StepOutcome, timeline []*builtin_tools.TimelineInput) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state = &builtin_tools.StateSnapshot{
+		Phase:         builtin_tools.AgentPhasePlan,
+		Status:        builtin_tools.TaskStatusPreparing,
+		StepOutcomes:  outcomes,
+		InputTimeline: timeline,
+		UpdatedAt:     time.Now(),
+	}
+}
+
+// SetReplanContext 原子设置 ReplanContext（不触发 outcome 更新等副作用）。
+func (t *StateTracker) SetReplanContext(ctx *builtin_tools.ReplanContext) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.ReplanContext = builtin_tools.CloneReplanContext(ctx)
+	t.touchLocked()
+}
+
 func (t *StateTracker) ensureCurrentStepLocked() {
 	if strings.TrimSpace(t.state.CurrentStepID) != "" {
 		if (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep() != nil {
