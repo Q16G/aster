@@ -102,6 +102,19 @@ func (a *Agent) reduceStepOutcomesInState(ctx context.Context, client ai.ChatCli
 		return
 	}
 
+	budget := resolveContextBudget(client)
+	tokenBudget := int(float64(budget.UsableInputTokens) * stepOutcomesReducerBudgetRatio)
+	if tokenBudget <= 0 {
+		return
+	}
+	outcomesJSON, err := json.Marshal(outcomes)
+	if err != nil {
+		return
+	}
+	if countTokens(string(outcomesJSON)) <= tokenBudget {
+		return
+	}
+
 	a.emitter.EmitLogPayload(map[string]any{
 		"event": "step_outcomes_reducing",
 		"total": len(outcomes),
