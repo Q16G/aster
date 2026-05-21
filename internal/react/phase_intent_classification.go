@@ -65,16 +65,19 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 		input.TotalCount++
 		if item.Status == builtin_tools.PlanStepCompleted {
 			input.CompletedCount++
+		} else {
+			id := strings.TrimSpace(item.ID)
+			step := strings.TrimSpace(item.Step)
+			if id != "" && step != "" {
+				input.PendingSteps = append(input.PendingSteps, IntentPendingStep{
+					ID:   id,
+					Step: step,
+				})
+			}
 		}
 	}
 
-	const maxRecentOutcomes = 3
-	outcomes := snapshot.StepOutcomes
-	start := 0
-	if len(outcomes) > maxRecentOutcomes {
-		start = len(outcomes) - maxRecentOutcomes
-	}
-	for _, o := range outcomes[start:] {
+	for _, o := range snapshot.StepOutcomes {
 		if o == nil {
 			continue
 		}
@@ -86,8 +89,12 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 			continue
 		}
 		input.RecentOutcomes = append(input.RecentOutcomes, IntentOutcomeSummary{
-			StepID:       strings.TrimSpace(o.StepID),
-			ShortSummary: short,
+			StepID:        strings.TrimSpace(o.StepID),
+			Status:        string(o.Status),
+			ShortSummary:  short,
+			LongSummary:   strings.TrimSpace(o.LongSummary),
+			KeyFacts:      o.KeyFacts,
+			OpenQuestions: o.OpenQuestions,
 		})
 	}
 
@@ -152,6 +159,14 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 
 	switch action {
 	case "carry":
+		latest := latestInputContent(snapshot)
+		if reason := strings.TrimSpace(result.Reason); reason != "" {
+			a.state.SetReplanContext(&builtin_tools.ReplanContext{
+				Reason:         reason,
+				NextGoal:       latest,
+				ReplacePending: false,
+			})
+		}
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 
 	case "replan":

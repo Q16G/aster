@@ -5,9 +5,32 @@
 完成状况：{{.COMPLETED_COUNT}}/{{.TOTAL_COUNT}} 步已完成
 {{- if .HAS_RECENT_OUTCOMES}}
 
-最近完成的步骤：
+### 已执行步骤
 {{- range .RECENT_OUTCOMES}}
-- {{.StepID}}: {{.ShortSummary}}
+
+**{{.StepID}}** [{{.Status}}]: {{.ShortSummary}}
+{{- if .LongSummary}}
+  详情：{{.LongSummary}}
+{{- end}}
+{{- if .KeyFacts}}
+  关键发现：
+  {{- range .KeyFacts}}
+  · {{.}}
+  {{- end}}
+{{- end}}
+{{- if .OpenQuestions}}
+  遗留问题：
+  {{- range .OpenQuestions}}
+  · {{.}}
+  {{- end}}
+{{- end}}
+{{- end}}
+{{- end}}
+{{- if .HAS_PENDING_STEPS}}
+
+### 未完成步骤
+{{- range .PENDING_STEPS}}
+- {{.ID}}: {{.Step}}
 {{- end}}
 {{- end}}
 
@@ -19,8 +42,22 @@
 （最后一条为当前用户输入）
 
 ## 输出
-返回单个 JSON：{"action": "carry" | "replan" | "cold_start", "reason": "一句话理由"}
+严格按以下 JSON Schema 返回，不要输出任何额外文字：
 
-- carry：用户想基于之前的结果继续、深入或追问
-- replan：用户想修改之前的方案、换个方向或调整策略
-- cold_start：用户的请求与之前的工作完全无关
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["carry", "replan", "cold_start"],
+      "description": "carry=基于之前的结果继续/深入/追问; replan=修改方案/换方向/调整策略; cold_start=请求与之前工作完全无关"
+    },
+    "reason": {
+      "type": "string",
+      "description": "一句话理由"
+    }
+  },
+  "required": ["action", "reason"]
+}
+```

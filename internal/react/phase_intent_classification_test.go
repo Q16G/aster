@@ -95,24 +95,39 @@ func TestBuildIntentClassificationInput(t *testing.T) {
 	if input.InputTimeline[0].Content != "帮我分析main.go" {
 		t.Errorf("InputTimeline[0].Content = %q", input.InputTimeline[0].Content)
 	}
+	if len(input.PendingSteps) != 1 {
+		t.Fatalf("PendingSteps len = %d, want 1", len(input.PendingSteps))
+	}
+	if input.PendingSteps[0].ID != "s3" || input.PendingSteps[0].Step != "输出报告" {
+		t.Errorf("PendingSteps[0] = %+v, want {s3, 输出报告}", input.PendingSteps[0])
+	}
 }
 
-func TestBuildIntentClassificationInput_OutcomesTruncatedToThree(t *testing.T) {
+func TestBuildIntentClassificationInput_AllOutcomesIncluded(t *testing.T) {
 	snapshot := builtin_tools.StateSnapshot{
 		StepOutcomes: []*builtin_tools.StepOutcome{
-			{StepID: "s1", ShortSummary: "a"},
-			{StepID: "s2", ShortSummary: "b"},
+			{StepID: "s1", ShortSummary: "a", LongSummary: "detail-a", KeyFacts: []string{"fact1"}},
+			{StepID: "s2", ShortSummary: "b", OpenQuestions: []string{"q1"}},
 			{StepID: "s3", ShortSummary: "c"},
 			{StepID: "s4", ShortSummary: "d"},
-			{StepID: "s5", ShortSummary: "e"},
+			{StepID: "s5", ShortSummary: "e", LongSummary: "detail-e", KeyFacts: []string{"fact2", "fact3"}},
 		},
 	}
 	input := buildIntentClassificationInput(snapshot)
-	if len(input.RecentOutcomes) != 3 {
-		t.Errorf("RecentOutcomes len = %d, want 3 (last 3)", len(input.RecentOutcomes))
+	if len(input.RecentOutcomes) != 5 {
+		t.Errorf("RecentOutcomes len = %d, want 5 (all outcomes after reducer)", len(input.RecentOutcomes))
 	}
-	if input.RecentOutcomes[0].StepID != "s3" {
-		t.Errorf("first outcome should be s3, got %q", input.RecentOutcomes[0].StepID)
+	if input.RecentOutcomes[0].StepID != "s1" {
+		t.Errorf("first outcome should be s1, got %q", input.RecentOutcomes[0].StepID)
+	}
+	if input.RecentOutcomes[0].LongSummary != "detail-a" {
+		t.Errorf("LongSummary = %q, want 'detail-a'", input.RecentOutcomes[0].LongSummary)
+	}
+	if len(input.RecentOutcomes[0].KeyFacts) != 1 || input.RecentOutcomes[0].KeyFacts[0] != "fact1" {
+		t.Errorf("KeyFacts = %v, want [fact1]", input.RecentOutcomes[0].KeyFacts)
+	}
+	if len(input.RecentOutcomes[1].OpenQuestions) != 1 || input.RecentOutcomes[1].OpenQuestions[0] != "q1" {
+		t.Errorf("OpenQuestions = %v, want [q1]", input.RecentOutcomes[1].OpenQuestions)
 	}
 }
 
@@ -149,7 +164,7 @@ func TestApplyIntentClassification_Carry(t *testing.T) {
 	)
 
 	snapshot := agent.state.Snapshot()
-	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "continue"})
+	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "user continuing previous analysis"})
 	if err != nil {
 		t.Fatalf("applyIntentClassification: %v", err)
 	}
@@ -163,6 +178,40 @@ func TestApplyIntentClassification_Carry(t *testing.T) {
 	}
 	if len(state.InputTimeline) != 1 {
 		t.Errorf("InputTimeline should be preserved, got %d", len(state.InputTimeline))
+	}
+	if state.ReplanContext == nil {
+		t.Fatal("carry should set ReplanContext with reason")
+	}
+	if state.ReplanContext.Reason != "user continuing previous analysis" {
+		t.Errorf("ReplanContext.Reason = %q, want 'user continuing previous analysis'", state.ReplanContext.Reason)
+	}
+	if state.ReplanContext.ReplacePending {
+		t.Error("carry ReplanContext.ReplacePending should be false")
+	}
+	if state.ReplanContext.NextGoal != "input1" {
+		t.Errorf("ReplanContext.NextGoal = %q, want 'input1'", state.ReplanContext.NextGoal)
+	}
+}
+
+func TestApplyIntentClassification_Carry_EmptyReason(t *testing.T) {
+	agent := newMinimalAgent(t)
+	agent.state.SoftReset(
+		[]*builtin_tools.StepOutcome{{StepID: "s1", ShortSummary: "done"}},
+		[]*builtin_tools.TimelineInput{{Content: "go on"}},
+	)
+
+	snapshot := agent.state.Snapshot()
+	err := agent.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: ""})
+	if err != nil {
+		t.Fatalf("applyIntentClassification: %v", err)
+	}
+
+	state := agent.State()
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if state.ReplanContext != nil {
+		t.Error("carry with empty reason should NOT set ReplanContext")
 	}
 }
 
