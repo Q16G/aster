@@ -169,6 +169,7 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 		if latest != "" {
 			_ = a.state.AppendInputTimeline(latest)
 		}
+		// agent_execute.go 在 scheduler 前已 append history；cold_start 语义需清空重建，此处覆盖是预期行为
 		a.history = nil
 		if latest != "" {
 			a.history = append(a.history, ai.NewUserMsgInfo(latest))
