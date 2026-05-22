@@ -109,9 +109,6 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 	}
 
 	runtime, _ := builtin_tools.GetToolRuntime(ctx)
-	if runtime.StackDepth > 0 {
-		return "", fmt.Errorf("skill fork is disabled inside sub-agents (stack_depth=%d)", runtime.StackDepth)
-	}
 
 	body := substituteParams(info, rawArgs, t.sessionID())
 
