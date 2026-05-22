@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -213,6 +214,121 @@ func TestFlushRender_ResumesAutoFollowAfterReturningToBottom(t *testing.T) {
 	}
 	if !m.autoFollowBottom {
 		t.Fatal("expected auto-follow to stay enabled after render")
+	}
+}
+
+func TestRenderPlanPart_SubAgentShowsTag(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+	m.rootAgentName = "my-agent"
+
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "my-agent", Items: []PlanItemView{{Step: "root-step", Status: "pending"}}},
+	})
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "sub-abc", Items: []PlanItemView{{Step: "sub-step", Status: "pending"}}},
+	})
+
+	rootRender := m.renderPlanPart(0, m.parts[0], 80)
+	subRender := m.renderPlanPart(1, m.parts[1], 80)
+
+	if strings.Contains(rootRender, "(my-agent)") {
+		t.Fatalf("root plan should NOT show agent tag, got %q", rootRender)
+	}
+	if !strings.Contains(subRender, "(sub-abc)") {
+		t.Fatalf("sub-agent plan should show agent tag, got %q", subRender)
+	}
+}
+
+func TestUpdateLastPlanForAgent_MatchesLegacyEmptyAgentName(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+	m.rootAgentName = "code-audit"
+
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{Items: []PlanItemView{{ID: "1", Step: "legacy-step", Status: "pending"}}},
+	})
+
+	m.UpdateLastPlanForAgent("code-audit", func(p *PlanPart) {
+		p.Items[0].Status = "done"
+	})
+
+	if m.parts[0].Plan.Items[0].Status != "done" {
+		t.Fatalf("expected legacy plan (empty AgentName) to be updated by root agent, got %q", m.parts[0].Plan.Items[0].Status)
+	}
+}
+
+func TestUpdateLastPlanForAgent_SubAgentDoesNotMatchLegacyPlan(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+	m.rootAgentName = "code-audit"
+
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{Items: []PlanItemView{{ID: "1", Step: "legacy-step", Status: "pending"}}},
+	})
+
+	called := false
+	m.UpdateLastPlanForAgent("sub-abc", func(p *PlanPart) {
+		called = true
+	})
+
+	if called {
+		t.Fatal("sub-agent should NOT match legacy plan with empty AgentName")
+	}
+}
+
+func TestUpdateLastPlanForAgent_OnlyMatchesSameAgent(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "1", Step: "step1", Status: "pending"}}},
+	})
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "sub-abc12345", Items: []PlanItemView{{ID: "2", Step: "sub-step", Status: "pending"}}},
+	})
+
+	m.UpdateLastPlanForAgent("root", func(p *PlanPart) {
+		p.Items[0].Status = "done"
+	})
+
+	parts := m.Parts()
+	for _, p := range parts {
+		if p.Type == PartTypePlan && p.Plan.AgentName == "root" {
+			if p.Plan.Items[0].Status != "done" {
+				t.Fatalf("expected root plan item to be 'done', got %q", p.Plan.Items[0].Status)
+			}
+		}
+		if p.Type == PartTypePlan && p.Plan.AgentName == "sub-abc12345" {
+			if p.Plan.Items[0].Status != "pending" {
+				t.Fatalf("expected sub-agent plan item to remain 'pending', got %q", p.Plan.Items[0].Status)
+			}
+		}
+	}
+}
+
+func TestUpdateLastPlanForAgent_NoMatchDoesNothing(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "1", Step: "step1", Status: "pending"}}},
+	})
+
+	called := false
+	m.UpdateLastPlanForAgent("sub-nonexistent", func(p *PlanPart) {
+		called = true
+	})
+
+	if called {
+		t.Fatal("expected callback not to be called for non-matching agent")
 	}
 }
 

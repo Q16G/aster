@@ -19,11 +19,12 @@ type persistedMessage struct {
 }
 
 type persistedPart struct {
-	Type    string    `json:"type"`
-	Name    string    `json:"name,omitempty"`
-	CallID  string    `json:"call_id,omitempty"`
-	Content string    `json:"content"`
-	Time    time.Time `json:"time"`
+	Type      string    `json:"type"`
+	Name      string    `json:"name,omitempty"`
+	CallID    string    `json:"call_id,omitempty"`
+	AgentName string    `json:"agent_name,omitempty"`
+	Content   string    `json:"content"`
+	Time      time.Time `json:"time"`
 }
 
 type persistedRunEvent struct {
@@ -266,14 +267,15 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 				existing = append(existing, DisplayPart{
 					Type: PartTypePlan,
 					Time: rp.Time,
-					Plan: &PlanPart{Explanation: rp.Content},
+					Plan: &PlanPart{AgentName: rp.AgentName, Explanation: rp.Content},
 				})
 			}
 		case "task_item":
 			if rp.Name != "" {
 				merged := false
 				for i := len(existing) - 1; i >= 0; i-- {
-					if existing[i].Type == PartTypePlan && existing[i].Plan != nil {
+					if existing[i].Type == PartTypePlan && existing[i].Plan != nil &&
+						existing[i].Plan.AgentName == rp.AgentName {
 						found := false
 						for j := range existing[i].Plan.Items {
 							if existing[i].Plan.Items[j].ID != "" && existing[i].Plan.Items[j].ID == rp.Name {
@@ -302,7 +304,7 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					existing = append(existing, DisplayPart{
 						Type: PartTypePlan,
 						Time: rp.Time,
-						Plan: &PlanPart{Items: []PlanItemView{{ID: rp.Name, Step: rp.Name, Status: rp.Content}}},
+						Plan: &PlanPart{AgentName: rp.AgentName, Items: []PlanItemView{{ID: rp.Name, Step: rp.Name, Status: rp.Content}}},
 					})
 				}
 			}

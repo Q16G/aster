@@ -29,6 +29,7 @@ type ChatModel struct {
 	partLineOffsets  []int
 	contentDirty     bool
 	autoFollowBottom bool
+	rootAgentName    string
 }
 
 func NewChatModel() ChatModel {
@@ -241,12 +242,20 @@ func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
 	return time.Now()
 }
 
-func (m *ChatModel) UpdateLastPlan(fn func(*PlanPart)) {
+func (m *ChatModel) isRootAgentPlan(p *PlanPart) bool {
+	return p.AgentName == m.rootAgentName || p.AgentName == ""
+}
+
+func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart)) {
+	matchRoot := agentName == m.rootAgentName
 	for i := len(m.parts) - 1; i >= 0; i-- {
 		if m.parts[i].Type == PartTypePlan && m.parts[i].Plan != nil {
-			fn(m.parts[i].Plan)
-			m.refreshContent()
-			return
+			p := m.parts[i].Plan
+			if p.AgentName == agentName || (matchRoot && p.AgentName == "") {
+				fn(p)
+				m.refreshContent()
+				return
+			}
 		}
 	}
 }
@@ -903,6 +912,10 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 	}
 
 	icon := "▤"
+	agentTag := ""
+	if p.AgentName != "" && p.AgentName != m.rootAgentName {
+		agentTag = " (" + p.AgentName + ")"
+	}
 	color := lipgloss.Color("11")
 	if total > 0 && done == total {
 		color = lipgloss.Color("10")
@@ -911,7 +924,7 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 	}
 
 	if !expanded {
-		summary := fmt.Sprintf("plan [%d/%d", done, total)
+		summary := fmt.Sprintf("plan%s [%d/%d", agentTag, done, total)
 		if failed > 0 {
 			summary += fmt.Sprintf(", %d failed", failed)
 		}
@@ -939,7 +952,7 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 		borderColor = lipgloss.Color("15")
 	}
 	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
-	header := fmt.Sprintf("%s plan [%d/%d]", icon, done, total)
+	header := fmt.Sprintf("%s plan%s [%d/%d]", icon, agentTag, done, total)
 
 	var body strings.Builder
 	if p.Explanation != "" {

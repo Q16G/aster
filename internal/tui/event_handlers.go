@@ -274,16 +274,18 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			}
 		}
 		if len(items) > 0 || explanation != "" {
+			planPart := &PlanPart{
+				AgentName:   event.AgentName,
+				Explanation: explanation,
+				Items:       items,
+			}
 			m.chat.AddPart(DisplayPart{
 				Type: PartTypePlan,
 				Time: time.Now(),
-				Plan: &PlanPart{
-					Explanation: explanation,
-					Items:       items,
-				},
+				Plan: planPart,
 			})
-			planJSON, _ := json.Marshal(PlanPart{Explanation: explanation, Items: items})
-			m.persistPart("task_plan", "", string(planJSON))
+			planJSON, _ := json.Marshal(planPart)
+			m.persistPartWithAgent("task_plan", "", event.AgentName, string(planJSON))
 			m.refreshSidebarData()
 		}
 
@@ -293,7 +295,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		status := payloadString(event.Payload, "status")
 		if step != "" || itemID != "" {
 			updated := false
-			m.chat.UpdateLastPlan(func(p *PlanPart) {
+			m.chat.UpdateLastPlanForAgent(event.AgentName, func(p *PlanPart) {
 				for i := range p.Items {
 					if itemID != "" && p.Items[i].ID == itemID {
 						p.Items[i].Status = status
@@ -321,7 +323,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					Type: PartTypePlan,
 					Time: time.Now(),
 					Plan: &PlanPart{
-						Items: []PlanItemView{{ID: itemID, Step: step, Status: status}},
+						AgentName: event.AgentName,
+						Items:     []PlanItemView{{ID: itemID, Step: step, Status: status}},
 					},
 				})
 			}
@@ -329,7 +332,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			if persistName == "" {
 				persistName = step
 			}
-			m.persistPart("task_item", persistName, status)
+			m.persistPartWithAgent("task_item", persistName, event.AgentName, status)
 			m.refreshSidebarData()
 		}
 

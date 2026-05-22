@@ -330,6 +330,19 @@ func (m *Model) persistPartWithCallID(partType, name, callID, content string) {
 	})
 }
 
+func (m *Model) persistPartWithAgent(partType, name, agentName, content string) {
+	if m.store == nil || m.currentSessionID == "" {
+		return
+	}
+	_ = appendSessionPart(m.store.BaseDir(), m.currentSessionID, persistedPart{
+		Type:      partType,
+		Name:      name,
+		AgentName: agentName,
+		Content:   content,
+		Time:      time.Now(),
+	})
+}
+
 func (m *Model) toggleSessionSkill(name string, enabled bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {

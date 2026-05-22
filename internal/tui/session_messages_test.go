@@ -176,6 +176,91 @@ func TestMergeRecoveryParts(t *testing.T) {
 	}
 }
 
+func TestMergeRecoveryPartsPlanAgentIsolation(t *testing.T) {
+	rootPlanJSON, _ := json.Marshal(PlanPart{
+		AgentName: "root",
+		Items:     []PlanItemView{{ID: "s1", Step: "root-step", Status: "pending"}},
+	})
+	subPlanJSON, _ := json.Marshal(PlanPart{
+		AgentName: "sub-abc",
+		Items:     []PlanItemView{{ID: "s2", Step: "sub-step", Status: "pending"}},
+	})
+
+	existing := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "go"}},
+	}
+	recovery := []persistedPart{
+		{Type: "task_plan", Content: string(rootPlanJSON), Time: time.Unix(20, 0)},
+		{Type: "task_plan", Content: string(subPlanJSON), Time: time.Unix(21, 0)},
+		{Type: "task_item", Name: "s1", AgentName: "root", Content: "done", Time: time.Unix(22, 0)},
+		{Type: "task_item", Name: "s2", AgentName: "sub-abc", Content: "done", Time: time.Unix(23, 0)},
+	}
+
+	merged := mergeRecoveryParts(existing, recovery)
+
+	var rootPlan, subPlan *PlanPart
+	for _, p := range merged {
+		if p.Type == PartTypePlan && p.Plan != nil {
+			if p.Plan.AgentName == "root" {
+				rootPlan = p.Plan
+			} else if p.Plan.AgentName == "sub-abc" {
+				subPlan = p.Plan
+			}
+		}
+	}
+
+	if rootPlan == nil {
+		t.Fatal("expected root plan to be present")
+	}
+	if rootPlan.Items[0].Status != "done" {
+		t.Fatalf("expected root plan item status 'done', got %q", rootPlan.Items[0].Status)
+	}
+	if subPlan == nil {
+		t.Fatal("expected sub-agent plan to be present")
+	}
+	if subPlan.Items[0].Status != "done" {
+		t.Fatalf("expected sub-agent plan item status 'done', got %q", subPlan.Items[0].Status)
+	}
+}
+
+func TestMergeRecoveryPartsPlanAgentItemDoesNotCrossAgent(t *testing.T) {
+	rootPlanJSON, _ := json.Marshal(PlanPart{
+		AgentName: "root",
+		Items:     []PlanItemView{{ID: "s1", Step: "root-step", Status: "pending"}},
+	})
+
+	existing := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "go"}},
+	}
+	recovery := []persistedPart{
+		{Type: "task_plan", Content: string(rootPlanJSON), Time: time.Unix(20, 0)},
+		{Type: "task_item", Name: "s1", AgentName: "sub-xyz", Content: "done", Time: time.Unix(22, 0)},
+	}
+
+	merged := mergeRecoveryParts(existing, recovery)
+
+	var rootPlan *PlanPart
+	planCount := 0
+	for _, p := range merged {
+		if p.Type == PartTypePlan && p.Plan != nil {
+			planCount++
+			if p.Plan.AgentName == "root" {
+				rootPlan = p.Plan
+			}
+		}
+	}
+
+	if rootPlan == nil {
+		t.Fatal("expected root plan to be present")
+	}
+	if rootPlan.Items[0].Status != "pending" {
+		t.Fatalf("expected root plan item to remain 'pending' (sub-agent item should not update it), got %q", rootPlan.Items[0].Status)
+	}
+	if planCount != 2 {
+		t.Fatalf("expected 2 plans (root + new sub-agent plan), got %d", planCount)
+	}
+}
+
 func TestMergeRecoveryPartsRestoresStepResult(t *testing.T) {
 	existing := []DisplayPart{
 		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "hello"}},
