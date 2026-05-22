@@ -174,6 +174,9 @@ func NewModel(deps ModelDeps) Model {
 		toastManager:    tuiui.NewToastManager(5),
 		spinner:         tuiui.NewSpinner("thinking..."),
 	}
+	if deps.AgentCtx != nil {
+		m.chat.rootAgentName = deps.AgentCtx.Definition.Name
+	}
 	return m
 }
 
@@ -746,6 +749,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.agentCtx.Definition = msg.Definition
+		m.chat.rootAgentName = msg.Definition.Name
 		if m.sessionMeta.PermissionMode != "" {
 			if mode, ok := parsePermissionModeArg(m.sessionMeta.PermissionMode); ok {
 				if m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
@@ -1094,7 +1098,7 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 
 	for _, p := range m.chat.Parts() {
-		if p.Type == PartTypePlan && p.Plan != nil {
+		if p.Type == PartTypePlan && p.Plan != nil && m.chat.isRootAgentPlan(p.Plan) {
 			snap.PlanItems = p.Plan.Items
 		}
 	}

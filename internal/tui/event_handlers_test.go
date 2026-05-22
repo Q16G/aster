@@ -210,6 +210,192 @@ func TestHandleAgentEventStepReplanResultAddsPart(t *testing.T) {
 	}
 }
 
+func TestHandleAgentEventSubAgentPlanDoesNotOverrideRootPlan(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "my-agent",
+		Payload: map[string]any{
+			"explanation": "root plan",
+			"plan": []any{
+				map[string]any{"id": "r1", "step": "root-step-1", "status": "pending"},
+			},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "sub-abc12345",
+		Payload: map[string]any{
+			"explanation": "sub plan",
+			"plan": []any{
+				map[string]any{"id": "s1", "step": "sub-step-1", "status": "pending"},
+			},
+		},
+	})
+
+	var rootPlan, subPlan *PlanPart
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePlan && p.Plan != nil {
+			if p.Plan.AgentName == "my-agent" {
+				rootPlan = p.Plan
+			}
+			if p.Plan.AgentName == "sub-abc12345" {
+				subPlan = p.Plan
+			}
+		}
+	}
+
+	if rootPlan == nil {
+		t.Fatal("expected root plan to be present")
+	}
+	if rootPlan.Explanation != "root plan" {
+		t.Fatalf("expected root plan explanation, got %q", rootPlan.Explanation)
+	}
+	if subPlan == nil {
+		t.Fatal("expected sub-agent plan to be present separately")
+	}
+	if subPlan.Explanation != "sub plan" {
+		t.Fatalf("expected sub plan explanation, got %q", subPlan.Explanation)
+	}
+}
+
+func TestHandleAgentEventTaskItemUpdatesCorrectAgentPlan(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "my-agent",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "r1", "step": "root-step", "status": "pending"},
+			},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "sub-xyz",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "s1", "step": "sub-step", "status": "pending"},
+			},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskItem,
+		AgentName: "my-agent",
+		Payload: map[string]any{
+			"id":     "r1",
+			"status": "done",
+		},
+	})
+
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePlan && p.Plan != nil {
+			if p.Plan.AgentName == "my-agent" {
+				if p.Plan.Items[0].Status != "done" {
+					t.Fatalf("expected root plan item to be 'done', got %q", p.Plan.Items[0].Status)
+				}
+			}
+			if p.Plan.AgentName == "sub-xyz" {
+				if p.Plan.Items[0].Status != "pending" {
+					t.Fatalf("expected sub plan item to remain 'pending', got %q", p.Plan.Items[0].Status)
+				}
+			}
+		}
+	}
+}
+
+func TestBuildSidebarSnapshotOnlyShowsRootAgentPlan(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "my-agent"},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "my-agent",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "r1", "step": "root-step", "status": "pending"},
+				map[string]any{"id": "r2", "step": "root-step-2", "status": "completed"},
+			},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskPlan,
+		AgentName: "sub-abc12345",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "s1", "step": "sub-step", "status": "in_progress"},
+			},
+		},
+	})
+
+	snap := m.buildSidebarSnapshot()
+
+	if len(snap.PlanItems) != 2 {
+		t.Fatalf("expected sidebar to show 2 root plan items, got %d", len(snap.PlanItems))
+	}
+	if snap.PlanItems[0].ID != "r1" || snap.PlanItems[1].ID != "r2" {
+		t.Fatalf("expected root plan items r1 and r2, got %+v", snap.PlanItems)
+	}
+}
+
+func TestBuildSidebarSnapshotShowsLegacyUntaggedPlans(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "code-audit"},
+		},
+	})
+
+	m.chat.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{Items: []PlanItemView{{ID: "old1", Step: "legacy-step", Status: "pending"}}},
+	})
+	m.chat.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "sub-xyz", Items: []PlanItemView{{ID: "s1", Step: "sub-step", Status: "pending"}}},
+	})
+
+	snap := m.buildSidebarSnapshot()
+
+	if len(snap.PlanItems) != 1 {
+		t.Fatalf("expected sidebar to show 1 legacy plan item, got %d", len(snap.PlanItems))
+	}
+	if snap.PlanItems[0].ID != "old1" {
+		t.Fatalf("expected legacy plan item, got %+v", snap.PlanItems)
+	}
+}
+
+func TestBuildSidebarSnapshotNoAgentCtxShowsUntaggedPlans(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.chat.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{Items: []PlanItemView{{ID: "old1", Step: "legacy-step", Status: "pending"}}},
+	})
+
+	m.chat.AddPart(DisplayPart{
+		Type: PartTypePlan,
+		Plan: &PlanPart{AgentName: "sub-xyz", Items: []PlanItemView{{ID: "s1", Step: "sub-step", Status: "pending"}}},
+	})
+
+	snap := m.buildSidebarSnapshot()
+
+	if len(snap.PlanItems) != 1 {
+		t.Fatalf("expected sidebar to show 1 untagged plan item, got %d", len(snap.PlanItems))
+	}
+	if snap.PlanItems[0].ID != "old1" {
+		t.Fatalf("expected legacy plan item, got %+v", snap.PlanItems)
+	}
+}
+
 func TestHandleAgentEventFinalAnswerShowsFullContentByDefault(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.chat.SetSize(100, 20)
