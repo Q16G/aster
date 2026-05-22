@@ -4,6 +4,7 @@ import "time"
 
 type ExitState struct {
 	QuitPending bool
+	QuitKey     string
 	QuitTimer   time.Time
 }
 
@@ -17,10 +18,10 @@ func NewExitProvider() *ExitProvider {
 	}
 }
 
-func (e *ExitProvider) RequestQuit() bool {
+func (e *ExitProvider) RequestQuit(key string) bool {
 	s := e.Get()
-	if !s.QuitPending || time.Since(s.QuitTimer) > 3*time.Second {
-		e.Set(ExitState{QuitPending: true, QuitTimer: time.Now()})
+	if !s.QuitPending || s.QuitKey != key || time.Since(s.QuitTimer) > 3*time.Second {
+		e.Set(ExitState{QuitPending: true, QuitKey: key, QuitTimer: time.Now()})
 		return false
 	}
 	return true
