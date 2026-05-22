@@ -268,7 +268,7 @@ func TestSkillTool_NotRegisteredWithoutLookup(t *testing.T) {
 	}
 }
 
-func TestSkillTool_ForkMode_DisallowNestedFork(t *testing.T) {
+func TestSkillTool_ForkMode_AllowedInsideSubAgent(t *testing.T) {
 	lookup := &mockSkillLookup{
 		skills: map[string]*SkillInfo{
 			"fork-skill": {
@@ -294,7 +294,7 @@ func TestSkillTool_ForkMode_DisallowNestedFork(t *testing.T) {
 		StackDepth: 1,
 	})
 	_, err = tool.Execute(ctx, map[string]any{"skill": "fork-skill"})
-	if err == nil {
-		t.Fatal("expected error when sub-agent tries to fork a skill")
+	if err != nil {
+		t.Fatalf("skill fork should be allowed inside sub-agent, got: %v", err)
 	}
 }
