@@ -120,6 +120,7 @@ type Model struct {
 	footer          FooterModel
 	commandPicker   *tuiui.CommandPickerModel
 	filePicker      *tuiui.FilePickerModel
+	selection       SelectionModel
 }
 
 type ModelDeps struct {
@@ -232,28 +233,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.selection.Clear()
 		m.updateLayout()
 		return m, nil
 
 	case tea.MouseMsg:
-		// Mouse support is enabled by default (see cmd/aster/main.go), but we only
-		// act on wheel events to avoid focus surprises.
 		me := tea.MouseEvent(msg)
-		if me.IsWheel() {
-			if !m.dialogStack.IsEmpty() {
-				cmd := m.dialogStack.Update(msg)
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-			} else {
-				var cmd tea.Cmd
-				m.chat, cmd = m.chat.Update(msg)
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
+		switch {
+		case me.Button == tea.MouseButtonLeft:
+			return m.handleLeftClick(me)
+		case me.IsWheel():
+			return m.handleWheel(me, msg)
+		default:
+			if me.Action == tea.MouseActionRelease && m.selection.state == SelectionInProgress {
+				return m.handleLeftClick(me)
 			}
 		}
-		// Let the rest of the model (spinner/toasts/etc) update as usual.
 
 	case sessionRestoreMsg:
 		if !m.sessionRestoredOnce {
@@ -266,22 +261,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
+			if !copyOnSelect && m.selection.HasSelection() {
+				cmd := m.copySelectionCmd()
+				m.selection.Clear()
+				return m, cmd
+			}
+			m.selection.Clear()
 			if m.agentRunning && m.agentCtx != nil {
 				m.agentCtx.CancelTurn()
 				m.clearRetryState()
 				m.statusText = "cancelling..."
 				return m, nil
 			}
-			if m.exitProvider.RequestQuit() {
-				if !m.sessionMaterialized {
-					m.cleanupUnmaterializedSession()
-				} else {
-					m.persistCurrentSession()
-				}
-				return m, tea.Quit
+			if m.focus == FocusInput && strings.TrimSpace(m.input.Value()) != "" {
+				m.input.Clear()
+				return m, nil
 			}
-			m.statusText = "press Ctrl+C again to quit"
-			return m, nil
+			return m.handleQuitRequest("ctrl+c")
+		}
+
+		if msg.String() == "ctrl+d" && m.dialogStack.IsEmpty() {
+			return m.handleQuitRequest("ctrl+d")
+		}
+
+		if m.selection.state != SelectionNone {
+			m.selection.Clear()
 		}
 
 		m.exitProvider.Reset()
@@ -387,6 +391,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case tuicontext.KeyActionEscape:
+				if m.agentRunning && m.agentCtx != nil {
+					m.agentCtx.CancelTurn()
+					m.clearRetryState()
+					m.statusText = "cancelling..."
+					return m, nil
+				}
 				if m.focus != FocusInput {
 					m.setFocus(FocusInput)
 					return m, m.focusCmd()
@@ -708,6 +718,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case clipboardCopiedMsg:
+		if msg.text != "" {
+			return m, m.toastManager.Push("copied to clipboard", tuiui.ToastInfo, 2*time.Second)
+		}
+		return m, nil
+
+	case pasteResultMsg:
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
 
 	case tuiui.ToastExpiredMsg:
 		if m.toastManager != nil {
@@ -1235,6 +1256,19 @@ func (m *Model) clearRetryState() {
 	m.retryState = nil
 }
 
+func (m Model) handleQuitRequest(key string) (tea.Model, tea.Cmd) {
+	if m.exitProvider.RequestQuit(key) {
+		if !m.sessionMaterialized {
+			m.cleanupUnmaterializedSession()
+		} else {
+			m.persistCurrentSession()
+		}
+		return m, tea.Quit
+	}
+	m.statusText = fmt.Sprintf("press %s again to quit", key)
+	return m, nil
+}
+
 func (m *Model) loadingLabel(maxWidth int) string {
 	if m.retryState != nil {
 		label := formatRetryLabel(m.retryState, maxWidth)
@@ -1379,7 +1413,7 @@ func (m Model) View() string {
 		Height(chatHeight).
 		Padding(0, 1)
 
-	chatContent := m.chat.View()
+	chatContent := m.chat.ViewWithSelection(&m.selection)
 	if !m.chat.HasContent() {
 		chatContent = m.renderHomeView(chatContentWidth, chatHeight)
 	}

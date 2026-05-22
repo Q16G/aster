@@ -4,7 +4,6 @@ type KeyAction string
 
 const (
 	KeyActionQuit         KeyAction = "quit"
-	KeyActionCancel       KeyAction = "cancel"
 	KeyActionNewSession   KeyAction = "new_session"
 	KeyActionOpenSessions KeyAction = "open_sessions"
 	KeyActionOpenAgents   KeyAction = "open_agents"

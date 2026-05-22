@@ -3,10 +3,25 @@ package tui
 import (
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type pasteResultMsg struct {
+	text string
+}
+
+func readClipboardCmd() tea.Cmd {
+	return func() tea.Msg {
+		text, err := clipboard.ReadAll()
+		if err != nil || text == "" {
+			return pasteResultMsg{}
+		}
+		return pasteResultMsg{text: text}
+	}
+}
 
 const maxInputHistory = 50
 
@@ -51,7 +66,17 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 		return m, nil
 	}
 
+	if paste, ok := msg.(pasteResultMsg); ok {
+		if paste.text != "" {
+			m.textarea.InsertString(paste.text)
+		}
+		return m, nil
+	}
+
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if keyMsg.String() == "ctrl+v" {
+			return m, readClipboardCmd()
+		}
 		switch keyMsg.Type {
 		case tea.KeyEnter:
 			text := strings.TrimSpace(m.textarea.Value())

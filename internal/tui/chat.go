@@ -29,6 +29,7 @@ type ChatModel struct {
 	partLineOffsets  []int
 	contentDirty     bool
 	autoFollowBottom bool
+	fullContent      string
 	rootAgentName    string
 }
 
@@ -302,6 +303,16 @@ func (m ChatModel) View() string {
 	return m.viewport.View()
 }
 
+func (m ChatModel) ViewWithSelection(sel *SelectionModel) string {
+	raw := m.viewport.View()
+	if sel == nil || sel.state == SelectionNone {
+		return raw
+	}
+	lines := strings.Split(raw, "\n")
+	highlighted := ApplySelectionHighlight(lines, sel)
+	return strings.Join(highlighted, "\n")
+}
+
 func (m *ChatModel) refreshContent() {
 	var sb strings.Builder
 	m.partLineOffsets = make([]int, len(m.parts))
@@ -345,7 +356,8 @@ func (m *ChatModel) refreshContent() {
 	if len(m.parts) == 0 && !m.isStreaming && !m.isThinking {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
-	m.viewport.SetContent(sb.String())
+	m.fullContent = sb.String()
+	m.viewport.SetContent(m.fullContent)
 }
 
 func (m *ChatModel) renderAssistantTurn(sb *strings.Builder, parts []IndexedPart, lineCount *int) {
@@ -446,6 +458,14 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 
 func (m *ChatModel) Parts() []DisplayPart {
 	return m.parts
+}
+
+func (m *ChatModel) AllContentLines() []string {
+	return strings.Split(m.fullContent, "\n")
+}
+
+func (m *ChatModel) ContentYOffset() int {
+	return m.viewport.YOffset
 }
 
 func (m *ChatModel) HasContent() bool {
