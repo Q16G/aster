@@ -76,6 +76,7 @@ func collectStepContextViews(plan []*builtin_tools.PlanItem, outcomes []*builtin
 			SummaryFile:     strings.TrimSpace(outcome.SummaryFile),
 			ResultFile:      strings.TrimSpace(outcome.ResultFile),
 			ContextKey:      strings.TrimSpace(outcome.ContextKey),
+			TimelineFile:    strings.TrimSpace(outcome.TimelineFile),
 		}
 		if item != nil {
 			view.Step = strings.TrimSpace(item.Step)

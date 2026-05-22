@@ -55,6 +55,179 @@ export OPENAI_API_KEY=sk-your-key
 
 启动后进入 TUI 交互界面，输入自然语言即可开始安全分析。默认使用 `code-audit` Agent。
 
+### 场景示例
+
+以下示例展示典型使用场景。每个场景列出所需依赖和最小启动步骤——未安装的可选工具会优雅降级，不影响核心功能。
+
+#### 场景 1: 代码审计（默认 Agent）
+
+默认启动即为 `code-audit` Agent。Semgrep 规则已内嵌于二进制，首次运行自动提取到 `~/.aster/rules/`。
+
+```bash
+# 必需：安装 semgrep（SAST 扫描引擎）
+pip install semgrep
+
+# 推荐：安装 yak 引擎（数据流追踪，验证漏洞可达性）
+# 安装后无需额外配置，默认 config.yaml 已包含 MCP 配置
+bash <(curl -sS -L http://oss.yaklang.io/install-latest-yak.sh)
+```
+
+```
+./aster
+> 对当前项目做一次全量安全审计
+```
+
+| 工具 | 状态 | 不安装时的影响 |
+|------|------|---------------|
+| `semgrep` | **必需** | `sast-scan` 技能不可用，退化为纯 AI 代码审查 |
+| `yak` 引擎 | 推荐 | `dataflow-analysis` 退化为手动 checklist，漏洞缺少 source-to-sink 可达性验证 |
+| `trivy` | 可选 | `dependency-audit` 退化为 AI 分析 manifest 文件，无 CVE 数据库匹配 |
+
+支持语言：Go、Java、Python、JS/TS、PHP、C/C++。详见 → [技能系统](#技能系统)
+
+---
+
+#### 场景 2: 渗透测试
+
+`pentest` Agent 通过浏览器自动化对运行中的 Web 应用进行安全测试。
+
+```bash
+# 必需：安装 agent-browser（浏览器自动化），会自动下载 Chromium
+npm install -g agent-browser && agent-browser install
+```
+
+```
+./aster
+> /agent pentest
+> /mode ai
+> 对 http://localhost:8080 做一次全面渗透测试
+```
+
+| 工具 | 状态 | 不安装时的影响 |
+|------|------|---------------|
+| `agent-browser` + Chrome/Chromium | **必需** | 浏览器自动化不可用；SQL 注入、IDOR 等技能仍可基于代码分析工作 |
+
+> **权限模式**：渗透测试产生大量浏览器命令，推荐 `/mode ai` 或 `/mode yolo`（隔离环境）。MANUAL 模式需逐条确认，体验较差。
+
+支持自签证书、SPA/MPA、需认证的站点。详见 → [Agent 系统](#agent-系统)、[外部依赖](#外部依赖)
+
+---
+
+#### 场景 3: 主机防护
+
+`host-defense` Agent 进行安全基线检查、入侵检测和应急响应，**无需额外安装外部工具**。
+
+```
+./aster
+> /agent host-defense
+> /mode ai
+> 检查当前主机的安全基线配置
+```
+
+| 工具 | 状态 | 不安装时的影响 |
+|------|------|---------------|
+| `root` / `sudo` 权限 | 推荐 | 部分检查（shadow 文件、SUID 扫描、审计日志）需要权限，无权限时自动跳过 |
+| `yara` / `chkrootkit` / `rkhunter` | 可选 | 恶意软件检测退化为 AI 启发式分析 + 内置 bash 检查 |
+
+> **操作系统**：Linux 完整支持，macOS 部分支持，暂不支持 Windows。
+
+详见 → [Agent 系统](#agent-系统)、[技能系统](#技能系统)
+
+---
+
+#### 场景 4: 使用本地模型（Ollama）
+
+无需 API Key，完全离线运行。可搭配任意 Agent 使用。
+
+```bash
+# 1. 启动 Ollama
+ollama serve
+
+# 2. 拉取模型
+ollama pull qwen2.5
+
+# 3. 启动 ASTER
+./aster --provider ollama
+```
+
+或在 `~/.aster/config.yaml` 中配置：
+
+```yaml
+default_provider: ollama
+
+providers:
+  ollama:
+    base_url: http://localhost:11434/v1
+    default_model: qwen2.5:latest
+```
+
+> **注意**：本地模型推理能力通常弱于云端大模型，复杂审计场景（多步推理、长上下文）效果可能下降。
+
+详见 → [配置](#配置)
+
+---
+
+#### 场景 5: 自定义 Agent
+
+创建针对特定场景的专属 Agent。在 `~/.aster/agents/api-audit.yaml` 中定义：
+
+```yaml
+name: api-audit
+role: API 接口安全审计专家
+background: |
+  专注于 REST/GraphQL API 的认证、授权、输入校验和速率限制审计。
+instruction: |
+  1. 搜索路由定义和中间件
+  2. 加载 sast-scan 进行静态分析
+  3. 重点关注：未鉴权端点、SQL 注入、越权访问
+skill_names:
+  - sast-scan
+  - sql-injection-comprehensive
+  - auth-comprehensive
+  - idor-detection
+tool_names:
+  - list_files
+  - read_file
+  - rg
+  - list_skills
+  - load_skills
+```
+
+```
+./aster
+> /agent api-audit
+> 审计当前项目的 API 接口安全
+```
+
+详见 → [自定义 Agent](#自定义-agent)、[Agent YAML 字段说明](#agent-yaml-字段说明)
+
+---
+
+#### 场景 6: 接入 MCP 工具
+
+通过 MCP 协议扩展 Agent 的工具集。
+
+**全局配置**（所有 Agent 可用）— 在 `~/.aster/config.yaml` 中：
+
+```yaml
+mcp_servers:
+  my-tool:
+    type: stdio
+    command: /path/to/my-mcp-server
+    args: ["--mode", "production"]
+```
+
+**Agent 专属配置** — 在 Agent YAML 的 `mcp_servers` 字段中定义，仅该 Agent 可见。
+
+```
+./aster
+> /mcp                        # 查看 MCP 服务器状态
+> /mcp connect my-tool        # 运行时连接
+> /mcp disconnect my-tool     # 运行时断开
+```
+
+支持 stdio / SSE / Streamable HTTP 三种传输方式。详见 → [MCP 集成](#mcp-集成)
+
 ---
 
 ## 核心特性

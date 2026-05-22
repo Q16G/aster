@@ -83,7 +83,11 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/new":
 		return m.cmdSession([]string{"new"})
 	case "/exit":
-		m.persistCurrentSession()
+		if !m.sessionMaterialized {
+			m.cleanupUnmaterializedSession()
+		} else {
+			m.persistCurrentSession()
+		}
 		return m, tea.Quit
 	case "/session":
 		return m.cmdSession(parts[1:])

@@ -63,6 +63,7 @@ const (
 	AgentPhaseStepReplan            AgentPhase = "step_replan"
 	AgentPhaseFinalAnswer           AgentPhase = "final_answer"
 	AgentPhaseIntentClassification  AgentPhase = "intent_classification"
+	AgentPhaseStepOutcomesReducer   AgentPhase = "step_outcomes_reducer"
 )
 
 // PlanStepStatus 计划步骤状态
@@ -173,6 +174,42 @@ type StepOutcome struct {
 
 	// ContextKey: execution lineage 的稳定锚点（写入 workspace/step_contexts.jsonl）
 	ContextKey string `json:"context_key,omitempty"`
+
+	// ==================== D. 执行谱系层（step_replan 回填） ====================
+	TimelineFile         string   `json:"timeline_file,omitempty"`
+	Namespace            string   `json:"namespace,omitempty"`
+	PlanVersion          int      `json:"plan_version,omitempty"`
+	AgentProfile         string   `json:"agent_profile,omitempty"`
+	ResultKeys           []string `json:"result_keys,omitempty"`
+	InheritedContextKeys []string `json:"inherited_context_keys,omitempty"`
+	InheritedRefIDs      []string `json:"inherited_ref_ids,omitempty"`
+	TranscriptBlobRef    string   `json:"transcript_blob_ref,omitempty"`
+	StepKey              string   `json:"step_key,omitempty"`
+}
+
+func (o *StepOutcome) ToContextRecord() *StepContextRecord {
+	if o == nil {
+		return nil
+	}
+	return &StepContextRecord{
+		ContextKey:           strings.TrimSpace(o.ContextKey),
+		Namespace:            o.Namespace,
+		StepID:               strings.TrimSpace(o.StepID),
+		StepKey:              strings.TrimSpace(o.StepKey),
+		PlanVersion:          o.PlanVersion,
+		AgentProfile:         strings.TrimSpace(o.AgentProfile),
+		SummaryFile:          strings.TrimSpace(o.SummaryFile),
+		ResultFile:           strings.TrimSpace(o.ResultFile),
+		ResultKeys:           CloneStringSlice(o.ResultKeys),
+		ShortSummary:         strings.TrimSpace(o.ShortSummary),
+		KeyFacts:             CloneStringSlice(o.KeyFacts),
+		ToolCallsDigest:      CloneStringSlice(o.ToolCallsDigest),
+		References:           CloneStringSlice(o.References),
+		InheritedContextKeys: CloneStringSlice(o.InheritedContextKeys),
+		InheritedRefIDs:      CloneStringSlice(o.InheritedRefIDs),
+		TranscriptBlobRef:    o.TranscriptBlobRef,
+		TimelineFile:         strings.TrimSpace(o.TimelineFile),
+	}
 }
 
 type FinalAnswer struct {

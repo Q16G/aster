@@ -135,6 +135,8 @@ func (m ThinkingPanelModel) View() string {
 		phaseLabel = "Step Summary"
 	case "final_answer":
 		phaseLabel = "Final Answer"
+	case "step_outcomes_reducer":
+		phaseLabel = "History Compression"
 	}
 	header := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("11")).

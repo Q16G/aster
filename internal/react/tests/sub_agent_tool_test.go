@@ -1,6 +1,7 @@
 package react_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -91,7 +92,7 @@ func TestSubAgentTool_Execute_MissingInstruction(t *testing.T) {
 	}
 }
 
-func TestSubAgentTool_DepthEnforcement(t *testing.T) {
+func TestSubAgentTool_DisallowNestedSpawn(t *testing.T) {
 	agent, err := NewReActAgent("test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
@@ -102,13 +103,13 @@ func TestSubAgentTool_DepthEnforcement(t *testing.T) {
 	)
 	tool := NewSubAgentTool(agent, factory)
 
-	ctx := builtin_tools.WithToolRuntime(nil, builtin_tools.ToolRuntimeInfo{
+	ctx := builtin_tools.WithToolRuntime(context.Background(), builtin_tools.ToolRuntimeInfo{
 		Emitter:    NewDummyEmitter(),
-		StackDepth: 3,
+		StackDepth: 1,
 	})
 	_, err = tool.Execute(ctx, map[string]any{"instruction": "do something"})
 	if err == nil {
-		t.Fatal("expected depth exceeded error")
+		t.Fatal("expected error when sub-agent tries to spawn another sub-agent")
 	}
 }
 

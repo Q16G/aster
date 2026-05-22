@@ -82,6 +82,7 @@ type Model struct {
 	pendingPrompt   string
 
 	currentSessionID        string
+	sessionMaterialized     bool
 	sessionMeta             SessionMeta
 	focus                   FocusTarget
 	runStartTime            time.Time
@@ -254,8 +255,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionRestoreMsg:
 		if !m.sessionRestoredOnce {
 			m.sessionRestoredOnce = true
-			m.restoreLatestSession()
-			m.updateLayout()
+			if m.newSession() {
+				m.updateLayout()
+			}
 		}
 		return m, nil
 
@@ -268,7 +270,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.exitProvider.RequestQuit() {
-				m.persistCurrentSession()
+				if !m.sessionMaterialized {
+					m.cleanupUnmaterializedSession()
+				} else {
+					m.persistCurrentSession()
+				}
 				return m, tea.Quit
 			}
 			m.statusText = "press Ctrl+C again to quit"
@@ -1046,9 +1052,13 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 
 	if m.currentSessionID != "" && m.store != nil {
-		if rec, err := m.store.Get(m.currentSessionID); err == nil {
-			snap.SessionTitle = rec.Title
-			snap.AgentName = rec.AgentName
+		if m.sessionMaterialized {
+			if rec, err := m.store.Get(m.currentSessionID); err == nil {
+				snap.SessionTitle = rec.Title
+				snap.AgentName = rec.AgentName
+			}
+		} else if m.agentCtx != nil {
+			snap.AgentName = m.agentCtx.Definition.Name
 		}
 	}
 

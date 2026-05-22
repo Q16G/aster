@@ -23,30 +23,44 @@
    - `tool_calls_digest`（原样保留，这是步骤执行记录，replan 决策需要）
    - `open_questions`（原样保留，这是未解决问题列表，replan 决策需要）
    - `error`（若有则保留）
+   - `summary_file`（原样保留，这是步骤摘要文件路径，不可丢弃）
+   - `result_file`（原样保留，这是步骤结果文件路径，不可丢弃）
+   - `timeline_file`（原样保留，这是步骤时间线文件路径，不可丢弃）
 
 2. **可以丢弃**以下字段：
    - `display_result`
    - `result`
    - `short_summary`（已被 summary 覆盖）
-   - `artifact_dir` / `summary_file` / `result_file` / `context_key`
+   - `artifact_dir` / `context_key`
    - `updated_at`
+   - D 层谱系字段（`namespace` / `plan_version` / `agent_profile` / `inherited_context_keys` / `inherited_ref_ids` / `transcript_blob_ref` / `step_key`）
 
-3. 如果多个连续 step 在做同一件事（如重复重试、连续搜索同一目标），可以合并为一个 step，在 `summary` 中注明合并了哪些 step，合并后的 `references` 取并集。
+3. 如果多个连续 step 在做同一件事（如重复重试、连续搜索同一目标），可以合并为一个 step，在 `summary` 中注明合并了哪些 step，合并后的 `references` 取并集，`summary_file`、`result_file`、`timeline_file` 取最后一个被合并 step 的值。
 
 ## 输出要求
 - 只输出一个 JSON 数组，不要输出任何额外文字。
-- 数组中每个元素的结构为：
+- 数组中每个元素必须严格遵循以下 JSON Schema：
 ```json
 {
-  "step_id": "...",
-  "status": "...",
-  "summary": "...",
-  "key_facts": ["..."],
-  "long_summary": "...",
-  "open_questions": ["..."],
-  "tool_calls_digest": ["..."],
-  "references": ["..."],
-  "status_summary": "...",
-  "error": "..."
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["step_id", "status", "summary", "summary_file", "result_file", "timeline_file"],
+    "properties": {
+      "step_id":           { "type": "string", "description": "原样保留" },
+      "status":            { "type": "string", "description": "原样保留" },
+      "summary":           { "type": "string", "description": "一句话摘要" },
+      "key_facts":         { "type": "array", "items": { "type": "string" }, "description": "关键事实列表" },
+      "long_summary":      { "type": "string", "description": "压缩后的详细摘要" },
+      "open_questions":    { "type": "array", "items": { "type": "string" }, "description": "未解决问题" },
+      "tool_calls_digest": { "type": "array", "items": { "type": "string" }, "description": "工具调用摘要" },
+      "references":        { "type": "array", "items": { "type": "string" }, "description": "证据引用" },
+      "status_summary":    { "type": "string", "description": "状态摘要" },
+      "error":             { "type": "string", "description": "错误信息（若有）" },
+      "summary_file":      { "type": "string", "description": "步骤摘要文件路径，必须原样保留" },
+      "result_file":       { "type": "string", "description": "步骤结果文件路径，必须原样保留" },
+      "timeline_file":     { "type": "string", "description": "步骤时间线文件路径，必须原样保留" }
+    }
+  }
 }
 ```

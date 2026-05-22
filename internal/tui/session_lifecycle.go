@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,59 +13,41 @@ import (
 	"aster/internal/mcp"
 	"aster/internal/react/persistv2"
 	tuiui "aster/internal/tui/ui"
+
+	"github.com/google/uuid"
 )
 
 func (m *Model) ensureSession() bool {
 	if m.currentSessionID != "" {
+		if !m.sessionMaterialized {
+			return m.materializeSession()
+		}
 		return true
 	}
 	if m.store == nil {
 		return false
 	}
-	if m.restoreLatestSession() {
-		return true
-	}
-	return m.newSession()
-}
-
-func (m *Model) restoreLatestSession() bool {
-	if m.store == nil {
+	if !m.newSession() {
 		return false
 	}
-	sessions, err := m.store.List()
-	if err != nil || len(sessions) == 0 {
-		return false
-	}
-	m.switchSession(sessions[0].ID)
-	return m.currentSessionID != ""
+	return m.materializeSession()
 }
 
 func (m *Model) newSession() bool {
 	if m.store == nil {
 		return false
 	}
-	m.persistCurrentSession()
-
-	agentName := ""
-	if m.agentCtx != nil {
-		agentName = m.agentCtx.Definition.Name
+	if m.currentSessionID != "" && !m.sessionMaterialized {
+		m.cleanupUnmaterializedSession()
 	}
+	m.persistCurrentSession()
 
 	m.sessionMeta = SessionMeta{
 		Theme:          m.themeProvider.Get().Name,
 		PermissionMode: string(m.currentPermissionMode()),
 	}
-	rec := &SessionRecord{
-		Title:     "",
-		Status:    "active",
-		AgentName: agentName,
-		Metadata:  m.sessionMeta.String(),
-	}
-	m.populateSessionRecord(rec)
-	if err := m.store.Create(rec); err != nil {
-		return false
-	}
-	m.currentSessionID = rec.ID
+	m.currentSessionID = uuid.New().String()
+	m.sessionMaterialized = false
 	m.bindSessionToAgent()
 
 	if m.agentCtx != nil {
@@ -77,14 +60,44 @@ func (m *Model) newSession() bool {
 	m.restoreToolVerbose()
 	m.updateLayout()
 
-	_ = ensureSessionWorkspace(m.store.BaseDir(), rec.ID)
+	_ = ensureSessionWorkspace(m.store.BaseDir(), m.currentSessionID)
 	m.applySessionRuntimeState()
 	return true
+}
+
+func (m *Model) materializeSession() bool {
+	if m.sessionMaterialized || m.store == nil || m.currentSessionID == "" {
+		return m.sessionMaterialized
+	}
+	rec := &SessionRecord{
+		ID:       m.currentSessionID,
+		Status:   "active",
+		Metadata: m.sessionMeta.String(),
+	}
+	m.populateSessionRecord(rec)
+	if err := m.store.Create(rec); err != nil {
+		return false
+	}
+	m.sessionMaterialized = true
+	return true
+}
+
+func (m *Model) cleanupUnmaterializedSession() {
+	if m.store == nil || m.currentSessionID == "" || m.sessionMaterialized {
+		return
+	}
+	dir := filepath.Join(m.store.BaseDir(), m.currentSessionID)
+	_ = os.RemoveAll(dir)
+	m.currentSessionID = ""
+	m.sessionMaterialized = false
 }
 
 func (m *Model) switchSession(idOrPrefix string) {
 	if m.store == nil {
 		return
+	}
+	if m.currentSessionID != "" && !m.sessionMaterialized {
+		m.cleanupUnmaterializedSession()
 	}
 	m.persistCurrentSession()
 
@@ -92,6 +105,7 @@ func (m *Model) switchSession(idOrPrefix string) {
 	for _, s := range sessions {
 		if s.ID == idOrPrefix || strings.HasPrefix(s.ID, idOrPrefix) {
 			m.currentSessionID = s.ID
+			m.sessionMaterialized = true
 			m.sessionMeta = parseSessionMeta(s.Metadata)
 			if strings.TrimSpace(s.Metadata) == "" {
 				if ws, wsErr := loadSessionWorkspaceState(m.store.BaseDir(), s.ID); wsErr == nil && ws != nil {
@@ -195,7 +209,7 @@ func (m *Model) bindSessionToAgent() {
 }
 
 func (m *Model) persistCurrentSession() {
-	if m.store == nil || m.currentSessionID == "" {
+	if m.store == nil || m.currentSessionID == "" || !m.sessionMaterialized {
 		return
 	}
 	saveSessionDisplayParts(m.store.BaseDir(), m.currentSessionID, m.chat.Parts())
@@ -204,7 +218,7 @@ func (m *Model) persistCurrentSession() {
 }
 
 func (m *Model) persistSessionSummary() {
-	if m.store == nil || m.currentSessionID == "" {
+	if m.store == nil || m.currentSessionID == "" || !m.sessionMaterialized {
 		return
 	}
 	parts := m.chat.Parts()
@@ -242,7 +256,7 @@ func (m *Model) persistSessionSummary() {
 }
 
 func (m *Model) persistSessionMeta() {
-	if m.store == nil || m.currentSessionID == "" {
+	if m.store == nil || m.currentSessionID == "" || !m.sessionMaterialized {
 		return
 	}
 	rec, err := m.store.Get(m.currentSessionID)
@@ -255,7 +269,7 @@ func (m *Model) persistSessionMeta() {
 }
 
 func (m *Model) updateSessionAgent(agentName string) {
-	if m.store == nil || m.currentSessionID == "" {
+	if m.store == nil || m.currentSessionID == "" || !m.sessionMaterialized {
 		return
 	}
 	rec, err := m.store.Get(m.currentSessionID)

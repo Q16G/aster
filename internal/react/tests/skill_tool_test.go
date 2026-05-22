@@ -268,7 +268,7 @@ func TestSkillTool_NotRegisteredWithoutLookup(t *testing.T) {
 	}
 }
 
-func TestSkillTool_ForkMode_DepthExceeded(t *testing.T) {
+func TestSkillTool_ForkMode_DisallowNestedFork(t *testing.T) {
 	lookup := &mockSkillLookup{
 		skills: map[string]*SkillInfo{
 			"fork-skill": {
@@ -291,10 +291,10 @@ func TestSkillTool_ForkMode_DepthExceeded(t *testing.T) {
 
 	ctx := builtin_tools.WithToolRuntime(context.Background(), builtin_tools.ToolRuntimeInfo{
 		Emitter:    NewDummyEmitter(),
-		StackDepth: 3,
+		StackDepth: 1,
 	})
 	_, err = tool.Execute(ctx, map[string]any{"skill": "fork-skill"})
 	if err == nil {
-		t.Fatal("expected depth exceeded error for fork mode")
+		t.Fatal("expected error when sub-agent tries to fork a skill")
 	}
 }
