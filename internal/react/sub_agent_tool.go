@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	maxSubAgentDepth       = 3
 	defaultSubAgentMaxIter = 500
 )
 
@@ -64,8 +63,8 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 	}
 
 	runtime, _ := builtin_tools.GetToolRuntime(ctx)
-	if runtime.StackDepth >= maxSubAgentDepth {
-		return "", fmt.Errorf("sub_agent recursion depth exceeded: current=%d, max=%d", runtime.StackDepth, maxSubAgentDepth)
+	if runtime.StackDepth > 0 {
+		return "", fmt.Errorf("sub_agent is disabled inside sub-agents (stack_depth=%d)", runtime.StackDepth)
 	}
 
 	instruction, err := argx.RequiredText(args, "instruction")

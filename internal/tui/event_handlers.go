@@ -146,7 +146,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeThink:
 		m.flushStreamAndPersist()
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
-			if m.runtimePhase == "step_replan" {
+			if m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer" {
 				m.thinkingPanel.UpdateLastEntry(formatStepReplanPanelText(thinkDelta))
 			} else if m.isStructuredOutputPhase() {
 				m.thinkingPanel.UpdateLastEntry("thinking...")
@@ -185,13 +185,15 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				phaseStatus = "summarizing step..."
 			case "final_answer":
 				phaseStatus = "composing answer..."
+			case "step_outcomes_reducer":
+				phaseStatus = "compressing history..."
 			case "plan":
 				phaseStatus = "planning..."
 			case "step":
 				phaseStatus = "executing step..."
 			}
 			switch phase {
-			case "step_replan", "step_summary", "final_answer":
+			case "step_replan", "step_summary", "final_answer", "step_outcomes_reducer":
 				m.thinkingPanel.Show(phase)
 				if statusSummary != "" {
 					m.thinkingPanel.PushEntry(phase, statusSummary)
@@ -483,7 +485,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 func (m *Model) isStructuredOutputPhase() bool {
 	switch m.runtimePhase {
-	case "step_replan", "step_summary", "final_answer":
+	case "step_replan", "step_summary", "final_answer", "step_outcomes_reducer":
 		return true
 	}
 	return false

@@ -18,7 +18,7 @@ var stepOutcomesReducerPrompt string
 
 const (
 	stepOutcomesReducerKeepLast    = 3
-	stepOutcomesReducerBudgetRatio = 0.8
+	stepOutcomesReducerBudgetRatio = 0.4
 )
 
 type reducedStepOutcome struct {
@@ -32,6 +32,9 @@ type reducedStepOutcome struct {
 	References      []string `json:"references,omitempty"`
 	StatusSummary   string   `json:"status_summary,omitempty"`
 	Error           string   `json:"error,omitempty"`
+	SummaryFile     string   `json:"summary_file,omitempty"`
+	ResultFile      string   `json:"result_file,omitempty"`
+	TimelineFile    string   `json:"timeline_file,omitempty"`
 }
 
 func stepOutcomesExceedBudget(client ai.ChatClient, outcomes []*builtin_tools.StepOutcome) (totalTokens int, tokenBudget int, exceeded bool) {
@@ -106,6 +109,14 @@ func (a *Agent) reduceStepOutcomesInState(ctx context.Context, client ai.ChatCli
 		return
 	}
 
+	origPhase := snapshot.Phase
+	_ = a.state.SetPhase(builtin_tools.AgentPhaseStepOutcomesReducer)
+	a.emitter.EmitStateChange(a.state.Snapshot())
+	defer func() {
+		_ = a.state.SetPhase(origPhase)
+		a.emitter.EmitStateChange(a.state.Snapshot())
+	}()
+
 	a.emitter.EmitLogPayload(map[string]any{
 		"event": "step_outcomes_reducing",
 		"total": len(outcomes),
@@ -176,6 +187,9 @@ func parseReducedOutcomes(raw string) ([]*builtin_tools.StepOutcome, error) {
 			References:      r.References,
 			StatusSummary:   strings.TrimSpace(r.StatusSummary),
 			Error:           strings.TrimSpace(r.Error),
+			SummaryFile:     strings.TrimSpace(r.SummaryFile),
+			ResultFile:      strings.TrimSpace(r.ResultFile),
+			TimelineFile:    strings.TrimSpace(r.TimelineFile),
 		})
 	}
 	return out, nil

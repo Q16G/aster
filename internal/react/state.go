@@ -472,7 +472,9 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.ArtifactDir = strings.TrimSpace(update.ArtifactDir)
 	update.SummaryFile = strings.TrimSpace(update.SummaryFile)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
+	update.TimelineFile = strings.TrimSpace(update.TimelineFile)
 	update.ContextKey = strings.TrimSpace(update.ContextKey)
+	update.Namespace = strings.TrimSpace(update.Namespace)
 	update.CurrentGoal = strings.TrimSpace(update.CurrentGoal)
 	update.References = normalizeReferences(update.References)
 	update.Warnings = normalizeReferences(update.Warnings)
@@ -489,7 +491,13 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		outcome.ArtifactDir = update.ArtifactDir
 		outcome.SummaryFile = update.SummaryFile
 		outcome.ResultFile = update.ResultFile
+		outcome.TimelineFile = update.TimelineFile
 		outcome.ContextKey = update.ContextKey
+		outcome.Namespace = update.Namespace
+		outcome.PlanVersion = update.PlanVersion
+		outcome.TranscriptBlobRef = update.TranscriptBlobRef
+		outcome.InheritedContextKeys = builtin_tools.CloneStringSlice(update.InheritedContextKeys)
+		outcome.InheritedRefIDs = builtin_tools.CloneStringSlice(update.InheritedRefIDs)
 		outcome.References = normalizeReferences(append(outcome.References, update.References...))
 		outcome.UpdatedAt = time.Now()
 		break
@@ -520,11 +528,18 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 }
 
 type stepReplanUpdate struct {
-	ArtifactDir string
-	SummaryFile string
-	ResultFile  string
-	ContextKey  string
-	References  []string
+	ArtifactDir  string
+	SummaryFile  string
+	ResultFile   string
+	TimelineFile string
+	ContextKey   string
+	References   []string
+
+	Namespace            string
+	PlanVersion          int
+	TranscriptBlobRef    string
+	InheritedContextKeys []string
+	InheritedRefIDs      []string
 
 	CurrentGoal   string
 	Warnings      []string

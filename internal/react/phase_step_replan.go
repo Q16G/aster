@@ -195,15 +195,30 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
 
+	var timelineFile string
+	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
+		timelineFile = stepTimelineRelPath(stepID)
+	}
+
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+
 	snapshot = a.state.ApplyStepReplan(stepID, stepReplanUpdate{
-		ArtifactDir:   artifactDir,
-		ContextKey:    contextKey,
-		CurrentGoal:   summaryGoal,
-		Warnings:      replanWarnings,
-		Unresolved:    replanMissingItems,
-		ReplanContext: replanContext,
-		NextPhase:     nextPhase,
+		ArtifactDir:       artifactDir,
+		ContextKey:        contextKey,
+		TimelineFile:      timelineFile,
+		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
+		PlanVersion:       planVersion,
+		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
+		CurrentGoal:       summaryGoal,
+		Warnings:          replanWarnings,
+		Unresolved:        replanMissingItems,
+		ReplanContext:     replanContext,
+		NextPhase:         nextPhase,
 	})
+	a.lastStepTranscriptBlobRef = ""
 
 	a.appendStepContextRecord(stepID, snapshot)
 
@@ -249,30 +264,8 @@ func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.St
 	if outcome == nil {
 		return
 	}
-	planVersion := snapshot.PlanVersion
-	if planVersion <= 0 {
-		planVersion = 1
-	}
-	var timelineFile string
-	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
-		timelineFile = stepTimelineRelPath(stepID)
-	}
-	record := &builtin_tools.StepContextRecord{
-		ContextKey:        strings.TrimSpace(outcome.ContextKey),
-		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
-		StepID:            stepID,
-		PlanVersion:       planVersion,
-		ShortSummary:      strings.TrimSpace(outcome.ShortSummary),
-		KeyFacts:          builtin_tools.CloneStringSlice(outcome.KeyFacts),
-		ToolCallsDigest:   builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
-		References:        builtin_tools.CloneStringSlice(outcome.References),
-		SummaryFile:       strings.TrimSpace(outcome.SummaryFile),
-		ResultFile:        strings.TrimSpace(outcome.ResultFile),
-		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
-		TimelineFile:      timelineFile,
-		CreatedAt:         time.Now(),
-	}
-	a.lastStepTranscriptBlobRef = ""
+	record := outcome.ToContextRecord()
+	record.CreatedAt = time.Now()
 	if err := a.workspaceRuntime.AppendStepContextRecords(
 		[]*builtin_tools.StepContextRecord{record},
 	); err != nil {
