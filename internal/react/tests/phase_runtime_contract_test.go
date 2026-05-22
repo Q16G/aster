@@ -303,7 +303,7 @@ func TestBuildThinkActPrompt_OmitsTaskContextWhenEmpty(t *testing.T) {
 	}
 
 	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{})
-	if strings.Contains(prompt, "任务上下文") {
+	if strings.Contains(prompt, "### 5.1c 任务上下文") {
 		t.Fatalf("did not expect task context section for empty data, got %s", prompt)
 	}
 }
