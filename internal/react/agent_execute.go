@@ -1244,28 +1244,46 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		}
 	}
 
-	if streamingClient, ok := runClient.(ai.StreamingChatClient); ok {
-		return a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, requestOptions, tools...)
+	const emptyResponseMaxRetries = 5
+
+	for attempt := 0; attempt <= emptyResponseMaxRetries; attempt++ {
+		var result *aiCallProxyResult
+		var err error
+
+		if streamingClient, ok := runClient.(ai.StreamingChatClient); ok {
+			result, err = a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, requestOptions, tools...)
+		} else {
+			choices, callErr := ai.ChatExWithOptions(ctx, runClient, msgs, requestOptions, tools...)
+			if callErr != nil {
+				return nil, callErr
+			}
+			if len(choices) == 0 || choices[0] == nil || choices[0].Message == nil {
+				result = &aiCallProxyResult{}
+			} else {
+				result, err = a.finalizeAIChoice(ctx, iter, runClient, choices[0], requestOptions, true)
+			}
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		if len(result.ToolCalls) == 0 && strings.TrimSpace(result.AssistantText) == "" {
+			if attempt < emptyResponseMaxRetries {
+				a.emitRuntimeLog("warn", fmt.Sprintf("AI returned empty response, retrying (%d/%d)", attempt+1, emptyResponseMaxRetries),
+					a.state.Snapshot(), map[string]any{"attempt": attempt + 1})
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(attempt+1) * time.Second):
+				}
+				continue
+			}
+		}
+
+		return result, nil
 	}
-
-	var choices []*ai.ChatChoices
-	var err error
-
-	choices, err = ai.ChatExWithOptions(ctx, runClient, msgs, requestOptions, tools...)
-
-	if err != nil {
-		return nil, err
-	}
-	if len(choices) == 0 {
-		return &aiCallProxyResult{}, nil
-	}
-
-	choice := choices[0]
-	if choice == nil || choice.Message == nil {
-		return &aiCallProxyResult{}, nil
-	}
-
-	return a.finalizeAIChoice(ctx, iter, runClient, choice, requestOptions, true)
+	return &aiCallProxyResult{}, nil
 }
 
 func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
