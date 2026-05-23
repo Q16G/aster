@@ -65,15 +65,17 @@ type ToolPart struct {
 }
 
 type PlanPart struct {
-	AgentName   string         `json:"agent_name,omitempty"`
-	Explanation string         `json:"explanation,omitempty"`
-	Items       []PlanItemView `json:"items,omitempty"`
+	AgentName    string         `json:"agent_name,omitempty"`
+	ParentStepID string         `json:"parent_step_id,omitempty"`
+	Explanation  string         `json:"explanation,omitempty"`
+	Items        []PlanItemView `json:"items,omitempty"`
 }
 
 type PlanItemView struct {
 	ID     string `json:"id,omitempty"`
 	Step   string `json:"step"`
 	Status string `json:"status"`
+	Depth  int    `json:"depth,omitempty"`
 }
 
 type SystemPart struct {
