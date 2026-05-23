@@ -64,7 +64,7 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 - 全量审计时，分析手段和顺序根据项目实际情况和可用工具集灵活安排，必须满足 P0 Router 定义的 MUST 覆盖维度`
 
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		UserInstruction: agentInstruction,
+		AgentInstruction: agentInstruction,
 	})
 	if planInput == "" {
 		t.Fatal("PlannerInputFromSnapshot returned empty")

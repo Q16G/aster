@@ -112,6 +112,7 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 
 	opts := []Option{
 		WithInstruction(def.BuildInstruction()),
+		WithAgentIdentity(def.Role, def.Background),
 		WithEmitter(f.resolveEmitter(def.Name)),
 	}
 

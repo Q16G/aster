@@ -155,8 +155,10 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	snapshot = a.state.Snapshot()
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		UserInstruction:    strings.TrimSpace(a.cfg.Instruction),
-		ExtraContext:       strings.TrimSpace(extraText),
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
+		HandoffContext:     strings.TrimSpace(extraText),
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
 	})
@@ -447,8 +449,10 @@ func parseSubmitPlanArgs(args any) (*builtin_tools.TaskPlannerResult, error) {
 }
 
 type PlannerInputOptions struct {
-	UserInstruction    string
-	ExtraContext       string
+	AgentRole        string
+	AgentBackground  string
+	AgentInstruction string
+	HandoffContext   string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
 }
@@ -487,24 +491,21 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 		return ""
 	}
 
-	opts.UserInstruction = strings.TrimSpace(opts.UserInstruction)
-	opts.ExtraContext = strings.TrimSpace(opts.ExtraContext)
+	opts.AgentRole = strings.TrimSpace(opts.AgentRole)
+	opts.AgentBackground = strings.TrimSpace(opts.AgentBackground)
+	opts.AgentInstruction = strings.TrimSpace(opts.AgentInstruction)
+	opts.HandoffContext = strings.TrimSpace(opts.HandoffContext)
 	opts.WorkspaceRootDir = strings.TrimSpace(opts.WorkspaceRootDir)
 	opts.WorkspaceNamespace = strings.TrimSpace(opts.WorkspaceNamespace)
 
-	var builder strings.Builder
-
-	if opts.UserInstruction != "" {
-		builder.WriteString("<USER_INSTRUCTION>\n")
-		builder.WriteString(opts.UserInstruction)
-		builder.WriteString("\n</USER_INSTRUCTION>\n\n")
-	}
-	if opts.ExtraContext != "" {
-		builder.WriteString("<HANDOFF_CONTEXT>\n")
-		builder.WriteString(opts.ExtraContext)
-		builder.WriteString("\n</HANDOFF_CONTEXT>\n\n")
+	data := plannerInputData{
+		AgentRole:        opts.AgentRole,
+		AgentBackground:  opts.AgentBackground,
+		AgentInstruction: opts.AgentInstruction,
+		HandoffContext:   opts.HandoffContext,
 	}
 
+	// Build INPUT_TIMELINE
 	lines := make([]string, 0, len(snapshot.InputTimeline))
 	for _, item := range snapshot.InputTimeline {
 		if item == nil {
@@ -523,168 +524,178 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	if len(lines) == 0 {
 		return ""
 	}
-	builder.WriteString("<INPUT_TIMELINE>\n")
-	builder.WriteString("用户输入时间线：\n")
-	builder.WriteString(strings.Join(lines, "\n"))
-	builder.WriteString("\n</INPUT_TIMELINE>\n")
+	data.InputTimeline = strings.Join(lines, "\n")
 
+	// TASK_ITEMS
 	if len(snapshot.Plan) > 0 {
-		builder.WriteString("\n\n<TASK_ITEMS>\n")
-		builder.WriteString(prettyJSON(snapshot.Plan))
-		builder.WriteString("\n</TASK_ITEMS>\n")
+		data.TaskItemsJSON = prettyJSON(snapshot.Plan)
 	}
+
+	// REPLAN_CONTEXT
 	if snapshot.ReplanContext != nil {
-		builder.WriteString("\n\n<REPLAN_CONTEXT>\n")
-		builder.WriteString(prettyJSON(snapshot.ReplanContext))
-		builder.WriteString("\n</REPLAN_CONTEXT>\n")
+		data.ReplanContextJSON = prettyJSON(snapshot.ReplanContext)
 	}
 
-	// Execution line: summarize the latest known outcomes without dumping raw results.
+	// EXECUTION_LINE
 	if len(snapshot.StepOutcomes) > 0 || len(snapshot.Plan) > 0 || strings.TrimSpace(snapshot.CurrentStepID) != "" || strings.TrimSpace(snapshot.CurrentGoal) != "" {
-		outcomesByID := make(map[string]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
-		for _, outcome := range snapshot.StepOutcomes {
-			if outcome == nil {
-				continue
-			}
-			stepID := strings.TrimSpace(outcome.StepID)
-			if stepID == "" {
-				continue
-			}
-			prev := outcomesByID[stepID]
-			if prev == nil || outcome.UpdatedAt.After(prev.UpdatedAt) {
-				outcomesByID[stepID] = outcome
-			}
-		}
-		views := make([]plannerStepOutcomeView, 0, len(outcomesByID))
-		addView := func(stepID string, outcome *builtin_tools.StepOutcome) {
-			if outcome == nil {
-				return
-			}
-			short := strings.TrimSpace(outcome.ShortSummary)
-			if short == "" {
-				short = strings.TrimSpace(outcome.StatusSummary)
-			}
-			if short == "" {
-				short = strings.TrimSpace(outcome.Summary)
-			}
-			if short == "" {
-				short = strings.TrimSpace(outcome.DisplayResult)
-			}
-			view := plannerStepOutcomeView{
-				StepID:        strings.TrimSpace(outcome.StepID),
-				Status:        strings.TrimSpace(string(outcome.Status)),
-				UpdatedAt:     outcome.UpdatedAt.Format(time.RFC3339),
-				ShortSummary:  short,
-				LongSummary:   strings.TrimSpace(outcome.LongSummary),
-				KeyFacts:      cloneAndTruncateStrings(outcome.KeyFacts, 20, 240),
-				OpenQuestions: cloneAndTruncateStrings(outcome.OpenQuestions, 12, 240),
-				References:    builtin_tools.CloneStringSlice(outcome.References),
-				SummaryFile:   strings.TrimSpace(outcome.SummaryFile),
-				ResultFile:    strings.TrimSpace(outcome.ResultFile),
-				ContextKey:    strings.TrimSpace(outcome.ContextKey),
-			}
-			if len(view.KeyFacts) == 0 {
-				view.KeyFacts = nil
-			}
-			if len(view.OpenQuestions) == 0 {
-				view.OpenQuestions = nil
-			}
-			if len(view.References) == 0 {
-				view.References = nil
-			}
-			views = append(views, view)
-		}
-
-		// Stable ordering: follow current plan order first, then append remaining outcomes.
-		seen := make(map[string]struct{}, len(outcomesByID))
-		for _, it := range snapshot.Plan {
-			if it == nil {
-				continue
-			}
-			stepID := strings.TrimSpace(it.ID)
-			if stepID == "" {
-				continue
-			}
-			outcome := outcomesByID[stepID]
-			if outcome == nil {
-				continue
-			}
-			addView(stepID, outcome)
-			seen[stepID] = struct{}{}
-		}
-		for stepID, outcome := range outcomesByID {
-			if outcome == nil {
-				continue
-			}
-			if _, ok := seen[stepID]; ok {
-				continue
-			}
-			addView(stepID, outcome)
-		}
-
-		executionLine := map[string]any{
-			"phase":           strings.TrimSpace(string(snapshot.Phase)),
-			"status":          strings.TrimSpace(string(snapshot.Status)),
-			"plan_version":    snapshot.PlanVersion,
-			"progress":        snapshot.Progress,
-			"needs_planning":  snapshot.NeedsPlanning,
-			"current_goal":    strings.TrimSpace(snapshot.CurrentGoal),
-			"current_step_id": strings.TrimSpace(snapshot.CurrentStepID),
-			"warnings":        snapshot.Warnings,
-			"unresolved":      snapshot.Unresolved,
-			"step_outcomes":   views,
-		}
-		builder.WriteString("\n\n<EXECUTION_LINE>\n")
-		builder.WriteString(prettyJSON(executionLine))
-		builder.WriteString("\n</EXECUTION_LINE>\n")
+		executionLineJSON := buildExecutionLineJSON(snapshot)
+		data.ExecutionLineJSON = executionLineJSON
+		data.HasExecutionLine = true
 	}
 
-	// Include a compact execution lineage index so the planner can see child-agent/local contexts.
+	// WORKSPACE_STEP_CONTEXTS
 	if opts.WorkspaceRootDir != "" && (len(snapshot.StepOutcomes) > 0 || len(snapshot.Plan) > 0) {
-		if records, err := builtin_tools.LoadWorkspaceStepContextRecords(opts.WorkspaceRootDir, 60); err == nil && len(records) > 0 {
-			views := make([]plannerStepContextView, 0, len(records))
-			for _, rec := range records {
-				if rec == nil {
-					continue
-				}
-				view := plannerStepContextView{
-					ContextKey:           strings.TrimSpace(rec.ContextKey),
-					Namespace:            strings.TrimSpace(rec.Namespace),
-					StepID:               strings.TrimSpace(rec.StepID),
-					PlanVersion:          rec.PlanVersion,
-					AgentProfile:         strings.TrimSpace(rec.AgentProfile),
-					ShortSummary:         truncateByRunes(strings.TrimSpace(rec.ShortSummary), 300),
-					KeyFacts:             cloneAndTruncateStrings(rec.KeyFacts, 16, 240),
-					ResultKeys:           builtin_tools.CloneStringSlice(rec.ResultKeys),
-					SummaryFile:          strings.TrimSpace(rec.SummaryFile),
-					ResultFile:           strings.TrimSpace(rec.ResultFile),
-					References:           builtin_tools.CloneStringSlice(rec.References),
-					InheritedContextKeys: builtin_tools.CloneStringSlice(rec.InheritedContextKeys),
-				}
-				if len(view.KeyFacts) == 0 {
-					view.KeyFacts = nil
-				}
-				if len(view.ResultKeys) == 0 {
-					view.ResultKeys = nil
-				}
-				if len(view.References) == 0 {
-					view.References = nil
-				}
-				if len(view.InheritedContextKeys) == 0 {
-					view.InheritedContextKeys = nil
-				}
-				views = append(views, view)
-			}
-			builder.WriteString("\n\n<WORKSPACE_STEP_CONTEXTS>\n")
-			builder.WriteString(prettyJSON(map[string]any{
-				"workspace_namespace": builtin_tools.NormalizeWorkspaceNamespace(opts.WorkspaceNamespace),
-				"records":             views,
-			}))
-			builder.WriteString("\n</WORKSPACE_STEP_CONTEXTS>\n")
+		if ctxJSON := buildWorkspaceContextsJSON(opts.WorkspaceRootDir, opts.WorkspaceNamespace); ctxJSON != "" {
+			data.WorkspaceContextsJSON = ctxJSON
+			data.HasWorkspaceContexts = true
 		}
 	}
 
-	return builder.String()
+	var buf strings.Builder
+	if err := plannerInputTmpl.Execute(&buf, data); err != nil {
+		// Fallback: should never happen with a valid template
+		return ""
+	}
+	return buf.String()
+}
+
+func buildExecutionLineJSON(snapshot builtin_tools.StateSnapshot) string {
+	outcomesByID := make(map[string]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
+	for _, outcome := range snapshot.StepOutcomes {
+		if outcome == nil {
+			continue
+		}
+		stepID := strings.TrimSpace(outcome.StepID)
+		if stepID == "" {
+			continue
+		}
+		prev := outcomesByID[stepID]
+		if prev == nil || outcome.UpdatedAt.After(prev.UpdatedAt) {
+			outcomesByID[stepID] = outcome
+		}
+	}
+	views := make([]plannerStepOutcomeView, 0, len(outcomesByID))
+	addView := func(outcome *builtin_tools.StepOutcome) {
+		if outcome == nil {
+			return
+		}
+		short := strings.TrimSpace(outcome.ShortSummary)
+		if short == "" {
+			short = strings.TrimSpace(outcome.StatusSummary)
+		}
+		if short == "" {
+			short = strings.TrimSpace(outcome.Summary)
+		}
+		if short == "" {
+			short = strings.TrimSpace(outcome.DisplayResult)
+		}
+		view := plannerStepOutcomeView{
+			StepID:        strings.TrimSpace(outcome.StepID),
+			Status:        strings.TrimSpace(string(outcome.Status)),
+			UpdatedAt:     outcome.UpdatedAt.Format(time.RFC3339),
+			ShortSummary:  short,
+			LongSummary:   strings.TrimSpace(outcome.LongSummary),
+			KeyFacts:      cloneAndTruncateStrings(outcome.KeyFacts, 20, 240),
+			OpenQuestions: cloneAndTruncateStrings(outcome.OpenQuestions, 12, 240),
+			References:    builtin_tools.CloneStringSlice(outcome.References),
+			SummaryFile:   strings.TrimSpace(outcome.SummaryFile),
+			ResultFile:    strings.TrimSpace(outcome.ResultFile),
+			ContextKey:    strings.TrimSpace(outcome.ContextKey),
+		}
+		if len(view.KeyFacts) == 0 {
+			view.KeyFacts = nil
+		}
+		if len(view.OpenQuestions) == 0 {
+			view.OpenQuestions = nil
+		}
+		if len(view.References) == 0 {
+			view.References = nil
+		}
+		views = append(views, view)
+	}
+
+	seen := make(map[string]struct{}, len(outcomesByID))
+	for _, it := range snapshot.Plan {
+		if it == nil {
+			continue
+		}
+		stepID := strings.TrimSpace(it.ID)
+		if stepID == "" {
+			continue
+		}
+		outcome := outcomesByID[stepID]
+		if outcome == nil {
+			continue
+		}
+		addView(outcome)
+		seen[stepID] = struct{}{}
+	}
+	for _, outcome := range outcomesByID {
+		if outcome == nil {
+			continue
+		}
+		if _, ok := seen[strings.TrimSpace(outcome.StepID)]; ok {
+			continue
+		}
+		addView(outcome)
+	}
+
+	return prettyJSON(map[string]any{
+		"phase":           strings.TrimSpace(string(snapshot.Phase)),
+		"status":          strings.TrimSpace(string(snapshot.Status)),
+		"plan_version":    snapshot.PlanVersion,
+		"progress":        snapshot.Progress,
+		"needs_planning":  snapshot.NeedsPlanning,
+		"current_goal":    strings.TrimSpace(snapshot.CurrentGoal),
+		"current_step_id": strings.TrimSpace(snapshot.CurrentStepID),
+		"warnings":        snapshot.Warnings,
+		"unresolved":      snapshot.Unresolved,
+		"step_outcomes":   views,
+	})
+}
+
+func buildWorkspaceContextsJSON(workspaceRootDir, workspaceNamespace string) string {
+	records, err := builtin_tools.LoadWorkspaceStepContextRecords(workspaceRootDir, 60)
+	if err != nil || len(records) == 0 {
+		return ""
+	}
+	views := make([]plannerStepContextView, 0, len(records))
+	for _, rec := range records {
+		if rec == nil {
+			continue
+		}
+		view := plannerStepContextView{
+			ContextKey:           strings.TrimSpace(rec.ContextKey),
+			Namespace:            strings.TrimSpace(rec.Namespace),
+			StepID:               strings.TrimSpace(rec.StepID),
+			PlanVersion:          rec.PlanVersion,
+			AgentProfile:         strings.TrimSpace(rec.AgentProfile),
+			ShortSummary:         truncateByRunes(strings.TrimSpace(rec.ShortSummary), 300),
+			KeyFacts:             cloneAndTruncateStrings(rec.KeyFacts, 16, 240),
+			ResultKeys:           builtin_tools.CloneStringSlice(rec.ResultKeys),
+			SummaryFile:          strings.TrimSpace(rec.SummaryFile),
+			ResultFile:           strings.TrimSpace(rec.ResultFile),
+			References:           builtin_tools.CloneStringSlice(rec.References),
+			InheritedContextKeys: builtin_tools.CloneStringSlice(rec.InheritedContextKeys),
+		}
+		if len(view.KeyFacts) == 0 {
+			view.KeyFacts = nil
+		}
+		if len(view.ResultKeys) == 0 {
+			view.ResultKeys = nil
+		}
+		if len(view.References) == 0 {
+			view.References = nil
+		}
+		if len(view.InheritedContextKeys) == 0 {
+			view.InheritedContextKeys = nil
+		}
+		views = append(views, view)
+	}
+	return prettyJSON(map[string]any{
+		"workspace_namespace": builtin_tools.NormalizeWorkspaceNamespace(workspaceNamespace),
+		"records":             views,
+	})
 }
 
 func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.PlanItem) []*builtin_tools.PlanItem {
@@ -693,6 +704,7 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 	}
 	merged := make([]*builtin_tools.PlanItem, 0, len(prev)+len(next))
 	preserved := make(map[string]struct{}, len(prev))
+	preservedText := make(map[string]struct{}, len(prev))
 	for _, item := range prev {
 		if item == nil || (item.Status != builtin_tools.PlanStepCompleted && item.Status != builtin_tools.PlanStepInProgress) {
 			continue
@@ -707,6 +719,9 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		if clone.ID != "" {
 			preserved[clone.ID] = struct{}{}
 		}
+		if norm := normalizeStepText(clone.Step); norm != "" {
+			preservedText[norm] = struct{}{}
+		}
 	}
 	for _, item := range next {
 		if item == nil {
@@ -718,12 +733,33 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 				continue
 			}
 		}
+		if norm := normalizeStepText(item.Step); norm != "" {
+			if _, exists := preservedText[norm]; exists {
+				continue
+			}
+		}
 		merged = append(merged, item)
 	}
 	if len(merged) == 0 {
 		return next
 	}
 	return merged
+}
+
+var stepTextNormalizer = strings.NewReplacer(
+	"：", ":", "（", "(", "）", ")", "，", ",",
+	"。", ".", "；", ";",
+)
+
+func normalizeStepText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	s = strings.ToLower(s)
+	s = stepTextNormalizer.Replace(s)
+	s = strings.Join(strings.Fields(s), " ")
+	return s
 }
 
 func truncateByRunes(text string, maxRunes int) string {
