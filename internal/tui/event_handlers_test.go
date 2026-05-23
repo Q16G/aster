@@ -886,3 +886,121 @@ func TestRenderTodoSection_CollapseCompletedSubtree(t *testing.T) {
 		t.Error("expected 综合报告 to be visible")
 	}
 }
+
+// TestBuildSidebarSnapshot_ReplanDuplication reproduces the sidebar duplication
+// bug: when the root agent replans and incorporates sub-agent's completed items
+// into its own plan, those items appear TWICE — once nested under the parent
+// step (via sub-agent plan) and once at depth 0 (in root plan).
+func TestBuildSidebarSnapshot_ReplanDuplication(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "code-audit"},
+		},
+	})
+
+	// 1. Root agent creates initial plan
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "code-audit",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "sast-scan", "step": "SAST 漏洞扫描", "status": "completed"},
+				map[string]any{"id": "dataflow", "step": "对 SAST 高价值候选漏洞进行数据流分析", "status": "pending"},
+				map[string]any{"id": "report", "step": "综合安全报告", "status": "pending"},
+			},
+		},
+	})
+
+	// 2. Root starts dataflow step
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskItem, AgentName: "code-audit",
+		Payload: map[string]any{"id": "dataflow", "status": "in_progress"},
+	})
+
+	// 3. Root spawns sub-agent for dataflow analysis
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeToolStart, AgentName: "code-audit",
+		Payload: map[string]any{
+			"tool_name": "sub_agent", "call_id": "call_00_abc", "is_agent": true,
+		},
+	})
+
+	// 4. Sub-agent creates its own plan (nested under "dataflow")
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "sub-call_00_abc",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "id-1", "step": "读取全部 10 个 Controller", "status": "pending"},
+				map[string]any{"id": "id-2", "step": "逐文件追踪 Controller 数据流", "status": "pending"},
+				map[string]any{"id": "id-3", "step": "汇总全部 10 个 Controller 分析结果", "status": "pending"},
+			},
+		},
+	})
+
+	// 5. Sub-agent completes all items
+	for _, id := range []string{"id-1", "id-2", "id-3"} {
+		m.handleAgentEvent(&react.AgentOutputEvent{
+			Type: react.EventTypeTaskItem, AgentName: "sub-call_00_abc",
+			Payload: map[string]any{"id": id, "status": "in_progress"},
+		})
+		m.handleAgentEvent(&react.AgentOutputEvent{
+			Type: react.EventTypeTaskItem, AgentName: "sub-call_00_abc",
+			Payload: map[string]any{"id": id, "status": "completed"},
+		})
+	}
+
+	// 6. Root agent REPLANS — LLM incorporates sub-agent's completed items
+	//    into the root plan (this is the scenario that causes duplication)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "code-audit",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "sast-scan", "step": "SAST 漏洞扫描", "status": "completed"},
+				map[string]any{"id": "dataflow", "step": "对 SAST 高价值候选漏洞进行数据流分析", "status": "completed"},
+				// LLM copies sub-agent items into root plan:
+				map[string]any{"id": "read-ctrl", "step": "读取全部 10 个 Controller", "status": "completed"},
+				map[string]any{"id": "trace-ctrl", "step": "逐文件追踪 Controller 数据流", "status": "completed"},
+				map[string]any{"id": "summary-ctrl", "step": "汇总全部 10 个 Controller 分析结果", "status": "completed"},
+				map[string]any{"id": "final-report", "step": "综合安全报告", "status": "pending"},
+			},
+		},
+	})
+
+	snap := m.buildSidebarSnapshot()
+
+	// Log what we see
+	t.Logf("\n=== Sidebar PlanItems (total=%d) ===", len(snap.PlanItems))
+	stepCounts := map[string]int{}
+	for i, item := range snap.PlanItems {
+		indent := strings.Repeat("  ", item.Depth+1)
+		icon := "○"
+		switch item.Status {
+		case "completed":
+			icon = "✓"
+		case "in_progress":
+			icon = "▸"
+		}
+		t.Logf("%s%s %s (id=%s, depth=%d)", indent, icon, item.Step, item.ID, item.Depth)
+		stepCounts[item.Step]++
+		_ = i
+	}
+
+	// Check for duplicated step text
+	hasDuplicates := false
+	for step, count := range stepCounts {
+		if count > 1 {
+			t.Errorf("DUPLICATE: step %q appears %d times", step, count)
+			hasDuplicates = true
+		}
+	}
+	if hasDuplicates {
+		t.Logf("\n>>> BUG REPRODUCED: sub-agent items appear both nested (depth=1) and in root plan (depth=0)")
+	}
+
+	// Render the sidebar for visual inspection
+	sidebar := NewSidebarModel()
+	sidebar.SetSize(60, 40)
+	sidebar.SetSnapshot(snap)
+	var sb strings.Builder
+	sidebar.renderTodoSection(&sb, 60)
+	t.Logf("\n=== Rendered Sidebar ===\n%s", sb.String())
+}
