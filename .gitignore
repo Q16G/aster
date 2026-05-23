@@ -12,3 +12,4 @@
 dist/
 tmp/
 .ai/
+**/sub_agents/
