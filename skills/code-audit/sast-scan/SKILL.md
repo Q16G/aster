@@ -183,7 +183,7 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 - `dataflow-analysis`
 - 或 `business-logic-auth-review`
 
-## 推荐输出模板
+## 输出模板（必须遵循）
 
 ```text
 ## SAST 扫描报告
@@ -200,15 +200,40 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
   - Templates: 6
 - 扫描缺口：<若有>
 
-### 高置信结果
-- ...
+### 高置信结果（逐条列出，每个 finding 独占一行）
 
-### 需要数据流确认
-- ...
+#### CWE-22 路径穿越 / 任意文件下载（N 条）
+- [high_confidence] path-traversal: 文件下载路径拼接 @ AccTransactionController.java:102 (source: request.getParameter("filePath"), sink: new File())
+- [high_confidence] path-traversal: 文件下载路径拼接 @ AccTransactionController.java:158 (source: request.getParameter("name"), sink: FileInputStream())
+- [high_confidence] path-traversal: 文件下载路径拼接 @ PersPersonController.java:545 (source: params.get("photo"), sink: new File())
+（此处为模板示意，实际输出时必须逐条列完所有 finding，不得省略）
 
-### 高噪声结果
-- ...
+#### CWE-89 SQL 注入（N 条）
+- [high_confidence] sql-injection: MyBatis ${} 动态拼接 @ UserMapper.xml:42 (source: ${name}, sink: SELECT)
+- [high_confidence] sql-injection: MyBatis ${} 动态排序 @ OrderMapper.xml:78 (source: ${orderBy}, sink: ORDER BY)
+（此处为模板示意，实际输出时必须逐条列完所有 finding，不得省略）
+
+### 需要数据流确认（逐条列出）
+- [needs_dataflow] deserialization: ObjectInputStream.readObject @ MsgHandler.java:88 (source: socket input, sink: readObject)
+（此处为模板示意，实际输出时必须逐条列完，不得省略）
+
+### 高噪声结果（逐条列出）
+- [high_noise] ssti-pattern: 模板变量输出 @ views/user.ftl:12 (source: model.name, sink: ${})
+（此处为模板示意，实际输出时必须逐条列完，不得省略）
 ```
+
+> **格式要求**：每个 finding 独占一行，格式为 `- [桶名] <rule_id>: <简述> @ <file>:<line> (source: <source_expr>, sink: <sink_expr>)`。按 CWE 分组便于阅读，但每条必须独立列出。总数必须与逐条列出的条目数一致。
+
+### 反例（禁止以下写法）
+
+```text
+### 高置信结果
+- 高置信 50 处任意文件下载 + 13 处路径穿越，分布在 AccTransactionController、
+  PersPersonController、BaseController、IvsSnapController、SystemController 等
+- 发现 8 处 SQL 注入，主要集中在 mapper 层
+```
+
+> 问题：聚合计数（"50 处 + 13 处"）丢失了 63 个具体位置；"等"省略了剩余 Controller；"8 处 SQL 注入"只有计数没有逐条列出。
 
 ## 禁止事项
 
@@ -216,3 +241,5 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 - 不要把高噪声 SSTI/JNDI 直接混进主结论
 - 不要因为 `--lang java` 就只看 `*.java`，忽略 XML / 配置 / 模板
 - 不要在 XML mapper 没扫到时，仍宣称 SQL 注入已被完整覆盖
+- 不要将多个 finding 合并为聚合计数（如"50 处任意文件下载 + 13 处路径穿越"），每个 finding 必须独占一行，包含 file:line
+- 不要用"等"、"..."、"（略）"、"（其余 N 条略）"等方式省略 finding 列表中的条目，所有发现必须完整枚举
