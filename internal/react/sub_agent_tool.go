@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultSubAgentMaxIter = 500
+	defaultSubAgentMaxIter = 1000
 )
 
 type SubAgentTool struct {
@@ -116,11 +116,15 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 
 	t.preRegisterChildAgent(runtime, childName, childRootDir)
 
-	result, err := childAgent.Execute(ctx, instruction,
+	execOpts := []ExecuteOption{
 		WithWorkspaceRuntime(childRuntime),
 		WithParentWorkspace(t.parentAgent.workspaceRootDir),
 		WithSkipIntentPrelude(),
-	)
+	}
+	if tc := childDef.BuildTaskContext(); tc != nil {
+		execOpts = append(execOpts, WithTaskContext(tc))
+	}
+	result, err := childAgent.Execute(ctx, instruction, execOpts...)
 	t.finalizeChildAgent(runtime, childName, childRootDir, result)
 	if err != nil {
 		return "", fmt.Errorf("sub agent execution: %w", err)

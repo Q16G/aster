@@ -3,6 +3,7 @@ package react_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"aster/internal/builtin_tools"
@@ -299,4 +300,78 @@ func TestSubAgentTool_RegisteredViaFactory(t *testing.T) {
 	if !IsAgentTool(tool) {
 		t.Fatal("sub_agent should be recognized as AgentTool")
 	}
+}
+
+func TestSubAgentTool_ContextReachesPrompt(t *testing.T) {
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubChatClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+
+	childDef := AgentDefinition{
+		Name:        "ctx-test-child",
+		Instruction: "test context forwarding",
+		Context: []TaskContextEntry{
+			{
+				Label:       "委派上下文",
+				Value:       "项目根目录：/tmp/test-project",
+				Description: "父 Agent 传递的显式上下文",
+			},
+			{
+				Label:       "交接上下文",
+				Value:       "已完成步骤上下文：\n- [step1] 初始化扫描环境 status_summary: 环境就绪",
+				Description: "父 Agent 自动注入的已完成步骤摘要",
+			},
+		},
+		Policies: AgentPolicies{MaxIterations: 5},
+	}
+
+	tc := childDef.BuildTaskContext()
+	if tc == nil {
+		t.Fatal("BuildTaskContext should return non-nil")
+	}
+	visible := tc.VisibleEntries()
+	t.Logf("TaskContextData entries (%d):", len(visible))
+	for i, e := range visible {
+		valPreview := e.Value
+		if len(valPreview) > 80 {
+			valPreview = valPreview[:80]
+		}
+		t.Logf("  [%d] Label=%q Value=%s", i, e.Label, valPreview)
+	}
+	if len(visible) != 2 {
+		t.Fatalf("expected 2 visible entries (委派上下文 + 交接上下文), got %d", len(visible))
+	}
+
+	child, err := factory.Build(childDef)
+	if err != nil {
+		t.Fatalf("factory.Build: %v", err)
+	}
+
+	prompt := child.BuildThinkActPrompt(context.Background(), "", tc)
+
+	t.Logf("\n=== PROMPT (relevant section) ===")
+	for _, line := range strings.Split(prompt, "\n") {
+		if strings.Contains(line, "上下文") || strings.Contains(line, "委派") ||
+			strings.Contains(line, "交接") || strings.Contains(line, "项目根目录") ||
+			strings.Contains(line, "已完成步骤") {
+			t.Logf("  %s", line)
+		}
+	}
+
+	if !strings.Contains(prompt, "项目根目录") {
+		t.Error("prompt should contain explicit context '项目根目录'")
+	}
+	if !strings.Contains(prompt, "已完成步骤上下文") {
+		t.Error("prompt should contain handoff context '已完成步骤上下文'")
+	}
+	if !strings.Contains(prompt, "委派上下文") {
+		t.Error("prompt should contain label '委派上下文'")
+	}
+	if !strings.Contains(prompt, "交接上下文") {
+		t.Error("prompt should contain label '交接上下文'")
+	}
+
+	t.Logf("PASS: both explicit context and handoff context appear in child agent prompt")
 }
