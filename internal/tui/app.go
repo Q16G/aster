@@ -1150,29 +1150,41 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 			return children[i].AgentName < children[j].AgentName
 		})
 	}
+	// Collect step texts from all child plans so we can deduplicate
+	// when the root plan replans and copies sub-agent items.
+	childStepTexts := map[string]bool{}
+	for _, children := range childrenByParentStep {
+		for _, childPlan := range children {
+			for _, item := range childPlan.Items {
+				childStepTexts[item.Step] = true
+			}
+		}
+	}
 	visited := map[string]bool{}
-	var flattenPlan func(plan *PlanPart, depth int)
-	flattenPlan = func(plan *PlanPart, depth int) {
+	var flattenPlan func(plan *PlanPart, depth int, dedup bool)
+	flattenPlan = func(plan *PlanPart, depth int, dedup bool) {
 		for _, item := range plan.Items {
+			if dedup && childStepTexts[item.Step] && len(childrenByParentStep[item.ID]) == 0 {
+				continue
+			}
 			item.Depth = depth
 			snap.PlanItems = append(snap.PlanItems, item)
 			for _, childPlan := range childrenByParentStep[item.ID] {
 				if !visited[childPlan.AgentName] {
 					visited[childPlan.AgentName] = true
-					flattenPlan(childPlan, depth+1)
+					flattenPlan(childPlan, depth+1, false)
 				}
 			}
 		}
 	}
 	if rootPlan != nil {
-		flattenPlan(rootPlan, 0)
+		flattenPlan(rootPlan, 0, true)
 		for _, orphan := range childrenByParentStep[""] {
-			flattenPlan(orphan, 1)
+			flattenPlan(orphan, 1, false)
 		}
 	} else {
-		// No root plan identified — show all plans flat as fallback
 		for _, plan := range latestPlans {
-			flattenPlan(plan, 0)
+			flattenPlan(plan, 0, false)
 		}
 	}
 
