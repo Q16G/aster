@@ -74,12 +74,17 @@ func (m *ThinkingPanelModel) PushEntry(phase, text string) {
 	m.contentDirty = true
 }
 
-func (m *ThinkingPanelModel) UpdateLastEntry(text string) {
+func (m *ThinkingPanelModel) UpdateLastEntry(phase, text string) {
 	if m == nil || len(m.entries) == 0 {
 		return
 	}
-	m.entries[len(m.entries)-1].Text = text
-	m.contentDirty = true
+	last := &m.entries[len(m.entries)-1]
+	if last.Phase == phase {
+		last.Text = text
+		m.contentDirty = true
+		return
+	}
+	m.PushEntry(phase, text)
 }
 
 func (m *ThinkingPanelModel) Height() int {

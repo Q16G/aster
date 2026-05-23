@@ -147,9 +147,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.flushStreamAndPersist()
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
 			if m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer" {
-				m.thinkingPanel.UpdateLastEntry(formatStepReplanPanelText(thinkDelta))
+				m.replanThinkBuf.WriteString(thinkDelta)
+				m.thinkingPanel.UpdateLastEntry(m.runtimePhase, formatStepReplanPanelText(m.replanThinkBuf.String()))
 			} else if m.isStructuredOutputPhase() {
-				m.thinkingPanel.UpdateLastEntry("thinking...")
+				m.thinkingPanel.UpdateLastEntry("thinking", "thinking...")
 			} else {
 				groupID := strings.TrimSpace(event.GroupID)
 				// Backward compatibility: if producer doesn't set group_id, fall back to event_id.
@@ -177,6 +178,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		}
 		if phase := payloadString(event.Payload, "phase"); phase != "" {
 			m.runtimePhase = phase
+			m.replanThinkBuf.Reset()
 			phaseStatus := ""
 			switch phase {
 			case "step_replan":
