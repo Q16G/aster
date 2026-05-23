@@ -426,7 +426,7 @@ func TestDefaultConfig_TimeoutIs300s(t *testing.T) {
 
 func TestDefaultConfig_MaxRetries(t *testing.T) {
 	cfg := anthropic.DefaultConfig()
-	if cfg.MaxRetries != 3 {
-		t.Fatalf("expected default MaxRetries=3, got %d", cfg.MaxRetries)
+	if cfg.MaxRetries != 5 {
+		t.Fatalf("expected default MaxRetries=5, got %d", cfg.MaxRetries)
 	}
 }
