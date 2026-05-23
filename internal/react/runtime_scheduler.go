@@ -1299,12 +1299,21 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
 	})
 
-	toolTimeout := a.cfg.resolveToolTimeout(argsMap)
-	execCtx, cancelTimeout := context.WithTimeout(callCtx, toolTimeout)
+	var execCtx context.Context
+	var cancelTimeout context.CancelFunc
+	var toolTimeout time.Duration
+
+	if isAgent {
+		execCtx = callCtx
+		cancelTimeout = func() {}
+	} else {
+		toolTimeout = a.cfg.resolveToolTimeout(argsMap)
+		execCtx, cancelTimeout = context.WithTimeout(callCtx, toolTimeout)
+	}
 	defer cancelTimeout()
 
 	out, err := tool.Execute(execCtx, argsMap)
-	if err != nil && execCtx.Err() == context.DeadlineExceeded {
+	if err != nil && !isAgent && execCtx.Err() == context.DeadlineExceeded {
 		err = fmt.Errorf("tool %q timed out after %s: %w", toolName, toolTimeout, err)
 	}
 	errText := ""

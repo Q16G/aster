@@ -337,6 +337,125 @@ func TestToolTimeout_ParentContextSurvives(t *testing.T) {
 	}
 }
 
+// TestToolTimeout_AgentToolNoDeadline verifies the fix: agent-type tools
+// (IsAgent() == true) receive no independent timeout — the context passed to
+// Execute has no additional deadline beyond the parent's.  Non-agent tools
+// still get the configured toolTimeout deadline.
+func TestToolTimeout_AgentToolNoDeadline(t *testing.T) {
+	if os.Getenv("SASTPRO_REACT_LIVE_TEST") != "1" {
+		t.Skip("live test disabled; set SASTPRO_REACT_LIVE_TEST=1")
+	}
+
+	client := newOpenCodeGoClient(t)
+	sessionID := fmt.Sprintf("test-agent-no-deadline-%d", time.Now().UnixNano())
+	root := t.TempDir()
+
+	probe := &deadlineProbe{name: "agent_probe"}
+
+	planner := &fixedPlanner{
+		plan: []*builtin_tools.PlanItem{
+			{ID: "step1", Step: "Call agent_probe to test context deadline", Status: builtin_tools.PlanStepPending},
+		},
+	}
+
+	emitter := NewEmitter("deadline-test", "deadline-test", func(event *AgentOutputEvent) error {
+		return nil
+	})
+
+	agent, err := NewReActAgent(
+		"deadline-test",
+		client,
+		WithEmitter(emitter),
+		WithMaxIterations(10),
+		WithDefaultToolTimeout(3_000), // 3s for normal tools
+		WithTaskPlanner(planner),
+		WithTools(probe),
+		WithInstruction(`你是助手。请调用 agent_probe 工具，参数 target 为 "test"。`),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	_, _ = agent.Execute(ctx,
+		"请调用 agent_probe 工具，参数 target 为 test。",
+		WithWorkspaceSession(sessionID, root),
+	)
+
+	if probe.CallCount() == 0 {
+		t.Fatal("agent_probe was never called")
+	}
+
+	if probe.HasDeadline() {
+		deadline := probe.Deadline()
+		parentDeadline, _ := ctx.Deadline()
+		gap := deadline.Sub(parentDeadline)
+		if gap < -5*time.Second {
+			t.Errorf("agent tool received a tighter deadline than parent (%v before parent); "+
+				"this means an independent timeout was applied to the agent tool", -gap)
+		} else {
+			t.Logf("agent tool has a deadline but it matches the parent context (gap=%v) — OK", gap)
+		}
+	} else {
+		t.Logf("PASS: agent tool context has no independent deadline — inherits parent ctx only")
+	}
+}
+
+// deadlineProbe is a mock AgentTool that records whether its context has a deadline.
+type deadlineProbe struct {
+	name     string
+	mu       sync.Mutex
+	called   int
+	deadline time.Time
+	hasDL    bool
+}
+
+func (t *deadlineProbe) Name() string { return t.name }
+func (t *deadlineProbe) Description() string {
+	return "A probe tool that checks if its context has a deadline. Call this with a target parameter."
+}
+func (t *deadlineProbe) Parameters() any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"target": map[string]any{"type": "string", "description": "target to probe"},
+		},
+		"required":             []string{"target"},
+		"additionalProperties": false,
+	}
+}
+func (t *deadlineProbe) IsAgent() bool { return true }
+
+func (t *deadlineProbe) Execute(ctx context.Context, _ map[string]any) (string, error) {
+	t.mu.Lock()
+	t.called++
+	dl, ok := ctx.Deadline()
+	t.hasDL = ok
+	t.deadline = dl
+	t.mu.Unlock()
+	return "probe complete", nil
+}
+
+func (t *deadlineProbe) CallCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.called
+}
+
+func (t *deadlineProbe) HasDeadline() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.hasDL
+}
+
+func (t *deadlineProbe) Deadline() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.deadline
+}
+
 // --- helpers ---
 
 func newOpenCodeGoClient(t *testing.T) *openai.Client {
