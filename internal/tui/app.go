@@ -277,6 +277,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.focus == FocusInput && strings.TrimSpace(m.input.Value()) != "" {
 				m.input.Clear()
+				m.syncInputLayout()
 				return m, nil
 			}
 			return m.handleQuitRequest("ctrl+c")
@@ -311,10 +312,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.commandPicker = nil
 				m.input.Clear()
+				m.syncInputLayout()
 				return m, m.input.Focus()
 			default:
 				var cmd tea.Cmd
 				m.input, cmd = m.input.Update(msg)
+				m.syncInputLayout()
 				if cmd != nil {
 					cmds = append(cmds, cmd)
 				}
@@ -339,10 +342,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.filePicker = nil
 				m.input.Clear()
+				m.syncInputLayout()
 				return m, m.input.Focus()
 			default:
 				var cmd tea.Cmd
 				m.input, cmd = m.input.Update(msg)
+				m.syncInputLayout()
 				if cmd != nil {
 					cmds = append(cmds, cmd)
 				}
@@ -428,6 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
+			m.syncInputLayout()
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -730,6 +736,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pasteResultMsg:
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		m.syncInputLayout()
 		return m, cmd
 
 	case tuiui.ToastExpiredMsg:
@@ -746,6 +753,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commandPicker = nil
 		if !msg.Cancelled && msg.Command != "" {
 			m.input.Clear()
+			m.syncInputLayout()
 			return m.handleSlashCommand(msg.Command)
 		}
 		return m, m.input.Focus()
@@ -762,6 +770,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.input.Clear()
 		}
+		m.syncInputLayout()
 		return m, m.input.Focus()
 
 	case SlashCommandMsg:
@@ -1380,7 +1389,11 @@ func (m *Model) updateLayout() {
 		return
 	}
 	footerHeight := 1
-	inputHeight := 3
+	inputLines := m.input.DesiredHeight()
+	inputHeight := inputLines + 2
+	if inputHeight < 3 {
+		inputHeight = 3
+	}
 
 	sbWidth := 0
 	if m.sidebarVisible() {
@@ -1421,8 +1434,19 @@ func (m *Model) updateLayout() {
 	m.chat.SetSize(contentWidth, chatHeight)
 	m.thinkingPanel.SetWidth(contentWidth)
 	m.input.SetWidth(contentWidth)
+	m.input.SetHeight(inputLines)
 	m.footer.SetWidth(m.width)
 	m.dialogStack.SetSize(m.width, m.height)
+}
+
+func (m *Model) syncInputLayout() {
+	newH := m.input.DesiredHeight() + 2
+	if newH < 3 {
+		newH = 3
+	}
+	if newH != m.layoutInputHeight {
+		m.updateLayout()
+	}
 }
 
 // --- View ---

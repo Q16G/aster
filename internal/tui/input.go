@@ -4,9 +4,11 @@ import (
 	"strings"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type pasteResultMsg struct {
@@ -23,7 +25,11 @@ func readClipboardCmd() tea.Cmd {
 	}
 }
 
-const maxInputHistory = 50
+const (
+	maxInputHistory = 50
+	minInputLines   = 1
+	maxInputLines   = 10
+)
 
 type InputModel struct {
 	textarea     textarea.Model
@@ -37,9 +43,11 @@ func NewInputModel() InputModel {
 	ta := textarea.New()
 	ta.Placeholder = "Type a message..."
 	ta.ShowLineNumbers = false
-	ta.SetHeight(1)
+	ta.SetHeight(minInputLines)
+	ta.MaxHeight = maxInputLines
 	ta.CharLimit = 0
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter"))
 	ta.Focus()
 
 	return InputModel{
@@ -50,6 +58,46 @@ func NewInputModel() InputModel {
 
 func (m *InputModel) SetWidth(w int) {
 	m.textarea.SetWidth(w)
+}
+
+func (m *InputModel) SetHeight(h int) {
+	m.textarea.SetHeight(h)
+}
+
+func (m InputModel) Height() int {
+	return m.textarea.Height()
+}
+
+func (m InputModel) DesiredHeight() int {
+	w := m.textarea.Width()
+	if w <= 0 {
+		return minInputLines
+	}
+	val := m.textarea.Value()
+	if val == "" {
+		return minInputLines
+	}
+	lines := strings.Split(val, "\n")
+	visual := 0
+	for _, line := range lines {
+		lw := runewidth.StringWidth(line)
+		if lw <= w {
+			visual++
+		} else {
+			visual += (lw + w - 1) / w
+		}
+	}
+	if visual < minInputLines {
+		visual = minInputLines
+	}
+	if visual > maxInputLines {
+		visual = maxInputLines
+	}
+	return visual
+}
+
+func (m *InputModel) recalcHeight() {
+	m.textarea.SetHeight(m.DesiredHeight())
 }
 
 func (m *InputModel) SetEnabled(v bool) {
@@ -70,6 +118,7 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 		if paste.text != "" {
 			m.textarea.InsertString(paste.text)
 		}
+		m.recalcHeight()
 		return m, nil
 	}
 
@@ -79,12 +128,16 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 		}
 		switch keyMsg.Type {
 		case tea.KeyEnter:
+			if keyMsg.Alt {
+				break
+			}
 			text := strings.TrimSpace(m.textarea.Value())
 			if text == "" {
 				return m, nil
 			}
 			m.pushHistory(text)
 			m.textarea.Reset()
+			m.recalcHeight()
 			if strings.HasPrefix(text, "/") {
 				return m, func() tea.Msg {
 					return SlashCommandMsg{Command: text}
@@ -94,15 +147,21 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 				return UserSubmitMsg{Text: text}
 			}
 		case tea.KeyUp:
-			if strings.TrimSpace(m.textarea.Value()) == "" || m.historyIdx > 0 {
-				if m.recallHistory(-1) {
-					return m, nil
+			if m.textarea.Line() == 0 {
+				if strings.TrimSpace(m.textarea.Value()) == "" || m.historyIdx > 0 {
+					if m.recallHistory(-1) {
+						m.recalcHeight()
+						return m, nil
+					}
 				}
 			}
 		case tea.KeyDown:
-			if m.historyIdx < len(m.history) {
-				if m.recallHistory(1) {
-					return m, nil
+			if m.textarea.Line() >= m.textarea.LineCount()-1 {
+				if m.historyIdx < len(m.history) {
+					if m.recallHistory(1) {
+						m.recalcHeight()
+						return m, nil
+					}
 				}
 			}
 		}
@@ -110,6 +169,7 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.textarea, cmd = m.textarea.Update(msg)
+	m.recalcHeight()
 
 	val := m.textarea.Value()
 	if val == "/" {
@@ -140,10 +200,12 @@ func (m InputModel) Value() string {
 
 func (m *InputModel) Clear() {
 	m.textarea.Reset()
+	m.recalcHeight()
 }
 
 func (m *InputModel) SetValue(s string) {
 	m.textarea.SetValue(s)
+	m.recalcHeight()
 }
 
 func (m *InputModel) pushHistory(text string) {
