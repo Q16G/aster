@@ -30,8 +30,8 @@ func TestSkillTool_Name(t *testing.T) {
 
 func TestSkillTool_IsAgent(t *testing.T) {
 	tool := NewSkillTool(nil, nil, nil)
-	if tool.IsAgent() {
-		t.Fatal("expected IsAgent() = false for SkillTool")
+	if !tool.IsAgent() {
+		t.Fatal("expected IsAgent() = true for SkillTool (fork mode runs a child agent)")
 	}
 }
 

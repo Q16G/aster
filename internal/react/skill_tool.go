@@ -40,7 +40,7 @@ func NewSkillTool(parent *Agent, factory *AgentFactory, lookup SkillLookup) *Ski
 }
 
 func (t *SkillTool) Name() string  { return builtin_tools.SkillToolName }
-func (t *SkillTool) IsAgent() bool { return false }
+func (t *SkillTool) IsAgent() bool { return true }
 
 func (t *SkillTool) Description() string {
 	return "调用一个 Skill。inline 模式下 Skill 内容注入当前上下文；fork 模式下在子 Agent 中独立执行。"
