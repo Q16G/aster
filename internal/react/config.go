@@ -27,6 +27,8 @@ type StructuredOutputConfig = structuredoutput.Config
 type AgentConfig struct {
 	MaxIterations int
 	Instruction   string
+	Role          string
+	Background    string
 	AIClient      ai.ChatClient
 	PromptManager PromptManager
 
@@ -112,6 +114,14 @@ func WithMaxIterations(n int) Option {
 func WithInstruction(instruction string) Option {
 	return func(c *AgentConfig) {
 		c.Instruction = instruction
+	}
+}
+
+// WithAgentIdentity 保留原始 Role/Background 字段供 planner input 模板使用。
+func WithAgentIdentity(role, background string) Option {
+	return func(c *AgentConfig) {
+		c.Role = role
+		c.Background = background
 	}
 }
 

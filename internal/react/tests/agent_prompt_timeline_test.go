@@ -53,22 +53,23 @@ func TestPlannerInputFromSnapshot_EmptyWithoutTimeline(t *testing.T) {
 	}
 }
 
-func TestPlannerInputFromSnapshot_IncludesUserInstructionAndHandoffContext(t *testing.T) {
+func TestPlannerInputFromSnapshot_IncludesAgentIdentityAndHandoffContext(t *testing.T) {
 	snapshot := builtin_tools.StateSnapshot{
 		InputTimeline: []*builtin_tools.TimelineInput{
 			{Content: "hello", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
 		},
 	}
 	opts := PlannerInputOptions{
-		UserInstruction: "你是 data_flow_analysis_agent，需要做取证与路径验证，不要直接输出修复方案。",
-		ExtraContext:    "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
+		AgentRole:        "data_flow_analysis_agent",
+		AgentInstruction: "需要做取证与路径验证，不要直接输出修复方案。",
+		HandoffContext:   "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
 	}
 
 	got := PlannerInputFromSnapshot(snapshot, opts)
 	for _, marker := range []string{
-		"<USER_INSTRUCTION>",
+		"<AGENT_ROLE>",
 		"data_flow_analysis_agent",
-		"</USER_INSTRUCTION>",
+		"</AGENT_ROLE>",
 		"<HANDOFF_CONTEXT>",
 		"project_path: /tmp/repo",
 		"</HANDOFF_CONTEXT>",

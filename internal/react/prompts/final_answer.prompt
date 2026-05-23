@@ -30,8 +30,8 @@
   - `missing_items` 只列出用户指定方向内尚未完成的缺口，不列用户方向外的维度。
   - 不要仅因为 Agent 指令中提及的 MUST 覆盖维度未被全部执行就设置 `should_replan=true`——MUST 维度的强制性仅在全量审计时生效。
   - `user_message` 中应明确说明本次审计的聚焦范围，以及哪些维度不在本次范围内。
-  - ✅ 正例：用户指定方向 A，所有方向 A 相关步骤已完成 → `is_complete=true`，即使方向 B/C 未覆盖。
-  - ❌ 反例：用户指定方向 A，方向 A 步骤已完成，但 assessor 发现方向 B 未覆盖 → `should_replan=true` → 系统继续扩展到方向 B。
+  - [O] 正例：用户指定方向 A，所有方向 A 相关步骤已完成 → `is_complete=true`，即使方向 B/C 未覆盖。
+  - [X] 反例：用户指定方向 A，方向 A 步骤已完成，但 assessor 发现方向 B 未覆盖 → `should_replan=true` → 系统继续扩展到方向 B。
 
 ## 5. 判定步骤 (Decision Procedure)
 请严格按以下顺序进行判断：

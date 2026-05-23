@@ -1,0 +1,54 @@
+{{- if .AgentRole}}
+<AGENT_ROLE>
+{{.AgentRole}}
+</AGENT_ROLE>
+
+{{end -}}
+{{- if .AgentBackground}}
+<AGENT_BACKGROUND>
+{{.AgentBackground}}
+</AGENT_BACKGROUND>
+
+{{end -}}
+{{- if .AgentInstruction}}
+<AGENT_INSTRUCTION>
+{{.AgentInstruction}}
+</AGENT_INSTRUCTION>
+
+{{end -}}
+{{- if .HandoffContext}}
+<HANDOFF_CONTEXT>
+{{.HandoffContext}}
+</HANDOFF_CONTEXT>
+
+{{end -}}
+{{- if .InputTimeline}}
+<INPUT_TIMELINE>
+用户输入时间线：
+{{.InputTimeline}}
+</INPUT_TIMELINE>
+{{- end}}
+{{- if .TaskItemsJSON}}
+
+<TASK_ITEMS>
+{{.TaskItemsJSON}}
+</TASK_ITEMS>
+{{- end}}
+{{- if .ReplanContextJSON}}
+
+<REPLAN_CONTEXT>
+{{.ReplanContextJSON}}
+</REPLAN_CONTEXT>
+{{- end}}
+{{- if .HasExecutionLine}}
+
+<EXECUTION_LINE>
+{{.ExecutionLineJSON}}
+</EXECUTION_LINE>
+{{- end}}
+{{- if .HasWorkspaceContexts}}
+
+<WORKSPACE_STEP_CONTEXTS>
+{{.WorkspaceContextsJSON}}
+</WORKSPACE_STEP_CONTEXTS>
+{{- end}}

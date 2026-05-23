@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aster/internal/ai"
+	"aster/internal/builtin_tools"
 )
 
 type noopChatClientForScheduler struct{}
@@ -47,5 +48,53 @@ func TestScheduler_FallbackDoesNotSwallowFinalAnswerError(t *testing.T) {
 	}
 	if !strings.Contains(msg, "workspace runtime is nil") {
 		t.Fatalf("expected final answer root cause, got: %s", msg)
+	}
+}
+
+func TestMergeReplannedPlan_StepTextDedup(t *testing.T) {
+	prev := []*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "加载项目结构", Status: builtin_tools.PlanStepCompleted},
+		{ID: "step-2", Step: "分析 SQL 注入风险", Status: builtin_tools.PlanStepCompleted},
+		{ID: "step-3", Step: "验证数据流路径", Status: builtin_tools.PlanStepInProgress},
+	}
+	next := []*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "加载项目结构", Status: builtin_tools.PlanStepCompleted},
+		{ID: "step-2", Step: "分析 SQL 注入风险", Status: builtin_tools.PlanStepCompleted},
+		{ID: "step-3", Step: "验证数据流路径", Status: builtin_tools.PlanStepInProgress},
+		{ID: "step-new-1", Step: "分析  SQL 注入风险", Status: builtin_tools.PlanStepPending},
+		{ID: "step-new-2", Step: "输出审计报告", Status: builtin_tools.PlanStepPending},
+	}
+
+	merged := mergeReplannedPlan(prev, next)
+
+	var ids []string
+	for _, item := range merged {
+		ids = append(ids, item.ID)
+	}
+	expected := []string{"step-1", "step-2", "step-3", "step-new-2"}
+	if len(ids) != len(expected) {
+		t.Fatalf("expected %d items %v, got %d items %v", len(expected), expected, len(ids), ids)
+	}
+	for i, id := range expected {
+		if ids[i] != id {
+			t.Fatalf("item[%d]: expected %q, got %q", i, id, ids[i])
+		}
+	}
+}
+
+func TestNormalizeStepText(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"分析  SQL 注入风险", "分析 sql 注入风险"},
+		{"分析 SQL 注入风险", "分析 sql 注入风险"},
+		{"加载项目结构（P0）", "加载项目结构(p0)"},
+		{"  ", ""},
+	}
+	for _, tc := range cases {
+		got := normalizeStepText(tc.in)
+		if got != tc.want {
+			t.Errorf("normalizeStepText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
