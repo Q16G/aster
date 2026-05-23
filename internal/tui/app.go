@@ -94,6 +94,7 @@ type Model struct {
 	runtimeProgress         int
 	runtimeGoal             string
 	runtimeWarnings         []string
+	replanThinkBuf          strings.Builder
 	renderScheduled         bool
 	sessionRestoredOnce     bool
 
