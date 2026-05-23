@@ -156,7 +156,7 @@ func DefaultConfig() *Config {
 		URL:            "https://api.anthropic.com/v1/messages",
 		Version:        "2023-06-01",
 		Timeout:        300 * time.Second,
-		MaxRetries:     3,
+		MaxRetries:     5,
 		MaxTokens:      16384,
 		Headers:        map[string]string{},
 		SupportsVision: &supportsVision,
