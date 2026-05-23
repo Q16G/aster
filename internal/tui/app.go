@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1119,9 +1120,49 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 		}
 	}
 
+	latestPlans := map[string]*PlanPart{}
 	for _, p := range m.chat.Parts() {
-		if p.Type == PartTypePlan && p.Plan != nil && m.chat.isRootAgentPlan(p.Plan) {
-			snap.PlanItems = p.Plan.Items
+		if p.Type == PartTypePlan && p.Plan != nil {
+			latestPlans[p.Plan.AgentName] = p.Plan
+		}
+	}
+	childrenByParentStep := map[string][]*PlanPart{}
+	var rootPlan *PlanPart
+	for _, plan := range latestPlans {
+		if m.chat.isRootAgentPlan(plan) {
+			rootPlan = plan
+		} else {
+			childrenByParentStep[plan.ParentStepID] = append(childrenByParentStep[plan.ParentStepID], plan)
+		}
+	}
+	for _, children := range childrenByParentStep {
+		sort.Slice(children, func(i, j int) bool {
+			return children[i].AgentName < children[j].AgentName
+		})
+	}
+	visited := map[string]bool{}
+	var flattenPlan func(plan *PlanPart, depth int)
+	flattenPlan = func(plan *PlanPart, depth int) {
+		for _, item := range plan.Items {
+			item.Depth = depth
+			snap.PlanItems = append(snap.PlanItems, item)
+			for _, childPlan := range childrenByParentStep[item.ID] {
+				if !visited[childPlan.AgentName] {
+					visited[childPlan.AgentName] = true
+					flattenPlan(childPlan, depth+1)
+				}
+			}
+		}
+	}
+	if rootPlan != nil {
+		flattenPlan(rootPlan, 0)
+		for _, orphan := range childrenByParentStep[""] {
+			flattenPlan(orphan, 1)
+		}
+	} else {
+		// No root plan identified — show all plans flat as fallback
+		for _, plan := range latestPlans {
+			flattenPlan(plan, 0)
 		}
 	}
 

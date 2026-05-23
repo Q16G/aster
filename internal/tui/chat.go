@@ -12,6 +12,12 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+type agentSpawnInfo struct {
+	ParentAgent  string
+	ParentStepID string
+	CallID       string
+}
+
 type ChatModel struct {
 	viewport         viewport.Model
 	parts            []DisplayPart
@@ -31,17 +37,23 @@ type ChatModel struct {
 	autoFollowBottom bool
 	fullContent      string
 	rootAgentName    string
+
+	activeStepByAgent map[string]string
+	agentSpawnStack   []agentSpawnInfo
+	agentParent       map[string]agentSpawnInfo
 }
 
 func NewChatModel() ChatModel {
 	vp := viewport.New(0, 0)
 	vp.SetContent("")
 	return ChatModel{
-		viewport:         vp,
-		streaming:        &strings.Builder{},
-		thinkingBuf:      &strings.Builder{},
-		toolExpanded:     make(map[int]bool),
-		autoFollowBottom: true,
+		viewport:          vp,
+		streaming:         &strings.Builder{},
+		thinkingBuf:       &strings.Builder{},
+		toolExpanded:      make(map[int]bool),
+		autoFollowBottom:  true,
+		activeStepByAgent: make(map[string]string),
+		agentParent:       make(map[string]agentSpawnInfo),
 	}
 }
 

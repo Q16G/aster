@@ -95,6 +95,11 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			},
 		})
 		if isAgent {
+			m.chat.agentSpawnStack = append(m.chat.agentSpawnStack, agentSpawnInfo{
+				ParentAgent:  event.AgentName,
+				ParentStepID: m.chat.activeStepByAgent[event.AgentName],
+				CallID:       callID,
+			})
 			m.chat.AddPart(DisplayPart{
 				Type: PartTypeSubAgent,
 				Time: time.Now(),
@@ -136,6 +141,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 		if isAgent {
 			m.updateSubAgentByCallID(callID, result, errStr)
+			for i := len(m.chat.agentSpawnStack) - 1; i >= 0; i-- {
+				if m.chat.agentSpawnStack[i].CallID == callID {
+					m.chat.agentSpawnStack = append(m.chat.agentSpawnStack[:i], m.chat.agentSpawnStack[i+1:]...)
+					break
+				}
+			}
 		}
 		display := result
 		if errStr != "" {
@@ -281,6 +292,16 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				Explanation: explanation,
 				Items:       items,
 			}
+			if !m.chat.isRootAgentPlan(planPart) {
+				if _, known := m.chat.agentParent[event.AgentName]; !known {
+					if n := len(m.chat.agentSpawnStack); n > 0 {
+						m.chat.agentParent[event.AgentName] = m.chat.agentSpawnStack[n-1]
+					}
+				}
+				if info, ok := m.chat.agentParent[event.AgentName]; ok {
+					planPart.ParentStepID = info.ParentStepID
+				}
+			}
 			m.chat.AddPart(DisplayPart{
 				Type: PartTypePlan,
 				Time: time.Now(),
@@ -295,6 +316,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		itemID := payloadString(event.Payload, "id")
 		step, _ := event.Payload["step"].(string)
 		status := payloadString(event.Payload, "status")
+		if status == "in_progress" && itemID != "" {
+			m.chat.activeStepByAgent[event.AgentName] = itemID
+		}
 		if step != "" || itemID != "" {
 			updated := false
 			m.chat.UpdateLastPlanForAgent(event.AgentName, func(p *PlanPart) {
@@ -321,13 +345,17 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				updated = true
 			})
 			if !updated {
+				fallbackPlan := &PlanPart{
+					AgentName: event.AgentName,
+					Items:     []PlanItemView{{ID: itemID, Step: step, Status: status}},
+				}
+				if info, ok := m.chat.agentParent[event.AgentName]; ok {
+					fallbackPlan.ParentStepID = info.ParentStepID
+				}
 				m.chat.AddPart(DisplayPart{
 					Type: PartTypePlan,
 					Time: time.Now(),
-					Plan: &PlanPart{
-						AgentName: event.AgentName,
-						Items:     []PlanItemView{{ID: itemID, Step: step, Status: status}},
-					},
+					Plan: fallbackPlan,
 				})
 			}
 			persistName := itemID

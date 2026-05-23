@@ -211,6 +211,22 @@ func (m *SidebarModel) renderMCPSection(sb *strings.Builder, w int) {
 	sb.WriteString("\n")
 }
 
+// subtreeCompleted reports the total and completed count of all descendants
+// of items[parentIdx] (items with depth > parent's depth, contiguously).
+func subtreeCompleted(items []PlanItemView, parentIdx int) (total, done int) {
+	parentDepth := items[parentIdx].Depth
+	for j := parentIdx + 1; j < len(items); j++ {
+		if items[j].Depth <= parentDepth {
+			break
+		}
+		total++
+		if items[j].Status == "completed" {
+			done++
+		}
+	}
+	return
+}
+
 func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 	snap := m.snapshot
 	if len(snap.PlanItems) == 0 {
@@ -228,7 +244,16 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 	sb.WriteString(sectionHeader(fmt.Sprintf("Todo [%d/%d]", done, total)))
 	sb.WriteString("\n")
 
-	for _, item := range snap.PlanItems {
+	collapseAtDepth := -1
+	for i, item := range snap.PlanItems {
+		if collapseAtDepth >= 0 && item.Depth > collapseAtDepth {
+			continue
+		}
+		collapseAtDepth = -1
+
+		childTotal, childDone := subtreeCompleted(snap.PlanItems, i)
+		collapsed := childTotal > 0 && childDone == childTotal
+
 		icon := "○"
 		style := sectionDimStyle
 		switch item.Status {
@@ -242,8 +267,22 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 			icon = "✗"
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 		}
-		step := truncSidebar(item.Step, w-6)
-		sb.WriteString(style.Render("  "+icon+" "+step) + "\n")
+
+		indentSize := 2 + item.Depth*2
+		indent := strings.Repeat(" ", indentSize)
+
+		suffix := ""
+		if collapsed {
+			collapseAtDepth = item.Depth
+			suffix = fmt.Sprintf(" (%d/%d)", childDone, childTotal)
+		}
+
+		maxStep := w - indentSize - 4 - len(suffix)
+		if maxStep < 4 {
+			maxStep = 4
+		}
+		step := truncSidebar(item.Step, maxStep) + suffix
+		sb.WriteString(style.Render(indent+icon+" "+step) + "\n")
 	}
 	sb.WriteString("\n")
 }
