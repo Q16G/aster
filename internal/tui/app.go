@@ -95,7 +95,7 @@ type Model struct {
 	runtimeProgress         int
 	runtimeGoal             string
 	runtimeWarnings         []string
-	replanThinkBuf          strings.Builder
+	replanThinkBuf          *strings.Builder
 	renderScheduled         bool
 	sessionRestoredOnce     bool
 
@@ -162,6 +162,7 @@ func NewModel(deps ModelDeps) Model {
 		credStore:       deps.CredStore,
 		appCfg:          deps.AppCfg,
 		providerCfg:     deps.ProviderCfg,
+		replanThinkBuf:  &strings.Builder{},
 		statusText:      "ready",
 		focus:           FocusInput,
 
