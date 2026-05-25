@@ -162,7 +162,7 @@ func TestNewSkillsPromptProviderFromCatalog_BuildsTableAndInjectedSection(t *tes
 	if ctx == nil {
 		t.Fatalf("expected prompt context")
 	}
-	if !strings.Contains(ctx.Table, "| data-flow | 数据流分析 | flow | inline | loaded |") {
+	if !strings.Contains(ctx.Table, "| data-flow | 数据流分析 | flow | - | inline | loaded |") {
 		t.Fatalf("unexpected skills table: %s", ctx.Table)
 	}
 	if !strings.Contains(ctx.Injected, "follow flows") {

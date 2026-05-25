@@ -26,8 +26,8 @@ func TestBuildSkillsTableWithStatus(t *testing.T) {
 	}
 
 	for _, expected := range []string{
-		"| name | description | when-to-use | context | status |",
-		"| data-flow | 数据流分析 | flow, sink | inline | loaded |",
+		"| name | description | when-to-use | path | context | status |",
+		"| data-flow | 数据流分析 | flow, sink | - | inline | loaded |",
 	} {
 		if !strings.Contains(table, expected) {
 			t.Fatalf("expected table to contain %q, got:\n%s", expected, table)
@@ -64,8 +64,8 @@ func TestBuildSkillsTableWithStatus_AllAgentWildcard(t *testing.T) {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
 	for _, expected := range []string{
-		"| data-flow | 数据流分析 | - | inline | available |",
-		"| project-analysis | 项目分析 | - | inline | available |",
+		"| data-flow | 数据流分析 | - | - | inline | available |",
+		"| project-analysis | 项目分析 | - | - | inline | available |",
 	} {
 		if !strings.Contains(table, expected) {
 			t.Fatalf("expected wildcard table to contain %q, got:\n%s", expected, table)
@@ -149,7 +149,7 @@ func TestBuildSkillsTableWithStatus_V2Fields(t *testing.T) {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
 
-	expected := "| v2-skill | New format skill | 需要测试时使用 | fork | available |"
+	expected := "| v2-skill | New format skill | 需要测试时使用 | - | fork | available |"
 	if !strings.Contains(table, expected) {
 		t.Fatalf("expected table to contain %q, got:\n%s", expected, table)
 	}
