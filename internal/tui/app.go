@@ -1150,13 +1150,17 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 			return children[i].AgentName < children[j].AgentName
 		})
 	}
-	// Collect step texts from all child plans so we can deduplicate
-	// when the root plan replans and copies sub-agent items.
-	childStepTexts := map[string]bool{}
+	// Collect IDs and normalized step texts from all child plans
+	// so we can deduplicate when the root plan replans and copies sub-agent items.
+	childItemIDs := map[string]bool{}
+	childStepNorm := map[string]bool{}
 	for _, children := range childrenByParentStep {
 		for _, childPlan := range children {
 			for _, item := range childPlan.Items {
-				childStepTexts[item.Step] = true
+				if item.ID != "" {
+					childItemIDs[item.ID] = true
+				}
+				childStepNorm[normalizeStepText(item.Step)] = true
 			}
 		}
 	}
@@ -1164,8 +1168,10 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	var flattenPlan func(plan *PlanPart, depth int, dedup bool)
 	flattenPlan = func(plan *PlanPart, depth int, dedup bool) {
 		for _, item := range plan.Items {
-			if dedup && childStepTexts[item.Step] && len(childrenByParentStep[item.ID]) == 0 {
-				continue
+			if dedup && len(childrenByParentStep[item.ID]) == 0 {
+				if childItemIDs[item.ID] || childStepNorm[normalizeStepText(item.Step)] {
+					continue
+				}
 			}
 			item.Depth = depth
 			snap.PlanItems = append(snap.PlanItems, item)
@@ -1203,6 +1209,10 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 
 	return snap
+}
+
+func normalizeStepText(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
 func (m *Model) formatTokenCount() string {

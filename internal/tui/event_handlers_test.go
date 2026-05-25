@@ -1004,3 +1004,100 @@ func TestBuildSidebarSnapshot_ReplanDuplication(t *testing.T) {
 	sidebar.renderTodoSection(&sb, 60)
 	t.Logf("\n=== Rendered Sidebar ===\n%s", sb.String())
 }
+
+// TestBuildSidebarSnapshot_ReplanDuplication_Rephrased verifies that dedup
+// works even when the root plan copies sub-agent items with whitespace or
+// casing differences.
+func TestBuildSidebarSnapshot_ReplanDuplication_Rephrased(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "code-audit"},
+		},
+	})
+
+	// 1. Root agent creates initial plan
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "code-audit",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "scan", "step": "SAST 漏洞扫描", "status": "completed"},
+				map[string]any{"id": "dataflow", "step": "数据流分析", "status": "pending"},
+				map[string]any{"id": "report", "step": "安全报告", "status": "pending"},
+			},
+		},
+	})
+
+	// 2. Spawn sub-agent for dataflow
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskItem, AgentName: "code-audit",
+		Payload: map[string]any{"id": "dataflow", "status": "in_progress"},
+	})
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeToolStart, AgentName: "code-audit",
+		Payload: map[string]any{
+			"tool_name": "sub_agent", "call_id": "call_01_xyz", "is_agent": true,
+		},
+	})
+
+	// 3. Sub-agent creates plan with exact text
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "sub-call_01_xyz",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "s1", "step": "读取 Controller 源码", "status": "pending"},
+				map[string]any{"id": "s2", "step": "追踪数据流路径", "status": "pending"},
+			},
+		},
+	})
+
+	// 4. Sub-agent completes
+	for _, id := range []string{"s1", "s2"} {
+		m.handleAgentEvent(&react.AgentOutputEvent{
+			Type: react.EventTypeTaskItem, AgentName: "sub-call_01_xyz",
+			Payload: map[string]any{"id": id, "status": "completed"},
+		})
+	}
+
+	// 5. Root replans with REPHRASED text (extra spaces, different casing)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "code-audit",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "scan", "step": "SAST 漏洞扫描", "status": "completed"},
+				map[string]any{"id": "dataflow", "step": "数据流分析", "status": "completed"},
+				// Rephrased copies: extra spaces and different casing
+				map[string]any{"id": "r1", "step": "读取  Controller  源码", "status": "completed"},
+				map[string]any{"id": "r2", "step": "追踪数据流路径", "status": "completed"},
+				map[string]any{"id": "report", "step": "安全报告", "status": "pending"},
+			},
+		},
+	})
+
+	snap := m.buildSidebarSnapshot()
+
+	stepCounts := map[string]int{}
+	for _, item := range snap.PlanItems {
+		norm := strings.ToLower(strings.Join(strings.Fields(item.Step), " "))
+		stepCounts[norm]++
+	}
+
+	for step, count := range stepCounts {
+		if count > 1 {
+			t.Errorf("DUPLICATE: normalized step %q appears %d times", step, count)
+		}
+	}
+
+	// Verify root-only items are still present
+	found := map[string]bool{}
+	for _, item := range snap.PlanItems {
+		if item.Depth == 0 {
+			found[item.Step] = true
+		}
+	}
+	if !found["SAST 漏洞扫描"] {
+		t.Error("expected root item 'SAST 漏洞扫描' to be present")
+	}
+	if !found["安全报告"] {
+		t.Error("expected root item '安全报告' to be present")
+	}
+}
