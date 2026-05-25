@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type SidebarModel struct {
@@ -121,17 +122,17 @@ func (m *SidebarModel) renderIdentitySection(sb *strings.Builder, w int) {
 
 	if snap.AgentName != "" {
 		sb.WriteString(sectionDimStyle.Render("  Agent: "))
-		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.AgentName, w-10)))
+		sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.AgentName, w-10)))
 		sb.WriteString("\n")
 	}
 	if snap.ProviderName != "" {
 		sb.WriteString(sectionDimStyle.Render("  Provider: "))
-		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.ProviderName, w-12)))
+		sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.ProviderName, w-12)))
 		sb.WriteString("\n")
 	}
 	if snap.ModelID != "" {
 		sb.WriteString(sectionDimStyle.Render("  Model: "))
-		sb.WriteString(sectionValueStyle.Render(truncSidebar(snap.ModelID, w-10)))
+		sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.ModelID, w-10)))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
@@ -149,18 +150,18 @@ func (m *SidebarModel) renderContextSection(sb *strings.Builder, w int) {
 		status = "idle"
 	}
 	if status == "running" {
-		sb.WriteString(sectionWarnStyle.Render(status))
+		sb.WriteString(sectionWarnStyle.Render(truncateDisplayWidth(status, w-10)))
 	} else {
-		sb.WriteString(sectionValueStyle.Render(status))
+		sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(status, w-10)))
 	}
 	sb.WriteString("\n")
 
 	sb.WriteString(sectionDimStyle.Render("  Tokens: "))
-	sb.WriteString(sectionValueStyle.Render(snap.TokenCount))
+	sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.TokenCount, w-10)))
 	sb.WriteString("\n")
 
 	sb.WriteString(sectionDimStyle.Render("  Cost: "))
-	sb.WriteString(sectionValueStyle.Render(snap.CostEstimate))
+	sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.CostEstimate, w-8)))
 	sb.WriteString("\n")
 	sb.WriteString("\n")
 }
@@ -196,16 +197,21 @@ func (m *SidebarModel) renderMCPSection(sb *strings.Builder, w int) {
 			icon = "◐"
 			color = "11"
 		case "error":
-			icon = "✗"
+			icon = "✗ "
 			color = "9"
 		}
 
 		iconStyle := lipgloss.NewStyle().Foreground(color)
-		name := truncSidebar(s.Name, w-8)
 		detail := ""
 		if s.Status == "connected" {
 			detail = fmt.Sprintf(" (%d)", s.ToolCount)
 		}
+		iconW := runewidth.StringWidth(icon)
+		nameMax := w - 2 - iconW - 1 - len(detail)
+		if nameMax < 4 {
+			nameMax = 4
+		}
+		name := truncateDisplayWidth(s.Name, nameMax)
 		sb.WriteString("  " + iconStyle.Render(icon) + " " + name + detail + "\n")
 	}
 	sb.WriteString("\n")
@@ -258,13 +264,13 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		style := sectionDimStyle
 		switch item.Status {
 		case "completed":
-			icon = "✓"
+			icon = "✓ "
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 		case "in_progress":
-			icon = "▸"
+			icon = "▸ "
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
 		case "failed":
-			icon = "✗"
+			icon = "✗ "
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 		}
 
@@ -277,11 +283,12 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 			suffix = fmt.Sprintf(" (%d/%d)", childDone, childTotal)
 		}
 
-		maxStep := w - indentSize - 4 - len(suffix)
+		iconW := runewidth.StringWidth(icon)
+		maxStep := w - indentSize - iconW - 1 - len(suffix)
 		if maxStep < 4 {
 			maxStep = 4
 		}
-		step := truncSidebar(item.Step, maxStep) + suffix
+		step := truncateDisplayWidth(item.Step, maxStep) + suffix
 		sb.WriteString(style.Render(indent+icon+" "+step) + "\n")
 	}
 	sb.WriteString("\n")
@@ -303,7 +310,7 @@ func (m *SidebarModel) renderFilesSection(sb *strings.Builder, w int) {
 			sb.WriteString("\n")
 			break
 		}
-		sb.WriteString("  " + truncSidebar(f, w-4) + "\n")
+		sb.WriteString("  " + truncateDisplayWidth(f, w-4) + "\n")
 	}
 	sb.WriteString("\n")
 }
@@ -318,10 +325,10 @@ func (m *SidebarModel) renderSkillsSection(sb *strings.Builder, w int) {
 	sb.WriteString("\n")
 
 	for _, name := range snap.ActiveSkills {
-		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncSidebar(name, w-6) + "\n")
+		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncateDisplayWidth(name, w-5) + "\n")
 	}
 	for _, name := range snap.ActiveMCPs {
-		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncSidebar(name, w-6) + " " + sectionDimStyle.Render("(mcp)") + "\n")
+		sb.WriteString("  " + sectionActiveStyle.Render("● ") + truncateDisplayWidth(name, w-11) + " " + sectionDimStyle.Render("(mcp)") + "\n")
 	}
 	sb.WriteString("\n")
 }
@@ -350,30 +357,19 @@ func (m *SidebarModel) renderWorkdirSection(sb *strings.Builder, w int) {
 	sb.WriteString("\n")
 	if snap.Workdir != "" {
 		sb.WriteString(sectionDimStyle.Render("  Dir: "))
-		sb.WriteString(truncSidebar(snap.Workdir, w-8))
+		sb.WriteString(truncateDisplayWidth(snap.Workdir, w-8))
 		sb.WriteString("\n")
 	}
 	if snap.Version != "" {
 		sb.WriteString(sectionDimStyle.Render("  Ver: "))
-		sb.WriteString(snap.Version)
+		sb.WriteString(truncateDisplayWidth(snap.Version, w-8))
 		sb.WriteString("\n")
 	}
 	if snap.UpdateAvailable != "" {
 		updateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-		sb.WriteString(updateStyle.Render("  ⬆ "+snap.UpdateAvailable+" available (aster update)"))
+		updateText := truncateDisplayWidth("  ⬆ "+snap.UpdateAvailable+" available (aster update)", w)
+		sb.WriteString(updateStyle.Render(updateText))
 		sb.WriteString("\n")
 	}
 }
 
-func truncSidebar(s string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return ""
-	}
-	if len(s) <= maxWidth {
-		return s
-	}
-	if maxWidth <= 2 {
-		return s[:maxWidth]
-	}
-	return s[:maxWidth-2] + ".."
-}
