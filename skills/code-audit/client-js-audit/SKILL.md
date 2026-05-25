@@ -2,7 +2,7 @@
 name: client-js-audit
 description: 客户端 JS 安全专项审计 — 覆盖 DOM XSS、客户端 token/凭据安全、postMessage 跨源通信、客户端安全决策逻辑等前端安全检查。
 tags: code-audit,dom-xss,javascript,postmessage,client-side,token
-when-to-use: 当 client-side-sec P1 Router 识别到项目前端有安全敏感 JS 逻辑时
+when-to-use: 当项目前端存在安全敏感 JS 逻辑（token 存储/DOM 操作/postMessage/eval/innerHTML）时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---

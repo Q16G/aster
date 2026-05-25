@@ -16,7 +16,7 @@ import (
 
 // TestFocusConstraint_PlannerLive 使用真实 LLM 验证用户聚焦约束是否生效。
 // 构造一个带 SKILLS_INDEX 的审计场景，用户明确说"重点关注 RCE 和 SQL 注入"，
-// 验证 planner 不会为 auth-authz、client-side-sec、config-sec 等非聚焦方向安排步骤。
+// 验证 planner 不会为 auth-authz、client-side-sec、config-sec 等非聚焦方向的子清单安排步骤。
 //
 // 启用方式：SASTPRO_REACT_LIVE_TEST=1 go test ./internal/react/tests/... -run TestFocusConstraint -v
 func TestFocusConstraint_PlannerLive(t *testing.T) {
@@ -45,12 +45,12 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 	skillsCtx := &SkillsPromptContext{
 		Table: `| name | description | when-to-use | status |
 |------|-------------|-------------|--------|
-| security-code-analysis | P0 总控路由 — 信号路由、覆盖维度编排 | 做系统性代码安全审计时首先加载 | available |
+| security-code-analysis | 代码安全审计 — 理解用户意图、识别攻击面、按分类 checklist 编排审计任务 | 做系统性代码安全审计时首先加载 | available |
 | sast-scan | 结构化漏洞扫描（RCE/SQLi/XXE/SSRF/XSS） | 需要静态分析扫描代码漏洞时 | available |
 | dataflow-analysis | 跨函数数据流验证 | 验证 source-to-sink 可达性 | available |
-| auth-authz | 认证授权路由 — 认证/授权/IDOR/CSRF | 项目有登录、会话管理、权限判断时 | available |
-| client-side-sec | 客户端安全路由 — CSP/DOM XSS/postMessage | 项目有前端安全敏感 JS 逻辑时 | available |
-| config-sec | 配置安全路由 — 密钥泄露/安全头/危险配置 | 项目有配置文件或安全响应头设置时 | available |
+| auth-authz | 认证授权子清单 — 认证/授权/IDOR/会话安全 | 聚焦审计认证授权维度，或项目有登录、会话管理、权限判断时 | available |
+| client-side-sec | 客户端安全子清单 — CSP/DOM XSS/postMessage | 聚焦审计客户端安全，或项目有前端安全敏感 JS 逻辑时 | available |
+| config-sec | 配置安全子清单 — 密钥泄露/安全头/危险配置 | 聚焦审计配置安全，或项目有配置文件或安全响应头设置时 | available |
 | dependency-audit | 依赖/供应链审计 | 存在 pom.xml/package.json 等依赖文件时 | available |
 | stored-xss-detection | 存储型 XSS 检测 | 存在数据写入后读出并渲染的流程时 | available |`,
 	}
@@ -59,9 +59,9 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 	agentInstruction := `你是代码安全审计 Agent。
 
 审计要求：
-- 首先加载 security-code-analysis（P0 总控路由），它定义了信号路由表和覆盖维度，指导后续 skill 的加载和编排
-- **用户意图优先**：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内，不要主动扩展到用户未提及的维度。MUST 覆盖维度仅在全量审计（用户未指定方向）时才作为强制要求
-- 全量审计时，分析手段和顺序根据项目实际情况和可用工具集灵活安排，必须满足 P0 Router 定义的 MUST 覆盖维度`
+- 首先加载 security-code-analysis，它定义了分类审计任务清单，指导后续 skill 的加载和编排
+- **用户意图优先**：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内，不要主动扩展到用户未提及的维度。MUST 标记仅在全量审计（用户未指定方向）时才作为强制要求
+- 全量审计时，分析手段和顺序根据项目实际情况和可用工具集灵活安排，必须满足任务清单中 MUST 标记的任务项`
 
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		AgentInstruction: agentInstruction,

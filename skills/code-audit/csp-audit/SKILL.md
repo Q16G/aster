@@ -2,7 +2,7 @@
 name: csp-audit
 description: CSP 策略专项审计 — 分析 Content-Security-Policy 指令的语义正确性、绕过风险和覆盖完整性。
 tags: code-audit,csp,content-security-policy,xss,client-side
-when-to-use: 当 client-side-sec P1 Router 识别到项目设置了 CSP header 或 CSP meta 标签时
+when-to-use: 当项目设置了 CSP header 或 CSP meta 标签时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---
