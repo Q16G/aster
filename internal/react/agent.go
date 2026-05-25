@@ -64,6 +64,8 @@ type Agent struct {
 	finishHooks         []func()
 	historyHookMu       sync.RWMutex
 	historyChangeHook   func(change *HistoryChange)
+
+	asyncRegistry *AsyncAgentRegistry
 }
 
 // NewReActAgent 创建 ReAct Agent
@@ -215,6 +217,15 @@ func dedupToolsByName(tools []Tool) []Tool {
 		out = append(out, tool)
 	}
 	return out
+}
+
+// ensureAsyncRegistry lazily creates the AsyncAgentRegistry.
+// Safe to call from the scheduler goroutine only (single-writer invariant).
+func (a *Agent) ensureAsyncRegistry() *AsyncAgentRegistry {
+	if a.asyncRegistry == nil {
+		a.asyncRegistry = NewAsyncAgentRegistry()
+	}
+	return a.asyncRegistry
 }
 
 func (a *Agent) setCurrentRunClient(c ai.ChatClient) {

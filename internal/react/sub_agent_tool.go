@@ -51,10 +51,23 @@ func (t *SubAgentTool) Parameters() any {
 				"type":        "string",
 				"description": "可选：传递给子 Agent 的显式上下文信息，优先于系统自动注入的交接上下文。",
 			},
+			"run_in_background": map[string]any{
+				"type":        "boolean",
+				"description": "可选：异步执行子 Agent，立即返回 agent_id。完成后结果自动推送到上下文。可通过 sub_agent_status 查询运行状态。",
+			},
 		},
 		"required":             []string{"instruction"},
 		"additionalProperties": false,
 	}
+}
+
+type childAgentSetup struct {
+	childName    string
+	childAgent   *Agent
+	childRootDir string
+	execOpts     []ExecuteOption
+	instruction  string
+	runtime      builtin_tools.ToolRuntimeInfo
 }
 
 func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string, error) {
@@ -67,9 +80,22 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		return "", fmt.Errorf("sub_agent is disabled inside sub-agents (stack_depth=%d)", runtime.StackDepth)
 	}
 
+	setup, err := t.buildChild(ctx, args, runtime)
+	if err != nil {
+		return "", err
+	}
+
+	runInBackground, _ := args["run_in_background"].(bool)
+	if runInBackground {
+		return t.executeAsync(ctx, setup)
+	}
+	return t.executeSync(ctx, setup)
+}
+
+func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runtime builtin_tools.ToolRuntimeInfo) (*childAgentSetup, error) {
 	instruction, err := argx.RequiredText(args, "instruction")
 	if err != nil {
-		return "", fmt.Errorf("instruction is required")
+		return nil, fmt.Errorf("instruction is required")
 	}
 	toolNames := argx.StringSlice(args["tools"])
 	explicitContext := argx.OptionalText(args, "context")
@@ -106,12 +132,12 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 		"root",
 	)
 	if err != nil {
-		return "", fmt.Errorf("create child workspace: %w", err)
+		return nil, fmt.Errorf("create child workspace: %w", err)
 	}
 
 	childAgent, err := t.factory.Build(childDef)
 	if err != nil {
-		return "", fmt.Errorf("build sub agent: %w", err)
+		return nil, fmt.Errorf("build sub agent: %w", err)
 	}
 
 	t.preRegisterChildAgent(runtime, childName, childRootDir)
@@ -124,12 +150,65 @@ func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string
 	if tc := childDef.BuildTaskContext(); tc != nil {
 		execOpts = append(execOpts, WithTaskContext(tc))
 	}
-	result, err := childAgent.Execute(ctx, instruction, execOpts...)
-	t.finalizeChildAgent(runtime, childName, childRootDir, result)
+
+	return &childAgentSetup{
+		childName:    childName,
+		childAgent:   childAgent,
+		childRootDir: childRootDir,
+		execOpts:     execOpts,
+		instruction:  instruction,
+		runtime:      runtime,
+	}, nil
+}
+
+func (t *SubAgentTool) executeSync(ctx context.Context, setup *childAgentSetup) (string, error) {
+	result, err := setup.childAgent.Execute(ctx, setup.instruction, setup.execOpts...)
+	t.finalizeChildAgent(setup.runtime, setup.childName, setup.childRootDir, result)
 	if err != nil {
 		return "", fmt.Errorf("sub agent execution: %w", err)
 	}
-	return formatSubAgentResult(childName, childRootDir, result), nil
+	return formatSubAgentResult(setup.childName, setup.childRootDir, result), nil
+}
+
+func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup) (string, error) {
+	registry := t.parentAgent.ensureAsyncRegistry()
+
+	instrSummary := setup.instruction
+	if len([]rune(instrSummary)) > 200 {
+		instrSummary = string([]rune(instrSummary)[:200]) + "..."
+	}
+	registry.Register(setup.childName, instrSummary, setup.childRootDir)
+
+	// ctx is the parent scheduler's context: child is cancelled when parent finishes or is aborted.
+	go func() {
+		var result *builtin_tools.RunResult
+		defer func() {
+			if r := recover(); r != nil {
+				result = &builtin_tools.RunResult{
+					Success: false,
+					Error:   fmt.Sprintf("sub agent panicked: %v", r),
+				}
+			}
+			t.finalizeChildAgent(setup.runtime, setup.childName, setup.childRootDir, result)
+			registry.Complete(setup.childName, result)
+		}()
+
+		var err error
+		result, err = setup.childAgent.Execute(ctx, setup.instruction, setup.execOpts...)
+		if err != nil && result == nil {
+			result = &builtin_tools.RunResult{
+				Success: false,
+				Error:   err.Error(),
+			}
+		}
+	}()
+
+	out, _ := json.Marshal(map[string]any{
+		"status":    "async_launched",
+		"agent_id":  setup.childName,
+		"workspace": setup.childRootDir,
+	})
+	return string(out), nil
 }
 
 func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskContextEntry {
@@ -241,6 +320,7 @@ var policyManagedTools = map[string]bool{
 	builtin_tools.TaskStatusQueryToolName:   true,
 	builtin_tools.HumanConfirmToolName:      true,
 	builtin_tools.SubAgentToolName:          true,
+	builtin_tools.SubAgentStatusToolName:    true,
 	builtin_tools.BashToolName:              true,
 	builtin_tools.SkillToolName:             true,
 }
@@ -255,6 +335,7 @@ var excludeFromInheritance = map[string]bool{
 	builtin_tools.TaskStatusQueryToolName:   true,
 	builtin_tools.HumanConfirmToolName:      true,
 	builtin_tools.SubAgentToolName:          true,
+	builtin_tools.SubAgentStatusToolName:    true,
 	builtin_tools.BashToolName:              true,
 	builtin_tools.SkillToolName:             true,
 	builtin_tools.LoadSkillsToolName:        true,

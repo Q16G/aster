@@ -21,6 +21,8 @@ import (
 
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
 	for iter := 1; iter <= maxIterations; iter++ {
+		a.drainAsyncAgentNotifications()
+
 		if ctx != nil && ctx.Err() != nil {
 			snapshot := a.state.Snapshot()
 			if a.v2Store != nil && errors.Is(context.Cause(ctx), ErrTurnAbortRequested) {
@@ -1009,27 +1011,9 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		return nil
 	}
 
-	executedToolCalls := 0
-	for _, tc := range callResult.ToolCalls {
-		if ctx.Err() != nil {
-			break
-		}
-		if tc == nil || tc.Function == nil {
-			continue
-		}
-		if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
-			return err
-		}
-		executedToolCalls++
-		if currentSnapshot := a.state.Snapshot(); currentSnapshot.Terminal() {
-			a.emitRuntimeLog("info", "step phase executed tool calls", currentSnapshot, map[string]any{
-				"event":                "step_phase_tool_calls_executed",
-				"tool_calls_requested": len(callResult.ToolCalls),
-				"tool_calls_executed":  executedToolCalls,
-				"will_continue":        false,
-			})
-			return nil
-		}
+	executedToolCalls, dispatchErr := a.dispatchToolCalls(ctx, iter, callResult.ToolCalls, allowedTools)
+	if dispatchErr != nil {
+		return dispatchErr
 	}
 
 	snapshot = a.state.Snapshot()

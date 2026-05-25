@@ -14,6 +14,7 @@ const (
 	LoadSkillsToolName  = "load_skills"
 	ListSkillsToolName  = "list_skills"
 	DeleteSkillToolName = "delete_skill"
-	SubAgentToolName    = "sub_agent"
-	SkillToolName       = "skill"
+	SubAgentToolName       = "sub_agent"
+	SubAgentStatusToolName = "sub_agent_status"
+	SkillToolName          = "skill"
 )
