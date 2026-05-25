@@ -55,7 +55,7 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 			},
 			"references": map[string]any{
 				"type":        "array",
-				"description": "可选：显式证据引用。填写绝对文件路径、文档路径或其他可追溯产物标识。",
+				"description": "可选：显式证据引用。所有文件路径必须使用绝对路径，禁止使用相对路径。",
 				"items": map[string]any{
 					"type": "string",
 				},

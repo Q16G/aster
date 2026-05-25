@@ -168,7 +168,7 @@
     },
     "references": {
       "type": "array",
-      "description": "支撑最终结论的关键引用列表。",
+      "description": "支撑最终结论的关键引用列表。所有文件路径必须使用绝对路径，禁止使用相对路径。",
       "items": { "type": "string" }
     }
   }

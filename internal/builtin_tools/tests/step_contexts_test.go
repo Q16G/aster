@@ -120,6 +120,64 @@ func TestWorkspaceStepContexts_LoadDoesNotDuplicateAbsoluteArtifactPaths(t *test
 	}
 }
 
+func TestWorkspaceStepContexts_ReferencesConvertedToAbsolutePaths(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+
+	relRef1 := "shared/step_artifacts/step-1.result.json"
+	relRef2 := "shared/refs/note.md"
+	absRef1 := filepath.ToSlash(filepath.Join(root, relRef1))
+	absRef2 := filepath.ToSlash(filepath.Join(root, relRef2))
+
+	if err := AppendWorkspaceStepContextRecords(root, []*StepContextRecord{
+		{
+			ContextKey:  "ctx-ref",
+			Namespace:   "root",
+			StepID:      "step-1",
+			PlanVersion: 1,
+			References:  []string{relRef1, relRef2},
+			CreatedAt:   now,
+		},
+	}); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(WorkspaceStepContextsFileAbs(root))
+	if err != nil {
+		t.Fatalf("read jsonl failed: %v", err)
+	}
+	if !containsAll(string(raw), absRef1, absRef2) {
+		t.Fatalf("persisted references should be absolute; raw=%s", string(raw))
+	}
+
+	noLimit, err := LoadWorkspaceStepContextRecords(root, 0)
+	if err != nil {
+		t.Fatalf("load (no limit) failed: %v", err)
+	}
+	if len(noLimit) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(noLimit))
+	}
+	if len(noLimit[0].References) != 2 || noLimit[0].References[0] != absRef1 || noLimit[0].References[1] != absRef2 {
+		t.Fatalf("no-limit load references mismatch: %v", noLimit[0].References)
+	}
+
+	withLimit, err := LoadWorkspaceStepContextRecords(root, 1)
+	if err != nil {
+		t.Fatalf("load (limit=1) failed: %v", err)
+	}
+	if len(withLimit) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(withLimit))
+	}
+	if len(withLimit[0].References) != 2 || withLimit[0].References[0] != absRef1 || withLimit[0].References[1] != absRef2 {
+		t.Fatalf("limited load references mismatch: %v", withLimit[0].References)
+	}
+
+	// Idempotency: already-absolute references should not be double-prefixed
+	if got := WorkspaceArtifactPath(root, absRef1); got != absRef1 {
+		t.Fatalf("expected idempotent, want=%q got=%q", absRef1, got)
+	}
+}
+
 func containsAll(raw string, expected ...string) bool {
 	for _, item := range expected {
 		if !strings.Contains(raw, item) {
