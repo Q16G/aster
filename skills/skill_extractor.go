@@ -55,9 +55,6 @@ func doExtractSkills() (string, error) {
 		if d.IsDir() {
 			return os.MkdirAll(filepath.Join(targetDir, path), 0o755)
 		}
-		if !strings.HasSuffix(strings.ToLower(path), "skill.md") {
-			return nil
-		}
 		data, readErr := fs.ReadFile(EmbeddedSkills, path)
 		if readErr != nil {
 			return fmt.Errorf("read %s: %w", path, readErr)
@@ -79,9 +76,7 @@ func collectEmbeddedPaths() map[string]struct{} {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		if strings.HasSuffix(strings.ToLower(path), "skill.md") {
-			paths[filepath.ToSlash(path)] = struct{}{}
-		}
+		paths[filepath.ToSlash(path)] = struct{}{}
 		return nil
 	})
 	return paths
@@ -121,9 +116,6 @@ func skillsContentHash() (string, error) {
 	err := fs.WalkDir(EmbeddedSkills, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
-		}
-		if !strings.HasSuffix(strings.ToLower(path), "skill.md") {
-			return nil
 		}
 		data, readErr := fs.ReadFile(EmbeddedSkills, path)
 		if readErr != nil {
