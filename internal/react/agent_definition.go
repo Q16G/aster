@@ -29,28 +29,6 @@ type AgentPolicies struct {
 	EnableHistoryCompaction bool
 }
 
-// BuildInstruction assembles the final instruction from role, background, and instruction fields.
-func (d *AgentDefinition) BuildInstruction() string {
-	var parts []string
-	if d.Role != "" {
-		parts = append(parts, "## 角色\n"+d.Role)
-	}
-	if d.Background != "" {
-		parts = append(parts, "## 背景\n"+d.Background)
-	}
-	if d.Instruction != "" {
-		parts = append(parts, "## 指令\n"+d.Instruction)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	result := parts[0]
-	for _, p := range parts[1:] {
-		result += "\n\n" + p
-	}
-	return result
-}
-
 // BuildTaskContext converts Context entries into TaskContextData.
 func (d *AgentDefinition) BuildTaskContext() *TaskContextData {
 	if len(d.Context) == 0 {

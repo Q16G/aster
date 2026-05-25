@@ -15,6 +15,8 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		skillsCtx = sc
 	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
 		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
 		CurrentGoal:        payload["current_goal"],
 		CurrentStep:        payload["current_step"],
@@ -45,6 +47,8 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 	}
 	showPlanSection, _ := payload["show_plan"].(bool)
 	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
+		AgentRole:        strings.TrimSpace(a.cfg.Role),
+		AgentBackground:  strings.TrimSpace(a.cfg.Background),
 		AgentInstruction: strings.TrimSpace(a.cfg.Instruction),
 		Status:           payload["status"],
 		StateError:       payload["state_error"],

@@ -468,24 +468,6 @@ func TestAgentFactory_BuildMinimalAgent(t *testing.T) {
 	}
 }
 
-func TestAgentDefinition_BuildInstruction(t *testing.T) {
-	def := AgentDefinition{
-		Role:        "安全分析师",
-		Background:  "正在检查 SQL 注入漏洞",
-		Instruction: "逐文件分析入口参数",
-	}
-	instruction := def.BuildInstruction()
-	if !strings.Contains(instruction, "安全分析师") {
-		t.Fatal("expected role in instruction")
-	}
-	if !strings.Contains(instruction, "SQL 注入漏洞") {
-		t.Fatal("expected background in instruction")
-	}
-	if !strings.Contains(instruction, "逐文件分析入口参数") {
-		t.Fatal("expected instruction in instruction")
-	}
-}
-
 func TestAgentDefinition_BuildTaskContext(t *testing.T) {
 	def := AgentDefinition{
 		Context: []TaskContextEntry{
