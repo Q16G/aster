@@ -2,5 +2,5 @@ package skills
 
 import "embed"
 
-//go:embed */*/SKILL.md
+//go:embed */*
 var EmbeddedSkills embed.FS

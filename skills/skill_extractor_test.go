@@ -186,14 +186,18 @@ func TestCollectEmbeddedPaths_ReturnsNonEmpty(t *testing.T) {
 		t.Fatal("expected non-empty embedded paths")
 	}
 
+	hasSkillMD := false
 	for p := range paths {
-		if !strings.HasSuffix(strings.ToLower(p), "skill.md") {
-			t.Fatalf("unexpected non-SKILL.md path: %q", p)
-		}
 		parts := strings.Split(p, "/")
-		if len(parts) != 3 {
-			t.Fatalf("expected <group>/<skill>/SKILL.md pattern, got %q", p)
+		if len(parts) < 3 {
+			t.Fatalf("expected at least <group>/<skill>/<file> pattern, got %q", p)
 		}
+		if strings.HasSuffix(strings.ToLower(p), "skill.md") {
+			hasSkillMD = true
+		}
+	}
+	if !hasSkillMD {
+		t.Fatal("expected at least one SKILL.md in embedded paths")
 	}
 }
 

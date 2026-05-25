@@ -1,7 +1,7 @@
 .idea/
 *.md
 !README.md
-!skills/**/SKILL.md
+!skills/**/*.md
 .ace-tool/
 /aster
 .DS_Store
