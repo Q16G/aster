@@ -18,10 +18,23 @@ type MCPServerConfig struct {
 	URL         string            `yaml:"url,omitempty"`
 	Headers     map[string]string `yaml:"headers,omitempty"`
 	Resident    bool              `yaml:"resident,omitempty"`
+	Timeout     *int              `yaml:"timeout,omitempty"`
 }
 
 type Config struct {
+	GlobalEnv  map[string]string           `yaml:"-"`
 	MCPServers map[string]*MCPServerConfig `yaml:"mcp_servers"`
+}
+
+func MergeEnv(global, perServer map[string]string) map[string]string {
+	merged := make(map[string]string, len(global)+len(perServer))
+	for k, v := range global {
+		merged[k] = v
+	}
+	for k, v := range perServer {
+		merged[k] = v
+	}
+	return merged
 }
 
 func LoadConfig(path string) (*Config, error) {

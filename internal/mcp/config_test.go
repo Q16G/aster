@@ -93,6 +93,66 @@ mcp_servers:
 	}
 }
 
+func TestMergeEnv(t *testing.T) {
+	global := map[string]string{"HTTPS_PROXY": "socks5://127.0.0.1:7890", "TOKEN": "global-token"}
+	perServer := map[string]string{"TOKEN": "server-token", "EXTRA": "val"}
+	merged := MergeEnv(global, perServer)
+
+	if merged["HTTPS_PROXY"] != "socks5://127.0.0.1:7890" {
+		t.Fatalf("expected global HTTPS_PROXY, got %q", merged["HTTPS_PROXY"])
+	}
+	if merged["TOKEN"] != "server-token" {
+		t.Fatalf("expected per-server TOKEN override, got %q", merged["TOKEN"])
+	}
+	if merged["EXTRA"] != "val" {
+		t.Fatalf("expected per-server EXTRA, got %q", merged["EXTRA"])
+	}
+}
+
+func TestMergeEnv_NilInputs(t *testing.T) {
+	merged := MergeEnv(nil, nil)
+	if len(merged) != 0 {
+		t.Fatalf("expected empty map, got %d entries", len(merged))
+	}
+	merged = MergeEnv(map[string]string{"A": "1"}, nil)
+	if merged["A"] != "1" {
+		t.Fatalf("expected A=1, got %q", merged["A"])
+	}
+}
+
+func TestLoadConfig_Timeout(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+mcp_servers:
+  with_timeout:
+    type: sse
+    url: http://localhost:9876
+    timeout: 15
+  no_timeout:
+    type: sse
+    url: http://localhost:9877
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	wt := cfg.MCPServers["with_timeout"]
+	if wt.Timeout == nil || *wt.Timeout != 15 {
+		t.Fatalf("expected timeout=15, got %v", wt.Timeout)
+	}
+	nt := cfg.MCPServers["no_timeout"]
+	if nt.Timeout != nil {
+		t.Fatalf("expected nil timeout, got %v", *nt.Timeout)
+	}
+}
+
 func TestMCPServerConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string

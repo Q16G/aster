@@ -29,6 +29,7 @@ type ProviderConfig struct {
 }
 
 type AppConfig struct {
+	Env              map[string]string               `yaml:"env,omitempty"`
 	Providers        map[string]*ProviderConfig      `yaml:"providers"`
 	DefaultProvider  string                          `yaml:"default_provider"`
 	ProviderPriority []string                        `yaml:"provider_priority,omitempty"`
@@ -160,6 +161,11 @@ func ParseDefaultAgentProfiles() []ProfileYAML {
 
 var defaultConfigYAML = `# ASTER Configuration
 # https://github.com/... (项目文档)
+
+# 全局环境变量（所有 MCP 服务器和 provider 共享）
+# env:
+#   HTTPS_PROXY: socks5://127.0.0.1:7890
+#   MCP_TOKEN: ${MY_SECRET}
 
 # 默认 AI provider
 default_provider: openai
@@ -436,6 +442,7 @@ func SaveConfig(path string, updateFn func(cfg *AppConfig)) error {
 	updateFn(cfg)
 
 	cleanCfg := *cfg
+	cleanCfg.Env = cloneStringMap(cfg.Env)
 	if len(cfg.Providers) > 0 {
 		cleanCfg.Providers = make(map[string]*ProviderConfig, len(cfg.Providers))
 		for k, v := range cfg.Providers {
@@ -557,7 +564,10 @@ func (c *AppConfig) ToMCPConfig() *mcp.Config {
 	if len(c.MCPServers) == 0 {
 		return nil
 	}
-	return &mcp.Config{MCPServers: c.MCPServers}
+	return &mcp.Config{
+		GlobalEnv:  expandProviderEnvMap(c.Env),
+		MCPServers: c.MCPServers,
+	}
 }
 
 func expandProviderEnv(cfg *AppConfig) {
@@ -575,6 +585,7 @@ func expandProviderEnv(cfg *AppConfig) {
 }
 
 func populateMCPNames(cfg *AppConfig, expandHeaders bool) {
+	globalEnv := expandProviderEnvMap(cfg.Env)
 	for name, sc := range cfg.MCPServers {
 		if sc == nil {
 			delete(cfg.MCPServers, name)
@@ -583,6 +594,7 @@ func populateMCPNames(cfg *AppConfig, expandHeaders bool) {
 		sc.Name = name
 		if expandHeaders {
 			expandMCPHeaders(sc)
+			sc.URL = expandProviderValue(sc.URL, globalEnv)
 		}
 	}
 }
