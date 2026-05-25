@@ -161,19 +161,14 @@ func formatSkillsTable(rows []SkillIndexRow) string {
 		return ""
 	}
 
-	showPath := len(rows) > skillsTablePathThreshold
-
 	lines := make([]string, 0, len(rows)+4)
 
-	if showPath {
+	if len(rows) > skillsTablePathThreshold {
 		lines = append(lines, "> 可用技能较多，请通过 read_file 读取对应 SKILL.md 获取完整指令，不要一次性加载所有技能。")
 		lines = append(lines, "")
-		lines = append(lines, "| name | description | when-to-use | path | context | status |")
-		lines = append(lines, "| --- | --- | --- | --- | --- | --- |")
-	} else {
-		lines = append(lines, "| name | description | when-to-use | context | status |")
-		lines = append(lines, "| --- | --- | --- | --- | --- |")
 	}
+	lines = append(lines, "| name | description | when-to-use | path | context | status |")
+	lines = append(lines, "| --- | --- | --- | --- | --- | --- |")
 
 	for _, row := range rows {
 		name := sanitizeTableCell(row.Name)
@@ -193,15 +188,11 @@ func formatSkillsTable(rows []SkillIndexRow) string {
 		if status == "" {
 			status = "available"
 		}
-		if showPath {
-			skillPath := "-"
-			if row.SkillDir != "" {
-				skillPath = sanitizeTableCell(row.SkillDir + "/SKILL.md")
-			}
-			lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s | %s |", name, desc, whenToUse, skillPath, ctx, status))
-		} else {
-			lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s |", name, desc, whenToUse, ctx, status))
+		skillPath := "-"
+		if row.SkillDir != "" {
+			skillPath = sanitizeTableCell(row.SkillDir + "/SKILL.md")
 		}
+		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s | %s |", name, desc, whenToUse, skillPath, ctx, status))
 	}
 	return strings.Join(lines, "\n")
 }
