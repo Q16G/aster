@@ -52,3 +52,9 @@
 {{.WorkspaceContextsJSON}}
 </WORKSPACE_STEP_CONTEXTS>
 {{- end}}
+{{- if not (or .TaskItemsJSON .ReplanContextJSON .HasExecutionLine)}}
+
+<PLANNING_HINT>
+这是一个全新任务。请先使用工具做轻量调查，了解与任务相关的上下文，然后再调用 submit_plan 提交有针对性的计划。
+</PLANNING_HINT>
+{{- end}}
