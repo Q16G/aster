@@ -37,6 +37,17 @@ func isConcurrencySafe(t Tool) bool {
 	return defaultConcurrencySafeTools[t.Name()]
 }
 
+// neverConcurrentTools lists tools that must always run sequentially regardless
+// of ConcurrencySafe declarations. These tools mutate agent state, trigger
+// durable persistence, or have side effects that the concurrent path does not handle.
+var neverConcurrentTools = map[string]bool{
+	builtin_tools.UpdateCurrentStepToolName: true,
+	builtin_tools.HumanConfirmToolName:      true,
+	builtin_tools.SubAgentToolName:          true,
+	builtin_tools.SkillToolName:             true,
+	builtin_tools.BashToolName:              true,
+}
+
 // partitionToolCalls splits tool calls into concurrent-safe and sequential groups.
 // Both groups preserve their relative order from the original slice.
 func partitionToolCalls(a *Agent, toolCalls []*ai.FunctionTool) (safe, unsafe []*ai.FunctionTool) {
@@ -46,6 +57,10 @@ func partitionToolCalls(a *Agent, toolCalls []*ai.FunctionTool) (safe, unsafe []
 		}
 		toolName := strings.TrimSpace(tc.Function.Name)
 		if toolName == "" {
+			unsafe = append(unsafe, tc)
+			continue
+		}
+		if neverConcurrentTools[toolName] {
 			unsafe = append(unsafe, tc)
 			continue
 		}
@@ -119,6 +134,9 @@ type concurrentToolSlot struct {
 	stackDepth int
 
 	validationErr string
+
+	rawOut  string
+	rawErr  string
 
 	out      string
 	errText  string
@@ -206,12 +224,12 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 			defer func() { <-sem }()
 			defer func() {
 				if r := recover(); r != nil {
-					s.errText = fmt.Sprintf("tool panicked: %v", r)
+					s.rawErr = fmt.Sprintf("tool panicked: %v", r)
 				}
 			}()
 
 			if ctx.Err() != nil {
-				s.errText = fmt.Sprintf("context cancelled: %v", ctx.Err())
+				s.rawErr = fmt.Sprintf("context cancelled: %v", ctx.Err())
 				return
 			}
 
@@ -243,10 +261,9 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 				err = fmt.Errorf("tool %q timed out after %s: %w", s.toolName, toolTimeout, err)
 			}
 			if err != nil {
-				s.errText = err.Error()
+				s.rawErr = err.Error()
 			}
-			s.out, s.outTrunc = TruncateToolOutput(s.toolName, out, a.workspaceRootDir)
-			s.errText, s.errTrunc = TruncateToolOutput(s.toolName+"-error", s.errText, a.workspaceRootDir)
+			s.rawOut = out
 		}(slot)
 	}
 
@@ -273,6 +290,9 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		if slot.tool == nil {
 			continue
 		}
+
+		slot.out, slot.outTrunc = TruncateToolOutput(slot.toolName, slot.rawOut, a.workspaceRootDir)
+		slot.errText, slot.errTrunc = TruncateToolOutput(slot.toolName+"-error", slot.rawErr, a.workspaceRootDir)
 
 		if slot.outTrunc || slot.errTrunc {
 			a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{

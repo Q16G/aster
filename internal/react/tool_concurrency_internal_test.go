@@ -126,6 +126,21 @@ func TestPartitionToolCalls_NilsFiltered(t *testing.T) {
 	}
 }
 
+func TestPartitionToolCalls_NeverConcurrentOverridesSafeDeclaration(t *testing.T) {
+	for name := range neverConcurrentTools {
+		agent := newTestAgent(&safeTool{name: name})
+		tcs := []*ai.FunctionTool{makeTC("1", name)}
+
+		safe, unsafe := partitionToolCalls(agent, tcs)
+		if len(safe) != 0 {
+			t.Fatalf("tool %q is in neverConcurrentTools but was partitioned as safe", name)
+		}
+		if len(unsafe) != 1 {
+			t.Fatalf("tool %q should be in unsafe partition, got %d", name, len(unsafe))
+		}
+	}
+}
+
 // --- isConcurrencySafe ---
 
 func TestIsConcurrencySafe_InterfacePriority(t *testing.T) {
