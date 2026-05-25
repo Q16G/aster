@@ -2,7 +2,7 @@
 name: dangerous-config
 description: 危险配置专项审计 — 检查框架配置文件、运行时配置中的安全风险项（如 allow_url_include、debug 模式、宽松权限等）。
 tags: code-audit,config,php-ini,web-xml,application-yml,dangerous
-when-to-use: 当 config-sec P1 Router 识别到项目存在框架配置文件（php.ini / web.xml / application.yml 等）时
+when-to-use: 当项目存在框架配置文件（php.ini / web.xml / application.yml / nginx.conf 等）时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---

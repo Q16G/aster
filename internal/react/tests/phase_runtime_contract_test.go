@@ -108,7 +108,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 		"step_result_path":   "",
 		"step_contexts_path": "",
 		"skills_context": &SkillsPromptContext{
-			Table: "| name | description |\n|------|-------------|\n| web-security-testing | P0 总控路由 |",
+			Table: "| name | description |\n|------|-------------|\n| web-security-testing | Web 安全渗透测试 |",
 		},
 	})
 	if err != nil {

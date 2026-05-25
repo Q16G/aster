@@ -2,7 +2,7 @@
 name: security-header-audit
 description: HTTP 安全头专项审计 — 检查安全响应头的完整性、正确性和 Cookie 安全属性配置。
 tags: code-audit,security-headers,hsts,x-frame-options,cookie,http
-when-to-use: 当 config-sec P1 Router 识别到项目为 Web 应用且有 HTTP 响应头设置时
+when-to-use: 当项目为 Web 应用且存在 HTTP 响应头设置或 Cookie 安全属性设置时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---

@@ -2,7 +2,7 @@
 name: session-security
 description: 会话安全专项审计 — 覆盖 Session ID 生成强度、Session 固定攻击防护、会话生命周期管理、Cookie 安全属性等会话层面的安全检查。
 tags: code-audit,session,cookie,session-fixation,weak-session-id
-when-to-use: 当 auth-authz P1 Router 识别到项目有 Session ID 生成、session 生命周期管理、Cookie 安全属性设置等信号时
+when-to-use: 当项目存在 Session ID 生成、session 生命周期管理、Cookie 安全属性设置时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---

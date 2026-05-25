@@ -936,7 +936,7 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 		},
 		Plan: []*builtin_tools.PlanItem{
 			{ID: "step-1", Step: "加载项目结构与技术栈识别", Status: builtin_tools.PlanStepCompleted},
-			{ID: "step-2", Step: "加载 P0 安全路由 skill，确定审计维度与信号路由表", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
+			{ID: "step-2", Step: "加载审计任务清单 skill，确定审计维度", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
 			{ID: "step-3", Step: "执行 SAST 规则扫描（semgrep/regex）", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-2"}},
 			{ID: "step-4", Step: "AI 语义分析：数据流追踪与上下文敏感审计", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-3"}},
 			{ID: "step-5", Step: "交叉验证与误报排除", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-4"}},
@@ -966,10 +966,10 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 			{
 				StepID:       "step-2",
 				Status:       builtin_tools.StepOutcomeCompleted,
-				ShortSummary: "P0 路由已加载，确定 MUST 覆盖维度：RCE、SQLi、命令注入、路径穿越",
+				ShortSummary: "审计任务清单已加载，确定 MUST 任务项：RCE、SQLi、命令注入、路径穿越",
 				KeyFacts: []string{
-					"MUST 维度: RCE, SQLi, CMDi, PathTraversal",
-					"SHOULD 维度: SSRF, XXE, Deserialization",
+					"MUST 任务项: RCE, SQLi, CMDi, PathTraversal",
+					"SHOULD 任务项: SSRF, XXE, Deserialization",
 					"已选规则集: go-security-audit-v3",
 				},
 				ContextKey: "audit:1:step-2",
@@ -982,7 +982,7 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		AgentRole:        "安全代码审计专家",
 		AgentBackground:  "你是一个专注于 Go 语言安全审计的 AI Agent，熟悉 OWASP Top 10、CWE 分类体系和常见 Go 安全反模式。你的工作是识别真实可利用的安全漏洞，而非风格问题。",
-		AgentInstruction: "对目标项目进行全量安全审计。首先加载 security-code-analysis（P0 总控路由），它定义了信号路由表和覆盖维度。\n\n审计要求：\n- 用户意图优先：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内\n- 分析手段和顺序根据项目实际情况灵活安排\n- 必须满足 P0 Router 定义的 MUST 覆盖维度",
+		AgentInstruction: "对目标项目进行全量安全审计。首先加载 security-code-analysis，它定义了分类审计任务清单。\n\n审计要求：\n- 用户意图优先：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内\n- 分析手段和顺序根据项目实际情况灵活安排\n- 必须满足任务清单中 MUST 标记的任务项",
 		WorkspaceRootDir:   "/repo/target-project",
 		WorkspaceNamespace: "audit",
 	})
@@ -1004,7 +1004,7 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 		"OWASP Top 10",
 		"</AGENT_BACKGROUND>",
 		"<AGENT_INSTRUCTION>",
-		"P0 总控路由",
+		"分类审计任务清单",
 		"</AGENT_INSTRUCTION>",
 		"<INPUT_TIMELINE>",
 		"RCE",
@@ -1036,7 +1036,7 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 3. 按 severity 分类整理结果
 4. 输出结构化扫描报告到 result.json`
 
-	handoffCtx := "父 Agent 已完成项目结构分析：Gin + GORM 架构，120 个 Go 文件，18 个 handler。已加载 P0 路由，MUST 维度: RCE, SQLi, CMDi, PathTraversal。"
+	handoffCtx := "父 Agent 已完成项目结构分析：Gin + GORM 架构，120 个 Go 文件，18 个 handler。已加载审计任务清单，MUST 任务项: RCE, SQLi, CMDi, PathTraversal。"
 
 	// ─────────────────────────────────────────────────────
 	// Part A: 子 agent 首次 plan phase prompt
@@ -1073,7 +1073,7 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 			"</AGENT_INSTRUCTION>",
 			"<HANDOFF_CONTEXT>",
 			"Gin + GORM",
-			"MUST 维度",
+			"MUST 任务项",
 			"</HANDOFF_CONTEXT>",
 			"<INPUT_TIMELINE>",
 		})
@@ -1196,7 +1196,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		},
 		Plan: []*builtin_tools.PlanItem{
 			{ID: "step-1", Step: "加载项目结构与技术栈识别", Status: builtin_tools.PlanStepCompleted},
-			{ID: "step-2", Step: "加载 P0 安全路由，确定审计维度与信号路由表", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
+			{ID: "step-2", Step: "加载审计任务清单，确定审计维度", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
 			{ID: "step-3", Step: "执行 SAST 规则扫描（委派子 Agent）", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-2"}},
 			{ID: "step-4", Step: "AI 语义分析：数据流追踪", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-3"}},
 			{ID: "step-5", Step: "交叉验证与误报排除", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-4"}},
@@ -1218,7 +1218,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			{
 				StepID:       "step-2",
 				Status:       builtin_tools.StepOutcomeCompleted,
-				ShortSummary: "P0 路由已加载，MUST 维度: RCE, SQLi, CMDi, PathTraversal",
+				ShortSummary: "审计任务清单已加载，MUST 任务项: RCE, SQLi, CMDi, PathTraversal",
 				KeyFacts:     []string{"MUST: RCE, SQLi, CMDi, PathTraversal", "SHOULD: SSRF, XXE"},
 				ContextKey:   "audit:1:step-2",
 				UpdatedAt:    now.Add(-20 * time.Minute),
