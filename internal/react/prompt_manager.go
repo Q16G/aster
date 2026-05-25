@@ -8,6 +8,8 @@ import (
 )
 
 type ThinkActPromptInput struct {
+	AgentRole               string
+	AgentBackground         string
 	AgentInstruction        string
 	TaskContext             *TaskContextData
 	WorkspaceRootDir        string
@@ -33,6 +35,8 @@ type ThinkActPromptInput struct {
 }
 
 type StepReplanPromptInput struct {
+	AgentRole          string
+	AgentBackground    string
 	AgentInstruction   string
 	CurrentGoal        any
 	CurrentStep        any
@@ -50,6 +54,8 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
+	AgentRole        string
+	AgentBackground  string
 	AgentInstruction string
 	Status           any
 	StateError       any
@@ -195,7 +201,12 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 
 	buf := bytes.NewBuffer(nil)
 	if err := m.thinkActTmpl.Execute(buf, map[string]any{
+		"AGENT_ROLE":                    strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
 		"AGENT_INSTRUCTION":             strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
 		"HAS_WORKSPACE_CONTEXT":         hasWorkspaceContext,
 		"WORKSPACE_ROOT_DIR":            strings.TrimSpace(input.WorkspaceRootDir),
 		"WORKSPACE_NAMESPACE":           strings.TrimSpace(input.WorkspaceNamespace),
@@ -231,7 +242,11 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
 		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
 		"CURRENT_GOAL":          fmt.Sprint(input.CurrentGoal),
 		"CURRENT_STEP":          prettyJSON(input.CurrentStep),
@@ -258,7 +273,11 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
 		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
 		"STATUS":                fmt.Sprint(input.Status),
 		"STATE_ERROR":           fmt.Sprint(input.StateError),

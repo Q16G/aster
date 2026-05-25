@@ -46,6 +46,8 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
+		AgentRole:               strings.TrimSpace(a.cfg.Role),
+		AgentBackground:         strings.TrimSpace(a.cfg.Background),
 		AgentInstruction:        strings.TrimSpace(a.cfg.Instruction),
 		TaskContext:             taskContext,
 		WorkspaceRootDir:        a.workspaceRootDir,
