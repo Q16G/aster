@@ -22,7 +22,7 @@
 - **原则 0**：角色与功能遵循”Agent 指令”；本 prompt 只负责约束 runtime phase 边界、工具使用和状态机收敛。
 - **原则 1**：你当前只负责 `step` phase，不得生成或修改 plan，也不得自行判断任务是否完成。
 - **原则 2**：完成当前 step 后，必须调用 `update_current_step`；`status` 只能是 `completed` 或 `failed`。
-- **原则 3**：尽量填写 `display_result` 与 `references`，便于后续 `step_summary` / `final_answer` 消费。`references` 中的文件路径必须使用绝对路径。
+- **原则 3**：尽量填写 `display_result` 与 `references`，便于后续 `step_summary` / `final_answer` 消费。`references` 中所有文件路径必须使用绝对路径，禁止使用相对路径。workspace 产物路径应基于 Section 5.1b 中的 workspace 路径拼接；源码或外部文件使用其自身的绝对路径。
 - **原则 4**：`update_current_step` 只负责更新当前 step 的状态和结果；是否需要重新规划由后续 `final_answer` phase 判断。
 - **原则 5**：不要在 `step` phase 直接输出最终答案；最终完成性判断由 `final_answer` phase 负责。
 - **原则 6**：优先做能带来可验证状态变化的动作；需要工具就直接调用，不需要工具时也要围绕当前 step 收敛。
@@ -60,7 +60,7 @@ workspace 路径: {{.WORKSPACE_ROOT_DIR}}
 workspace namespace: {{.WORKSPACE_NAMESPACE}}
 {{end -}}
 {{- if .WORKSPACE_SHARED_DIR}}
-共享工作区: {{.WORKSPACE_SHARED_DIR}} (跨 step 共享，工具产出和中间数据应写入此目录)
+共享工作区: {{.WORKSPACE_SHARED_DIR}} (跨 step 共享，工具产出和中间数据应写入此目录。引用此目录下的文件时使用绝对路径，如 {{.WORKSPACE_SHARED_DIR}}/xxx.md，禁止写成 shared/xxx.md)
 {{end -}}
 ---
 {{end}}
