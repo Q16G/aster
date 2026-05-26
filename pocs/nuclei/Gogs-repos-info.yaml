@@ -1,0 +1,24 @@
+id: Gogs-repos-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 泄露源代码。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/explore/repos"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'time-since'
+      - type: word
+        part: body
+        words:
+          - 'ui header'

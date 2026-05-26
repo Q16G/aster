@@ -1,0 +1,25 @@
+id: jinher-oa-c6-gettreedate-sqli
+info:
+  name: jinher-oa-c6-gettreedate-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: jinher
+http:
+  - raw:
+      - |
+        GET /C6/Jhsoft.Web.users/GetTreeDate.aspx/?id=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Length: 0
+        Connection: close
+        Content-Type: text/json
+        Accept-Encoding: gzip, deflate
+    matchers:
+      - type: word
+        part: body
+        words:
+          - permissions
+          - id

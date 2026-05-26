@@ -1,0 +1,19 @@
+id: natshell-UserName-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 蓝海卓越计费管理系统SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ajax/loaduser.php?UserName=aaa%27"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'MySQL Query'

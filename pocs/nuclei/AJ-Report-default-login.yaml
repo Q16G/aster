@@ -1,0 +1,31 @@
+id: AJ-Report-default-login
+info:
+  name: AJ-Report-default-login
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://ajreport.beliefteam.cn/report-doc/guide/
+    - https://github.com/anji-plus/report/issues/34
+  tags: tags
+http:
+  - raw:
+      - "POST /accessUser/login HTTP/1.1\nHost: {{Hostname}}\nUser-Agent: Mozilla/5.0\
+        \ (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0\n\
+        Accept: application/json, text/plain, */*\nAccept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2\n\
+        Accept-Encoding: gzip, deflate, br\nContent-Type: application/json;charset=utf-8\n\
+        Authorization: \nContent-Length: 83\nOrigin: https://ajreport.beliefteam.cn\n\
+        Referer: https://ajreport.beliefteam.cn/index.html\nSec-Fetch-Dest: empty\n\
+        Sec-Fetch-Mode: cors\nSec-Fetch-Site: same-origin\nTe: trailers\nConnection:\
+        \ close\n\n{\"loginName\":\"guest\",\"password\":\"dc29b42fb47b6b022eae7cf8e62b2538\"\
+        ,\"verifyCode\":\"\"}"
+    matchers-condition: and
+    matchers:
+      - type: binary
+        part: body
+        binary:
+          - 65223a22e8aebfe5
+      - type: word
+        part: body
+        words:
+          - '"code":"200"'

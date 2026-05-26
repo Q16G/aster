@@ -1,0 +1,49 @@
+id: lexmark-default-workflow
+
+info:
+  name: Testing Lexmark printers for default creds and/or guest access with special privileges.
+  author: crose
+  severity: High
+  description: It checks if guest users can add admin accounts in Lexmark printers. If guest is configured correctly, it will attempt default credentials.
+  reference:
+    - https://www.passwarden.com/help/use-cases/lexmark-default-password
+  tags: nwrt,default-login,lexmark
+
+http:
+  - raw:
+      - |-
+        GET /webglue/content?tableEditId=new&c=%2FSettings%2FSecurity%2F%2FUsernamePasswordAccounts%2FEditUsernamePasswordAccount&lang=en HTTP/1.1
+        Content-Type: application/x-www-form-urlencoded; charset=utf-8
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word 
+        part: body
+        words:
+          - 'Admin'
+      - type: status
+        status:
+          - 200
+
+  - raw:
+      - |+
+        POST /webglue/session/create HTTP/1.1
+        Host: {{Hostname}}
+        data%3d%7b%22authtype%22%3a0%2c%22authId%22%3a-1%2c%22creds%22%3a%7b%22username%22%3a%22admin%22%2c%22password%22%3a%22%7b%7bfuzz%7d%7d%22%7d%7d%26lang%3den
+
+    attack: batteringram
+    payloads:
+        fuzz: 
+          - admin
+          - 1111
+
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 'admin'
+      - type: status
+        status:
+          - 200

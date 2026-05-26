@@ -1,0 +1,47 @@
+id: example-get-uuid-and-use-in-next-request
+
+info:
+  name: Example to Extract UUID from First Request and Use in Second
+  author: yourname
+  severity: info
+  description: Extracts UUID from the first request's response and uses it in the second request.
+  tags: example
+
+variables:
+  useragent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+
+http:
+  - raw:
+      - |
+        GET /CFIDE/adminapi/_servermanager/servermanager.cfc?method=getHeartBeat HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: {{useragent}}
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+
+    extractors:
+      - type: regex
+        part: body
+        regex:
+          - 'someRegexPatternForUUID"uuid":"(.*?)"' # 这里的正则表达式需要根据实际的响应格式来调整
+        group: 1
+        name: extracted_uuid
+
+  - raw:
+      - |
+        GET /second/request/path/with/{{extracted_uuid}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: {{useragent}}
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "expectedWordOrPhraseInResponse" # 期望在第二个请求的响应体中找到的单词或短语
+        part: body

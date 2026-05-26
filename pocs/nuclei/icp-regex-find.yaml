@@ -1,0 +1,21 @@
+id: icp-regex-find
+
+info:
+  name: icp备案号正则匹配
+  author: wjlin0
+  severity: info
+  description: 通过正则匹配发现icp备案号
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+
+    extractors:
+      - type: regex
+        part: body
+        group: 1
+        regex:
+          - '(?:\w|\p{Han})*ICP(备)?\d{1,10}(号)(-\d{1,})?'
+          - '(?m)(技术支持|技术提供|网站建设|技术服务)[:：\s]*([A-Za-z0-9\x{4e00}-\x{9fa5}\(\)-]+)'
+          - '(?i)(?:.*?)(?:copyright|©|版权).+?([\x{4e00}-\x{9fa5}]+)(?:.+?©.+?[\x{4e00}-\x{9fa5}]+)?'

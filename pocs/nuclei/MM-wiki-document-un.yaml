@@ -1,0 +1,18 @@
+id: MM-wiki-document-un
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 系统存在未授权访问漏洞，攻击者可以未授权获取文档信息。通过遍历document_id值获取文章。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/page/display?document_id=1"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'phachon'

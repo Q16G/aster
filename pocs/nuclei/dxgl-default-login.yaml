@@ -1,0 +1,33 @@
+id: dxgl-default-login
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /manager/login.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 21
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Origin: http://219.135.180.210:18888
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://219.135.180.210:18888/manager/index.php
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: PHPSESSID=7m5fv9uss68b0c10u13vsr53r0
+        Connection: keep-alive
+
+        Name=admin&Pass=admin
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 'Location: home.php'

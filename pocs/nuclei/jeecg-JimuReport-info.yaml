@@ -1,0 +1,24 @@
+id: jeecg-JimuReport-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: JimuReport积木报表,历史存在漏洞。
+  reference:
+    - https://github.com/jeecgboot/JimuReport
+    - https://github.com/jeecgboot/JimuReport/issues/2848
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jmreport/save"
+      - "{{BaseURL}}/jeecg-boot/jmreport/save"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '不支持GET请求方法'

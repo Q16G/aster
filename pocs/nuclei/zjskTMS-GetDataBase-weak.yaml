@@ -1,0 +1,18 @@
+id: zjskTMS-GetDataBase-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 郑州时空-TMS运输管理系统 GetDataBase存在信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ManLogin/GetDataBase"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'datausername'

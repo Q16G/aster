@@ -1,0 +1,30 @@
+
+id: yonyou-u8-crm-directory-traversal
+
+info:
+  name: 用友U8+ CRM目录遍历漏洞
+  author: fgz
+  severity: high
+  reference:
+    - none
+  metadata:
+    fofa-query: body="用友U8CRM"
+    veified: true
+  tags: yonyou
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/config/"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        
+      - type: word
+        part: body
+        words:
+          - 'Index of /config'
+        condition: and

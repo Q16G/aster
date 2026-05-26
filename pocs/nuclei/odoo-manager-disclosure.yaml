@@ -1,0 +1,21 @@
+id: odoo-manager-disclosure
+
+info:
+  name: odoo manager disclosure
+  author: li1u(https://huclilu.github.io/)
+  severity: info
+  description: |
+      odoo是一套全球开源的ERP/CRM系统，采用python和PostgreSQL开发，功能模块中包括数据库管理，若数据库管理界面未设置Master Password，或者Master Password口令为弱口令,
+      可能会导致数据库被下载、恶意备份甚至删除等危害。FoFa: "Odoo" && title=="Odoo"
+http:
+  - raw:
+      - |+
+        GET /web/database/manager HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2309.372 Safari/537.36
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Backup Database'

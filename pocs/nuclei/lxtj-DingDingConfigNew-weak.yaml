@@ -1,0 +1,18 @@
+id: lxtj-DingDingConfigNew-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: HCM智能人力资源系统DingDingConfigNew 存在信息泄露
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Mobile/Account/DingDingConfigNew"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'APPSECRET'

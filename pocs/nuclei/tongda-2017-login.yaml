@@ -1,0 +1,25 @@
+id: tongda-2017-login
+info:
+  name: tongda-2017-login
+  author: apple
+  severity: high
+  description: tongda-2017-login
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/T10-31%E9%80%9A%E8%BE%BE-OA-PermissionAC?id=t10-31%e9%80%9a%e8%be%be-oa-permissionac
+  tags: tongda
+http:
+  - raw:
+      - |+
+        GET /ispirit/login_code.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'code_uid'

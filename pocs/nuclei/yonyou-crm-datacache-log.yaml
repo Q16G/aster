@@ -1,0 +1,20 @@
+id: yonyou-crm-datacache-log
+info:
+  name: Template Name
+  author: wangzong
+  severity: medium
+  description: 信息泄露漏洞指的是系统、应用程序或网站意外地向未经授权的个人或实体泄露敏感信息的漏洞。
+  reference:
+    - https://
+  tags: tags
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/datacache/crmdebug.log"  
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'user_id'

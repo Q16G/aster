@@ -16,16 +16,16 @@ import (
 )
 
 type ProviderConfig struct {
-	BaseURL        string                       `yaml:"base_url"`
-	APIKey         string                       `yaml:"api_key"`
-	DefaultModel   string                       `yaml:"default_model"`
-	Headers        map[string]string            `yaml:"headers,omitempty"`
-	PromptCache    *ai.PromptCacheConfig        `yaml:"prompt_cache,omitempty"`
-	Variants       map[string]map[string]any    `yaml:"variants,omitempty"`
-	Env            map[string]string            `yaml:"env,omitempty"`
-	SupportsVision *bool                        `yaml:"supports_vision,omitempty"`
-	SupportsAudio  *bool                        `yaml:"supports_audio,omitempty"`
-	Timeout        *int                         `yaml:"timeout,omitempty"`
+	BaseURL        string                    `yaml:"base_url"`
+	APIKey         string                    `yaml:"api_key"`
+	DefaultModel   string                    `yaml:"default_model"`
+	Headers        map[string]string         `yaml:"headers,omitempty"`
+	PromptCache    *ai.PromptCacheConfig     `yaml:"prompt_cache,omitempty"`
+	Variants       map[string]map[string]any `yaml:"variants,omitempty"`
+	Env            map[string]string         `yaml:"env,omitempty"`
+	SupportsVision *bool                     `yaml:"supports_vision,omitempty"`
+	SupportsAudio  *bool                     `yaml:"supports_audio,omitempty"`
+	Timeout        *int                      `yaml:"timeout,omitempty"`
 }
 
 type AppConfig struct {
@@ -212,6 +212,13 @@ mcp_servers:
     args: ["mcp", "--transport", "stdio", "--tool", "ssa"]
     resident: false
 
+  chrome:
+    description: "Chrome 浏览器自动化（Playwright MCP）"
+    type: stdio
+    command: npx
+    args: ["-y", "@playwright/mcp@0.0.75", "--browser", "chrome", "--isolated"]
+    resident: false
+
   # example-server:
   #   type: stdio
   #   command: my-mcp-server
@@ -395,6 +402,77 @@ skill_names:
   - 隐私保护-敏感信息未脱敏检测
 preload_skills:
   - web-security-testing
+tool_names:
+  - list_files
+  - read_file
+  - rg
+  - list_skills
+  - load_skills
+`,
+
+	"red-team.yaml": `name: red-team
+role: 授权红队外网打点与高危漏洞验证专家，擅长外部资产梳理、指纹识别、nuclei POC 匹配和漏洞存在性验证
+background: |
+  精通授权范围内的外部攻击面评估流程，覆盖信息收集、子域名与端口暴露、
+  Web/API 指纹识别、登录入口与管理后台识别、nuclei 模板筛选、高危漏洞最小化验证。
+  重点关注 SQL 注入、文件上传、命令执行、反序列化、SSRF、XXE、SSTI、
+  路径穿越、未授权访问、JWT/CORS/API 配置缺陷和敏感信息暴露。
+instruction: |
+  ## 红队验证边界
+  - 用户给出域名、IP 或 URL 时，将其直接视为本轮授权范围，不要要求用户填写完整授权表格
+  - 只有在用户完全没有给出目标，或目标无法解析为域名、IP、URL 时，才简短询问目标范围
+  - 目标是验证漏洞是否存在并形成证据链，不获取真实业务数据、不拿 shell、不写 WebShell、不做持久化、不提权、不横向移动、不绕过检测
+  - 对高危 POC 采用最小化验证：优先使用版本、指纹、响应差异、无害回显、状态码和 matcher 证据确认风险
+  - 对可能产生破坏、写入、命令执行副作用或数据读取的模板，转为安全验证建议，不直接执行危险步骤
+
+  ## 工作策略
+  - 首先加载 redteam-methodology，它定义外网打点、高危验证和报告闭环
+  - 信息收集阶段优先被动侦察；主动扫描或 nuclei 验证只针对用户本轮给出的目标
+  - 通过 external-recon 汇总资产，再通过 fingerprint-triage 将资产信号映射到产品、组件、CVE 或漏洞类型
+  - 使用 nuclei-poc-verification 读取本地 pocs/nuclei/ 模板库，按 id、name、tags、severity、metadata、http、matchers、extractors 选择候选模板
+  - 对通用 Web/API 漏洞，按需加载现有 pentest 技能进行安全验证
+
+  ## 标准交付物
+  - 红队外网验证报告：通过 result-with-file 持久化，包含授权范围、资产清单、指纹证据、候选 POC、验证结论、风险影响、整改建议和复测方法
+  - 证据必须脱敏，只保留证明漏洞存在所需的最小样本
+policies:
+  result_source: latest_step_result
+skill_names:
+  - redteam-methodology
+  - external-recon
+  - fingerprint-triage
+  - nuclei-poc-verification
+  - redteam-report
+  - result-with-file
+  - recon-methodology
+  - web-security-testing
+  - injection-testing
+  - SQL注入-多策略综合检测
+  - xss-testing
+  - command-injection
+  - ssrf-testing
+  - xxe-testing
+  - ssti-testing
+  - access-control
+  - 认证安全综合检测
+  - 越权访问-IDOR检测
+  - 越权访问-垂直越权检测
+  - 越权访问-未授权访问检测
+  - csrf-testing
+  - file-and-path-sec
+  - 文件上传-多策略综合检测
+  - path-traversal-lfi
+  - http-protocol-sec
+  - open-redirect-testing
+  - api-token-sec
+  - CORS-配置错误检测
+  - JWT-弱密钥与信息泄露检测
+  - business-logic-testing
+  - race-condition
+  - 隐私保护-敏感信息未脱敏检测
+preload_skills:
+  - redteam-methodology
+  - result-with-file
 tool_names:
   - list_files
   - read_file

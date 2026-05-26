@@ -664,14 +664,22 @@ func (m *Model) mcpList() (tea.Model, tea.Cmd) {
 		} else if e.Status == mcp.MCPStatusError {
 			icon = "✗"
 		}
-		sb.WriteString(fmt.Sprintf("  %s %s  [%s]", icon, e.Name, e.Status))
-		if e.ToolCount > 0 {
-			sb.WriteString(fmt.Sprintf("  (%d tools)", e.ToolCount))
-		}
+		sb.WriteString(fmt.Sprintf("  %s %s  [%s]", icon, e.Name, mcpEntryDescription(e)))
 		sb.WriteString("\n")
 	}
 	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: sb.String()}})
 	return m, nil
+}
+
+func mcpEntryDescription(e *mcp.MCPServerEntry) string {
+	desc := string(e.Status)
+	if e.Status == mcp.MCPStatusError && strings.TrimSpace(e.Error) != "" {
+		desc += ": " + strings.TrimSpace(e.Error)
+	}
+	if e.ToolCount > 0 {
+		desc += fmt.Sprintf(" (%d tools)", e.ToolCount)
+	}
+	return desc
 }
 
 func (m *Model) openMCPSelector() (tea.Model, tea.Cmd) {
@@ -693,14 +701,10 @@ func (m *Model) openMCPSelector() (tea.Model, tea.Cmd) {
 		} else if e.Status == mcp.MCPStatusError {
 			icon = "✗"
 		}
-		desc := string(e.Status)
-		if e.ToolCount > 0 {
-			desc += fmt.Sprintf(" (%d tools)", e.ToolCount)
-		}
 		options[i] = tuiui.SelectOption{
 			Label:       icon + " " + e.Name,
 			Value:       e.Name,
-			Description: desc,
+			Description: mcpEntryDescription(e),
 		}
 	}
 	dialog := tuiui.NewSelectDialog("mcp-select", "MCP Servers", options)

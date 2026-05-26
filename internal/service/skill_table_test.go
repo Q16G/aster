@@ -233,6 +233,40 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 	}
 }
 
+func TestImportEmbeddedSkills_RedTeamSkills(t *testing.T) {
+	svc := NewSkillServiceWithMemory()
+	_, err := svc.ImportEmbeddedSkills(context.Background())
+	if err != nil {
+		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
+	}
+
+	names := []string{
+		"redteam-methodology",
+		"external-recon",
+		"fingerprint-triage",
+		"nuclei-poc-verification",
+		"redteam-report",
+	}
+	skills, err := svc.LoadSkills(context.Background(), names)
+	if err != nil {
+		t.Fatalf("LoadSkills failed: %v", err)
+	}
+	if len(skills) != len(names) {
+		t.Fatalf("expected %d red-team skills, got %d", len(names), len(skills))
+	}
+	for _, skill := range skills {
+		if skill.Agent != "all" {
+			t.Fatalf("expected embedded red-team skill %q agent to default to all, got %q", skill.Name, skill.Agent)
+		}
+		if skill.WhenToUse == "" {
+			t.Fatalf("expected red-team skill %q to have when-to-use", skill.Name)
+		}
+		if !strings.Contains(skill.Instructions, "授权") {
+			t.Fatalf("expected red-team skill %q to mention authorization boundaries", skill.Name)
+		}
+	}
+}
+
 func TestImportEmbeddedSkills_AllHaveAgent(t *testing.T) {
 	svc := NewSkillServiceWithMemory()
 	_, err := svc.ImportEmbeddedSkills(context.Background())

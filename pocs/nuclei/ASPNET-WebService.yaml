@@ -1,0 +1,77 @@
+id: ASPNET-WebService
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: ASPNET中WebService类似于 spring 的swagger-ui，暴露了所有的接口及参数，攻击者可以测试这些参数从而控制服务器。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /WebService/ HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+      - |-
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+      - |-
+        GET /Service.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+      - |-
+        GET /swagger/Default/swagger.json HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+      - |-
+        GET /services/?wsdl HTTP/1.1
+        Host: {{Hostname}}
+        Connection: keep-alive
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate, br, zstd
+        Accept-Language: zh-CN,zh;q=0.9
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 支持下列操作。有关正式定义
+      - type: word
+        part: body
+        words:
+          - asmx?WSDL
+      - type: word
+        part: body
+        words:
+          - asmx?disco    
+      - type: word
+        part: body
+        words:
+          - '<wsdl:definitions'
+      - type: word
+        part: body
+        words:
+          - './swagger-ui.css'
+          
+
+

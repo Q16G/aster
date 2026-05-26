@@ -1,0 +1,19 @@
+id: nacos-serviceSync-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 没进行权限校验。
+  reference:
+    - https://github.com/ibaiw/2023Hvv/blob/556de69ffc370fd9827e2cf5027373543e2513d4/Nacos-Sync.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/#/serviceSync"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '同步服务'

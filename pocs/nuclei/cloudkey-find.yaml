@@ -1,0 +1,27 @@
+id: cloudkey-find
+
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+
+    extractors:
+      - type: regex
+        part: body
+        group: 1
+        regex:
+          - '(LTAI[A-Za-z0-9]{12,20})'  #阿里云
+          - '(AKID[A-Za-z0-9]{13,20})'  #腾讯云
+          - '(AKIA[A-Za-z0-9]{16})'  #亚马逊云
+          - '(AK[\w\W]{10,62})' #华为云
+          - '(AK[A-Za-z0-9]{10,40})' #百度云
+          

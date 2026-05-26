@@ -1,0 +1,24 @@
+id: haokajituan-sql
+
+info:
+  name: haokajituan-sql
+  author: HackTwo
+  severity: high
+
+
+http:
+- raw:
+  - |+
+    @timeout: 30s
+    GET /order/index.php?pid=1' HTTP/1.1
+    Host: {{Hostname}}
+
+
+  max-redirects: 3
+  matchers-condition: and
+  matchers:
+  - type: word
+    part: body
+    words:
+    - syntax
+    condition: and

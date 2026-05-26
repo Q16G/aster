@@ -1,0 +1,47 @@
+id: webpack-static-js-sourcemap
+
+info:
+  name: webpack-static-js-sourcemap
+  author: apple
+  severity: info
+  description: 在日常测试时，经常会遇到以js.map为后缀的文件，这是jQuery中的一个新功能，支持Source Map，非常多Webpack打包的站点都会存在js.map文件.通过sourcemap可还原前端代码找到API,间接性获取未授权访问漏洞
+  reference:
+    - https://www.secpulse.com/archives/132042.html
+    - https://blog.csdn.net/u011975363/article/details/125694154
+    - https://github.com/0xa-saline/SourceMap_restore_source
+    - https://github.com/paazmaya/shuji
+  tags: tags
+
+http:
+  - raw:
+      - |+
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+      - |
+        GET /{{map}}.map HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '{"version"'
+
+    extractors:
+      - type: regex
+        name: map
+        internal: true
+        part: body_1
+        regex:
+          - 'static/js/app\.(.*?)\.js'

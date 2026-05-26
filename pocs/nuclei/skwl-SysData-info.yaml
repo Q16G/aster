@@ -1,0 +1,19 @@
+id: skwl-SysData-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 时空物流运输管理系统存在敏感信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ManLogin/SysData"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '数据库名称'

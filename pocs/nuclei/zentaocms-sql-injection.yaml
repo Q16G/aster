@@ -1,0 +1,54 @@
+id: zentaocms-sql-injection
+info:
+  name: Version Detection
+  author: YourName
+  severity: high
+  description: 该漏洞是由于禅道项目管理系统权限认证存在缺陷导致，攻击者可利用该漏洞在未授权的情况下，通过权限绕过在服务器执行sql进而可以写入webshell。
+  reference:
+    - https://www.cnblogs.com/spmonkey/p/17050708.html
+  tags: zentaocms
+
+http:
+  - raw:
+      - |+
+        GET /www/index.php?mode=getconfig HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: lang=zh-cn; device=desktop; theme=default; zentaosid=v5k8jgec1ggpn86qrb7a20gekn
+        Connection: close
+
+      - |+
+        GET /index.php?mode=getconfig HTTP/1.1
+        Host: {{Hostname}}
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.138 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: lang=zh-cn; device=desktop; theme=default; zentaosid=v5k8jgec1ggpn86qrb7a20gekn
+        Connection: close
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - '"version":"(17\.[4-9]|18\.0\.beta1)"'
+        condition: and
+        name: "开源版"
+      - type: regex
+        part: body
+        regex:
+          - '"version":"(3\.[4-9]|4\.0\.beta1)"'
+        condition: and
+        name: "旗舰版"
+      - type: regex
+        part: body
+        regex:
+          - '"version":"(7\.[4-9]|8\.0\.beta1)"'
+        condition: and
+        name: "企业版"

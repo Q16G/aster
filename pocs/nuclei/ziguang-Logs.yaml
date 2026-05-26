@@ -1,0 +1,20 @@
+id: ziguang-Logs
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 日志泄露
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Application/Runtime/Logs/login/24_08_14.log"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'DEBUG'

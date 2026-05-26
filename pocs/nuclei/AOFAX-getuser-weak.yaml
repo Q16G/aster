@@ -1,0 +1,19 @@
+id: AOFAX-getuser-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/handle/user.ashx?type=getuser"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - TripPhone

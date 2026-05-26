@@ -1,0 +1,40 @@
+id: DreamerCMS-shiro-default-key
+info:
+  name: DreamerCMS-shiro-default-key
+  author: apple
+  severity: critical
+  description: DreamerCMS存在 shiro 框架默认 key，可尝试寻找利用链进行命令执行。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /admin/u/toLogin HTTP/1.1
+        Cookie: dreamer-cms-r=123
+        Accept: text/html,application/json,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36 Hutool
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.8
+        Cookie: dreamer-cms-s=ec7195ff-5eb5-4950-bd3f-f2516ec35015
+        Host: {{Hostname}}
+        Connection: close
+
+      - |+
+        GET /admin/u/toLogin HTTP/1.1
+        Cookie: dreamer-cms-r=fr1ZPpbUlLNBe1vqfVCAultn4sUU9i+lU6ufqqJJ8EaxEuuf1SLdzd2fw9B6LzfdO5i9XboS2FouvTeTRikx57PIeHrMv3UiLTUy2k7SD/Cwe8lms70bmKDYpTige+krP5CPYQMOx6mkV2ugx0nP0qJXjZ5Iq180ICM16e9wbO9DeP7htxPSVbLNfA34RHyp
+        Accept: text/html,application/json,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36 Hutool
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.8
+        Host: {{Hostname}}
+        Connection: close
+
+    req-condition: true
+    matchers:
+      - type: dsl
+        dsl:
+          - 'contains(header_1, "Set-Cookie") && (contains(header_1, "dreamer-cms-s=") || contains(header_1, "=deleteMe"))'
+          - 'contains(header_2, "reamer-cms-s=") && !contains(header_2, "=deleteMe")'
+        condition: and
+#wGiHplamyXlVB11UXWol8g==

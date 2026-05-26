@@ -1,0 +1,30 @@
+id: nacos-derby-rce
+
+info:
+  name: Nacos - derby Remote Code Execution
+  author: unknown
+  severity: critical
+  description: 该漏洞有两个利用条件：配合条件竞争执行恶意SQL，加载恶意jar并注册函数。利用2020年的nacos derby sql注入漏洞（CVE-2021-29442）调用恶意函数拿到回显结果
+  reference: 
+    - https://unsafe.sh/go-251275.html
+    - https://github.com/Conan924/NacosExploit/releases/tag/v1.1
+    - https://github.com/MrWQ/vulnerability-paper/blob/919cf160c09aab8586c943b5591d77694e23aa66/bugs/Nacos%201Day%20RCE%20%E4%B8%8D%E5%87%BA%E7%BD%91%E5%88%A9%E7%94%A8%E6%96%B9%E5%BC%8F.md?plain=1#L220
+  tags: nacos
+  metadata:
+    max-request: 1
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/nacos/v1/console/server/state"
+      - "{{BaseURL}}/v1/console/server/state"
+    matchers-condition: or
+    matchers:
+      - type: regex
+        regex:
+          - '<version>2\.[0-4]\.[0-9]+</version>|<version>[01]\.[0-9]+\.[0-9]+</version>'
+        part: body
+      - type: regex
+        regex:
+          - '"version":"(2\.([0-3]\.[0-9]|4\.0)|1\.\d+\.\d+|0\.\d+\.\d+)"'
+        part: body

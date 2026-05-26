@@ -1,0 +1,26 @@
+id: node-Exporter-info
+info:
+  name: Template Name
+  author: wangzong
+  severity: info
+  description: 利用 Prometheus 节点导出器和 Windows 导出器信息收集,可以使用 msf 进行格式化输出auxiliary/gather/prometheus_node_exporter_gather。
+  reference:
+    - https://github.com/prometheus/prometheus/issues/11290
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/metrics"
+
+      
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - TYPE apt_upgrades_pending gauge
+      - type: word
+        part: header
+        words:
+          - 'Content-Type: text/plain;'

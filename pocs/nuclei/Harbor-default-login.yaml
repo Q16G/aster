@@ -1,0 +1,40 @@
+id: Harbor-default-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /c/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Length: 36
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.7103.48 Safari/537.36
+        Accept-Language: zh-CN,zh;q=0.9
+        Accept: application/json, text/plain, */*
+        Content-Type: application/x-www-form-urlencoded
+        X-Xsrftoken: meQ921jC745o765Wn2fyvx0kLganIeuE
+        Origin: http://{{Hostname}}
+        Referer: http://{{Hostname}}/harbor/sign-in?redirect_url=%2Fharbor%2Fprojects
+        Accept-Encoding: gzip, deflate, br
+        Cookie: _xsrf=bWVROTIxakM3NDVvNzY1V24yZnl2eDBrTGdhbklldUU=|1749555160716534363|e5ed9d3b42b46cfa81620b85dcff3f1e44b8388fd1db077224449245fd9f063c; sid=96ed51e109607b2e344141fde03ae30c
+        sec-ch-ua-platform: "Windows"
+        sec-ch-ua: "Not/A)Brand";v="8", "Chromium";v="136", "Google Chrome";v="136"
+        sec-ch-ua-mobile: ?0
+        Connection: close
+
+        principal=admin&password=Harbor12345
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - sid=
+      - type: word
+        part: header
+        words:
+          - '200'

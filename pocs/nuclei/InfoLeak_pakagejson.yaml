@@ -1,0 +1,22 @@
+id: InfoLeak_pakagejson
+info:
+  name: InfoLeak_pakagejson
+  author: GLAN
+  severity: info
+  tags: tech,infoleak
+http:
+  - method: GET
+    path:
+      - "{{RootURL}}{{Path}}/package.json"
+    cookie-reuse: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        name: "dependencies"
+        words:
+          - "\"dependencies\":"
+        condition: and      

