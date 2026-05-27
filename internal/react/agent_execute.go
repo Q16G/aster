@@ -421,6 +421,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.frozenLineageByStep = nil
 	a.lastStepTranscriptBlobRef = ""
 	a.resetRunHandoff()
+	if a.asyncRegistry != nil {
+		a.asyncRegistry.Reset()
+	}
 
 	if input != "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil {
 		userMsg := ai.NewUserMsgInfo(input)

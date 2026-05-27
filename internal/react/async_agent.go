@@ -25,8 +25,7 @@ type AsyncAgentEntry struct {
 	Status       string // "running" | "completed" | "failed"
 	Instruction  string
 	WorkspaceDir string
-	Result       *builtin_tools.RunResult
-	DoneCh    chan struct{}
+	Result    *builtin_tools.RunResult
 	StartedAt time.Time
 	delivered bool
 	closed    bool
@@ -55,8 +54,7 @@ func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string)
 		Status:       "running",
 		Instruction:  instruction,
 		WorkspaceDir: workspaceDir,
-		DoneCh:       make(chan struct{}),
-		StartedAt:    time.Now(),
+		StartedAt: time.Now(),
 	}
 }
 
@@ -76,7 +74,6 @@ func (r *AsyncAgentRegistry) Complete(agentID string, result *builtin_tools.RunR
 	}
 	entry.Result = result
 	entry.closed = true
-	close(entry.DoneCh)
 	status := entry.Status
 	wsDir := entry.WorkspaceDir
 	r.mu.Unlock()
@@ -167,6 +164,44 @@ func writeAsyncResultFile(workspaceDir string, notif *AsyncAgentNotification) st
 		return ""
 	}
 	return resultFile
+}
+
+// PurgeDelivered removes entries that are completed/failed AND whose notification
+// has been delivered to stepHistory. This prevents the agents map from growing
+// unbounded across many background sub-agent spawns.
+func (r *AsyncAgentRegistry) PurgeDelivered() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	purged := 0
+	for id, entry := range r.agents {
+		if entry.closed && entry.delivered {
+			delete(r.agents, id)
+			purged++
+		}
+	}
+	return purged
+}
+
+// Reset clears all entries and drains any remaining notifications.
+// Should be called when the parent Agent's Execute() completes a turn to ensure
+// no stale references are retained across turns.
+func (r *AsyncAgentRegistry) Reset() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.agents = make(map[string]*AsyncAgentEntry)
+	r.mu.Unlock()
+	for {
+		select {
+		case <-r.notifications:
+		default:
+			return
+		}
+	}
 }
 
 // truncateRuneString truncates s to at most maxRunes runes, appending "..." if truncated.
