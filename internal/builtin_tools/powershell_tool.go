@@ -12,47 +12,81 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	bashDefaultTimeoutMs   int64 = 120_000
-	bashBuildTestTimeoutMs int64 = 300_000
-	bashMaxTimeoutMs       int64 = 900_000
-	bashCaptureMaxStdout   int64 = 1 * 1024 * 1024 // 1 MiB
-	bashCaptureMaxStderr   int64 = 1 * 1024 * 1024 // 1 MiB
-	bashTruncateHeadRatio        = 0.2
-	bashDefaultWaitDelay = 10 * time.Second
-)
-
-// BashTool bash 命令执行工具
-type BashTool struct {
+// PowerShellTool is an independent tool for Windows-native PowerShell operations.
+// It provides version-aware prompt engineering and AST-based safety checks.
+type PowerShellTool struct {
 	ctx        ToolContext
 	permCtx    *BashPermissionContext
 	sessionAL  *SessionAllowlist
 	mu         sync.Mutex
-	confirming bool // 标记是否有命令正在等待确认
+	confirming bool
+	initOnce   sync.Once
+	psPath     string
+	psEdition  PSEdition
 }
 
-// NewBashTool 创建 bash 工具实例
-func NewBashTool(ctx ToolContext, permCtx *BashPermissionContext, sessionAL *SessionAllowlist) *BashTool {
-	return &BashTool{
+func NewPowerShellTool(ctx ToolContext, permCtx *BashPermissionContext, sessionAL *SessionAllowlist) *PowerShellTool {
+	return &PowerShellTool{
 		ctx:       ctx,
 		permCtx:   permCtx,
 		sessionAL: sessionAL,
 	}
 }
 
-func (t *BashTool) Name() string { return BashToolName }
-
-func (t *BashTool) Description() string {
-	return "执行 shell 命令。用于构建、测试、脚本、git 和系统命令。搜索代码和读文件应优先使用 rg 和 read_file。"
+func (t *PowerShellTool) init() {
+	t.initOnce.Do(func() {
+		t.psPath, t.psEdition = FindPowerShell()
+	})
 }
 
-func (t *BashTool) Parameters() any {
+func (t *PowerShellTool) Name() string { return PowerShellToolName }
+
+func (t *PowerShellTool) Description() string {
+	t.init()
+	base := "执行 PowerShell 命令。专用于 Windows 原生操作：注册表、服务管理、WMI 查询、.NET 调用、组策略、Windows API。通用文件操作、构建、测试、git 等应使用 bash 工具。"
+	return base + "\n\n" + t.buildPSGuidance()
+}
+
+func (t *PowerShellTool) buildPSGuidance() string {
+	var sb strings.Builder
+
+	switch t.psEdition {
+	case PSEditionCore:
+		sb.WriteString("当前 PowerShell 版本：Core 7+ (pwsh)\n")
+		sb.WriteString("[OK] 可用 && 和 || 链接命令（优先于 ;）\n")
+		sb.WriteString("[OK] 可用三元运算符 ($x ? $a : $b)、null 合并 (??)、null 条件 (?.)\n")
+		sb.WriteString("默认编码 UTF-8 without BOM\n")
+		sb.WriteString("ConvertFrom-Json 支持 -AsHashtable\n")
+	case PSEditionDesktop:
+		sb.WriteString("当前 PowerShell 版本：Desktop 5.1\n")
+		sb.WriteString("[禁止] && 和 ||（语法错误），用 ; 或 if ($?) {...}\n")
+		sb.WriteString("[禁止] 三元 ?:、null 合并 ??、null 条件 ?.\n")
+		sb.WriteString("[注意] 避免 2>&1（stderr 处理 bug，native exe 写 stderr 会导致 $?=false）\n")
+		sb.WriteString("默认编码 UTF-16 LE with BOM\n")
+		sb.WriteString("ConvertFrom-Json 返回 PSCustomObject 而非 hashtable\n")
+	default:
+		sb.WriteString("PowerShell 版本未知，使用保守语法（兼容 5.1）\n")
+		sb.WriteString("[禁止] && 和 ||，用 ; 或 if ($?) {...}\n")
+		sb.WriteString("[禁止] 三元 ?:、null 合并 ??、null 条件 ?.\n")
+	}
+
+	sb.WriteString("\n通用规则：\n")
+	sb.WriteString("- 用 Get-ChildItem 不用 ls（alias 在非交互模式可能不可用）\n")
+	sb.WriteString("- 用 Select-String 不用 grep；管道传递对象不是文本\n")
+	sb.WriteString("- 退出码：native exe 用 $LASTEXITCODE，cmdlet 用 $?\n")
+	sb.WriteString("- 变量展开用双引号，字面量用单引号\n")
+	sb.WriteString("- 禁止 Read-Host、Get-Credential 等交互式命令\n")
+
+	return sb.String()
+}
+
+func (t *PowerShellTool) Parameters() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"command": map[string]any{
 				"type":        "string",
-				"description": "要执行的 shell 命令",
+				"description": "要执行的 PowerShell 命令",
 			},
 			"cwd": map[string]any{
 				"type":        "string",
@@ -62,10 +96,6 @@ func (t *BashTool) Parameters() any {
 				"type":        "integer",
 				"description": "可选：超时毫秒（默认 120000，最大 900000）",
 			},
-			"wait_delay_ms": map[string]any{
-				"type":        "integer",
-				"description": "可选：进程退出后等待 I/O pipe 关闭的最大延迟毫秒（默认 10000）。当命令可能 spawn 后台 daemon 时建议设置更大值",
-			},
 			"description": map[string]any{
 				"type":        "string",
 				"description": "可选：简短业务说明",
@@ -73,7 +103,7 @@ func (t *BashTool) Parameters() any {
 			"risk": map[string]any{
 				"type":        "string",
 				"enum":        []string{"low", "high", "uncertain"},
-				"description": "风险声明：low=仅本地只读/构建/测试；high=涉及远程访问、提权、系统级修改、磁盘写入等；uncertain=无法确定",
+				"description": "风险声明：low=仅本地只读/查询；high=涉及系统修改、提权、远程访问等；uncertain=无法确定",
 			},
 			"reason": map[string]any{
 				"type":        "string",
@@ -85,12 +115,17 @@ func (t *BashTool) Parameters() any {
 	}
 }
 
-func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, error) {
-	if t == nil || t.ctx == nil {
+func (t *PowerShellTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+	t.init()
+
+	if t.ctx == nil {
 		return "", fmt.Errorf("tool context is nil")
 	}
 	if t.permCtx == nil {
-		return "", fmt.Errorf("bash tool: permission context not configured")
+		return "", fmt.Errorf("powershell tool: permission context not configured")
+	}
+	if t.psPath == "" {
+		return "", fmt.Errorf("powershell tool: PowerShell not found on this system")
 	}
 
 	command, err := argx.RequiredText(args, "command")
@@ -106,7 +141,6 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	desc := argx.OptionalText(args, "description")
 	timeoutMs := t.resolveTimeout(args, command)
 
-	// 解析模型声明的 risk / reason；缺失时按 uncertain 处理（PRD §5.3）
 	modelRisk := ParseModelRisk(argx.OptionalText(args, "risk"))
 	modelReason := strings.TrimSpace(argx.OptionalText(args, "reason"))
 	if modelReason == "" {
@@ -116,7 +150,6 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 		}
 	}
 
-	// 串行检查：是否有命令正在等待确认
 	t.mu.Lock()
 	if t.confirming {
 		t.mu.Unlock()
@@ -131,39 +164,71 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	}
 	t.mu.Unlock()
 
-	shellPath, shellFamily := DetectShell()
 	workDir := t.resolveWorkDir(cwd)
 
-	// --- 权限决策（PRD §7）---
+	// AST-based safety check
+	var dangerFlags []PSDangerFlag
+	parsed, _ := ParsePSCommandAST(ctx, t.psPath, command)
+	if parsed == nil {
+		dangerFlags = append(dangerFlags, PSDangerFlag{
+			Category: "parse_failure",
+			Command:  command,
+			Reason:   "AST parser returned nil result, cannot verify safety",
+		})
+	} else {
+		switch parsed.Status {
+		case "ok":
+			dangerFlags = DetectPSDangerousPatterns(parsed)
+		case "unsupported":
+			dangerFlags = append(dangerFlags, PSDangerFlag{
+				Category: "unsupported_construct",
+				Command:  command,
+				Reason:   "command contains dynamic constructs that cannot be statically analyzed",
+			})
+		case "parse_failed", "parse_errors":
+			dangerFlags = append(dangerFlags, PSDangerFlag{
+				Category: "parse_failure",
+				Command:  command,
+				Reason:   fmt.Sprintf("AST parsing returned status %q, cannot verify safety", parsed.Status),
+			})
+		}
+	}
 
-	// 1. 规范化 → 2. 检查 allowlist
+	astForcesConfirmation := len(dangerFlags) > 0
+
+	riskReasons := []string{modelReason}
+	for _, f := range dangerFlags {
+		riskReasons = append(riskReasons, fmt.Sprintf("[AST] %s: %s (%s)", f.Category, f.Command, f.Reason))
+	}
+
+	// Permission decision
 	persistRules, _ := LoadPersistAllowlist(t.permCtx.ProjectPath)
-	normalized := NormalizeCommand(command, shellFamily)
+	normalized := NormalizeCommand(command, ShellFamilyPowerShell)
 	var matchedRule *AllowlistRule
 	for _, rule := range t.sessionAL.Rules() {
-		if rule.Tool == BashToolName && MatchRule(normalized, shellFamily, rule) {
+		if rule.Tool == PowerShellToolName && MatchRule(normalized, ShellFamilyPowerShell, rule) {
 			matchedRule = rule
 			break
 		}
 	}
 	if matchedRule == nil {
 		for _, rule := range persistRules {
-			if rule.Tool == BashToolName && MatchRule(normalized, shellFamily, rule) {
+			if rule.Tool == PowerShellToolName && MatchRule(normalized, ShellFamilyPowerShell, rule) {
 				matchedRule = rule
 				break
 			}
 		}
 	}
-
 	allowlistHit := matchedRule != nil
 
-	// 3-6. 模式分流
 	requiresConfirmation := ResolvePermissionDecision(t.permCtx.Mode, modelRisk, allowlistHit)
+	if astForcesConfirmation && t.permCtx.Mode != PermissionModeYOLO {
+		requiresConfirmation = true
+	}
 
 	grantType := GrantTypeAuto
-
 	if requiresConfirmation {
-		gt, err := t.requestUserConfirmation(ctx, command, desc, modelRisk, modelReason, shellFamily)
+		gt, err := t.requestUserConfirmation(ctx, command, desc, modelRisk, strings.Join(riskReasons, "; "), ShellFamilyPowerShell)
 		if err != nil {
 			return "", err
 		}
@@ -171,12 +236,12 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 		if grantType == GrantTypeReject {
 			out := &BashToolOutput{
 				Executed:                 false,
-				Shell:                    shellPath,
-				ShellFamily:              shellFamily,
+				Shell:                    t.psPath,
+				ShellFamily:              ShellFamilyPowerShell,
 				Cwd:                      workDir,
 				PermissionMode:           t.permCtx.Mode,
 				RiskLevel:                modelRisk,
-				RiskReasons:              []string{modelReason},
+				RiskReasons:              riskReasons,
 				RequiresUserConfirmation: true,
 				GrantType:                GrantTypeReject,
 			}
@@ -184,22 +249,22 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 		}
 	}
 
-	// --- 执行命令 ---
-	EmitToolRuntimeProgress(ctx, "execute", fmt.Sprintf("running: %s", command), map[string]any{
+	// Execute
+	EmitToolRuntimeProgress(ctx, "execute", fmt.Sprintf("running (powershell): %s", command), map[string]any{
 		"command":    command,
 		"cwd":        workDir,
-		"shell":      shellPath,
+		"shell":      t.psPath,
+		"ps_edition": string(t.psEdition),
 		"risk_level": string(modelRisk),
 		"grant_type": string(grantType),
 	})
 
-	exe, shellArgs := BuildShellCommand(shellPath, shellFamily, command)
+	exe, shellArgs := BuildShellCommand(t.psPath, ShellFamilyPowerShell, command)
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	waitDelay := t.resolveWaitDelay(args)
-	res := RunCommandLimited(execCtx, workDir, exe, shellArgs, bashCaptureMaxStdout, bashCaptureMaxStderr, waitDelay)
+	res := RunCommandLimited(execCtx, workDir, exe, shellArgs, bashCaptureMaxStdout, bashCaptureMaxStderr, bashDefaultWaitDelay)
 
 	stdout := res.Stdout
 	stderr := res.Stderr
@@ -215,7 +280,6 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	}
 
 	interrupted := execCtx.Err() == context.DeadlineExceeded
-
 	interpretation := InterpretExitCode(command, res.ExitCode)
 
 	out := &BashToolOutput{
@@ -224,12 +288,12 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 		Stderr:                   stderr,
 		ExitCode:                 res.ExitCode,
 		Interrupted:              interrupted,
-		Shell:                    shellPath,
-		ShellFamily:              shellFamily,
+		Shell:                    t.psPath,
+		ShellFamily:              ShellFamilyPowerShell,
 		Cwd:                      workDir,
 		PermissionMode:           t.permCtx.Mode,
 		RiskLevel:                modelRisk,
-		RiskReasons:              []string{modelReason},
+		RiskReasons:              riskReasons,
 		RequiresUserConfirmation: requiresConfirmation,
 		GrantType:                grantType,
 		MatchedRule:              matchedRule,
@@ -240,8 +304,7 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	return out.JSON(), nil
 }
 
-// resolveTimeout 解析超时，支持构建命令自动提升
-func (t *BashTool) resolveTimeout(args map[string]any, command string) int64 {
+func (t *PowerShellTool) resolveTimeout(args map[string]any, command string) int64 {
 	if v, ok := args["timeout_ms"]; ok && v != nil {
 		if ms, ok := asInt64Any(v); ok && ms > 0 {
 			if ms > bashMaxTimeoutMs {
@@ -257,31 +320,7 @@ func (t *BashTool) resolveTimeout(args map[string]any, command string) int64 {
 	return bashDefaultTimeoutMs
 }
 
-func (t *BashTool) resolveWaitDelay(args map[string]any) time.Duration {
-	if v, ok := args["wait_delay_ms"]; ok && v != nil {
-		if ms, ok := asInt64Any(v); ok && ms > 0 {
-			return time.Duration(ms) * time.Millisecond
-		}
-	}
-	return bashDefaultWaitDelay
-}
-
-func isBuildTestCommand(base, command string) bool {
-	buildBases := map[string]bool{
-		"go": true, "make": true, "cargo": true, "mvn": true, "gradle": true, "dotnet": true,
-	}
-	if buildBases[base] {
-		return true
-	}
-	if (base == "npm" || base == "pnpm" || base == "yarn") &&
-		(strings.Contains(command, " run ") || strings.Contains(command, " test") || strings.Contains(command, " build")) {
-		return true
-	}
-	return false
-}
-
-// resolveWorkDir 解析工作目录
-func (t *BashTool) resolveWorkDir(explicitCwd string) string {
+func (t *PowerShellTool) resolveWorkDir(explicitCwd string) string {
 	if explicitCwd != "" {
 		return explicitCwd
 	}
@@ -291,8 +330,7 @@ func (t *BashTool) resolveWorkDir(explicitCwd string) string {
 	return "."
 }
 
-// requestUserConfirmation 请求用户确认
-func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc string, risk RiskLevel, reason string, family ShellFamily) (GrantType, error) {
+func (t *PowerShellTool) requestUserConfirmation(ctx context.Context, command, desc string, risk RiskLevel, reason string, family ShellFamily) (GrantType, error) {
 	onHumanInput := t.ctx.GetOnHumanInput()
 	if onHumanInput == nil {
 		return GrantTypeReject, fmt.Errorf("human input callback not configured")
@@ -307,14 +345,13 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 		t.mu.Unlock()
 	}()
 
-	// 构建确认选项：复合命令或无法生成规则时退化为 allow_once / reject
 	isCompound := IsCompoundCommand(command)
 	options := []string{"allow_once", "allow_session", "allow_rule", "reject"}
-	if isCompound || GenerateRule(command, family, isCompound, BashToolName) == nil {
+	if isCompound || GenerateRule(command, family, isCompound, PowerShellToolName) == nil {
 		options = []string{"allow_once", "reject"}
 	}
 
-	question := fmt.Sprintf("是否允许执行该命令？\n\n命令：%s", command)
+	question := fmt.Sprintf("是否允许执行该 PowerShell 命令？\n\n命令：%s", command)
 	if desc != "" {
 		question += fmt.Sprintf("\n说明：%s", desc)
 	}
@@ -333,14 +370,14 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 			"command":      command,
 			"risk_level":   string(risk),
 			"risk_reasons": []string{reason},
-			"bash_confirm": true,
+			"shell_confirm": true,
 		},
 	}
 
 	t.ctx.GetEmitter().EmitHumanRequest(iteration, requestID, question, humanInputRequest)
 
 	snap := t.ctx.UpdateTaskStatus(TaskStatusUpdate{
-		Task:     "等待命令确认",
+		Task:     "等待 PowerShell 命令确认",
 		Status:   TaskStatusPaused,
 		Message:  fmt.Sprintf("等待确认命令: %s", command),
 		Progress: -1,
@@ -349,7 +386,7 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 
 	ctxMap := map[string]any{
 		"request_id":   requestID,
-		"bash_confirm": true,
+		"shell_confirm": true,
 		"input_type":   "single_choice",
 		"options":      options,
 	}
@@ -357,7 +394,7 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 	answer, err := onHumanInput(ctx, question, ctxMap)
 	if err != nil {
 		snap := t.ctx.UpdateTaskStatus(TaskStatusUpdate{
-			Task:     "命令确认失败",
+			Task:     "PowerShell 命令确认失败",
 			Status:   TaskStatusRunning,
 			Message:  err.Error(),
 			Progress: -1,
@@ -369,7 +406,7 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 	answer = strings.TrimSpace(strings.ToLower(answer))
 
 	snap = t.ctx.UpdateTaskStatus(TaskStatusUpdate{
-		Task:     "收到命令确认",
+		Task:     "收到 PowerShell 命令确认",
 		Status:   TaskStatusRunning,
 		Message:  fmt.Sprintf("确认结果: %s", answer),
 		Progress: -1,
@@ -380,13 +417,13 @@ func (t *BashTool) requestUserConfirmation(ctx context.Context, command, desc st
 	case "allow_once":
 		return GrantTypeAllowOnce, nil
 	case "allow_session":
-		rule := GenerateRule(command, family, isCompound, BashToolName)
+		rule := GenerateRule(command, family, isCompound, PowerShellToolName)
 		if rule != nil {
 			_ = t.sessionAL.Add(rule)
 		}
 		return GrantTypeAllowSession, nil
 	case "allow_rule":
-		rule := GenerateRule(command, family, isCompound, BashToolName)
+		rule := GenerateRule(command, family, isCompound, PowerShellToolName)
 		if rule != nil {
 			_ = t.sessionAL.Add(rule)
 			_ = AddPersistRule(t.permCtx.ProjectPath, rule)

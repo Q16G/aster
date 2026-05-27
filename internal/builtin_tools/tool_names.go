@@ -11,6 +11,7 @@ const (
 	ReadFileToolName    = "read_file"
 	RgToolName          = "rg"
 	BashToolName        = "bash"
+	PowerShellToolName  = "powershell"
 	LoadSkillsToolName  = "load_skills"
 	ListSkillsToolName  = "list_skills"
 	DeleteSkillToolName = "delete_skill"

@@ -2,13 +2,16 @@ package builtin_tools
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // CommandRunResult 命令执行结果
@@ -162,6 +165,9 @@ func detectShellPosix() (string, ShellFamily) {
 }
 
 func detectShellWindows() (string, ShellFamily) {
+	if p := findGitBash(); p != "" {
+		return p, ShellFamilyPosix
+	}
 	for _, name := range []string{"pwsh.exe", "powershell.exe"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p, ShellFamilyPowerShell
@@ -173,11 +179,67 @@ func detectShellWindows() (string, ShellFamily) {
 	return "cmd.exe", ShellFamilyCmd
 }
 
+func findGitBash() string {
+	if p := os.Getenv("ASTER_GIT_BASH_PATH"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	out, err := exec.Command("where.exe", "git").Output()
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) > 0 {
+			gitPath := strings.TrimSpace(lines[0])
+			bashPath := filepath.Join(filepath.Dir(filepath.Dir(gitPath)), "bin", "bash.exe")
+			if _, err := os.Stat(bashPath); err == nil {
+				return bashPath
+			}
+		}
+	}
+	for _, p := range []string{
+		`C:\Program Files\Git\bin\bash.exe`,
+		`C:\Program Files (x86)\Git\bin\bash.exe`,
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// FindPowerShell locates the PowerShell executable, preferring Core (pwsh) over Desktop (powershell).
+func FindPowerShell() (path string, edition PSEdition) {
+	for _, name := range []string{"pwsh.exe", "pwsh", "powershell.exe", "powershell"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p, DetectPSEdition(p)
+		}
+	}
+	return "", PSEditionUnknown
+}
+
+// DetectPSEdition determines PowerShell edition from the executable name.
+func DetectPSEdition(shellPath string) PSEdition {
+	base := shellPath
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	base = strings.ToLower(base)
+	base = strings.TrimSuffix(base, ".exe")
+	if base == "pwsh" {
+		return PSEditionCore
+	}
+	if base == "powershell" {
+		return PSEditionDesktop
+	}
+	return PSEditionUnknown
+}
+
 // BuildShellCommand 根据 shell 家族构造命令参数
 func BuildShellCommand(shellPath string, family ShellFamily, command string) (exe string, args []string) {
 	switch family {
 	case ShellFamilyPowerShell:
-		return shellPath, []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command}
+		utf8Prefix := "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
+		return shellPath, []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", utf8Prefix + command}
 	case ShellFamilyCmd:
 		return shellPath, []string{"/d", "/s", "/c", command}
 	default:
@@ -223,6 +285,11 @@ func InterpretExitCode(command string, exitCode int) string {
 		return "Target or subcommand failed"
 	case "curl":
 		return interpretCurlExitCode(exitCode)
+	case "robocopy":
+		if exitCode <= 7 {
+			return "success (robocopy bitfield: files copied)"
+		}
+		return fmt.Sprintf("robocopy error (exit code %d, bitfield >= 8)", exitCode)
 	case "pwsh", "powershell":
 		return "PowerShell command or script failed"
 	case "cmd":
@@ -273,4 +340,54 @@ func interpretCurlExitCode(code int) string {
 	default:
 		return fmt.Sprintf("curl failed (exit code %d)", code)
 	}
+}
+
+// ------- Windows 路径转换 -------
+
+// WindowsPathToPosix converts a Windows path to POSIX style for Git Bash.
+func WindowsPathToPosix(winPath string) string {
+	if len(winPath) >= 2 && isASCIILetter(winPath[0]) && winPath[1] == ':' {
+		drive := strings.ToLower(string(winPath[0]))
+		rest := strings.ReplaceAll(winPath[2:], `\`, "/")
+		return "/" + drive + rest
+	}
+	if strings.HasPrefix(winPath, `\\`) {
+		return "/" + strings.ReplaceAll(winPath[1:], `\`, "/")
+	}
+	return strings.ReplaceAll(winPath, `\`, "/")
+}
+
+// PosixPathToWindows converts a POSIX path from Git Bash/Cygwin to Windows style.
+func PosixPathToWindows(posixPath string) string {
+	if strings.HasPrefix(posixPath, "/cygdrive/") && len(posixPath) >= 11 && isASCIILetter(posixPath[10]) {
+		drive := strings.ToUpper(string(posixPath[10]))
+		rest := strings.ReplaceAll(posixPath[11:], "/", `\`)
+		return drive + ":" + rest
+	}
+	if len(posixPath) >= 3 && posixPath[0] == '/' && isASCIILetter(posixPath[1]) && posixPath[2] == '/' {
+		drive := strings.ToUpper(string(posixPath[1]))
+		rest := strings.ReplaceAll(posixPath[2:], "/", `\`)
+		return drive + ":" + rest
+	}
+	if strings.HasPrefix(posixPath, "//") {
+		return `\` + strings.ReplaceAll(posixPath[1:], "/", `\`)
+	}
+	return posixPath
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// ------- UTF-16LE 编码 -------
+
+// EncodeUTF16LEBase64 encodes a string to base64 UTF-16LE for PowerShell -EncodedCommand.
+func EncodeUTF16LEBase64(s string) string {
+	units := utf16.Encode([]rune(s))
+	buf := make([]byte, len(units)*2)
+	for i, u := range units {
+		buf[i*2] = byte(u)
+		buf[i*2+1] = byte(u >> 8)
+	}
+	return base64.StdEncoding.EncodeToString(buf)
 }
