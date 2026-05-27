@@ -728,9 +728,16 @@ func payloadFloat64(p map[string]any, key string) float64 {
 		return float64(n)
 	case int64:
 		return float64(n)
-	default:
-		return 0
+	case json.Number:
+		if parsed, err := n.Float64(); err == nil {
+			return parsed
+		}
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
+			return parsed
+		}
 	}
+	return 0
 }
 
 func payloadStringSlice(p map[string]any, key string) []string {
