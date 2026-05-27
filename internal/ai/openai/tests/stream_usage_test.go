@@ -2,7 +2,6 @@ package openai_test
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -184,8 +183,8 @@ func TestStreamUsage_NoUsageChunk_ReturnsNil(t *testing.T) {
 	}
 
 	usage := client.LastTokenUsage()
-	if usage != nil && usage.InputTokens > 0 {
-		t.Fatalf("expected nil or zero usage when no usage chunk, got InputTokens=%d", usage.InputTokens)
+	if usage != nil {
+		t.Fatalf("expected nil usage when no usage chunk, got %+v", usage)
 	}
 }
 
@@ -323,27 +322,3 @@ func TestStreamUsage_RealDeepSeekV4Response(t *testing.T) {
 	t.Logf("ContextCountTokens() = %d (this is what sidebar displays)", ctx)
 }
 
-// Verify the RoundTripper captures reqBody for non-streaming too.
-type captureTransport struct {
-	reqBody    string
-	respBody   string
-	statusCode int
-}
-
-func (ct *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.Body != nil {
-		data, err := io.ReadAll(req.Body)
-		if err == nil {
-			ct.reqBody = string(data)
-		}
-	}
-	code := ct.statusCode
-	if code == 0 {
-		code = http.StatusOK
-	}
-	return &http.Response{
-		StatusCode: code,
-		Body:       io.NopCloser(strings.NewReader(ct.respBody)),
-		Header:     make(http.Header),
-	}, nil
-}
