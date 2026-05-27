@@ -273,6 +273,11 @@ func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool,
 		"messages": messages,
 		"stream":   c.config.Stream,
 	}
+	if c.config.Stream {
+		body["stream_options"] = map[string]any{
+			"include_usage": true,
+		}
+	}
 
 	if c.config.Temperature != nil {
 		body["temperature"] = *c.config.Temperature
@@ -577,16 +582,12 @@ func (u *openAIUsage) UnmarshalJSON(data []byte) error {
 		"cacheWriteInputTokens",
 		"cache_write_tokens",
 		"cacheWriteTokens",
-		"prompt_cache_miss_tokens",
-		"promptCacheMissTokens",
 		"usage.cache_creation_input_tokens",
 		"usage.cacheCreationInputTokens",
 		"usage.cache_write_input_tokens",
 		"usage.cacheWriteInputTokens",
 		"usage.cache_write_tokens",
 		"usage.cacheWriteTokens",
-		"usage.prompt_cache_miss_tokens",
-		"usage.promptCacheMissTokens",
 		"prompt_tokens_details.cache_creation_tokens",
 		"promptTokensDetails.cacheCreationTokens",
 		"prompt_tokens_details.cache_write_tokens",
