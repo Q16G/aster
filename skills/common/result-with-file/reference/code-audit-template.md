@@ -53,24 +53,17 @@
 
 **描述**: {漏洞的技术描述，包含上下文和触发条件}
 
+**前置条件**: {触发所需配置/认证/角色，如"需 admin 角色"或"无"}
+
 **POC**:
 
 ```http
-POST /api/xxx HTTP/1.1
+{METHOD} {从 @RequestMapping 推导的 URL path} HTTP/1.1
 Host: {TARGET}
-Content-Type: application/json
-Authorization: Bearer {TOKEN}
+Content-Type: {从代码推导的类型}
 
-{"param": "payload"}
-```
-
-或
-
-```python
-import requests
-
-TARGET = "http://{TARGET}"
-# minimal reproduction script
+{参数名}={漏洞类型对应的 payload}
+# 基于代码分析构造，未经运行时验证
 ```
 
 **影响**: {攻击者可以做什么，最大损失评估}
