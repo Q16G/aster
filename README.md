@@ -839,7 +839,7 @@ graph TB
 
 ## 项目热度
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lintsinghua/deepaudit&type=Date)](https://star-history.com/#lintsinghua/deepaudit&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Q16G/aster&type=Date)](https://star-history.com/#Q16G/aster&Date)
 
 ---
 
