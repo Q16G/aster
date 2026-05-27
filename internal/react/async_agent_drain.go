@@ -16,6 +16,9 @@ func (a *Agent) drainAsyncAgentNotifications() {
 	for {
 		select {
 		case notif := <-a.asyncRegistry.notifications:
+			if a.asyncRegistry.Get(notif.AgentID) == nil {
+				continue
+			}
 			resultFile := writeAsyncResultFile(notif.WorkspaceDir, notif)
 
 			summary := ""
@@ -43,6 +46,7 @@ func (a *Agent) drainAsyncAgentNotifications() {
 			a.asyncRegistry.MarkDelivered(notif.AgentID)
 
 		default:
+			a.asyncRegistry.PurgeDelivered()
 			return
 		}
 	}
