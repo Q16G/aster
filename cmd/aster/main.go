@@ -126,6 +126,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if providerCfg == nil {
 		providerCfg = &tui.ProviderState{}
 	}
+	if flagModel == "" && os.Getenv("ASTER_MODEL") == "" {
+		if preferred := localProv.Get().PreferredModels; preferred != nil {
+			if modelID, ok := preferred[providerCfg.Name]; ok && modelID != "" {
+				providerCfg.ModelID = modelID
+			}
+		}
+	}
 	{
 		var cfgVariants map[string]map[string]any
 		if pc := appCfg.Providers[providerCfg.Name]; pc != nil {
@@ -209,7 +216,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	defaultDef := chooseDefaultAgentDefinition(profiles)
+	defaultDef := chooseDefaultAgentDefinition(profiles, localProv.Get().PreferredAgent)
 
 	agentCtx := &tui.AgentExecContext{
 		Factory:     factory,
@@ -273,9 +280,17 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func chooseDefaultAgentDefinition(profiles []react.AgentDefinition) react.AgentDefinition {
+func chooseDefaultAgentDefinition(profiles []react.AgentDefinition, preferred string) react.AgentDefinition {
 	if len(profiles) == 0 {
 		return react.AgentDefinition{}
+	}
+	preferred = strings.TrimSpace(preferred)
+	if preferred != "" {
+		for _, def := range profiles {
+			if strings.EqualFold(strings.TrimSpace(def.Name), preferred) {
+				return def
+			}
+		}
 	}
 	for _, def := range profiles {
 		if strings.EqualFold(strings.TrimSpace(def.Name), "code-audit") {

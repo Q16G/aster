@@ -46,6 +46,12 @@ func (m *Model) newSession() bool {
 		Theme:          m.themeProvider.Get().Name,
 		PermissionMode: string(m.currentPermissionMode()),
 	}
+	if saved := m.localProvider.Get().PreferredPermissionMode; saved != "" {
+		if mode, ok := parsePermissionModeArg(saved); ok {
+			m.sessionMeta.PermissionMode = string(mode)
+			m.setPermissionModeOnAgent(mode)
+		}
+	}
 	m.currentSessionID = uuid.New().String()
 	m.sessionMaterialized = false
 	m.bindSessionToAgent()
@@ -389,19 +395,24 @@ func (m *Model) restoreSessionState() {
 	m.themeProvider.SetByName(m.sessionMeta.Theme)
 	if m.sessionMeta.PermissionMode != "" {
 		if mode, ok := parsePermissionModeArg(m.sessionMeta.PermissionMode); ok {
-			m.setPermissionMode(mode)
+			m.setPermissionModeOnAgent(mode)
 		}
 	}
 	m.applySessionRuntimeState()
 }
 
-func (m *Model) setPermissionMode(mode builtin_tools.PermissionMode) {
+func (m *Model) setPermissionModeOnAgent(mode builtin_tools.PermissionMode) {
 	if m.agentCtx != nil &&
 		m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
 		m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx != nil {
 		m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx.Mode = mode
 	}
+}
+
+func (m *Model) setPermissionMode(mode builtin_tools.PermissionMode) {
+	m.setPermissionModeOnAgent(mode)
 	m.sessionMeta.PermissionMode = string(mode)
+	m.localProvider.SetPreferredPermissionMode(string(mode))
 	m.persistSessionMeta()
 }
 

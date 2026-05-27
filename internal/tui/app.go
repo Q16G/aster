@@ -181,6 +181,9 @@ func NewModel(deps ModelDeps) Model {
 	if deps.AgentCtx != nil {
 		m.chat.rootAgentName = deps.AgentCtx.Definition.Name
 	}
+	if savedTheme := localProv.Get().ThemeName; savedTheme != "" {
+		m.themeProvider.SetByName(savedTheme)
+	}
 	return m
 }
 
@@ -656,6 +659,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.agentCtx != nil {
 					m.agentCtx.Definition.ModelID = msg.Value
 				}
+				m.localProvider.SetPreferredModel(m.providerCfg.Name, msg.Value)
 				m.rememberRecentModel(msg.Value)
 				m.persistSessionMeta()
 				m.refreshSidebarData()
@@ -680,6 +684,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Value != "" {
 				m.themeProvider.SetByName(msg.Value)
 				m.sessionMeta.Theme = m.themeProvider.Get().Name
+				m.localProvider.SetThemeName(m.themeProvider.Get().Name)
 				m.persistSessionMeta()
 				m.statusText = fmt.Sprintf("theme: %s", m.themeProvider.Get().Name)
 			}
@@ -783,6 +788,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.agentCtx.Definition = msg.Definition
 		m.chat.rootAgentName = msg.Definition.Name
+		m.localProvider.SetPreferredAgent(msg.Definition.Name)
 		if m.sessionMeta.PermissionMode != "" {
 			if mode, ok := parsePermissionModeArg(m.sessionMeta.PermissionMode); ok {
 				if m.agentCtx.Definition.Policies.BashPermissionContext != nil &&
@@ -822,8 +828,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		*m.providerCfg = *state
 
+		if preferred := m.localProvider.PreferredModelForProvider(msg.Name); preferred != "" {
+			var cfgVariants map[string]map[string]any
+			if pc := m.appCfg.Providers[msg.Name]; pc != nil {
+				cfgVariants = pc.Variants
+			}
+			base, variant, vopts := ParseModelVariant(preferred, m.registry, msg.Name, cfgVariants)
+			m.providerCfg.ModelID = base
+			m.providerCfg.Variant = variant
+			m.providerCfg.VariantOptions = vopts
+		}
+
 		if m.agentCtx != nil {
-			m.agentCtx.Definition.ModelID = state.ModelID
+			m.agentCtx.Definition.ModelID = m.providerCfg.ModelID
 			if m.agentCtx.RebuildClient != nil {
 				m.agentCtx.RebuildClient(m.providerCfg)
 			}
@@ -858,10 +875,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.rememberRecentModel(state.ModelID)
+		m.rememberRecentModel(m.providerCfg.ModelID)
 		m.persistSessionMeta()
 		m.refreshSidebarData()
-		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, state.ModelID)
+		m.statusText = fmt.Sprintf("provider: %s (model: %s)", msg.Name, m.providerCfg.ModelID)
 
 		if m.pendingPrompt != "" {
 			return m.openModelSelectorAfterProviderSetup()
@@ -945,6 +962,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ThemeToggleMsg:
 		m.themeProvider.Toggle()
 		m.sessionMeta.Theme = m.themeProvider.Get().Name
+		m.localProvider.SetThemeName(m.themeProvider.Get().Name)
 		m.persistSessionMeta()
 		return m, m.toastManager.Push(fmt.Sprintf("theme: %s", m.themeProvider.Get().Name), tuiui.ToastInfo, 2*time.Second)
 
@@ -978,6 +996,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.agentCtx != nil {
 			m.agentCtx.Definition.ModelID = baseModel
 		}
+		m.localProvider.SetPreferredModel(m.providerCfg.Name, rawModelID)
 		m.rememberRecentModel(rawModelID)
 		m.persistSessionMeta()
 		m.refreshSidebarData()
