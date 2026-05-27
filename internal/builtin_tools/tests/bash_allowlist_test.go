@@ -74,7 +74,7 @@ func TestMatchRuleShellFamilyIsolation(t *testing.T) {
 }
 
 func TestGenerateRulePrefix(t *testing.T) {
-	rule := GenerateRule("npm run build", ShellFamilyPosix, false)
+	rule := GenerateRule("npm run build", ShellFamilyPosix, false, BashToolName)
 	if rule == nil {
 		t.Fatal("expected rule to be generated")
 	}
@@ -99,7 +99,7 @@ func TestGenerateRuleInterpreterIncludesScript(t *testing.T) {
 		{"java -jar app.jar", AllowlistRulePrefix, "java -jar"},
 	}
 	for _, tc := range tests {
-		rule := GenerateRule(tc.cmd, ShellFamilyPosix, false)
+		rule := GenerateRule(tc.cmd, ShellFamilyPosix, false, BashToolName)
 		if rule == nil {
 			t.Fatalf("expected rule for %q", tc.cmd)
 		}
@@ -113,7 +113,7 @@ func TestGenerateRuleInterpreterIncludesScript(t *testing.T) {
 }
 
 func TestGenerateRuleCompoundReturnsNil(t *testing.T) {
-	rule := GenerateRule("echo hello && echo world", ShellFamilyPosix, true)
+	rule := GenerateRule("echo hello && echo world", ShellFamilyPosix, true, BashToolName)
 	if rule != nil {
 		t.Error("compound command should not generate a persist rule")
 	}

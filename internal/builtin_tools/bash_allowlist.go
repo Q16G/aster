@@ -98,11 +98,9 @@ func containsShellSpecial(s string) bool {
 
 // ------- 规则匹配 -------
 
-// MatchRule 检查命令是否匹配单条规则
+// MatchRule 检查命令是否匹配单条规则。
+// 调用方应预先按 rule.Tool 过滤，此处不再硬编码工具名。
 func MatchRule(normalized string, family ShellFamily, rule *AllowlistRule) bool {
-	if rule.Tool != BashToolName {
-		return false
-	}
 	if rule.ShellFamily != family {
 		return false
 	}
@@ -127,7 +125,7 @@ func MatchRule(normalized string, family ShellFamily, rule *AllowlistRule) bool 
 
 // GenerateRule 从命令中生成 allowlist 规则
 // 复合命令不生成持久规则
-func GenerateRule(command string, family ShellFamily, isCompound bool) *AllowlistRule {
+func GenerateRule(command string, family ShellFamily, isCompound bool, tool string) *AllowlistRule {
 	normalized := NormalizeCommand(command, family)
 	if normalized == "" {
 		return nil
@@ -137,7 +135,7 @@ func GenerateRule(command string, family ShellFamily, isCompound bool) *Allowlis
 	prefix := extractStablePrefix(normalized)
 	if prefix != "" && !isCompound {
 		return &AllowlistRule{
-			Tool:        BashToolName,
+			Tool:        tool,
 			ShellFamily: family,
 			Kind:        AllowlistRulePrefix,
 			Pattern:     prefix,
@@ -149,7 +147,7 @@ func GenerateRule(command string, family ShellFamily, isCompound bool) *Allowlis
 		return nil // 复合命令不生成持久规则
 	}
 	return &AllowlistRule{
-		Tool:        BashToolName,
+		Tool:        tool,
 		ShellFamily: family,
 		Kind:        AllowlistRuleExact,
 		Pattern:     normalized,
@@ -242,7 +240,7 @@ func (a *SessionAllowlist) Add(rule *AllowlistRule) error {
 	}
 	// 去重
 	for _, existing := range a.rules {
-		if existing.Kind == rule.Kind && existing.Pattern == rule.Pattern && existing.ShellFamily == rule.ShellFamily {
+		if existing.Tool == rule.Tool && existing.Kind == rule.Kind && existing.Pattern == rule.Pattern && existing.ShellFamily == rule.ShellFamily {
 			return nil
 		}
 	}
@@ -307,7 +305,7 @@ func AddPersistRule(projectPath string, rule *AllowlistRule) error {
 	}
 	// 去重
 	for _, existing := range rules {
-		if existing.Kind == rule.Kind && existing.Pattern == rule.Pattern && existing.ShellFamily == rule.ShellFamily {
+		if existing.Tool == rule.Tool && existing.Kind == rule.Kind && existing.Pattern == rule.Pattern && existing.ShellFamily == rule.ShellFamily {
 			return nil
 		}
 	}

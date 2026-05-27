@@ -41,6 +41,15 @@ const (
 	ShellFamilyCmd        ShellFamily = "cmd"
 )
 
+// PSEdition PowerShell 版本
+type PSEdition string
+
+const (
+	PSEditionDesktop PSEdition = "desktop" // 5.1
+	PSEditionCore    PSEdition = "core"    // 7+
+	PSEditionUnknown PSEdition = "unknown"
+)
+
 // AllowlistRuleKind 规则类型
 type AllowlistRuleKind string
 

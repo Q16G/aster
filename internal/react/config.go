@@ -80,6 +80,9 @@ type AgentConfig struct {
 	// BashTool 可选：bash 工具配置。非 nil 时 NewReActAgent 在内部注册 BashTool。
 	BashTool *BashToolConfig
 
+	// PowerShellTool 可选：PowerShell 工具配置。非 nil 时注册独立的 PowerShellTool（Windows 原生操作专用）。
+	PowerShellTool *BashToolConfig
+
 	// DefaultToolTimeoutMs 所有工具调用的默认超时（毫秒）。0 表示使用内置默认值（300000）。
 	DefaultToolTimeoutMs int64
 }
@@ -322,6 +325,16 @@ func WithBashTool(cfg *BashToolConfig) Option {
 			return
 		}
 		c.BashTool = cfg
+	}
+}
+
+// WithPowerShellTool 启用独立的 PowerShell 工具（Windows 原生操作专用）。
+func WithPowerShellTool(cfg *BashToolConfig) Option {
+	return func(c *AgentConfig) {
+		if c == nil || cfg == nil {
+			return
+		}
+		c.PowerShellTool = cfg
 	}
 }
 

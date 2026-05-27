@@ -171,6 +171,12 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 			return nil, err
 		}
 	}
+	if cfg.PowerShellTool != nil {
+		psTool := builtin_tools.NewPowerShellTool(agent, cfg.PowerShellTool.PermCtx, cfg.PowerShellTool.SessionAL)
+		if err := agent.registerTool(psTool); err != nil {
+			return nil, err
+		}
+	}
 
 	for _, tool := range cfg.Tools {
 		if tool == nil {
