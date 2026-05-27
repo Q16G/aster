@@ -1047,7 +1047,14 @@ func (m *ChatModel) renderSummaryPart(part DisplayPart) string {
 		iconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	}
 	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	return iconStyle.Render("▣") + infoStyle.Render(fmt.Sprintf(" %s · %s · %s", s.AgentName, s.ModelID, formatDuration(s.Duration)))
+	info := fmt.Sprintf(" %s · %s · %s", s.AgentName, s.ModelID, formatDuration(s.Duration))
+	if s.TokenCount != "" && s.TokenCount != "--" {
+		info += fmt.Sprintf(" · %s tokens", s.TokenCount)
+	}
+	if s.CostEstimate != "" && s.CostEstimate != "--" {
+		info += fmt.Sprintf(" · %s", s.CostEstimate)
+	}
+	return iconStyle.Render("▣") + infoStyle.Render(info)
 }
 
 // --- Helpers ---

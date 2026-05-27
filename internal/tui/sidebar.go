@@ -160,6 +160,42 @@ func (m *SidebarModel) renderContextSection(sb *strings.Builder, w int) {
 	sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.TokenCount, w-10)))
 	sb.WriteString("\n")
 
+	if snap.InputTokens != "" || snap.OutputTokens != "" {
+		sb.WriteString(sectionDimStyle.Render("    in: "))
+		in := snap.InputTokens
+		if in == "" {
+			in = "0"
+		}
+		sb.WriteString(sectionValueStyle.Render(in))
+		sb.WriteString(sectionDimStyle.Render("  out: "))
+		out := snap.OutputTokens
+		if out == "" {
+			out = "0"
+		}
+		sb.WriteString(sectionValueStyle.Render(out))
+		sb.WriteString("\n")
+	}
+	if snap.CacheReadTokens != "" || snap.CacheWriteTokens != "" {
+		sb.WriteString(sectionDimStyle.Render("    cached: "))
+		cr := snap.CacheReadTokens
+		if cr == "" {
+			cr = "0"
+		}
+		sb.WriteString(sectionValueStyle.Render(cr))
+		sb.WriteString(sectionDimStyle.Render("  written: "))
+		cw := snap.CacheWriteTokens
+		if cw == "" {
+			cw = "0"
+		}
+		sb.WriteString(sectionValueStyle.Render(cw))
+		sb.WriteString("\n")
+	}
+	if snap.ReasoningTokens != "" {
+		sb.WriteString(sectionDimStyle.Render("    reasoning: "))
+		sb.WriteString(sectionValueStyle.Render(snap.ReasoningTokens))
+		sb.WriteString("\n")
+	}
+
 	sb.WriteString(sectionDimStyle.Render("  Cost: "))
 	sb.WriteString(sectionValueStyle.Render(truncateDisplayWidth(snap.CostEstimate, w-8)))
 	sb.WriteString("\n")

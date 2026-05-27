@@ -89,10 +89,12 @@ type ThinkingPart struct {
 }
 
 type SummaryPart struct {
-	AgentName string        `json:"agent_name"`
-	ModelID   string        `json:"model_id"`
-	Duration  time.Duration `json:"duration"`
-	Success   bool          `json:"success"`
+	AgentName    string        `json:"agent_name"`
+	ModelID      string        `json:"model_id"`
+	Duration     time.Duration `json:"duration"`
+	Success      bool          `json:"success"`
+	TokenCount   string        `json:"token_count,omitempty"`
+	CostEstimate string        `json:"cost_estimate,omitempty"`
 }
 
 type StepResultPart struct {
