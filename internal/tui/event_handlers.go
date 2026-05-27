@@ -511,7 +511,28 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.persistPart("final_answer", source, content)
 		}
 
-	case react.EventTypeStepFinish, react.EventTypeHistoryCompacted:
+	case react.EventTypeStepFinish:
+		if raw := event.Payload["usage"]; raw != nil {
+			switch usageMap := raw.(type) {
+			case map[string]int:
+				m.sessionUsage.InputTokens += usageMap["input_tokens"]
+				m.sessionUsage.OutputTokens += usageMap["output_tokens"]
+				m.sessionUsage.ReasoningTokens += usageMap["reasoning_tokens"]
+				m.sessionUsage.CacheReadTokens += usageMap["cache_read_tokens"]
+				m.sessionUsage.CacheWriteTokens += usageMap["cache_write_tokens"]
+			case map[string]any:
+				m.sessionUsage.InputTokens += payloadInt(usageMap, "input_tokens")
+				m.sessionUsage.OutputTokens += payloadInt(usageMap, "output_tokens")
+				m.sessionUsage.ReasoningTokens += payloadInt(usageMap, "reasoning_tokens")
+				m.sessionUsage.CacheReadTokens += payloadInt(usageMap, "cache_read_tokens")
+				m.sessionUsage.CacheWriteTokens += payloadInt(usageMap, "cache_write_tokens")
+			}
+			m.sessionUsage.NormalizeInPlace()
+		}
+		m.sessionCost += payloadFloat64(event.Payload, "cost_usd")
+		m.refreshSidebarData()
+
+	case react.EventTypeHistoryCompacted:
 		// no-op
 	}
 }
@@ -691,6 +712,25 @@ func payloadInt64(p map[string]any, key string) int64 {
 		}
 	}
 	return 0
+}
+
+func payloadFloat64(p map[string]any, key string) float64 {
+	v := p[key]
+	if v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
 }
 
 func payloadStringSlice(p map[string]any, key string) []string {

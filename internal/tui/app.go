@@ -105,8 +105,10 @@ type Model struct {
 	layoutInputHeight  int
 	layoutContentWidth int
 
-	sessionUsage ai.TokenUsage
-	sessionCost  float64
+	sessionUsage     ai.TokenUsage
+	sessionCost      float64
+	turnStartUsage   ai.TokenUsage
+	turnStartCost    float64
 
 	currentVersion string
 	updateChecker  *selfupdate.UpdateChecker
@@ -466,6 +468,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.thinkingPanel.Reset()
 		m.clearRetryState()
 		m.runStartTime = time.Now()
+		m.turnStartUsage = m.sessionUsage
+		m.turnStartCost = m.sessionCost
 		m.statusText = "thinking..."
 		m.refreshSidebarData()
 		spinnerCmd := m.spinner.Start()
@@ -510,6 +514,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.agentCtx.InitialHistory = history
 			}
 			m.recalcUsageFromHistory(history)
+		}
+		turnTokens := m.sessionUsage.ContextCountTokens() - m.turnStartUsage.ContextCountTokens()
+		if turnTokens < 0 {
+			turnTokens = 0
+		}
+		turnCost := m.sessionCost - m.turnStartCost
+		if turnCost < 0 {
+			turnCost = 0
 		}
 		turnStatus := ""
 		if msg.Result != nil {
@@ -563,14 +575,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.providerCfg != nil {
 				modelID = m.providerCfg.ModelID
 			}
+			turnTokenStr := formatTokenValue(turnTokens)
+			if turnTokenStr == "" {
+				turnTokenStr = "--"
+			}
+			turnCostStr := formatCostUSD(turnCost)
 			m.chat.AddPart(DisplayPart{
 				Type: PartTypeSummary,
 				Time: time.Now(),
 				Summary: &SummaryPart{
-					AgentName: agentName,
-					ModelID:   modelID,
-					Duration:  time.Since(m.runStartTime),
-					Success:   success,
+					AgentName:    agentName,
+					ModelID:      modelID,
+					Duration:     time.Since(m.runStartTime),
+					Success:      success,
+					TokenCount:   turnTokenStr,
+					CostEstimate: turnCostStr,
 				},
 			})
 		}
@@ -603,6 +622,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.thinkingPanel.Reset()
 			m.clearRetryState()
 			m.runStartTime = time.Now()
+			m.turnStartUsage = m.sessionUsage
+			m.turnStartCost = m.sessionCost
 			m.statusText = "thinking..."
 			m.input.SetEnabled(false)
 			m.refreshSidebarData()
@@ -1102,9 +1123,14 @@ func (m *Model) refreshSidebarData() {
 
 func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	snap := SidebarSnapshot{
-		TokenCount:   m.formatTokenCount(),
-		CostEstimate: m.formatCostEstimate(),
-		RunStatus:    "idle",
+		TokenCount:       m.formatTokenCount(),
+		CostEstimate:     m.formatCostEstimate(),
+		RunStatus:        "idle",
+		InputTokens:      formatTokenValue(m.sessionUsage.InputTokens),
+		OutputTokens:     formatTokenValue(m.sessionUsage.OutputTokens),
+		ReasoningTokens:  formatTokenValue(m.sessionUsage.ReasoningTokens),
+		CacheReadTokens:  formatTokenValue(m.sessionUsage.CacheReadTokens),
+		CacheWriteTokens: formatTokenValue(m.sessionUsage.CacheWriteTokens),
 	}
 
 	if m.currentSessionID != "" && m.store != nil {
@@ -1234,29 +1260,41 @@ func normalizeStepText(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
-func (m *Model) formatTokenCount() string {
-	total := m.sessionUsage.ContextCountTokens()
-	if total == 0 {
-		return "--"
+func formatTokenValue(count int) string {
+	if count <= 0 {
+		return ""
 	}
 	switch {
-	case total >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(total)/1_000_000)
-	case total >= 1_000:
-		return fmt.Sprintf("%.1fk", float64(total)/1_000)
+	case count >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(count)/1_000_000)
+	case count >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(count)/1_000)
 	default:
-		return strconv.Itoa(total)
+		return strconv.Itoa(count)
 	}
 }
 
-func (m *Model) formatCostEstimate() string {
-	if m.sessionCost <= 0 {
+func (m *Model) formatTokenCount() string {
+	total := m.sessionUsage.ContextCountTokens()
+	v := formatTokenValue(total)
+	if v == "" {
 		return "--"
 	}
-	if m.sessionCost < 0.01 {
-		return fmt.Sprintf("$%.4f", m.sessionCost)
+	return v
+}
+
+func formatCostUSD(cost float64) string {
+	if cost <= 0 {
+		return "--"
 	}
-	return fmt.Sprintf("$%.2f", m.sessionCost)
+	if cost < 0.01 {
+		return fmt.Sprintf("$%.4f", cost)
+	}
+	return fmt.Sprintf("$%.2f", cost)
+}
+
+func (m *Model) formatCostEstimate() string {
+	return formatCostUSD(m.sessionCost)
 }
 
 func (m *Model) recalcUsageFromHistory(history []*ai.MsgInfo) {
@@ -1272,6 +1310,29 @@ func (m *Model) recalcUsageFromHistory(history []*ai.MsgInfo) {
 		merged.CacheWriteTokens += msg.Usage.CacheWriteTokens
 	}
 	merged.NormalizeInPlace()
+
+	// history (skeleton) 中的消息可能不携带 Usage（Usage 在 stepHistory 上），
+	// 此时 merged 全零。如果 StepFinish 事件已累加了有效值，不要用零覆盖。
+	if merged.ContextCountTokens() == 0 && m.sessionUsage.ContextCountTokens() > 0 {
+		if m.sessionCost <= 0 {
+			pricing := aiusage.PricingModel{}
+			if m.agentCtx != nil && m.agentCtx.Factory != nil {
+				if client := m.agentCtx.Factory.DefaultClient(); client != nil {
+					type pricingProvider interface {
+						UsagePricingModel() aiusage.PricingModel
+					}
+					if pp, ok := client.(pricingProvider); ok {
+						pricing = pp.UsagePricingModel()
+					}
+				}
+			}
+			if result := aiusage.Summarize(pricing, &m.sessionUsage); result.Cost > 0 {
+				m.sessionCost = result.Cost
+			}
+		}
+		return
+	}
+
 	m.sessionUsage = merged
 
 	pricing := aiusage.PricingModel{}

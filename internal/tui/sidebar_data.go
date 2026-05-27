@@ -10,6 +10,12 @@ type SidebarSnapshot struct {
 	CostEstimate string
 	RunStatus    string
 
+	InputTokens      string
+	OutputTokens     string
+	ReasoningTokens  string
+	CacheReadTokens  string
+	CacheWriteTokens string
+
 	MCPServers []MCPStatusEntry
 
 	PlanItems []PlanItemView

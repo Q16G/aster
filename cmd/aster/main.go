@@ -15,6 +15,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/ai/anthropic"
 	"aster/internal/ai/openai"
+	aiusage "aster/internal/ai/usage"
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/provider"
@@ -326,6 +327,26 @@ func resolveMaxOutputTokens(reg *provider.Registry, modelID string) int {
 	return defaultMaxOutputTokens
 }
 
+func resolveUsagePricing(reg *provider.Registry, providerID, modelID string) aiusage.PricingModel {
+	if reg == nil || strings.TrimSpace(providerID) == "" || strings.TrimSpace(modelID) == "" {
+		return aiusage.PricingModel{}
+	}
+	m, ok := reg.GetModel(providerID, modelID)
+	if !ok || (m.Cost.Input == 0 && m.Cost.Output == 0) {
+		return aiusage.PricingModel{}
+	}
+	return aiusage.PricingModel{
+		Cost: &aiusage.PricingCost{
+			Input:  m.Cost.Input,
+			Output: m.Cost.Output,
+			Cache: &aiusage.CacheCost{
+				Read:  m.Cost.CacheRead,
+				Write: m.Cost.CacheWrite,
+			},
+		},
+	}
+}
+
 func newProviderClient(ps *tui.ProviderState, reg *provider.Registry, retryCallback openai.RetryCallback, modelOverride string) ai.ChatClient {
 	if ps == nil {
 		ps = &tui.ProviderState{}
@@ -335,15 +356,16 @@ func newProviderClient(ps *tui.ProviderState, reg *provider.Registry, retryCallb
 		effectiveModel = ps.ModelID
 	}
 	maxTokens := resolveMaxOutputTokens(reg, effectiveModel)
+	pricing := resolveUsagePricing(reg, ps.Name, effectiveModel)
 	switch ps.Protocol {
 	case "anthropic":
 		return newAnthropicClient(ps, modelOverride, maxTokens)
 	default:
-		return newOpenAIClient(ps, retryCallback, modelOverride, maxTokens)
+		return newOpenAIClient(ps, retryCallback, modelOverride, maxTokens, pricing)
 	}
 }
 
-func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string, maxTokens int) *openai.Client {
+func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, modelOverride string, maxTokens int, pricing aiusage.PricingModel) *openai.Client {
 	modelID := modelOverride
 	if modelID == "" {
 		modelID = ps.ModelID
@@ -356,6 +378,7 @@ func newOpenAIClient(ps *tui.ProviderState, retryCallback openai.RetryCallback, 
 		openai.WithStream(true),
 		openai.WithRetryCallback(retryCallback),
 		openai.WithMaxTokens(maxTokens),
+		openai.WithUsagePricing(pricing),
 	}
 	if ps.Proxy != "" {
 		opts = append(opts, openai.WithProxy(ps.Proxy))
