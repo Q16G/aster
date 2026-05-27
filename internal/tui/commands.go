@@ -118,6 +118,7 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 				m.themeProvider.SetByName(parts[1])
 			}
 			m.sessionMeta.Theme = m.themeProvider.Get().Name
+			m.localProvider.SetThemeName(m.themeProvider.Get().Name)
 			m.persistSessionMeta()
 			m.statusText = fmt.Sprintf("theme: %s", m.themeProvider.Get().Name)
 			return m, nil
@@ -139,6 +140,7 @@ func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {
 		if m.profileRegistry != nil {
 			if def, ok := m.profileRegistry.Get(args[0]); ok {
 				m.agentCtx.Definition = def
+				m.localProvider.SetPreferredAgent(def.Name)
 				m.updateSessionAgent(def.Name)
 				m.applySessionRuntimeState()
 				m.refreshSidebarData()
@@ -361,6 +363,7 @@ func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 	if m.agentCtx != nil {
 		m.agentCtx.Definition.ModelID = args[0]
 	}
+	m.localProvider.SetPreferredModel(m.providerCfg.Name, args[0])
 	m.rememberRecentModel(args[0])
 	m.persistSessionMeta()
 	m.refreshSidebarData()

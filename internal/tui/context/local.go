@@ -22,6 +22,10 @@ type LocalPreferences struct {
 	FavoriteModels          []ProviderModelRef `json:"favorite_models,omitempty"`
 	RecentModels            []ProviderModelRef `json:"recent_models,omitempty"`
 
+	PreferredAgent          string            `json:"preferred_agent,omitempty"`
+	PreferredPermissionMode string            `json:"preferred_permission_mode,omitempty"`
+	PreferredModels         map[string]string `json:"preferred_models,omitempty"`
+
 	// Deprecated: migrated to RecentModels on first load.
 	RecentModelIDs []string `json:"recent_model_ids,omitempty"`
 }
@@ -141,4 +145,43 @@ func RecentModelIDs(models []ProviderModelRef) []string {
 		ids = append(ids, r.ModelID)
 	}
 	return ids
+}
+
+func (l *LocalProvider) SetPreferredAgent(name string) {
+	l.Update(func(p LocalPreferences) LocalPreferences {
+		p.PreferredAgent = name
+		return p
+	})
+}
+
+func (l *LocalProvider) SetPreferredPermissionMode(mode string) {
+	l.Update(func(p LocalPreferences) LocalPreferences {
+		p.PreferredPermissionMode = mode
+		return p
+	})
+}
+
+func (l *LocalProvider) SetPreferredModel(providerID, modelID string) {
+	l.Update(func(p LocalPreferences) LocalPreferences {
+		if p.PreferredModels == nil {
+			p.PreferredModels = make(map[string]string)
+		}
+		p.PreferredModels[providerID] = modelID
+		return p
+	})
+}
+
+func (l *LocalProvider) SetThemeName(name string) {
+	l.Update(func(p LocalPreferences) LocalPreferences {
+		p.ThemeName = name
+		return p
+	})
+}
+
+func (l *LocalProvider) PreferredModelForProvider(providerID string) string {
+	prefs := l.Get()
+	if prefs.PreferredModels == nil {
+		return ""
+	}
+	return prefs.PreferredModels[providerID]
 }
