@@ -139,7 +139,7 @@
 ## 6. 输出要求 (Output Requirements)
 - **语言要求**：使用简体中文。
 - **内容要求**：`explanation` 用 1-2 句话说明判断依据，不复述全部步骤。
-- **提交方式**：调用 `submit_plan` 工具提交计划，参数遵循下方 Schema。
+- **提交方式**：必须通过调用 `submit_plan` 工具提交，不要直接输出文本回复。即使是简单问答（`needs_planning=false`），也必须调用 `submit_plan` 并填写 `direct_response`。参数遵循下方 Schema。
 - **校验要求**：
   1. plan 中不得出现空字符串、重复 `id`、无效依赖或循环依赖
   2. 若输入包含 `<TASK_ITEMS>` / `<EXECUTION_LINE>`，输出 plan 必须体现”承接已有执行线继续规划”，不要无视既有完成项从零改写

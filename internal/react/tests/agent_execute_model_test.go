@@ -1079,6 +1079,74 @@ func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.
 	}
 }
 
+func TestExecute_PlanPhaseWithToolsFallsBackToAssistantText(t *testing.T) {
+	var selectedPhases []string
+	emitter := NewEmitter("planner-fallback-session", "planner-fallback-agent", func(event *AgentOutputEvent) error {
+		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
+			return nil
+		}
+		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
+			return nil
+		}
+		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		return nil
+	})
+
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				content: "你好！有什么可以帮助你的？",
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"planner-fallback-agent",
+		client,
+		WithEmitter(emitter),
+		WithMaxIterations(2),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "你好", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success run result, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "你好！有什么可以帮助你的？" {
+		t.Fatalf("expected assistant text as result, got %q", runResult.Result)
+	}
+	if client.calls != 1 {
+		t.Fatalf("expected 1 model call (planner only), got %d", client.calls)
+	}
+
+	snapshot := agent.State()
+	if len(snapshot.Plan) != 0 {
+		t.Fatalf("expected no plan items, got %+v", snapshot.Plan)
+	}
+	if snapshot.Status != builtin_tools.TaskStatusCompleted {
+		t.Fatalf("expected completed status, got %q", snapshot.Status)
+	}
+	if snapshot.FinalAnswer == nil {
+		t.Fatalf("expected final answer")
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Content) != "你好！有什么可以帮助你的？" {
+		t.Fatalf("expected final answer content to match assistant text, got %q", snapshot.FinalAnswer.Content)
+	}
+	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
+		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
+	}
+	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
+	}
+}
+
 func TestExecute_WritesStepReplanLogsWhenStepCompletes(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := runtimelog.SetOutput(&buf)

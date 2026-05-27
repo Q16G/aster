@@ -310,8 +310,23 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 		}
 
 		// Plan 阶段必须产出结果（plan 或 direct_response），空响应是硬错误。
+		// 若模型返回了文本但未调用 submit_plan，将文本视为 direct_response 回退。
 		if len(callResult.ToolCalls) == 0 {
-			return nil, fmt.Errorf("planner produced no plan and no tool calls")
+			assistantText := strings.TrimSpace(callResult.AssistantText)
+			if assistantText == "" {
+				return nil, fmt.Errorf("planner produced no plan and no tool calls")
+			}
+			a.emitRuntimeLog("warning", "plan phase fell back to assistant text without submit_plan", a.state.Snapshot(), map[string]any{
+				"event":        "plan_phase_text_fallback",
+				"round":        round,
+				"content_size": len(assistantText),
+			})
+			return &builtin_tools.TaskPlannerResult{
+				NeedsPlanning:  false,
+				Plan:           nil,
+				Explanation:    "模型直接回复，未调用 submit_plan",
+				DirectResponse: assistantText,
+			}, nil
 		}
 
 		anyUsefulTool := false
