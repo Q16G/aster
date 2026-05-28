@@ -39,7 +39,7 @@ user-invocable: false
 - 登录成功后是否重新生成 Session ID
   - Java：`session.invalidate()` + 新 session 或 `changeSessionId()`
   - PHP：`session_regenerate_id(true)`
-  - Python/Flask：`session.regenerate()`
+  - Python/Flask：`session.clear()`（签名 Cookie 机制，clear + 重新赋值生成新签名）
 - 权限提升时（如从匿名到已认证）是否重新生成
 - 是否接受客户端提供的 Session ID
 
