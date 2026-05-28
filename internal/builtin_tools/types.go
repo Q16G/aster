@@ -30,6 +30,17 @@ type RunResult struct {
 
 	// PendingInterrupt is populated when the turn ends in WAITING_FOR_HUMAN.
 	PendingInterrupt *PendingInterrupt `json:"pending_interrupt,omitempty"`
+
+	PlanSummary *PlanCompletionSummary `json:"plan_summary,omitempty"`
+}
+
+type PlanCompletionSummary struct {
+	Total        int      `json:"total"`
+	Completed    int      `json:"completed"`
+	Pending      int      `json:"pending"`
+	Failed       int      `json:"failed"`
+	Skipped      int      `json:"skipped"`
+	PendingSteps []string `json:"pending_steps,omitempty"`
 }
 
 type PendingInterrupt struct {

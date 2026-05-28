@@ -420,6 +420,33 @@ func PlanProgress(plan []*PlanItem) int {
 	return completed * 100 / total
 }
 
+func BuildPlanCompletionSummary(plan []*PlanItem) *PlanCompletionSummary {
+	if len(plan) == 0 {
+		return nil
+	}
+	s := &PlanCompletionSummary{}
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		s.Total++
+		switch item.Status {
+		case PlanStepCompleted:
+			s.Completed++
+		case PlanStepPending, PlanStepInProgress:
+			s.Pending++
+			if strings.TrimSpace(item.Step) != "" {
+				s.PendingSteps = append(s.PendingSteps, strings.TrimSpace(item.Step))
+			}
+		case PlanStepFailed:
+			s.Failed++
+		case PlanStepSkipped:
+			s.Skipped++
+		}
+	}
+	return s
+}
+
 // PropagateSkippedPlanSteps marks blocked pending steps as skipped.
 //
 // A plan item becomes "skipped" when any of its dependencies is failed or skipped.

@@ -15,14 +15,15 @@ type WorkspaceStepOutcomePointer struct {
 }
 
 type WorkspaceChildAgentPointer struct {
-	Status            string    `json:"status,omitempty"`
-	ParentStepKey     string    `json:"parent_step_key,omitempty"`
-	ArtifactRootDir   string    `json:"artifact_root_dir,omitempty"`
-	StateFile         string    `json:"state_file,omitempty"`
-	LatestFinalFile   string    `json:"latest_final_file,omitempty"`
-	LatestSummaryFile string    `json:"latest_summary_file,omitempty"`
-	ResumeKey         string    `json:"resume_key,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+	Status            string                 `json:"status,omitempty"`
+	ParentStepKey     string                 `json:"parent_step_key,omitempty"`
+	ArtifactRootDir   string                 `json:"artifact_root_dir,omitempty"`
+	StateFile         string                 `json:"state_file,omitempty"`
+	LatestFinalFile   string                 `json:"latest_final_file,omitempty"`
+	LatestSummaryFile string                 `json:"latest_summary_file,omitempty"`
+	ResumeKey         string                 `json:"resume_key,omitempty"`
+	PlanSummary       *PlanCompletionSummary `json:"plan_summary,omitempty"`
+	UpdatedAt         time.Time              `json:"updated_at,omitempty"`
 }
 
 type WorkspaceState struct {

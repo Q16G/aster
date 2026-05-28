@@ -1212,6 +1212,10 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	visited := map[string]bool{}
 	var flattenPlan func(plan *PlanPart, depth int, dedup bool)
 	flattenPlan = func(plan *PlanPart, depth int, dedup bool) {
+		agentLabel := ""
+		if depth > 0 {
+			agentLabel = plan.AgentName
+		}
 		for _, item := range plan.Items {
 			if dedup && len(childrenByParentStep[item.ID]) == 0 {
 				if childItemIDs[item.ID] || childStepNorm[normalizeStepText(item.Step)] {
@@ -1219,6 +1223,7 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 				}
 			}
 			item.Depth = depth
+			item.AgentName = agentLabel
 			snap.PlanItems = append(snap.PlanItems, item)
 			for _, childPlan := range childrenByParentStep[item.ID] {
 				if !visited[childPlan.AgentName] {

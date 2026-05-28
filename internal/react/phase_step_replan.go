@@ -180,6 +180,13 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		nextPhase = builtin_tools.AgentPhaseStep
 	}
 
+	if nextPhase == builtin_tools.AgentPhaseFinalAnswer {
+		if rc := a.checkChildAgentsCompletion(); rc != nil {
+			replanContext = rc
+			nextPhase = builtin_tools.AgentPhasePlan
+		}
+	}
+
 	summaryGoal := ""
 	if replanContext != nil {
 		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
@@ -240,6 +247,40 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		"artifact_dir":  artifactDir,
 	})
 	return nil
+}
+
+func (a *Agent) checkChildAgentsCompletion() *builtin_tools.ReplanContext {
+	if a.workspaceRuntime == nil {
+		return nil
+	}
+	state, err := a.workspaceRuntime.LoadWorkspaceState()
+	if err != nil || state == nil || len(state.ChildAgents) == 0 {
+		return nil
+	}
+	var pendingChildren []string
+	for name, ptr := range state.ChildAgents {
+		if ptr == nil {
+			continue
+		}
+		// Only block FinalAnswer for child agents that are still running.
+		// Terminated children (completed/failed) with leftover pending steps
+		// cannot make further progress — their pending items will be marked
+		// cancelled by the TUI layer.
+		if ptr.Status == "completed" || ptr.Status == "failed" {
+			continue
+		}
+		if ptr.PlanSummary != nil && ptr.PlanSummary.Pending > 0 {
+			pendingChildren = append(pendingChildren, name)
+		}
+	}
+	if len(pendingChildren) == 0 {
+		return nil
+	}
+	return &builtin_tools.ReplanContext{
+		Reason:         "child agents still running with incomplete plan steps",
+		MissingItems:   pendingChildren,
+		ReplacePending: false,
+	}
 }
 
 func (a *Agent) resolveStepContextKey(stepID string, outcome *builtin_tools.StepOutcome, snapshot builtin_tools.StateSnapshot) string {

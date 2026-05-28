@@ -1101,3 +1101,135 @@ func TestBuildSidebarSnapshot_ReplanDuplication_Rephrased(t *testing.T) {
 		t.Error("expected root item '安全报告' to be present")
 	}
 }
+
+// TestSubAgentPendingItemsPersistAfterRootCompletes verifies the hypothesis:
+// when root agent's plan is fully completed but a sub-agent terminated early
+// with pending steps, those pending steps still appear in the sidebar.
+// This is the most likely cause of the "6 pending steps after session ends" bug.
+func TestSubAgentPendingItemsPersistAfterRootCompletes(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "pentest-agent"},
+		},
+	})
+
+	// 1. Root plan — all 7 steps completed (matches the real session)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "pentest-agent",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "recon", "step": "全局侦察与信息收集", "status": "completed"},
+				map[string]any{"id": "vuln-scan", "step": "SAST 漏洞扫描", "status": "completed"},
+				map[string]any{"id": "auth-review", "step": "认证授权审计", "status": "completed"},
+				map[string]any{"id": "biz-logic", "step": "业务逻辑审计", "status": "completed"},
+				map[string]any{"id": "dep-audit", "step": "依赖安全审计", "status": "completed"},
+				map[string]any{"id": "dataflow", "step": "数据流分析", "status": "completed"},
+				map[string]any{"id": "summary", "step": "汇总所有发现与证据链", "status": "completed"},
+			},
+		},
+	})
+
+	// 2. Set auth-review as in_progress (to parent the sub-agent)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskItem,
+		AgentName: "pentest-agent",
+		Payload:   map[string]any{"id": "auth-review", "status": "in_progress"},
+	})
+
+	// 3. Tool start: sub-agent spawned for credential acquisition
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeToolStart, AgentName: "pentest-agent",
+		Payload: map[string]any{
+			"tool_name": "sub_agent", "call_id": "call_cred", "is_agent": true,
+		},
+	})
+
+	// 4. Sub-agent creates its own plan with 6 credential steps
+	//    First step completed, rest pending — sub-agent terminated early
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeTaskPlan, AgentName: "sub-call_cred",
+		Payload: map[string]any{
+			"plan": []any{
+				map[string]any{"id": "install-deps", "step": "安装环境依赖", "status": "pending"},
+				map[string]any{"id": "captcha-script", "step": "编写验证码识别脚本", "status": "pending"},
+				map[string]any{"id": "try-passwords", "step": "尝试弱密码登录", "status": "pending"},
+				map[string]any{"id": "hashcat", "step": "hashcat 破解密码哈希", "status": "pending"},
+				map[string]any{"id": "get-jwt", "step": "获取 JWT token", "status": "pending"},
+				map[string]any{"id": "save-token", "step": "保存 token 到工作区", "status": "pending"},
+			},
+		},
+	})
+
+	// 5. Sub-agent tool call completes (sub-agent returned early without
+	//    finishing all steps — model decided complete or errored out)
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type: react.EventTypeToolEnd, AgentName: "pentest-agent",
+		Payload: map[string]any{
+			"tool_name": "sub_agent", "call_id": "call_cred",
+			"result": "认证测试完成，未获取到有效凭证",
+		},
+	})
+
+	// 6. Root continues and marks auth-review as completed
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskItem,
+		AgentName: "pentest-agent",
+		Payload:   map[string]any{"id": "auth-review", "status": "completed"},
+	})
+
+	// --- Build snapshot ---
+	snap := m.buildSidebarSnapshot()
+
+	t.Logf("\n=== Sidebar PlanItems (total=%d) ===", len(snap.PlanItems))
+	for i, item := range snap.PlanItems {
+		icon := "○"
+		switch item.Status {
+		case "completed":
+			icon = "✓"
+		case "in_progress":
+			icon = "▸"
+		}
+		indent := strings.Repeat("  ", item.Depth+1)
+		t.Logf("%s%s %s (id=%s, depth=%d, status=%s)", indent, icon, item.Step, item.ID, item.Depth, item.Status)
+		_ = i
+	}
+
+	// --- Key assertions ---
+	// Root plan has 7 completed steps at depth 0
+	rootCompleted := 0
+	for _, item := range snap.PlanItems {
+		if item.Depth == 0 && item.Status == "completed" {
+			rootCompleted++
+		}
+	}
+	if rootCompleted != 7 {
+		t.Fatalf("expected 7 completed root steps, got %d", rootCompleted)
+	}
+
+	// Sub-agent's pending steps appear at depth 1
+	subPending := 0
+	subPendingIDs := []string{}
+	for _, item := range snap.PlanItems {
+		if item.Depth == 1 && item.Status == "pending" {
+			subPending++
+			subPendingIDs = append(subPendingIDs, item.ID)
+		}
+	}
+
+	// THIS is the diagnosis: if subPending > 0, the sidebar shows sub-agent
+	// pending items even though the root plan is fully completed.
+	// This explains the user's screenshot.
+	t.Logf("sub-agent pending items visible in sidebar: %d — IDs: %v", subPending, subPendingIDs)
+	if subPending == 0 {
+		t.Fatal("expected sub-agent pending items to persist in sidebar — hypothesis invalidated")
+	}
+
+	expectedPendingIDs := []string{"install-deps", "captcha-script", "try-passwords", "hashcat", "get-jwt", "save-token"}
+	if len(subPendingIDs) != len(expectedPendingIDs) {
+		t.Fatalf("expected %d sub-agent pending items, got %d: %v", len(expectedPendingIDs), len(subPendingIDs), subPendingIDs)
+	}
+
+	t.Log("CONFIRMED: sub-agent pending items persist in sidebar after root plan completes.")
+	t.Log("Root scheduler only checks its own plan → enters FinalAnswer.")
+	t.Log("Sidebar flattenPlan merges root + sub-agent plans → pending items visible to user.")
+}

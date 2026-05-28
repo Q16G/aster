@@ -72,10 +72,11 @@ type PlanPart struct {
 }
 
 type PlanItemView struct {
-	ID     string `json:"id,omitempty"`
-	Step   string `json:"step"`
-	Status string `json:"status"`
-	Depth  int    `json:"depth,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Step      string `json:"step"`
+	Status    string `json:"status"`
+	Depth     int    `json:"depth,omitempty"`
+	AgentName string `json:"agent_name,omitempty"`
 }
 
 type SystemPart struct {
