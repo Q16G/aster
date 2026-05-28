@@ -13,9 +13,18 @@ user-invocable: false
 
 审计 Web 应用的 HTTP 安全响应头配置。安全头是纵深防御的重要层——单独缺失一个头通常是 LOW/INFO，但组合缺失会显著降低整体安全态势。
 
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立安全头缺失的利用认知：
+
+- [cors-misconfiguration.md](references/cors-misconfiguration.md) — CORS 错误配置（反射 Origin + Credentials / null origin / 正则绕过）
+- [missing-critical-headers.md](references/missing-critical-headers.md) — HSTS 缺失→SSL Strip / nosniff 缺失→MIME 嗅探 / X-Frame-Options 缺失→Clickjacking
+
 ## 检查项
 
 ### 1. 关键安全头
+
+参见 [missing-critical-headers.md](references/missing-critical-headers.md) 中的安全头缺失对照表和攻击场景。
 
 | Header | 作用 | 缺失风险 |
 |--------|------|---------|
@@ -28,7 +37,7 @@ user-invocable: false
 
 ### 2. Cookie 安全属性
 
-对所有 `Set-Cookie` 操作检查：
+> **职责边界**：Cookie 安全属性的深度审计（代码示例、框架配置、利用场景）由 `session-security` skill 负责，参见其 [cookie-security-misconfiguration.md](../session-security/references/cookie-security-misconfiguration.md)。本 skill 仅在安全头维度做存在性检查——确认 Set-Cookie 响应头中是否包含以下属性：
 
 - `HttpOnly`：session cookie 必须设置
 - `Secure`：生产环境必须设置
@@ -37,6 +46,8 @@ user-invocable: false
 - `Domain`：不宜设置过宽
 
 ### 3. 危险头
+
+参见 [cors-misconfiguration.md](references/cors-misconfiguration.md) 中的 CORS 反射 Origin 和正则绕过示例。
 
 - `X-Powered-By` / `Server`：是否泄露技术栈和版本
 - `Access-Control-Allow-Origin: *`：CORS 过宽

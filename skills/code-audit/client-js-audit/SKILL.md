@@ -18,9 +18,29 @@ user-invocable: false
 - postMessage 跨源通信的安全性
 - 客户端安全决策是否有服务端兜底
 
+## 与 stored-xss-detection 的边界
+
+本 skill 关注 **source 在客户端** 的 XSS 链：`location.hash` / `document.referrer` / `postMessage` / `window.name` 等浏览器 API 作为输入源，数据不经过服务端直接进入 DOM sink。
+
+`v-html` / `dangerouslySetInnerHTML` / `innerHTML` 等 sink 同时出现在本 skill 和 `stored-xss-detection` 中——**sink 相同但 source 不同**：
+- 本 skill：source 是客户端可控输入（URL/hash/postMessage）→ **DOM XSS**
+- `stored-xss-detection`：source 是服务端持久化数据（DB→API→渲染）→ **存储型 XSS**
+
+审计时按 source 类型分流：客户端 source → 本 skill，持久化 source → `stored-xss-detection`。
+
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立攻击模式认知：
+
+- [dom-xss-source-sink-chains.md](references/dom-xss-source-sink-chains.md) — DOM XSS 典型 source→sink 链（location.hash→innerHTML / URL param→jQuery.html() / referrer→DOM）
+- [postmessage-origin-bypass.md](references/postmessage-origin-bypass.md) — postMessage 未校验 origin / 发送端 `'*'` / 消息进入 eval/innerHTML
+- [client-token-storage-leakage.md](references/client-token-storage-leakage.md) — token 存 localStorage（XSS 可读）/ URL 传递（Referer 泄露）/ 全局变量暴露
+
 ## 检查项
 
 ### 1. DOM XSS 变体
+
+参见 [dom-xss-source-sink-chains.md](references/dom-xss-source-sink-chains.md) 中的完整 source/sink 清单和攻击示例。
 
 除了 SAST 已覆盖的标准 source→sink（`location.hash` → `innerHTML`），关注以下变体：
 
@@ -32,12 +52,16 @@ user-invocable: false
 
 ### 2. 客户端 Token/凭据安全
 
+参见 [client-token-storage-leakage.md](references/client-token-storage-leakage.md) 中的风险矩阵和存储位置对比。
+
 - Token 存储位置：`localStorage`（XSS 可读）vs `httpOnly cookie`（推荐）
 - Token 是否在 URL 中传递（Referer 泄露）
 - Token 过期机制（客户端是否可续期/伪造）
 - 敏感数据是否明文存在于 JS 变量/全局对象
 
 ### 3. postMessage 安全
+
+参见 [postmessage-origin-bypass.md](references/postmessage-origin-bypass.md) 中的 origin 校验绕过模式和攻击场景。
 
 - `addEventListener('message', ...)` 是否验证 `event.origin`
 - 发送端是否指定目标 origin（而非 `'*'`）

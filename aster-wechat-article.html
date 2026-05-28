@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTER：在 AI 时代深耕安全分析的 Agent 框架</title>
+</head>
+<body>
+<!--
+  微信公众号文章 HTML
+  使用方法：复制 <section id="content"> 内的内容，粘贴到微信公众号编辑器的"源代码"模式
+  或使用 135编辑器/秀米等第三方工具导入
+-->
+<section id="content" style="max-width: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #333; line-height: 1.8; font-size: 16px; padding: 0 8px;">
+
+<!-- 封面标题区 -->
+<section style="text-align: center; padding: 40px 20px 30px; margin-bottom: 20px;">
+  <p style="font-size: 28px; font-weight: bold; color: #1a1a2e; line-height: 1.4; margin: 0 0 16px;">ASTER：在 AI 时代深耕安全分析的 Agent 框架</p>
+  <p style="font-size: 14px; color: #999; margin: 0;">深度技术解析 | Agent 架构 | 安全实战</p>
+</section>
+
+<!-- 分割线 -->
+<section style="border-bottom: 1px solid #e0e0e0; margin: 0 20px 30px;"></section>
+
+<!-- ==================== 第一章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">一、为什么我们要造一个安全分析 Agent</p>
+
+  <!-- 核心观点 callout -->
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>核心观点</strong>：安全工作的本质是"在不确定性中做判断"——无论是代码审计、渗透测试还是应急响应，安全工程师的核心能力不是执行固定流程，而是根据上下文灵活决策。这恰恰是 Agent 最擅长的事情。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">安全工作的三个场景</p>
+
+  <p>安全工程师的工作远不止"扫描代码找漏洞"。根据场景不同，安全工作至少涵盖三大领域：</p>
+
+  <p style="text-align: center; color: #999; font-size: 14px; margin: 16px 0;">[ 图：安全工作三大领域 — 代码审计 / 渗透测试 / 应急响应 ]</p>
+
+  <p>这三个领域有一个共同特征：<strong>都不是"运行一个工具就能得到答案"的简单任务</strong>。它们都需要安全工程师根据项目的具体情况制定策略、选择工具、解读结果、调整方向——这是一个持续的<strong>推理-行动-观察</strong>循环。</p>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">传统工具链的困境</p>
+
+  <!-- 三栏困境 -->
+  <section style="background: #fff5f5; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">&#10060; 工具孤岛</p>
+    <p style="margin: 0; font-size: 15px;">SAST、DAST、SCA 各自为战。Semgrep 的扫描结果无法自动传递给数据流引擎做验证，渗透工具发现的线索无法反馈到代码层面做确认。工程师需要手动在工具之间搬运上下文。</p>
+  </section>
+  <section style="background: #fff5f5; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">&#10060; 缺乏判断力</p>
+    <p style="margin: 0; font-size: 15px;">传统工具只会"报告发现"，不会"做出判断"。Semgrep 告诉你"这里有 SQL 拼接"，但不会告诉你"这个参数是否真的来自用户输入"。判断的责任完全压在人身上。</p>
+  </section>
+  <section style="background: #fff5f5; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">&#10060; 无法编排</p>
+    <p style="margin: 0; font-size: 15px;">安全分析有天然的顺序逻辑：先了解攻击面，再针对性扫描，再深入验证，再评估影响。但没有一个工具能编排这个完整流程——工程师就是那个"人肉编排器"。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">为什么是 Agent</p>
+
+  <p>大语言模型（LLM）具备语义理解和推理能力，可以阅读代码、分析配置、理解业务逻辑。但 LLM 本身只是"大脑"——它需要"手脚"（工具调用）来执行具体操作，需要"工作流"（规划与调度）来组织多步骤任务。</p>
+
+  <p><strong>Agent = LLM + 工具 + 工作流</strong>。它不是一个简单的"AI 问答"，而是一个能够自主规划、调用工具、观察结果、调整策略的执行体。对于安全分析这种需要多步骤、多工具协同、有反馈回路的领域，Agent 是天然的解决方案。</p>
+
+  <!-- Agent 核心循环 - 文字版 -->
+  <section style="background: #f8f9fa; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+    <p style="font-weight: bold; color: #4a90d9; margin: 0 0 16px; font-size: 16px;">Agent 的核心循环</p>
+    <p style="margin: 0; font-size: 20px; letter-spacing: 4px;">
+      <span style="background: #e8f4fd; padding: 6px 12px; border-radius: 6px; margin: 4px;">&#128203; 规划</span>
+      &#10132;
+      <span style="background: #fff3e0; padding: 6px 12px; border-radius: 6px; margin: 4px;">&#9889; 行动</span>
+      &#10132;
+      <span style="background: #e8f5e9; padding: 6px 12px; border-radius: 6px; margin: 4px;">&#128065; 观察</span>
+      &#10132;
+      <span style="background: #f3e5f5; padding: 6px 12px; border-radius: 6px; margin: 4px;">&#128260; 反思</span>
+      &#10132; &#128257;
+    </p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">为什么自建而非复用</p>
+
+  <p>现有 Agent 框架（LangChain、AutoGen 等）面向通用场景设计，而安全领域有三个特殊需求：</p>
+
+  <p><strong>1. 领域知识编排</strong>：安全审计需要先 SAST 扫描建立候选集，再数据流追踪验证可达性，再认证复核评估影响——这种编排逻辑需要内化到框架中，而非每次都依赖 LLM 自发行为。</p>
+  <p><strong>2. 超长任务的上下文管理</strong>：一次完整的安全审计可能持续数百轮工具调用，需要精确的 token 预算管理和历史压缩策略。</p>
+  <p><strong>3. 精确的权限控制</strong>：安全工具涉及 bash 命令执行、网络请求等敏感操作，需要比通用框架更精细的权限审查机制。</p>
+
+  <p>于是我们从零构建了 <strong>ASTER</strong>——一个专为安全领域设计的 Agent 框架。</p>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第二章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">二、多智能体架构的迷思：为什么我们选择了 Profile 而非 Multi-Agent</p>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>核心论断</strong>：Agent 的个性化是知识层面的，不是运行时层面的。多智能体架构的真正价值不在于"多个独立智能体互相对话"，而在于"同一个运行时能以不同的知识和工具集执行不同的任务"。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">Multi-Agent 热潮</p>
+
+  <p>2024 至 2025 年，Multi-Agent 成为 AI 应用领域最热门的叙事之一。学术界和工业界涌现了大量多智能体框架与综述：</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px; overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">框架</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">来源</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">核心贡献</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">AutoGen</td><td style="padding: 8px; border-bottom: 1px solid #eee;">Microsoft Research</td><td style="padding: 8px; border-bottom: 1px solid #eee;">构建多 Agent 对话框架</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">MetaGPT</td><td style="padding: 8px; border-bottom: 1px solid #eee;">ICLR 2024</td><td style="padding: 8px; border-bottom: 1px solid #eee;">引入 SOP 结构化多智能体协作</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">ChatDev</td><td style="padding: 8px; border-bottom: 1px solid #eee;">ACL 2024</td><td style="padding: 8px; border-bottom: 1px solid #eee;">多个 Agent 协作开发软件</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">CrewAI</td><td style="padding: 8px; border-bottom: 1px solid #eee;">开源社区</td><td style="padding: 8px; border-bottom: 1px solid #eee;">提出「AI 员工团队」概念</td></tr>
+    </table>
+  </section>
+
+  <p>这些框架的核心主张高度一致：<strong>将复杂任务拆解给多个专业化的 Agent，通过协作完成单个 Agent 无法胜任的工作。</strong></p>
+
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;">这个叙事听起来非常有吸引力——就像真实的团队协作一样，让"安全专家 Agent"负责漏洞扫描，"代码专家 Agent"负责代码理解，"报告专家 Agent"负责输出整理。但在实际的代码安全分析场景中，这个架构存在根本性的问题。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">隐含假设的崩塌</p>
+
+  <p>Multi-Agent 架构有一个隐含假设：<strong>智能体之间的通信和协调成本，低于单个智能体处理全部任务的认知负担</strong>。在代码安全分析中，这个假设不成立。原因有三：</p>
+
+  <section style="background: #e8f4fd; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #2c5282;">&#128279; 上下文连续性</p>
+    <p style="margin: 0; font-size: 15px;">一次完整的安全审计需要从项目结构理解、攻击面枚举，到具体漏洞确认、影响评估的完整链路。把它拆成多个 Agent，意味着上下文碎片化。AgentScope 的实验验证了这一点：<strong>10 轮 Agent 间对话后，信息保真度降至约 60-70%</strong>。</p>
+  </section>
+
+  <section style="background: #fff3e0; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e65100;">&#9889; 反馈回路的即时性</p>
+    <p style="margin: 0; font-size: 15px;">安全分析是高度迭代的：发现一个 SQL 注入候选后，需要立即做数据流追踪验证；追踪结果可能暴露新的攻击面，又需要回头检查认证授权。多 Agent 通信引入的序列化开销和信息编解码损耗是致命的。研究证实，Agent 数量增加后通信开销呈超线性增长，还会出现<strong>「社会懒惰」</strong>现象。</p>
+  </section>
+
+  <section style="background: #e8f5e9; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #2e7d32;">&#128295; 工具集的高度重叠</p>
+    <p style="margin: 0; font-size: 15px;">无论是"扫描 Agent"还是"分析 Agent"，它们都需要读取文件、搜索代码、执行命令。工具集完全重叠，真正的区别只在于<strong>知识</strong>。SWE-agent 得出了同样结论：<strong>工具接口设计比增加 Agent 数量更重要</strong>。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">安全分析：单智能体的主场</p>
+
+  <p>这不仅是理论推导——安全领域的实证研究已经给出了答案：</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9; width: 35%;">研究</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">关键发现</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">PentestGPT<br><span style="font-weight: normal; font-size: 12px; color: #999;">USENIX Security 2024</span></td><td style="padding: 8px; border-bottom: 1px solid #eee;">选择单 LLM 多阶段 prompt 切换而非多智能体；渗透测试需维护完整攻击状态和上下文链</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Fang et al.<br><span style="font-weight: normal; font-size: 12px; color: #999;">UIUC, 2024</span></td><td style="padding: 8px; border-bottom: 1px solid #eee;">单个 GPT-4 agent 配合 ReAct 循环可自主利用 <strong>73% 的真实 CVE</strong></td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Cybench<br><span style="font-weight: normal; font-size: 12px; color: #999;">2024</span></td><td style="padding: 8px; border-bottom: 1px solid #eee;">Agent 性能高度依赖 prompt 设计和工具编排，而非 Agent 数量</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">ChatDev<br><span style="font-weight: normal; font-size: 12px; color: #999;">ACL 2024</span></td><td style="padding: 8px; border-bottom: 1px solid #eee;">多智能体间存在<strong>「幻觉传播」</strong>——错误推理通过对话传染，导致级联错误</td></tr>
+    </table>
+  </section>
+
+  <section style="display: flex; gap: 12px; margin: 20px 0;">
+    <section style="flex: 1; background: #e8f4fd; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #2c5282;">&#129309; 多 Agent 的价值</p>
+      <p style="margin: 0; font-size: 14px;">多个 reviewer Agent 从不同角度审查代码能发现更多问题——多智能体在「多角度审查」上确实有价值。</p>
+    </section>
+    <section style="flex: 1; background: #e8f5e9; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #2e7d32;">&#9989; ASTER 的替代方案</p>
+      <p style="margin: 0; font-size: 14px;"><strong>同一个 Agent 串行执行多个 Skill</strong>，每个 Skill 聚焦不同的审计维度，就能获得同等的覆盖广度，同时保持上下文的完整性。</p>
+    </section>
+  </section>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;">从理论推导到实证验证，结论指向同一个方向：安全分析需要的不是「多个运行时互相对话」，而是<strong>「一个运行时以不同的知识工作」</strong>。</p>
+  </section>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第三章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">三、从 LangChain 到 Claude Code：ReAct 实现的三代演进与未解之题</p>
+
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>核心观点</strong>：每一代 ReAct 框架都解决了上一代的部分问题，但也引入了新的局限。从"过度抽象"到"过度自治"再到"通用但不专"，Agent 框架的演进史本身就是一部对"自主性与可控性"平衡的探索史。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">三代 ReAct 框架对比</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px; overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">代次</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">代表</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">核心贡献</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">关键问题</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">第一代</td><td style="padding: 8px; border-bottom: 1px solid #eee;">LangChain</td><td style="padding: 8px; border-bottom: 1px solid #eee;">建立 Agent = LLM + Tools 范式</td><td style="padding: 8px; border-bottom: 1px solid #eee;">过度抽象，状态管理弱</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">第二代</td><td style="padding: 8px; border-bottom: 1px solid #eee;">AutoGPT</td><td style="padding: 8px; border-bottom: 1px solid #eee;">赋予 Agent 自主规划执行能力</td><td style="padding: 8px; border-bottom: 1px solid #eee;">过度自治，缺乏 guard rails</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">第三代</td><td style="padding: 8px; border-bottom: 1px solid #eee;">Claude Code</td><td style="padding: 8px; border-bottom: 1px solid #eee;">工具调用与对话深度集成，TUI 体验优秀</td><td style="padding: 8px; border-bottom: 1px solid #eee;">面向通用编码，非安全领域</td></tr>
+    </table>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">第一代的教训：抽象不等于能力</p>
+
+  <section style="display: flex; gap: 12px; margin: 16px 0;">
+    <section style="flex: 1; background: #fff5f5; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">调试困难 + 状态缺失</p>
+      <p style="margin: 0; font-size: 14px;">Chain 嵌套导致逐层 debug；无检查点机制，中断则全部进度丢失</p>
+    </section>
+    <section style="flex: 1; background: #fff5f5; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">缺乏反思机制</p>
+      <p style="margin: 0; font-size: 14px;">执行"一步一步"，完成后直接进入下一个，没有"回头看"</p>
+    </section>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">第二代的教训：自治需要边界</p>
+
+  <p>AutoGPT 走向了另一个极端：给 Agent 几乎无限的自主权，让它自己决定做什么、怎么做。结果是 Agent 经常在无关的方向上耗费大量 token，或者陷入重复循环无法跳出。</p>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">第三代：Claude Code 的启示与不足</p>
+
+  <section style="background: #e8f5e9; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 8px; font-weight: bold; color: #2e7d32;">&#9989; Claude Code 的设计哲学</p>
+    <p style="margin: 0; font-size: 15px;">&#8226; 工具调用不是附加功能，而是核心能力——模型原生支持 tool use<br>&#8226; 流式输出让用户实时看到 Agent 的思考与执行过程<br>&#8226; 内置工具集经过精心筛选，覆盖文件读写、搜索、终端等高频操作</p>
+  </section>
+
+  <section style="background: #f0f7ff; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0 0 8px; font-weight: bold; color: #4a90d9;">安全领域的差距</p>
+    <p style="margin: 0; font-size: 15px;">&#8226; 没有安全分析所需的领域知识编排<br>&#8226; 没有显式的多阶段执行流程<br>&#8226; 没有 Profile 切换机制，无法按场景加载不同策略</p>
+  </section>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>演进规律</strong>：每一代产品都在修复上一代最大的痛点，同时又不自觉地制造新的问题。这就是我们构建下一代工具的起点。</p>
+  </section>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第四章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">四、ASTER 的 Agent 架构</p>
+
+  <section style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin-bottom: 24px; color: white;">
+    <p style="margin: 0; font-size: 15px;"><strong>致敬</strong>：ASTER 的很多设计灵感来自 Claude Code——工具精选、流式交互、TUI 体验。我们在此基础上，增加了安全领域所需的<strong>显式执行阶段</strong>、<strong>领域 Skill 系统</strong>和<strong>声明式 Agent Profile</strong>。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">整体架构</p>
+
+  <p>ASTER 的架构分三层：</p>
+
+  <p><strong>上层 - Profile 适配层</strong>：让不同角色的 Agent 共享同一个运行时——同一套代码既能做代码审计，也能做渗透测试，区别仅在一份 YAML 配置。</p>
+  <p><strong>中层 - ReAct 引擎</strong>：提供统一的四阶段执行循环。</p>
+  <p><strong>底层 - 能力层</strong>：包含内置工具、51 个安全 Skill 和 MCP 协议扩展。</p>
+
+  <!-- 架构图 - 文字版 -->
+  <section style="background: #f8f9fa; border-radius: 12px; padding: 24px; margin: 20px 0;">
+    <section style="text-align: center; margin-bottom: 16px;">
+      <p style="font-weight: bold; color: #6c5ce7; margin: 0 0 8px; font-size: 14px;">Profile 适配层</p>
+      <section style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
+        <span style="background: #6c5ce7; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">&#128269; 代码审计</span>
+        <span style="background: #6c5ce7; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">&#9876; 渗透测试</span>
+        <span style="background: #6c5ce7; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">&#128737; 主机防护</span>
+        <span style="background: #6c5ce7; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">&#128221; 自定义</span>
+      </section>
+    </section>
+    <p style="text-align: center; color: #999; margin: 8px 0;">&#11015;</p>
+    <section style="text-align: center; margin-bottom: 16px;">
+      <p style="font-weight: bold; color: #4a90d9; margin: 0 0 8px; font-size: 14px;">ReAct 引擎（统一运行时）</p>
+      <section style="display: flex; justify-content: center; gap: 4px; flex-wrap: wrap;">
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 13px;">Plan</span>
+        <span style="color: #999;">&#10132;</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 13px;">Step</span>
+        <span style="color: #999;">&#10132;</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 13px;">Replan</span>
+        <span style="color: #999;">&#10132;</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 13px;">FinalAnswer</span>
+      </section>
+    </section>
+    <p style="text-align: center; color: #999; margin: 8px 0;">&#11015;</p>
+    <section style="text-align: center;">
+      <p style="font-weight: bold; color: #27ae60; margin: 0 0 8px; font-size: 14px;">能力层</p>
+      <section style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
+        <span style="background: #27ae60; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">内置工具</span>
+        <span style="background: #27ae60; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">51 个安全 Skill</span>
+        <span style="background: #27ae60; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px;">MCP 协议</span>
+      </section>
+    </section>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">四阶段执行：Agent 怎样完成一个任务</p>
+
+  <p>大多数 Agent 框架用一个大循环处理一切——模型自行决定什么时候规划、什么时候执行、什么时候收工。ASTER 把执行过程<strong>显式分为四个阶段</strong>：</p>
+
+  <!-- 四阶段流程 -->
+  <section style="background: #f8f9fa; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+    <p style="margin: 0; font-size: 18px; line-height: 2.2;">
+      &#127919; &#10132;
+      <span style="background: #e8f4fd; padding: 6px 14px; border-radius: 6px; font-weight: bold;">Plan<br><span style="font-size: 12px; font-weight: normal;">任务规划</span></span>
+      &#10132;
+      <span style="background: #fff3e0; padding: 6px 14px; border-radius: 6px; font-weight: bold;">Step<br><span style="font-size: 12px; font-weight: normal;">执行步骤</span></span>
+      &#8596;
+      <span style="background: #f3e5f5; padding: 6px 14px; border-radius: 6px; font-weight: bold;">Replan<br><span style="font-size: 12px; font-weight: normal;">动态调整</span></span>
+      &#10132;
+      <span style="background: #e8f5e9; padding: 6px 14px; border-radius: 6px; font-weight: bold;">FinalAnswer<br><span style="font-size: 12px; font-weight: normal;">最终评估</span></span>
+      &#10132; &#9989;
+    </p>
+  </section>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">阶段</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">职责</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">关键机制</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Plan</td><td style="padding: 8px; border-bottom: 1px solid #eee;">分析任务全貌，选择 Skill，制定执行顺序</td><td style="padding: 8px; border-bottom: 1px solid #eee;">先全局规划，不会"上来就干"</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Step</td><td style="padding: 8px; border-bottom: 1px solid #eee;">逐步执行计划</td><td style="padding: 8px; border-bottom: 1px solid #eee;">每步独立的思考-行动-观察循环</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">StepReplan</td><td style="padding: 8px; border-bottom: 1px solid #eee;">每步完成后评估新发现</td><td style="padding: 8px; border-bottom: 1px solid #eee;">独立 LLM 调用，可主动调整</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">FinalAnswer</td><td style="padding: 8px; border-bottom: 1px solid #eee;">所有步骤完成后独立评估</td><td style="padding: 8px; border-bottom: 1px solid #eee;">发现遗漏可回流 Plan 继续</td></tr>
+    </table>
+  </section>
+
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>解决核心问题：「假完成」</strong><br>单循环 Agent 倾向于做完预定步骤就宣布完成，即使实际上遗漏了关键维度。独立的 FinalAnswer 评估打断了这种惯性。遇到高风险操作时，Agent 会触发 <strong>Human-in-the-loop</strong> 中断等待确认，完整的运行时状态被持久化，确认后从断点恢复。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">Profile 系统：一个引擎，多种角色</p>
+
+  <p>ASTER 不需要为每个安全场景开发独立的 Agent。所有角色共享同一个 ReAct 引擎，区别仅在于一份 YAML 配置中声明的<strong>角色定义、执行指令、Skill 集合和安全策略</strong>。</p>
+
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>自定义 Profile</strong>：用户可以在 <code style="background: #e8f4fd; padding: 2px 6px; border-radius: 3px;">~/.aster/agents/</code> 目录下创建自己的 YAML Profile——定义角色、选择 Skill、配置策略，无需修改任何源代码。这让 ASTER 成为一个<strong>安全 Agent 开发框架</strong>，而不仅仅是一个固定用途的工具。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">Skill 系统：领域知识的结构化表达</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+    <p style="margin: 0; font-size: 15px;">ASTER 内嵌了 <strong>51 个安全 Skill</strong>（渗透测试 27、代码审计 16、主机防护 5、通用 2、漏洞复现 1），每个 Skill 是一份 Markdown 文档，包含<strong>完整的决策树、闭环验证要求和误报缓解策略</strong>。Skill 通过 <code style="background: #e8f4fd; padding: 2px 6px; border-radius: 3px;">load_skills</code> 按需动态加载到上下文窗口。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">MCP 协议：可扩展的工具生态</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">协议</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">说明</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">典型用例</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">stdio</td><td style="padding: 8px; border-bottom: 1px solid #eee;">本地命令行工具</td><td style="padding: 8px; border-bottom: 1px solid #eee;">本地安全扫描器集成</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">SSE</td><td style="padding: 8px; border-bottom: 1px solid #eee;">远程事件流服务</td><td style="padding: 8px; border-bottom: 1px solid #eee;">SyntaxFlow SSA 引擎做跨函数污点追踪</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Streamable HTTP</td><td style="padding: 8px; border-bottom: 1px solid #eee;">现代 Web API</td><td style="padding: 8px; border-bottom: 1px solid #eee;">浏览器 MCP 实现黑盒渗透自动化</td></tr>
+    </table>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">与 Claude Code 的差异</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">维度</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">Claude Code</th>
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">ASTER</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">执行模型</td><td style="padding: 8px; border-bottom: 1px solid #eee;">单一思考循环</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">显式四阶段</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">角色切换</td><td style="padding: 8px; border-bottom: 1px solid #eee;">单一 persona</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">YAML 声明式 Profile</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">领域知识</td><td style="padding: 8px; border-bottom: 1px solid #eee;">通用编程知识</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">51 Skill + 591 Semgrep 规则</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">任务委派</td><td style="padding: 8px; border-bottom: 1px solid #eee;">无显式机制</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">SubAgent 受控委派（最深 3 层）</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">中断恢复</td><td style="padding: 8px; border-bottom: 1px solid #eee;">权限审批后继续</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">完整状态持久化 + 断点恢复</td></tr>
+    </table>
+  </section>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第五章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">五、Skill 系统设计：把安全专家的知识固化成可执行的 Checklist</p>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>核心观点</strong>：Skill 本身是静态的 checklist——安全专家的完整决策树、验证要求和误报策略被编码成结构化文档，不随模型变化而变化。模型负责动态的部分：根据实际上下文判断哪些检查项可以跳过。<strong>静态 checklist 保证覆盖率下限，模型能力决定分析深度上限</strong>。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">5.1 设计哲学：Checklist 兜底基础面，模型泛化其余面</p>
+
+  <p>Skill 系统要解决一个核心问题：<strong>AI 不擅长做加法</strong>。让模型自行决定「应该检测哪些安全维度」，它一定会遗漏——SQL 注入有 6 种数据库变体、文件上传有十几种绕过手法，靠模型临场枚举是不现实的。</p>
+
+  <section style="display: flex; gap: 12px; margin: 20px 0;">
+    <section style="flex: 1; background: #fff5f5; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">&#10060; 加法思路（从空白枚举）</p>
+      <p style="margin: 0; font-size: 14px;">模型自行决定「应该查什么」，遗漏不可避免——开放性枚举没有终止条件</p>
+    </section>
+    <section style="flex: 1; background: #e8f5e9; border-radius: 8px; padding: 16px;">
+      <p style="margin: 0 0 4px; font-weight: bold; color: #27ae60;">&#9989; 减法思路（从完整清单裁剪）</p>
+      <p style="margin: 0; font-size: 14px;">给模型完整 checklist，由它判断「什么可以不做」——事实判断，可靠</p>
+    </section>
+  </section>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>设计思路：把枚举变成裁剪</strong><br>给模型一个完整的 checklist 作为起点，让它做减法而不是加法。「目标系统没有文件上传入口」是有客观依据的事实判断，不是开放性猜测。</p>
+  </section>
+
+  <!-- 核心洞察 -->
+  <section style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin: 20px 0; color: white; text-align: center;">
+    <p style="margin: 0; font-size: 16px; font-weight: bold;">核心洞察</p>
+    <p style="margin: 8px 0 0; font-size: 15px;">Checklist 保证覆盖率下限，模型能力决定分析深度上限。<br>Checklist 给模型一个完整起点——模型做减法远比做加法可靠。</p>
+  </section>
+
+  <p>这个分工体现在两种执行模式中：</p>
+
+  <section style="display: flex; gap: 12px; margin: 20px 0;">
+    <section style="flex: 1; background: #f8f9fa; border-radius: 8px; padding: 16px; border: 1px solid #e0e0e0;">
+      <p style="margin: 0 0 4px; font-weight: bold;">&#128203; 全量模式（默认）</p>
+      <p style="margin: 0; font-size: 14px;">用户给出宽泛目标时，加载全部 checklist 项。模型逐项判断是否适用——没有明确否定证据就执行，同时自由补充 checklist 之外的发现。</p>
+    </section>
+    <section style="flex: 1; background: #f8f9fa; border-radius: 8px; padding: 16px; border: 1px solid #e0e0e0;">
+      <p style="margin: 0 0 4px; font-weight: bold;">&#127919; 聚焦模式</p>
+      <p style="margin: 0; font-size: 14px;">用户明确指定测试方向时，只加载对应 Skill 的 checklist。精力集中在少数维度上实现更高深度。</p>
+    </section>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">5.2 三层 Skill 架构</p>
+
+  <p>51 个安全 Skill（渗透测试 27、代码审计 16、主机防护 5、通用 2、漏洞复现 1）按三层结构组织：</p>
+
+  <!-- 三层架构 -->
+  <section style="background: #f8f9fa; border-radius: 12px; padding: 24px; margin: 20px 0;">
+    <section style="text-align: center; margin-bottom: 16px;">
+      <p style="font-weight: bold; color: #6c5ce7; margin: 0 0 8px; font-size: 14px;">&#9312; 总控编排器（2 个）</p>
+      <section style="display: flex; justify-content: center; gap: 8px;">
+        <span style="background: #6c5ce7; color: white; padding: 8px 16px; border-radius: 8px; font-size: 13px;">白盒代码审计</span>
+        <span style="background: #6c5ce7; color: white; padding: 8px 16px; border-radius: 8px; font-size: 13px;">黑盒渗透测试</span>
+      </section>
+    </section>
+    <p style="text-align: center; color: #999; margin: 8px 0;">&#11015;</p>
+    <section style="text-align: center; margin-bottom: 16px;">
+      <p style="font-weight: bold; color: #4a90d9; margin: 0 0 8px; font-size: 14px;">&#9313; 分类清单（9 个 P1 Skill）</p>
+      <section style="display: flex; justify-content: center; gap: 6px; flex-wrap: wrap;">
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">认证授权</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">配置安全</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">注入测试</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">访问控制</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">文件安全</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">HTTP 协议</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">API/Token</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">业务逻辑</span>
+        <span style="background: #4a90d9; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">客户端安全</span>
+      </section>
+    </section>
+    <p style="text-align: center; color: #999; margin: 8px 0;">&#11015;</p>
+    <section style="text-align: center;">
+      <p style="font-weight: bold; color: #27ae60; margin: 0 0 8px; font-size: 14px;">&#9314; 具体技能（40+ 叶子 Skill）</p>
+      <section style="display: flex; justify-content: center; gap: 6px; flex-wrap: wrap;">
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">SQL 注入检测</span>
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">IDOR 检测</span>
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">认证安全</span>
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">SAST 扫描</span>
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">数据流验证</span>
+        <span style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">...</span>
+      </section>
+    </section>
+  </section>
+
+  <p><strong>最上层</strong>是两个总控编排器，用户只需说"审计这个项目"，总控便自动展开完整的任务链。</p>
+  <p><strong>中间层</strong>是 9 个分类清单，核心设计是：<strong>适用条件管"要不要做"，checklist 管"做了要做全"</strong>。</p>
+  <p><strong>最底层</strong>是 40+ 个叶子 Skill，每个包含完整的方法论、证据要求和闭合标准。</p>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第六章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">六、实战效果：白盒与黑盒的深度剖析</p>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">6.1 白盒审计实战</p>
+
+  <p style="font-size: 16px; font-weight: bold; color: #555; margin: 24px 0 12px;">漏洞挖掘成果</p>
+
+  <!-- 成果高亮 -->
+  <section style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 12px; padding: 24px; margin: 20px 0; color: white; text-align: center;">
+    <p style="margin: 0; font-size: 36px; font-weight: bold;">21 枚 CVE + 9 枚 CNVD</p>
+    <p style="margin: 8px 0 0; font-size: 15px;">= 30 枚正式漏洞编号，覆盖 SQL 注入、文件上传 RCE、任意文件操作等多种漏洞类型</p>
+  </section>
+
+  <p style="font-weight: bold; margin: 20px 0 12px;">CVE 检出清单（部分）</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px; overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <tr style="background: #e74c3c; color: white;">
+        <th style="padding: 8px 6px; text-align: left;">编号</th>
+        <th style="padding: 8px 6px; text-align: left;">影响组件</th>
+        <th style="padding: 8px 6px; text-align: left;">漏洞类型</th>
+        <th style="padding: 8px 6px; text-align: left;">严重度</th>
+      </tr>
+      <tr style="background: #fff5f5;"><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2025-47787</td><td style="padding: 6px; border-bottom: 1px solid #eee;">开源 CMS-A</td><td style="padding: 6px; border-bottom: 1px solid #eee;">任意文件上传 → RCE</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #e74c3c;">HIGH (8.9)</td></tr>
+      <tr><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2025-69990</td><td style="padding: 6px; border-bottom: 1px solid #eee;">新闻门户系统-B</td><td style="padding: 6px; border-bottom: 1px solid #eee;">任意文件删除</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #c0392b;">CRITICAL (9.1)</td></tr>
+      <tr style="background: #fff5f5;"><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2025-69991</td><td style="padding: 6px; border-bottom: 1px solid #eee;">新闻门户系统-B</td><td style="padding: 6px; border-bottom: 1px solid #eee;">SQL 注入</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #c0392b;">CRITICAL (9.8)</td></tr>
+      <tr><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2025-69992</td><td style="padding: 6px; border-bottom: 1px solid #eee;">新闻门户系统-B</td><td style="padding: 6px; border-bottom: 1px solid #eee;">任意文件上传 → RCE</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #c0392b;">CRITICAL (9.8)</td></tr>
+      <tr style="background: #fff5f5;"><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2026-37431</td><td style="padding: 6px; border-bottom: 1px solid #eee;">预约管理系统-C</td><td style="padding: 6px; border-bottom: 1px solid #eee;">SQL 注入</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #c0392b;">CRITICAL (9.8)</td></tr>
+      <tr><td style="padding: 6px; border-bottom: 1px solid #eee;">CVE-2026-37430</td><td style="padding: 6px; border-bottom: 1px solid #eee;">仓储管理系统-D</td><td style="padding: 6px; border-bottom: 1px solid #eee;">任意文件上传 → RCE</td><td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold; color: #e74c3c;">HIGH (7.3)</td></tr>
+      <tr style="background: #f8f9fa;"><td style="padding: 6px; font-style: italic;" colspan="4">... 及更多 SQL 注入、文件操作类漏洞（完整清单共 21 枚 CVE）</td></tr>
+    </table>
+  </section>
+
+  <p style="font-size: 16px; font-weight: bold; color: #555; margin: 24px 0 12px;">效果对比：ASTER vs Codex</p>
+
+  <p>在同一 Java Spring Boot 项目上，使用相同 SAST 规则基线的对比结果：</p>
+
+  <!-- 覆盖率对比 -->
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <tr style="background: #e8f4fd;">
+        <th style="padding: 10px 8px; text-align: left; border-bottom: 2px solid #4a90d9;">审计维度</th>
+        <th style="padding: 10px 8px; text-align: center; border-bottom: 2px solid #4a90d9;">ASTER</th>
+        <th style="padding: 10px 8px; text-align: center; border-bottom: 2px solid #4a90d9;">Codex</th>
+      </tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">结构化 SAST 扫描</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989;</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989;</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">数据流/污点追踪</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989;</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989;</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">认证授权审查</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989; 10 发现</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #f39c12;">&#9888; 4 发现</td></tr>
+      <tr style="background: #fff5f5;"><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">业务逻辑审计</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989; 4 发现</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #e74c3c;">&#10060; 未覆盖</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">配置安全审计</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989; 12 发现</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #f39c12;">&#9888; 2 发现</td></tr>
+      <tr><td style="padding: 8px; border-bottom: 1px solid #eee;">敏感信息检测</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989; 7 处</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #f39c12;">&#9888; 2 处</td></tr>
+      <tr style="background: #fff5f5;"><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">依赖安全审计</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #27ae60;">&#9989; 12 发现</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #e74c3c;">&#10060; 未覆盖</td></tr>
+    </table>
+  </section>
+
+  <section style="background: #f0f7ff; border-left: 4px solid #4a90d9; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>覆盖率</strong>：ASTER <strong>7/7</strong> 审计维度全覆盖 vs Codex <strong>4/7</strong> 覆盖</p>
+  </section>
+
+  <!-- 检出率数据高亮 -->
+  <section style="display: flex; gap: 12px; margin: 20px 0; text-align: center;">
+    <section style="flex: 1; background: #4a90d9; border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 36px; font-weight: bold;">54</p>
+      <p style="margin: 4px 0 0; font-size: 14px;">ASTER 检出</p>
+    </section>
+    <section style="flex: 1; background: #bdc3c7; border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 36px; font-weight: bold;">26</p>
+      <p style="margin: 4px 0 0; font-size: 14px;">Codex 检出</p>
+    </section>
+    <section style="flex: 1; background: #27ae60; border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 36px; font-weight: bold;">+108%</p>
+      <p style="margin: 4px 0 0; font-size: 14px;">提升幅度</p>
+    </section>
+  </section>
+
+  <section style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <p style="margin: 0; font-size: 15px;"><strong>检出率结论</strong>：ASTER 覆盖全部 <strong>9/9</strong> 漏洞类型（100%），Codex 仅覆盖 <strong>7/9</strong>（78%）。更高覆盖率并非源于「更聪明的 AI」，而是源于 Skill 系统的 <strong>checklist 完整性</strong>。</p>
+  </section>
+
+  <!-- ===== 6.2 黑盒 ===== -->
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">6.2 黑盒渗透测试实战</p>
+
+  <p>将 ASTER 指向一个企业级新媒体赋能平台——Vue.js SPA + Spring Boot + Jersey 技术栈，81 个 API 端点，11 个业务模块。测试约束：<strong>无有效测试账号</strong>，只能从无登录态可达的攻击面切入。</p>
+
+  <!-- 发现总览 -->
+  <section style="display: flex; gap: 8px; margin: 20px 0; text-align: center;">
+    <section style="flex: 1; background: #c0392b; border-radius: 12px; padding: 16px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">1</p>
+      <p style="margin: 4px 0 0; font-size: 12px;">Critical<br>验证码绕过</p>
+    </section>
+    <section style="flex: 1; background: #e74c3c; border-radius: 12px; padding: 16px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">4</p>
+      <p style="margin: 4px 0 0; font-size: 12px;">High<br>CSRF/CSP/速率/密钥</p>
+    </section>
+    <section style="flex: 1; background: #f39c12; border-radius: 12px; padding: 16px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">4</p>
+      <p style="margin: 4px 0 0; font-size: 12px;">Medium<br>Cookie/响应头/SSRF</p>
+    </section>
+    <section style="flex: 1; background: #3498db; border-radius: 12px; padding: 16px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">3</p>
+      <p style="margin: 4px 0 0; font-size: 12px;">Low<br>会话/信息泄露</p>
+    </section>
+  </section>
+
+  <p style="text-align: center; color: #999; font-size: 14px;">单次测试会话 | 800+ 次请求 | 12 个安全漏洞</p>
+
+  <p style="font-size: 16px; font-weight: bold; color: #555; margin: 24px 0 12px;">深度案例：验证码绕过 + 暴力破解攻击链</p>
+
+  <p>本次测试中最具代表性的发现是三个漏洞的组合攻击链——单独看每个漏洞都有一定危害，但组合后形成了<strong>完全无屏障的在线密码暴力破解</strong>能力：</p>
+
+  <section style="background: #fff5f5; border-left: 4px solid #c0392b; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 12px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #c0392b;">漏洞一：验证码完全可绕过 — CVSS 9.1（Critical）</p>
+    <p style="margin: 0; font-size: 15px;">登录接口不传验证码参数即可通过校验——验证码机制形同虚设</p>
+  </section>
+
+  <section style="background: #fff5f5; border-left: 4px solid #e74c3c; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 12px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">漏洞二：无登录速率限制 — CVSS 7.5（High）</p>
+    <p style="margin: 0; font-size: 15px;">连续 10 次/50ms 间隔的登录请求全部成功，无任何频率限制</p>
+  </section>
+
+  <section style="background: #fff5f5; border-left: 4px solid #e74c3c; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
+    <p style="margin: 0 0 4px; font-weight: bold; color: #e74c3c;">漏洞三：AES 密钥硬编码前端 — CVSS 5.9（High）</p>
+    <p style="margin: 0; font-size: 15px;">密码加密的 AES-128-CBC 密钥/IV 在 JS 中明文暴露</p>
+  </section>
+</section>
+
+<!-- 分割线 -->
+<section style="text-align: center; margin: 30px 0; color: #ddd; font-size: 24px; letter-spacing: 8px;">* * *</section>
+
+<!-- ==================== 第七章 ==================== -->
+
+<section style="margin-bottom: 40px;">
+  <p style="font-size: 22px; font-weight: bold; color: #1a1a2e; border-left: 4px solid #4a90d9; padding-left: 12px; margin-bottom: 20px;">七、在 AI 的时代，做一个深耕的人</p>
+
+  <section style="background: #f8f9fa; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
+    <p style="margin: 0; font-size: 18px; color: #555; font-style: italic;">"在一个所有人都在追求更快的时代，选择做得更深，本身就是一种态度。"</p>
+  </section>
+
+  <!-- 数据亮点 -->
+  <section style="display: flex; gap: 8px; margin: 20px 0; text-align: center;">
+    <section style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">13,553</p>
+      <p style="margin: 4px 0 0; font-size: 13px;">行 ReAct 引擎代码</p>
+    </section>
+    <section style="flex: 1; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">591</p>
+      <p style="margin: 4px 0 0; font-size: 13px;">条 Semgrep 规则</p>
+    </section>
+    <section style="flex: 1; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 12px; padding: 20px; color: white;">
+      <p style="margin: 0; font-size: 28px; font-weight: bold;">51</p>
+      <p style="margin: 4px 0 0; font-size: 13px;">个安全 Skill</p>
+    </section>
+  </section>
+
+  <p>我们生活在一个 AI 工具泛滥的时代。每天都有新的"AI 驱动的安全工具"诞生，它们中的大多数本质上是一层薄薄的 API 封装——把代码丢给 LLM，让它输出一份看起来专业的报告。这种方式能应付演示，但经不起实战检验。</p>
+
+  <p>ASTER 选择了一条不同的路：<strong>不是用 AI 快速做出一个东西，而是用 AI 深入解决一个真实的问题</strong>。安全分析不是一个可以被"快速解决"的问题——它需要对漏洞模式的系统性理解、对数据流传播的精确追踪、对业务语义的深入分析。</p>
+
+  <section style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 24px; margin: 24px 0; color: white;">
+    <p style="margin: 0; font-size: 15px;">大部分开发者在 AI 时代追求的是<strong>速度</strong>——更快地生成代码、更快地上线产品。我们选择追求<strong>深度</strong>——更深入地理解问题、更精确地解决问题。我们相信，当 AI 生成代码的成本趋近于零时，真正有价值的将不再是"谁写得更快"，而是<strong>"谁理解得更深"</strong>。</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">致敬 Claude Code</p>
+
+  <p>ASTER 的很多设计灵感直接来自 Claude Code——工具精选而非堆砌、流式输出作为基本权利、TUI 作为交互范式。Claude Code 证明了一件重要的事：<strong>好的 Agent 体验不需要复杂的架构，需要的是对细节的极致关注</strong>。</p>
+
+  <p>但 ASTER 的目标不是成为另一个 Claude Code。它要证明的是：Agent 框架不必是通用的——当你深入理解一个特定领域的需求，并为之量身定制时，你能获得通用框架无法企及的专业深度。</p>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">展望</p>
+
+  <section style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 16px 0;">
+    <p style="margin: 0 0 8px;">&#9744; Headless 模式：无需 TUI，集成到 CI/CD 流水线</p>
+    <p style="margin: 0 0 8px;">&#9744; SARIF 标准输出：与 GitHub Advanced Security 等平台对接</p>
+    <p style="margin: 0 0 8px;">&#9744; IDE 插件：VS Code 和 JetBrains 中直接使用</p>
+    <p style="margin: 0 0 8px;">&#9744; 更多语言规则覆盖：Rust、Kotlin、Swift 等</p>
+    <p style="margin: 0;">&#9744; 多模态分析：截图理解 + 网络流量分析</p>
+  </section>
+
+  <p style="font-size: 18px; font-weight: bold; color: #333; margin: 28px 0 12px;">致谢</p>
+
+  <section style="background: #f0f7ff; border-radius: 8px; padding: 20px; margin: 16px 0;">
+    <p style="margin: 0; font-size: 15px;">ASTER 的诞生离不开以下开源项目和团队的贡献：</p>
+    <p style="margin: 8px 0 4px;"><strong>Yaklang 团队</strong> — SyntaxFlow SSA 引擎提供跨函数数据流追踪能力</p>
+    <p style="margin: 0 0 4px;"><strong>Semgrep</strong> — 高质量的开源规则引擎和社区规则库</p>
+    <p style="margin: 0 0 4px;"><strong>Charmbracelet</strong> — Bubbletea 和 Lipgloss 让终端 UI 可以如此优雅</p>
+    <p style="margin: 0 0 4px;"><strong>mark3labs</strong> — mcp-go 的 MCP 协议实现</p>
+    <p style="margin: 0;"><strong>Anthropic</strong> — Claude Code 的设计哲学深刻影响了 ASTER 的 Agent 架构</p>
+  </section>
+</section>
+
+<!-- 底部 -->
+<section style="text-align: center; margin: 40px 0 20px; padding: 24px; border-top: 1px solid #e0e0e0;">
+  <p style="margin: 0 0 8px; font-weight: bold; font-size: 15px;">GitHub - ASTER</p>
+  <p style="margin: 0; color: #999; font-size: 14px;">即将开源 | If you find this project useful, please consider giving it a star.</p>
+</section>
+
+</section>
+</body>
+</html>

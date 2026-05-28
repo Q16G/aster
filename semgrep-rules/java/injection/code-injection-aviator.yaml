@@ -1,0 +1,77 @@
+rules:
+  - id: java-injection-code-injection-aviator
+    message: >
+      Aviator expression injection detected. Dynamic input is passed to
+      AviatorEvaluator or AviatorEvaluatorInstance for expression evaluation
+      or compilation, which can lead to arbitrary code execution. Never
+      evaluate user-controlled AviatorScript expressions.
+    metadata:
+      cwe: CWE-94
+      owasp:
+        - A03:2021 - Injection
+        - A05:2025 - Injection
+      confidence: HIGH
+      needs_dataflow_confirmation: true
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern-either:
+          # --- AviatorEvaluator static execute ---
+          - pattern: AviatorEvaluator.execute($INPUT, ...);
+          - pattern: com.googlecode.aviator.AviatorEvaluator.execute($INPUT, ...);
+          # --- AviatorEvaluator static compile ---
+          - pattern: AviatorEvaluator.compile($INPUT, ...);
+          - pattern: com.googlecode.aviator.AviatorEvaluator.compile($INPUT, ...);
+          # --- AviatorEvaluatorInstance execute/compile ---
+          - pattern: |
+              AviatorEvaluatorInstance $INST = ...;
+              ...
+              $INST.execute($INPUT, ...);
+          - pattern: |
+              AviatorEvaluatorInstance $INST = ...;
+              ...
+              $INST.compile($INPUT, ...);
+          - pattern: AviatorEvaluator.newInstance().execute($INPUT, ...);
+          - pattern: AviatorEvaluator.newInstance().compile($INPUT, ...);
+          # --- String concatenation flowing into static execute/compile ---
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              AviatorEvaluator.execute($EXPR, ...);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              AviatorEvaluator.compile($EXPR, ...);
+          # --- String.format flowing into static execute/compile ---
+          - pattern: |
+              String $EXPR = String.format(...);
+              ...
+              AviatorEvaluator.execute($EXPR, ...);
+          - pattern: |
+              String $EXPR = String.format(...);
+              ...
+              AviatorEvaluator.compile($EXPR, ...);
+          # --- String concatenation flowing into instance execute/compile ---
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (AviatorEvaluatorInstance $INST).execute($EXPR, ...);
+          - pattern: |
+              String $EXPR = $PREFIX + $INPUT + ...;
+              ...
+              (AviatorEvaluatorInstance $INST).compile($EXPR, ...);
+          # --- Direct concatenation in argument position ---
+          - pattern: AviatorEvaluator.execute($PREFIX + $INPUT + ..., ...);
+          - pattern: AviatorEvaluator.compile($PREFIX + $INPUT + ..., ...);
+      - pattern-not: AviatorEvaluator.execute("...", ...);
+      - pattern-not: AviatorEvaluator.compile("...", ...);
+      - pattern-not: com.googlecode.aviator.AviatorEvaluator.execute("...", ...);
+      - pattern-not: com.googlecode.aviator.AviatorEvaluator.compile("...", ...);
+      - pattern-not: |
+          AviatorEvaluatorInstance $INST = ...;
+          ...
+          $INST.execute("...", ...);
+      - pattern-not: |
+          AviatorEvaluatorInstance $INST = ...;
+          ...
+          $INST.compile("...", ...);

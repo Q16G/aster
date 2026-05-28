@@ -13,9 +13,18 @@ user-invocable: false
 
 审计项目中框架配置文件和运行时配置的安全性。危险配置往往是 RCE 或信息泄露的前提条件（如 PHP 的 `allow_url_include=On` 使 LFI 升级为 RCE），但难以用 source→sink 规则覆盖。
 
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立配置风险与利用链的认知：
+
+- [php-dangerous-runtime-config.md](references/php-dangerous-runtime-config.md) — PHP 运行时危险配置（allow_url_include→RCE / display_errors→信息泄露 / session 配置错误）
+- [java-spring-exposure-config.md](references/java-spring-exposure-config.md) — Java/Spring 暴露配置（Actuator 全开 / DevTools 生产启用 / H2 Console / stacktrace 泄露）
+
 ## 按技术栈检查
 
 ### PHP
+
+参见 [php-dangerous-runtime-config.md](references/php-dangerous-runtime-config.md) 中的完整配置项清单和利用链示例。
 
 | 配置项 | 危险值 | 风险 |
 |--------|-------|------|
@@ -31,6 +40,8 @@ user-invocable: false
 | `disable_functions` | 空 | 危险函数未禁用 |
 
 ### Java (web.xml / application.yml / Spring)
+
+参见 [java-spring-exposure-config.md](references/java-spring-exposure-config.md) 中的 Actuator/DevTools/H2 利用链示例。
 
 | 配置项 | 危险值 | 风险 |
 |--------|-------|------|

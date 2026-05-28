@@ -13,9 +13,18 @@ user-invocable: false
 
 CSP（Content-Security-Policy）是防御 XSS 的重要层。本 skill 不是检测"有没有 CSP"，而是分析**已有 CSP 策略的有效性**——是否存在可绕过的宽松配置。
 
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立 CSP 绕过模式认知：
+
+- [csp-unsafe-directives.md](references/csp-unsafe-directives.md) — unsafe-inline / unsafe-eval / data: URI 的利用方式与安全替代方案
+- [csp-whitelist-bypass.md](references/csp-whitelist-bypass.md) — JSONP 端点绕过 script-src 白名单 / CDN 可控资源 / base-uri 未限制
+
 ## 检查项
 
 ### 1. 指令语义分析
+
+参见 [csp-unsafe-directives.md](references/csp-unsafe-directives.md) 中的 CSP 策略 vs 绕过 PoC 对比。
 
 对每条 CSP 指令评估其安全性：
 
@@ -30,6 +39,8 @@ CSP（Content-Security-Policy）是防御 XSS 的重要层。本 skill 不是检
 | `script-src` 缺少 nonce/hash | 无法区分合法脚本和注入脚本 |
 
 ### 2. 绕过路径分析
+
+参见 [csp-whitelist-bypass.md](references/csp-whitelist-bypass.md) 中的 JSONP/CDN/Angular 绕过示例。
 
 - 是否存在 JSONP 端点在允许的域上（可绕过 script-src 白名单）
 - 是否存在 Angular/Vue 等框架的模板注入路径（绕过 unsafe-eval 限制）

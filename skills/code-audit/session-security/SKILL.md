@@ -13,9 +13,19 @@ user-invocable: false
 
 审计项目的会话管理机制，发现 Session ID 可预测、Session 固定攻击、会话过期策略不当等问题。这类问题介于结构化漏洞和语义漏洞之间——部分可用规则覆盖（弱随机数生成），部分需要上下文推理（session 生命周期设计）。
 
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立漏洞模式认知：
+
+- [weak-session-id-generation.md](references/weak-session-id-generation.md) — 可预测的 Session ID（自增/时间戳/弱 RNG/用户属性哈希）
+- [session-fixation-missing-regeneration.md](references/session-fixation-missing-regeneration.md) — 登录成功后未重建 Session（攻击者预设 Session ID 劫持会话）
+- [cookie-security-misconfiguration.md](references/cookie-security-misconfiguration.md) — 会话 Cookie 缺少 HttpOnly/Secure/SameSite 属性
+
 ## 检查项
 
 ### 1. Session ID 生成强度
+
+参见 [weak-session-id-generation.md](references/weak-session-id-generation.md)
 
 - Session ID 是否使用密码学安全的随机数生成器
 - 是否存在自增整数、时间戳、MD5(自增) 等可预测模式
@@ -23,6 +33,8 @@ user-invocable: false
 - 自定义 session ID 的熵是否足够（至少 128 bit）
 
 ### 2. Session 固定攻击防护
+
+参见 [session-fixation-missing-regeneration.md](references/session-fixation-missing-regeneration.md)
 
 - 登录成功后是否重新生成 Session ID
   - Java：`session.invalidate()` + 新 session 或 `changeSessionId()`
@@ -39,6 +51,8 @@ user-invocable: false
 - Session 数据存储位置（内存 / 文件 / 数据库 / Redis）的安全性
 
 ### 4. Cookie 安全属性
+
+参见 [cookie-security-misconfiguration.md](references/cookie-security-misconfiguration.md)
 
 - `HttpOnly`：是否设置（防止 JS 读取 session cookie）
 - `Secure`：是否设置（防止明文传输）

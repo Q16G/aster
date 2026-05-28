@@ -41,6 +41,15 @@ arguments:
   - `agent-browser`：当目标可运行时，用浏览器验证实际触发效果和展示上下文
 - 若运行时支持 `load_skill`，按上述顺序按需加载，不要一开始把所有 skill 全量展开。
 
+## 参考案例
+
+执行本 skill 前，应先阅读 `references/` 下的案例文件以建立攻击链模式认知：
+
+- [stored-xss-comment-richtext.md](references/stored-xss-comment-richtext.md) — 评论/富文本经典存储型 XSS（source→DB→detail page→innerHTML/v-html/th:utext）
+- [stored-xss-file-preview.md](references/stored-xss-file-preview.md) — 文件上传后预览执行（SVG/HTML/Markdown 上传→存储→在线预览→浏览器执行）
+- [stored-xss-markdown-raw-html.md](references/stored-xss-markdown-raw-html.md) — Markdown 原生 HTML 注入（Markdown 内容含 `<script>` → 渲染器保留原始 HTML → 页面执行）
+- [stored-xss-sanitizer-position-error.md](references/stored-xss-sanitizer-position-error.md) — Sanitizer 位置/时机错误（清洗在入库侧而非输出侧、部分渠道绕过清洗链）
+
 ## 核心判定链路
 
 最小闭环必须尽量逼近下面这条链：
@@ -65,6 +74,8 @@ arguments:
 - Markdown、CMS 内容、公告、帮助中心、邮件模板
 - 文件上传后的预览内容：SVG、HTML、Markdown、导入文件、模板文件
 - 后台审核、运营预览、客服查看、管理端详情页
+
+参见 [stored-xss-comment-richtext.md](references/stored-xss-comment-richtext.md) 和 [stored-xss-file-preview.md](references/stored-xss-file-preview.md) 中的高价值入口示例。
 
 建议先用 `rg` 缩小候选面：
 
@@ -98,6 +109,8 @@ rg -n "Create\\(|Save\\(|Update\\(|Insert\\(|Exec\\(|PutObject|Upload|WriteFile|
 
 如果输入只在内存中短暂流转、没有进入持久化层，通常不应归为存储型 XSS。
 
+对文件上传类持久化，参见 [stored-xss-file-preview.md](references/stored-xss-file-preview.md)。
+
 ## 第三阶段：定位二次读取与展示路径
 
 这一阶段是存储型 XSS 与普通 sink 检测的分水岭。要回答“谁在什么场景把它拿出来展示”。
@@ -119,7 +132,7 @@ rg -n "Create\\(|Save\\(|Update\\(|Insert\\(|Exec\\(|PutObject|Upload|WriteFile|
 - 响应直写：`response.write()`、Servlet/JSP 原样输出、自定义 HTML 拼接
 - 文件预览：把上传的 SVG、HTML、Markdown 转成可执行 DOM 片段
 
-建议优先用现有 `sast-scan` 找 sink，再围绕命中点往上追读取来源。
+建议优先用现有 `sast-scan` 找 sink，再围绕命中点往上追读取来源。参见 [stored-xss-comment-richtext.md](references/stored-xss-comment-richtext.md) 中的 Sink 清单。
 
 ## 第四阶段：检查净化与编码缺口
 
@@ -140,7 +153,7 @@ rg -n "Create\\(|Save\\(|Update\\(|Insert\\(|Exec\\(|PutObject|Upload|WriteFile|
 - Markdown 渲染开启原始 HTML，或 SVG 预览允许脚本/事件属性
 - 管理端、预览端、导出端绕过了主站的净化链
 
-若无法证明净化在最终渲染侧仍然有效，不能因为“看起来调用过 sanitizer”就直接排除风险。
+若无法证明净化在最终渲染侧仍然有效，不能因为”看起来调用过 sanitizer”就直接排除风险。参见 [stored-xss-sanitizer-position-error.md](references/stored-xss-sanitizer-position-error.md) 中的常见失效模式。
 
 ## 第五阶段：场景化确认
 
@@ -153,6 +166,8 @@ rg -n "Create\\(|Save\\(|Update\\(|Insert\\(|Exec\\(|PutObject|Upload|WriteFile|
 - 回显是否经过 HTML 渲染而非纯文本编码
 
 ### 场景二：Markdown / CMS / 模板内容
+
+参见 [stored-xss-markdown-raw-html.md](references/stored-xss-markdown-raw-html.md) 中的 Markdown 库安全默认值对照表。
 
 检查：
 
