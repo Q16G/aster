@@ -296,3 +296,112 @@ func TestUpdateCurrentStepSchemaDoesNotExposeNeedReplan(t *testing.T) {
 		t.Fatalf("need_replan should not appear in update_current_step schema")
 	}
 }
+
+func TestUpdateCurrentStepBlockedByRunningChildAgent(t *testing.T) {
+	ctx := newFakeToolContext()
+	ctx.snapshot.Plan = []*PlanItem{
+		{ID: "s1", Step: "run sub-agents", Status: PlanStepInProgress},
+	}
+	ctx.snapshot.CurrentStepID = "s1"
+
+	tool := NewUpdateCurrentStepTool(ctx)
+	tool.ChildAgentChecker = func() []string {
+		return []string{"scanner-agent", "audit-agent"}
+	}
+
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"status":          "completed",
+		"status_summary":  "done",
+		"short_summary":   "done",
+		"long_summary":    "done",
+		"key_facts":       []any{},
+		"open_questions":  []any{},
+		"tool_calls_digest": []any{},
+	})
+	if err == nil {
+		t.Fatal("expected error when child agents are still running")
+	}
+	if !strings.Contains(err.Error(), "scanner-agent") {
+		t.Fatalf("expected running agent name in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot mark step as completed") {
+		t.Fatalf("expected clear rejection message, got: %v", err)
+	}
+}
+
+func TestUpdateCurrentStepAllowsCompletedWhenNoRunningChildren(t *testing.T) {
+	ctx := newFakeToolContext()
+	ctx.snapshot.Plan = []*PlanItem{
+		{ID: "s1", Step: "run sub-agents", Status: PlanStepInProgress},
+	}
+	ctx.snapshot.CurrentStepID = "s1"
+
+	tool := NewUpdateCurrentStepTool(ctx)
+	tool.ChildAgentChecker = func() []string {
+		return nil
+	}
+
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"status":          "completed",
+		"status_summary":  "done",
+		"short_summary":   "done",
+		"long_summary":    "done",
+		"key_facts":       []any{},
+		"open_questions":  []any{},
+		"tool_calls_digest": []any{},
+	})
+	if err != nil {
+		t.Fatalf("expected no error when all children finished, got: %v", err)
+	}
+}
+
+func TestUpdateCurrentStepFailedBypassesChildCheck(t *testing.T) {
+	ctx := newFakeToolContext()
+	ctx.snapshot.Plan = []*PlanItem{
+		{ID: "s1", Step: "run sub-agents", Status: PlanStepInProgress},
+	}
+	ctx.snapshot.CurrentStepID = "s1"
+
+	tool := NewUpdateCurrentStepTool(ctx)
+	tool.ChildAgentChecker = func() []string {
+		return []string{"scanner-agent"}
+	}
+
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"status":          "failed",
+		"error":           "timeout",
+		"status_summary":  "failed",
+		"short_summary":   "failed",
+		"long_summary":    "failed",
+		"key_facts":       []any{},
+		"open_questions":  []any{},
+		"tool_calls_digest": []any{},
+	})
+	if err != nil {
+		t.Fatalf("failed status should bypass child agent check, got: %v", err)
+	}
+}
+
+func TestUpdateCurrentStepNoCheckerAllowsCompleted(t *testing.T) {
+	ctx := newFakeToolContext()
+	ctx.snapshot.Plan = []*PlanItem{
+		{ID: "s1", Step: "simple step", Status: PlanStepInProgress},
+	}
+	ctx.snapshot.CurrentStepID = "s1"
+
+	tool := NewUpdateCurrentStepTool(ctx)
+	// ChildAgentChecker is nil — no check
+
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"status":          "completed",
+		"status_summary":  "done",
+		"short_summary":   "done",
+		"long_summary":    "done",
+		"key_facts":       []any{},
+		"open_questions":  []any{},
+		"tool_calls_digest": []any{},
+	})
+	if err != nil {
+		t.Fatalf("nil checker should not block, got: %v", err)
+	}
+}

@@ -505,3 +505,79 @@ func TestParentDomainToolNames_ExcludesInheritanceBlocked(t *testing.T) {
 		}
 	}
 }
+
+func TestRunningChildAgentNames(t *testing.T) {
+	root := t.TempDir()
+	ws, err := newLocalWorkspaceRuntime("sess-1", root, "root")
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	agent, err := NewReActAgent("test", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+	agent.workspaceRuntime = ws
+
+	state, _ := ws.LoadWorkspaceState()
+	state.ChildAgents = map[string]*builtin_tools.WorkspaceChildAgentPointer{
+		"scanner": {Status: "completed"},
+		"auditor": {Status: "failed"},
+		"worker":  {Status: "running"},
+		"pending": {Status: ""},
+	}
+	if err := ws.SaveWorkspaceState(state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	running := agent.runningChildAgentNames()
+	if len(running) != 2 {
+		t.Fatalf("expected 2 running agents, got %d: %v", len(running), running)
+	}
+	for _, name := range running {
+		if name != "worker" && name != "pending" {
+			t.Errorf("unexpected running agent: %s", name)
+		}
+	}
+}
+
+func TestRunningChildAgentNames_AllTerminated(t *testing.T) {
+	root := t.TempDir()
+	ws, err := newLocalWorkspaceRuntime("sess-1", root, "root")
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	agent, err := NewReActAgent("test", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+	agent.workspaceRuntime = ws
+
+	state, _ := ws.LoadWorkspaceState()
+	state.ChildAgents = map[string]*builtin_tools.WorkspaceChildAgentPointer{
+		"scanner": {Status: "completed"},
+		"auditor": {Status: "failed"},
+	}
+	if err := ws.SaveWorkspaceState(state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	running := agent.runningChildAgentNames()
+	if len(running) != 0 {
+		t.Fatalf("expected no running agents, got %v", running)
+	}
+}
+
+func TestRunningChildAgentNames_NoWorkspace(t *testing.T) {
+	agent, err := NewReActAgent("test", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+	// workspaceRuntime is nil
+
+	running := agent.runningChildAgentNames()
+	if running != nil {
+		t.Fatalf("expected nil when no workspace, got %v", running)
+	}
+}
