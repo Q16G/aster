@@ -156,6 +156,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 
 	// 平台级内置工具：状态回写和人工确认，所有 Agent 共享。
 	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
+	ucsTool.ChildAgentChecker = agent.runningChildAgentNames
 	if err := agent.registerTool(ucsTool); err != nil {
 		return nil, err
 	}
