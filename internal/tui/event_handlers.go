@@ -785,6 +785,20 @@ func (m *Model) parseSubAgentResult(t *ToolPart, result string) {
 			t.State = "error"
 		}
 	}
+	if agentName := t.AgentName; agentName != "" {
+		m.cancelSubAgentPendingItems(agentName)
+	}
+}
+
+func (m *Model) cancelSubAgentPendingItems(agentName string) {
+	m.chat.UpdateLastPlanForAgent(agentName, func(p *PlanPart) {
+		for i := range p.Items {
+			switch p.Items[i].Status {
+			case "pending", "in_progress":
+				p.Items[i].Status = "cancelled"
+			}
+		}
+	})
 }
 
 func (m *Model) updateSubAgentByCallID(callID, result, errStr string) {

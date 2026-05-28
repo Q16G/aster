@@ -271,11 +271,15 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 	if result == nil || !result.Success {
 		status = "failed"
 	}
-	parentState.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
+	ptr := &builtin_tools.WorkspaceChildAgentPointer{
 		Status:          status,
 		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
 		ArtifactRootDir: childRootDir,
 	}
+	if result != nil {
+		ptr.PlanSummary = result.PlanSummary
+	}
+	parentState.ChildAgents[childName] = ptr
 	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "finalize_child_agent_save_failed",
@@ -386,13 +390,17 @@ func formatSubAgentResult(agentName, workspaceRoot string, result *builtin_tools
 		status = "failed"
 		errText = "no result"
 	}
-	out, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"ok":             ok,
 		"agent_name":     agentName,
 		"workspace_root": workspaceRoot,
 		"status":         status,
 		"summary":        summary,
 		"error":          errText,
-	})
+	}
+	if result != nil && result.PlanSummary != nil {
+		payload["plan_summary"] = result.PlanSummary
+	}
+	out, _ := json.Marshal(payload)
 	return string(out)
 }

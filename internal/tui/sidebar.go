@@ -261,6 +261,9 @@ func subtreeCompleted(items []PlanItemView, parentIdx int) (total, done int) {
 		if items[j].Depth <= parentDepth {
 			break
 		}
+		if items[j].Status == "cancelled" {
+			continue
+		}
 		total++
 		if items[j].Status == "completed" {
 			done++
@@ -275,9 +278,13 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		return
 	}
 
-	total := len(snap.PlanItems)
+	total := 0
 	done := 0
 	for _, item := range snap.PlanItems {
+		if item.Status == "cancelled" {
+			continue
+		}
+		total++
 		if item.Status == "completed" {
 			done++
 		}
@@ -308,10 +315,18 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		case "failed":
 			icon = "✗ "
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		case "cancelled":
+			icon = "⊘ "
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		}
 
 		indentSize := 2 + item.Depth*2
 		indent := strings.Repeat(" ", indentSize)
+
+		prefix := ""
+		if item.AgentName != "" {
+			prefix = "[" + item.AgentName + "] "
+		}
 
 		suffix := ""
 		if collapsed {
@@ -320,11 +335,11 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		}
 
 		iconW := runewidth.StringWidth(icon)
-		maxStep := w - indentSize - iconW - 1 - len(suffix)
+		maxStep := w - indentSize - iconW - 1 - len(prefix) - len(suffix)
 		if maxStep < 4 {
 			maxStep = 4
 		}
-		step := truncateDisplayWidth(item.Step, maxStep) + suffix
+		step := prefix + truncateDisplayWidth(item.Step, maxStep) + suffix
 		sb.WriteString(style.Render(indent+icon+" "+step) + "\n")
 	}
 	sb.WriteString("\n")

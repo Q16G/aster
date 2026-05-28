@@ -1003,6 +1003,8 @@ func equalStringSets(aVals, bVals []string) bool {
 }
 
 func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_tools.RunResult {
+	planSummary := builtin_tools.BuildPlanCompletionSummary(snapshot.Plan)
+
 	// Canceled is unconditionally a failure — step results are irrelevant.
 	if snapshot.Status == builtin_tools.TaskStatusCanceled {
 		msg := ""
@@ -1015,7 +1017,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		if msg == "" {
 			msg = "canceled"
 		}
-		return &builtin_tools.RunResult{Success: false, Error: msg, TurnStatus: string(persistv2.TurnStatusCancelled)}
+		return &builtin_tools.RunResult{Success: false, Error: msg, TurnStatus: string(persistv2.TurnStatusCancelled), PlanSummary: planSummary}
 	}
 
 	if normalizeResultSource(a.currentResultSource) == ResultSourceLatestStepResult {
@@ -1026,7 +1028,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 			strings.TrimSpace(snapshot.Error) != ""
 		if !runtimeForcedFail && snapshot.ExternalInterrupt == nil {
 			if result, ok := latestNonEmptyStepResultWithPlan(snapshot.StepOutcomes, snapshot.Plan); ok {
-				return &builtin_tools.RunResult{Success: true, Result: result}
+				return &builtin_tools.RunResult{Success: true, Result: result, PlanSummary: planSummary}
 			}
 		}
 		if snapshot.Status == builtin_tools.TaskStatusCompleted && snapshot.ExternalInterrupt == nil {
@@ -1042,7 +1044,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		if snapshot.FinalAnswer != nil {
 			result = strings.TrimSpace(snapshot.FinalAnswer.Content)
 		}
-		return &builtin_tools.RunResult{Success: true, Result: result}
+		return &builtin_tools.RunResult{Success: true, Result: result, PlanSummary: planSummary}
 	case builtin_tools.TaskStatusCanceled:
 		msg := ""
 		if snapshot.FinalAnswer != nil {
@@ -1054,7 +1056,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		if msg == "" {
 			msg = "canceled"
 		}
-		return &builtin_tools.RunResult{Success: false, Error: msg}
+		return &builtin_tools.RunResult{Success: false, Error: msg, PlanSummary: planSummary}
 	default:
 		errText := ""
 		if snapshot.FinalAnswer != nil {
@@ -1069,7 +1071,7 @@ func (a *Agent) finalizeResult(snapshot builtin_tools.StateSnapshot) *builtin_to
 		if errText == "" {
 			errText = "failed"
 		}
-		return &builtin_tools.RunResult{Success: false, Error: errText}
+		return &builtin_tools.RunResult{Success: false, Error: errText, PlanSummary: planSummary}
 	}
 }
 

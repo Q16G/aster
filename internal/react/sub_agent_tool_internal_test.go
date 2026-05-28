@@ -2,6 +2,7 @@ package react
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -208,6 +209,259 @@ func TestResolveChildToolNames_FiltersPolicyManagedTools(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Demo: Sub-agent pending 步骤信息丢失的完整复现
+// ---------------------------------------------------------------------------
+
+// TestFormatSubAgentResult_LosesPlanInfo 验证 formatSubAgentResult 丢失 plan 信息。
+// sub-agent 有 6 个 pending 步骤但提前终止，返回给 root 的 JSON 中无法体现这一事实。
+func TestFormatSubAgentResult_LosesPlanInfo(t *testing.T) {
+	// 模拟 sub-agent 提前终止：Success=true 但实际上 6 个步骤都没做
+	result := &builtin_tools.RunResult{
+		Success: true,
+		Result:  "认证测试完成，未获取到有效凭证",
+	}
+
+	output := formatSubAgentResult("sub-cred-agent", "/tmp/ws/sub_agents/sub-cred-agent", result)
+	t.Logf("formatSubAgentResult 返回:\n%s", output)
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
+		t.Fatalf("JSON parse failed: %v", err)
+	}
+
+	// 验证返回了什么
+	if parsed["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", parsed["ok"])
+	}
+	if parsed["status"] != "completed" {
+		t.Fatalf("expected status=completed, got %v", parsed["status"])
+	}
+	if parsed["summary"] != "认证测试完成，未获取到有效凭证" {
+		t.Fatalf("expected summary text, got %v", parsed["summary"])
+	}
+
+	// 验证丢失了什么 — 没有 plan 相关字段
+	planFields := []string{"plan_summary", "plan_total", "plan_completed", "plan_pending", "pending_steps"}
+	for _, field := range planFields {
+		if _, exists := parsed[field]; exists {
+			t.Fatalf("unexpected plan field %q in result — this would mean the bug is already fixed", field)
+		}
+	}
+
+	t.Log("=== 信息丢失点 1 ===")
+	t.Log("formatSubAgentResult 返回: ok=true, status=completed, summary=文本")
+	t.Log("丢失: sub-agent 的 plan 有 6 步，0 步完成，6 步 pending")
+	t.Log("root agent 看到的是 '认证测试完成' — 无从知道 sub-agent 还有 6 步没做")
+}
+
+// TestStepReplanDecision_BlindToSubAgentPlan 验证 StepReplan 决策逻辑看不到 sub-agent plan。
+// 模拟 phase_step_replan.go:174-181 的决策：should_replan=false + root plan 全完成 → FinalAnswer。
+func TestStepReplanDecision_BlindToSubAgentPlan(t *testing.T) {
+	// Root plan: 7 个步骤全部完成（对应真实 session）
+	rootPlan := []*builtin_tools.PlanItem{
+		{ID: "recon", Step: "全局侦察与信息收集", Status: builtin_tools.PlanStepCompleted},
+		{ID: "vuln-scan", Step: "SAST 漏洞扫描", Status: builtin_tools.PlanStepCompleted},
+		{ID: "auth-review", Step: "认证授权审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "biz-logic", Step: "业务逻辑审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "dep-audit", Step: "依赖安全审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "dataflow", Step: "数据流分析", Status: builtin_tools.PlanStepCompleted},
+		{ID: "summary", Step: "汇总所有发现与证据链", Status: builtin_tools.PlanStepCompleted},
+	}
+
+	// Sub-agent plan: 6 个步骤全部 pending（对 root 不可见）
+	subAgentPlan := []*builtin_tools.PlanItem{
+		{ID: "install-deps", Step: "安装环境依赖", Status: builtin_tools.PlanStepPending},
+		{ID: "captcha-script", Step: "编写验证码识别脚本", Status: builtin_tools.PlanStepPending},
+		{ID: "try-passwords", Step: "尝试弱密码登录", Status: builtin_tools.PlanStepPending},
+		{ID: "hashcat", Step: "hashcat 破解密码哈希", Status: builtin_tools.PlanStepPending},
+		{ID: "get-jwt", Step: "获取 JWT token", Status: builtin_tools.PlanStepPending},
+		{ID: "save-token", Step: "保存 token 到工作区", Status: builtin_tools.PlanStepPending},
+	}
+
+	// 模拟 applyReplanResult 的决策逻辑 (phase_step_replan.go:174-181)
+	shouldReplan := false // StepReplan 模型判断不需要重规划
+	var nextPhase string
+	nextRunnableStepID := ""
+
+	if shouldReplan {
+		nextPhase = "plan"
+	} else if candidate := builtin_tools.NextRunnablePlanStepID(rootPlan); candidate != "" {
+		nextRunnableStepID = candidate
+		nextPhase = "step"
+	} else {
+		nextPhase = "final_answer"
+	}
+
+	t.Log("=== 信息丢失点 2: StepReplan 决策 ===")
+	t.Logf("Root plan: %d 步, 全部 completed", len(rootPlan))
+	t.Logf("Sub-agent plan: %d 步, 全部 pending（root 看不到）", len(subAgentPlan))
+	t.Logf("NextRunnablePlanStepID(rootPlan) = %q", nextRunnableStepID)
+	t.Logf("决策结果: nextPhase = %q", nextPhase)
+
+	if nextPhase != "final_answer" {
+		t.Fatalf("expected final_answer, got %q", nextPhase)
+	}
+
+	// sub-agent plan 有 6 个可运行的 pending 步骤，但 root 完全看不到
+	subNextID := builtin_tools.NextRunnablePlanStepID(subAgentPlan)
+	if subNextID == "" {
+		t.Fatal("sub-agent plan should have runnable steps")
+	}
+	t.Logf("Sub-agent NextRunnablePlanStepID = %q（对 root 不可见）", subNextID)
+	t.Log("结论: root 进入 FinalAnswer，sub-agent 的 6 个 pending 步骤被忽略")
+}
+
+// TestFinalizeChildAgent_NoSubAgentPlanPersisted 验证 finalizeChildAgent 只保存
+// status，不保存 sub-agent 的 plan 完成统计。
+func TestFinalizeChildAgent_NoSubAgentPlanPersisted(t *testing.T) {
+	parentRoot := t.TempDir()
+	parentRuntime, err := newLocalWorkspaceRuntime("sess-1", parentRoot, "root")
+	if err != nil {
+		t.Fatalf("create parent runtime: %v", err)
+	}
+
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	parent.workspaceRuntime = parentRuntime
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	runtime := builtin_tools.ToolRuntimeInfo{CurrentStepID: "auth-review"}
+
+	// Sub-agent 返回 Success=true 但实际上 plan 有 6 个 pending 步骤
+	result := &builtin_tools.RunResult{
+		Success: true,
+		Result:  "认证测试完成",
+	}
+	tool.finalizeChildAgent(runtime, "sub-cred", "/tmp/ws/sub-cred", result)
+
+	state, err := parentRuntime.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	ptr := state.ChildAgents["sub-cred"]
+	if ptr == nil {
+		t.Fatal("expected ChildAgents entry")
+	}
+
+	t.Log("=== 信息丢失点 3: finalizeChildAgent ===")
+	t.Logf("保存到 parent workspace 的信息:")
+	t.Logf("  Status: %q", ptr.Status)
+	t.Logf("  ParentStepKey: %q", ptr.ParentStepKey)
+	t.Logf("  ArtifactRootDir: %q", ptr.ArtifactRootDir)
+
+	if ptr.Status != "completed" {
+		t.Fatalf("expected status=completed, got %q", ptr.Status)
+	}
+
+	t.Log("丢失: sub-agent plan 完成状态（6 步中 0 步完成）")
+	t.Log("parent 只知道 child agent 'completed'（执行结束），不知道 child 的 plan 是否完成")
+}
+
+// TestEndToEnd_SubAgentPendingStepsInvisibleToRoot 端到端串联展示完整的信息丢失链路。
+func TestEndToEnd_SubAgentPendingStepsInvisibleToRoot(t *testing.T) {
+	t.Log("╔══════════════════════════════════════════════════════╗")
+	t.Log("║  Demo: Sub-agent pending 步骤信息丢失全链路复现     ║")
+	t.Log("╚══════════════════════════════════════════════════════╝")
+
+	// ── Step 1: Sub-agent 有 6 步 plan，全部 pending ──
+	subAgentPlan := []*builtin_tools.PlanItem{
+		{ID: "install-deps", Step: "安装环境依赖", Status: builtin_tools.PlanStepPending},
+		{ID: "captcha-script", Step: "编写验证码识别脚本", Status: builtin_tools.PlanStepPending},
+		{ID: "try-passwords", Step: "尝试弱密码登录", Status: builtin_tools.PlanStepPending},
+		{ID: "hashcat", Step: "hashcat 破解密码哈希", Status: builtin_tools.PlanStepPending},
+		{ID: "get-jwt", Step: "获取 JWT token", Status: builtin_tools.PlanStepPending},
+		{ID: "save-token", Step: "保存 token 到工作区", Status: builtin_tools.PlanStepPending},
+	}
+	t.Logf("\n[1] Sub-agent plan: %d 步, 全部 pending", len(subAgentPlan))
+	for _, item := range subAgentPlan {
+		t.Logf("    ○ %s (id=%s)", item.Step, item.ID)
+	}
+
+	// ── Step 2: Sub-agent 提前终止，返回 RunResult ──
+	subResult := &builtin_tools.RunResult{
+		Success: true,
+		Result:  "认证测试完成，未获取到有效凭证，目标平台存在验证码保护",
+	}
+	t.Logf("\n[2] Sub-agent 提前终止:")
+	t.Logf("    Success: %v", subResult.Success)
+	t.Logf("    Result: %q", subResult.Result)
+	t.Log("    ⚠ RunResult 没有 plan 相关字段")
+
+	// ── Step 3: formatSubAgentResult → 信息丢失 ──
+	formatted := formatSubAgentResult("sub-cred-agent", "/tmp/ws/sub-cred", subResult)
+	var parsed map[string]any
+	_ = json.Unmarshal([]byte(formatted), &parsed)
+	t.Logf("\n[3] formatSubAgentResult 输出（root 收到的）:")
+	t.Logf("    ok: %v", parsed["ok"])
+	t.Logf("    status: %v", parsed["status"])
+	t.Logf("    summary: %v", parsed["summary"])
+	t.Log("    ⚠ 无 plan_summary / pending_steps 字段")
+
+	// ── Step 4: Root 的 StepReplan 看到的信息 ──
+	rootPlan := []*builtin_tools.PlanItem{
+		{ID: "recon", Step: "全局侦察", Status: builtin_tools.PlanStepCompleted},
+		{ID: "vuln-scan", Step: "漏洞扫描", Status: builtin_tools.PlanStepCompleted},
+		{ID: "auth-review", Step: "认证授权审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "biz-logic", Step: "业务逻辑审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "dep-audit", Step: "依赖安全审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "dataflow", Step: "数据流分析", Status: builtin_tools.PlanStepCompleted},
+		{ID: "summary", Step: "汇总所有发现", Status: builtin_tools.PlanStepCompleted},
+	}
+	t.Logf("\n[4] Root StepReplan 看到的:")
+	t.Logf("    Root plan: %d 步全 completed", len(rootPlan))
+	t.Logf("    Step outcome: %q", parsed["summary"])
+	t.Log("    ⚠ 看不到 sub-agent 的 plan — 6 个 pending 步骤完全不可见")
+
+	// ── Step 5: NextRunnablePlanStepID 返回空 ──
+	nextID := builtin_tools.NextRunnablePlanStepID(rootPlan)
+	t.Logf("\n[5] NextRunnablePlanStepID(rootPlan) = %q", nextID)
+	if nextID != "" {
+		t.Fatalf("expected empty, got %q", nextID)
+	}
+
+	// ── Step 6: 决策 → FinalAnswer ──
+	shouldReplan := false
+	nextPhase := "final_answer"
+	if shouldReplan {
+		nextPhase = "plan"
+	} else if nextID != "" {
+		nextPhase = "step"
+	}
+	t.Logf("\n[6] 决策: nextPhase = %q", nextPhase)
+	if nextPhase != "final_answer" {
+		t.Fatalf("expected final_answer, got %q", nextPhase)
+	}
+
+	// ── Step 7: Sidebar 合并显示 ──
+	t.Log("\n[7] Sidebar flattenPlan 合并 root + sub-agent plan:")
+	t.Log("    Root (depth=0):")
+	for _, item := range rootPlan {
+		t.Logf("      ✓ %s", item.Step)
+	}
+	t.Log("    Sub-agent (depth=1, 嵌套在 auth-review 下):")
+	for _, item := range subAgentPlan {
+		t.Logf("      ○ %s", item.Step)
+	}
+
+	t.Log("\n╔══════════════════════════════════════════════════════╗")
+	t.Log("║  结论                                               ║")
+	t.Log("╠══════════════════════════════════════════════════════╣")
+	t.Log("║  1. RunResult 没有 plan 字段 → 信息源头丢失         ║")
+	t.Log("║  2. formatSubAgentResult 只传文本 → 信息传递丢失    ║")
+	t.Log("║  3. StepReplan 只看 root plan → 信息消费盲区        ║")
+	t.Log("║  4. 进入 FinalAnswer 前无 child 完成性检查          ║")
+	t.Log("║  5. Sidebar 合并显示 → 用户看到 7✓ + 6○            ║")
+	t.Log("╚══════════════════════════════════════════════════════╝")
 }
 
 func TestParentDomainToolNames_ExcludesInheritanceBlocked(t *testing.T) {
