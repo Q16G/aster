@@ -11,7 +11,8 @@ import (
 )
 
 type UpdateCurrentStepTool struct {
-	ctx ToolContext
+	ctx               ToolContext
+	ChildAgentChecker func() []string
 }
 
 func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
@@ -109,6 +110,16 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	case PlanStepCompleted, PlanStepFailed:
 	default:
 		return "", fmt.Errorf("invalid status: %s", ToolRuntimeValue(args["status"]))
+	}
+
+	if status == PlanStepCompleted && t.ChildAgentChecker != nil {
+		if running := t.ChildAgentChecker(); len(running) > 0 {
+			return "", fmt.Errorf(
+				"cannot mark step as completed: child agents still running: %s. "+
+					"Wait for all child agents to finish before calling update_current_step",
+				strings.Join(running, ", "),
+			)
+		}
 	}
 
 	summary := ToolRuntimeValue(args["summary"])
