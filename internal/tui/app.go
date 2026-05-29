@@ -499,7 +499,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.thinkingPanel.Hide()
 		m.updateLayout()
 		m.chat.FlushThinking()
-		hadStream := m.flushStreamAndPersist()
+		hadStream := m.flushAllStreamsAndPersist()
 		m.chat.FlushRender()
 		m.renderScheduled = false
 		m.clearRetryState()

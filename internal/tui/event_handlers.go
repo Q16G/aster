@@ -12,14 +12,43 @@ import (
 	tuicontext "aster/internal/tui/context"
 )
 
-func (m *Model) flushStreamAndPersist() bool {
-	content := m.chat.StreamContent()
-	flushed := m.chat.FlushStream()
+func (m *Model) flushStreamAndPersist(agentName string) bool {
+	content := m.chat.StreamContent(agentName)
+	flushed := m.chat.FlushStream(agentName)
 	if flushed && content != "" {
 		m.hadStreamDuringRun = true
-		m.persistPart("stream", "", content)
+		m.persistPartWithAgent("stream", "", agentName, content)
 	}
 	return flushed
+}
+
+// flushAllStreamsAndPersist flushes every agent's pending stream buffer. Used at
+// run completion, where no further per-agent boundary events will arrive.
+func (m *Model) flushAllStreamsAndPersist() bool {
+	flushed := false
+	for _, agentName := range m.chat.StreamingAgents() {
+		if m.flushStreamAndPersist(agentName) {
+			flushed = true
+		}
+	}
+	return flushed
+}
+
+// childAgentCallToken extracts the truncated call_id token embedded in a child
+// agent name. Both spawning schemes append a truncation of the spawning tool's
+// call_id: sub_agent -> "sub-<callID[:8]>", skill fork -> "skill-<name>-<callID[:6]>".
+// (A skill name may itself contain '-', so the token is the segment after the
+// LAST '-'.) Returns "" for names that match neither scheme (e.g. the root agent).
+func childAgentCallToken(agentName string) string {
+	switch {
+	case strings.HasPrefix(agentName, "sub-"):
+		return agentName[len("sub-"):]
+	case strings.HasPrefix(agentName, "skill-"):
+		if i := strings.LastIndex(agentName, "-"); i >= len("skill-") {
+			return agentName[i+1:]
+		}
+	}
+	return ""
 }
 
 func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
@@ -46,12 +75,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	switch event.Type {
 	case react.EventTypeStream:
 		m.chat.FlushThinking()
-		m.chat.AppendStream(event.Content)
+		m.chat.AppendStream(event.AgentName, event.Content)
 		m.hadStreamDuringRun = true
 
 	case react.EventTypeResult:
 		m.chat.FlushThinking()
-		hadStream := m.flushStreamAndPersist()
+		hadStream := m.flushStreamAndPersist(event.AgentName)
 		if !hadStream && !m.hadStreamDuringRun {
 			if result, ok := event.Payload["result"]; ok {
 				resultStr := fmt.Sprintf("%v", result)
@@ -68,7 +97,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeToolStart:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		toolName, _ := event.Payload["tool_name"].(string)
 		callID, _ := event.Payload["call_id"].(string)
 		isAgent, _ := event.Payload["is_agent"].(bool)
@@ -95,11 +124,19 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			},
 		})
 		if isAgent {
-			m.chat.agentSpawnStack = append(m.chat.agentSpawnStack, agentSpawnInfo{
-				ParentAgent:  event.AgentName,
-				ParentStepID: m.chat.activeStepByAgent[event.AgentName],
-				CallID:       callID,
-			})
+			// Key spawn context by the spawning tool's call_id, so the child's
+			// later (concurrent) plan events resolve their parent deterministically
+			// instead of via a LIFO stack top. call_id works for both sub_agent
+			// ("sub-<callID[:8]>") and skill fork ("skill-<name>-<callID[:6]>")
+			// children, whose names both embed a truncation of it.
+			if callID != "" {
+				m.chat.agentSpawnByCallID[callID] = agentSpawnInfo{
+					ParentAgent:  event.AgentName,
+					ParentStepID: m.chat.activeStepByAgent[event.AgentName],
+					CallID:       callID,
+					SubScheme:    toolName == builtin_tools.SubAgentToolName,
+				}
+			}
 			m.chat.AddPart(DisplayPart{
 				Type: PartTypeSubAgent,
 				Time: time.Now(),
@@ -141,12 +178,6 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 		if isAgent {
 			m.updateSubAgentByCallID(callID, result, errStr)
-			for i := len(m.chat.agentSpawnStack) - 1; i >= 0; i-- {
-				if m.chat.agentSpawnStack[i].CallID == callID {
-					m.chat.agentSpawnStack = append(m.chat.agentSpawnStack[:i], m.chat.agentSpawnStack[i+1:]...)
-					break
-				}
-			}
 		}
 		display := result
 		if errStr != "" {
@@ -155,7 +186,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.persistPartWithCallID("tool_end", toolName, callID, display)
 
 	case react.EventTypeThink:
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
 			if m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer" {
 				m.replanThinkBuf.WriteString(thinkDelta)
@@ -174,7 +205,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.statusText = "thinking..."
 
 	case react.EventTypeIteration:
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		current := payloadInt(event.Payload, "current")
 		max := payloadInt(event.Payload, "max")
 		iterText := fmt.Sprintf("iteration %d/%d", current, max)
@@ -247,17 +278,17 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeAgentEnter:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		m.statusText = fmt.Sprintf("agent: %s", event.AgentName)
 
 	case react.EventTypeAgentExit:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		m.statusText = "ready"
 
 	case react.EventTypeTaskPlan:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		var items []PlanItemView
 		explanation, _ := event.Payload["explanation"].(string)
 		rawPlan := event.Payload["plan"]
@@ -294,8 +325,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			}
 			if !m.chat.isRootAgentPlan(planPart) {
 				if _, known := m.chat.agentParent[event.AgentName]; !known {
-					if n := len(m.chat.agentSpawnStack); n > 0 {
-						m.chat.agentParent[event.AgentName] = m.chat.agentSpawnStack[n-1]
+					if info, ok := m.chat.lookupSpawnByChild(event.AgentName); ok {
+						m.chat.agentParent[event.AgentName] = info
 					}
 				}
 				if info, ok := m.chat.agentParent[event.AgentName]; ok {
@@ -421,7 +452,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.thinkingPanel.Hide()
 		m.updateLayout()
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		stepID := payloadString(event.Payload, "step_id")
 		stepName := payloadString(event.Payload, "step_name")
 		shortSummary := payloadString(event.Payload, "short_summary")
@@ -493,7 +524,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.thinkingPanel.Hide()
 		m.updateLayout()
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist()
+		m.flushStreamAndPersist(event.AgentName)
 		m.hadFinalAnswerDuringRun = true
 		content := payloadString(event.Payload, "content")
 		source := payloadString(event.Payload, "source")

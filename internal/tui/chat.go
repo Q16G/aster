@@ -16,13 +16,17 @@ type agentSpawnInfo struct {
 	ParentAgent  string
 	ParentStepID string
 	CallID       string
+	// SubScheme is true when the child was spawned by the sub_agent tool
+	// ("sub-<callID[:8]>") and false for skill forks ("skill-<name>-<callID[:6]>").
+	// It disambiguates the call_id join when two children share a callID prefix.
+	SubScheme bool
 }
 
 type ChatModel struct {
 	viewport         viewport.Model
 	parts            []DisplayPart
-	streaming        *strings.Builder
-	isStreaming      bool
+	streamingByAgent map[string]*strings.Builder
+	streamingOrder   []string
 	thinkingBuf      *strings.Builder
 	thinkingGroupID  string
 	isThinking       bool
@@ -39,21 +43,27 @@ type ChatModel struct {
 	rootAgentName    string
 
 	activeStepByAgent map[string]string
-	agentSpawnStack   []agentSpawnInfo
-	agentParent       map[string]agentSpawnInfo
+	// agentSpawnByCallID maps a child agent's spawning tool call_id to the spawn
+	// context captured at its tool_start. call_id is the one stable identifier
+	// shared by tool_start and the later child name (both sub-<callID[:8]> and
+	// skill-<name>-<callID[:6]> embed a truncation of it), so it is the correct
+	// join key — independent of the child's naming scheme.
+	agentSpawnByCallID map[string]agentSpawnInfo
+	agentParent        map[string]agentSpawnInfo
 }
 
 func NewChatModel() ChatModel {
 	vp := viewport.New(0, 0)
 	vp.SetContent("")
 	return ChatModel{
-		viewport:          vp,
-		streaming:         &strings.Builder{},
-		thinkingBuf:       &strings.Builder{},
-		toolExpanded:      make(map[int]bool),
-		autoFollowBottom:  true,
-		activeStepByAgent: make(map[string]string),
-		agentParent:       make(map[string]agentSpawnInfo),
+		viewport:           vp,
+		streamingByAgent:   make(map[string]*strings.Builder),
+		thinkingBuf:        &strings.Builder{},
+		toolExpanded:       make(map[int]bool),
+		autoFollowBottom:   true,
+		activeStepByAgent:  make(map[string]string),
+		agentSpawnByCallID: make(map[string]agentSpawnInfo),
+		agentParent:        make(map[string]agentSpawnInfo),
 	}
 }
 
@@ -85,28 +95,65 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 	m.syncAutoFollowFromViewport()
 }
 
-func (m *ChatModel) StreamContent() string {
-	return m.streaming.String()
+func (m *ChatModel) streamBuilder(agentName string) *strings.Builder {
+	b, ok := m.streamingByAgent[agentName]
+	if !ok {
+		b = &strings.Builder{}
+		m.streamingByAgent[agentName] = b
+		m.streamingOrder = append(m.streamingOrder, agentName)
+	}
+	return b
 }
 
-func (m *ChatModel) AppendStream(delta string) {
-	m.streaming.WriteString(delta)
-	m.isStreaming = true
+func (m *ChatModel) dropStreamBuilder(agentName string) {
+	if _, ok := m.streamingByAgent[agentName]; !ok {
+		return
+	}
+	delete(m.streamingByAgent, agentName)
+	for i, name := range m.streamingOrder {
+		if name == agentName {
+			m.streamingOrder = append(m.streamingOrder[:i], m.streamingOrder[i+1:]...)
+			break
+		}
+	}
+}
+
+func (m *ChatModel) StreamingAgents() []string {
+	return append([]string(nil), m.streamingOrder...)
+}
+
+func (m *ChatModel) hasStreamingContent() bool {
+	for _, b := range m.streamingByAgent {
+		if b.Len() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ChatModel) StreamContent(agentName string) string {
+	if b, ok := m.streamingByAgent[agentName]; ok {
+		return b.String()
+	}
+	return ""
+}
+
+func (m *ChatModel) AppendStream(agentName, delta string) {
+	m.streamBuilder(agentName).WriteString(delta)
 	m.markDirty()
 }
 
-func (m *ChatModel) FlushStream() bool {
+func (m *ChatModel) FlushStream(agentName string) bool {
 	flushed := false
-	if m.streaming.Len() > 0 {
+	if b, ok := m.streamingByAgent[agentName]; ok && b.Len() > 0 {
 		m.parts = append(m.parts, DisplayPart{
 			Type: PartTypeText,
 			Time: time.Now(),
-			Text: &TextPart{Content: m.streaming.String()},
+			Text: &TextPart{Content: b.String(), AgentName: agentName},
 		})
-		m.streaming.Reset()
 		flushed = true
 	}
-	m.isStreaming = false
+	m.dropStreamBuilder(agentName)
 	m.markDirty()
 	return flushed
 }
@@ -259,6 +306,34 @@ func (m *ChatModel) isRootAgentPlan(p *PlanPart) bool {
 	return p.AgentName == m.rootAgentName || p.AgentName == ""
 }
 
+// lookupSpawnByChild resolves the spawn context for a child agent name by
+// joining on the truncated call_id token its name embeds (see
+// childAgentCallToken). The full call_id captured at tool_start has the token
+// as a prefix, so a prefix match recovers the spawn entry. The match is gated on
+// the naming scheme (sub_agent vs skill fork) because a sub child's token
+// (callID[:8]) and a skill child's token (callID[:6]) can otherwise prefix the
+// same call_id — gating ensures a "skill-" child only binds to a skill spawn and
+// a "sub-" child only to a sub_agent spawn.
+func (m *ChatModel) lookupSpawnByChild(agentName string) (agentSpawnInfo, bool) {
+	if info, ok := m.agentSpawnByCallID[agentName]; ok {
+		return info, true
+	}
+	token := childAgentCallToken(agentName)
+	if token == "" {
+		return agentSpawnInfo{}, false
+	}
+	wantSub := strings.HasPrefix(agentName, "sub-")
+	for callID, info := range m.agentSpawnByCallID {
+		if info.SubScheme != wantSub {
+			continue
+		}
+		if strings.HasPrefix(callID, token) {
+			return info, true
+		}
+	}
+	return agentSpawnInfo{}, false
+}
+
 func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart)) {
 	matchRoot := agentName == m.rootAgentName
 	for i := len(m.parts) - 1; i >= 0; i-- {
@@ -361,11 +436,11 @@ func (m *ChatModel) refreshContent() {
 		sb.WriteString(m.renderThinkingStream())
 		sb.WriteString("\n")
 	}
-	if m.isStreaming {
+	if m.hasStreamingContent() {
 		sb.WriteString(m.renderStreamingContent())
 		sb.WriteString("\n")
 	}
-	if len(m.parts) == 0 && !m.isStreaming && !m.isThinking {
+	if len(m.parts) == 0 && !m.hasStreamingContent() && !m.isThinking {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
 	m.fullContent = sb.String()
@@ -481,7 +556,7 @@ func (m *ChatModel) ContentYOffset() int {
 }
 
 func (m *ChatModel) HasContent() bool {
-	return len(m.parts) > 0 || m.isStreaming
+	return len(m.parts) > 0 || m.hasStreamingContent()
 }
 
 func (m *ChatModel) SetFocused(f bool) {
@@ -577,9 +652,26 @@ func (m *ChatModel) renderStreamingContent() string {
 		BorderForeground(assistantBorderColor).
 		PaddingLeft(1).
 		Width(maxWidth)
+	labelStyle := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8"))
 
-	content := wrapText(m.streaming.String(), maxWidth-4) + "▌"
-	return style.Render(content)
+	var sb strings.Builder
+	first := true
+	for _, name := range m.streamingOrder {
+		b, ok := m.streamingByAgent[name]
+		if !ok || b.Len() == 0 {
+			continue
+		}
+		if !first {
+			sb.WriteString("\n")
+		}
+		first = false
+		if name != "" && name != m.rootAgentName {
+			sb.WriteString(labelStyle.Render("⤷ "+name) + "\n")
+		}
+		content := wrapText(b.String(), maxWidth-4) + "▌"
+		sb.WriteString(style.Render(content))
+	}
+	return sb.String()
 }
 
 func (m *ChatModel) renderThinkingStream() string {

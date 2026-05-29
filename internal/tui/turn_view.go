@@ -52,8 +52,16 @@ func groupPartsIntoTurns(parts []DisplayPart) []Turn {
 func mergeTextRun(parts []IndexedPart, localIdx int) (string, int) {
 	var sb strings.Builder
 	count := 0
+	var agentName string
 	for i := localIdx; i < len(parts); i++ {
 		if parts[i].Part.Type != PartTypeText || parts[i].Part.Text == nil {
+			break
+		}
+		// Only merge a contiguous run that belongs to the same agent, so
+		// concurrent sub-agents' streamed text stays visually separated.
+		if count == 0 {
+			agentName = parts[i].Part.Text.AgentName
+		} else if parts[i].Part.Text.AgentName != agentName {
 			break
 		}
 		if sb.Len() > 0 {
