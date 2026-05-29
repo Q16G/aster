@@ -1,13 +1,8 @@
 package tui
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
-	"aster/internal/ai"
 	"aster/internal/react"
 )
 
@@ -196,48 +191,5 @@ func TestMergeTextRunRespectsAgent(t *testing.T) {
 	content, count = mergeTextRun(parts, 2)
 	if count != 1 || content != "b1" {
 		t.Fatalf("expected single-part run for sub-B, got count=%d content=%q", count, content)
-	}
-}
-
-func writeAsyncResult(t *testing.T, baseDir, sessionID, child string, res asyncSubAgentResult) {
-	t.Helper()
-	dir := filepath.Join(baseDir, sessionID, "workspace", "sub_agents", child)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.MarshalIndent(res, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "async_result.json"), data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestBackfillCompletedSubAgents(t *testing.T) {
-	baseDir := t.TempDir()
-	sessionID := "sess-1"
-
-	writeAsyncResult(t, baseDir, sessionID, "sub-aaa", asyncSubAgentResult{
-		AgentID: "sub-aaa", Status: "completed", OK: true, Result: "done aaa",
-	})
-	writeAsyncResult(t, baseDir, sessionID, "sub-bbb", asyncSubAgentResult{
-		AgentID: "sub-bbb", Status: "running",
-	})
-
-	history := []*ai.MsgInfo{ai.NewUserMsgInfo("original task")}
-	history, injected := backfillCompletedSubAgents(baseDir, sessionID, history)
-	if injected != 1 {
-		t.Fatalf("expected 1 injected result (completed only), got %d", injected)
-	}
-	last := msgContentString(history[len(history)-1].Content)
-	if !strings.Contains(last, "agent_id: sub-aaa") || !strings.Contains(last, "done aaa") {
-		t.Fatalf("injected message missing expected content: %q", last)
-	}
-
-	// Idempotent: a second pass must not re-inject the already-present result.
-	_, injected2 := backfillCompletedSubAgents(baseDir, sessionID, history)
-	if injected2 != 0 {
-		t.Fatalf("expected 0 injected on second pass (dedup), got %d", injected2)
 	}
 }

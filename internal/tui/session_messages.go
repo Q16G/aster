@@ -3,7 +3,6 @@ package tui
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -486,125 +485,6 @@ func loadSessionAIHistory(baseDir, sessionID string) ([]*ai.MsgInfo, error) {
 		return nil, err
 	}
 	return ai.NormalizeMsgInfoSlice(history), nil
-}
-
-type asyncSubAgentResult struct {
-	AgentID string `json:"agent_id"`
-	Status  string `json:"status"`
-	OK      bool   `json:"ok"`
-	Result  string `json:"result"`
-	Error   string `json:"error"`
-}
-
-// backfillCompletedSubAgents scans <session>/workspace/sub_agents/*/async_result.json
-// and appends a notification message to the parent history for any terminal
-// sub-agent result not already represented there. This recovers the case where a
-// session was interrupted after a sub-agent finished but before the parent agent
-// drained the async notification into its own history (see
-// react.drainAsyncAgentNotifications). The injected message uses the same textual
-// format as the live drain so the resumed parent sees identical context.
-// Returns the augmented history and the number of injected entries.
-func backfillCompletedSubAgents(baseDir, sessionID string, history []*ai.MsgInfo) ([]*ai.MsgInfo, int) {
-	subAgentsDir := filepath.Join(sessionWorkspaceDir(baseDir, sessionID), "sub_agents")
-	entries, err := os.ReadDir(subAgentsDir)
-	if err != nil {
-		return history, 0
-	}
-
-	present := make(map[string]struct{})
-	for _, msg := range history {
-		if msg == nil {
-			continue
-		}
-		for _, id := range scanNotifiedAgentIDs(msgContentString(msg.Content)) {
-			present[id] = struct{}{}
-		}
-	}
-
-	injected := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		resultFile := filepath.Join(subAgentsDir, e.Name(), "async_result.json")
-		data, rerr := os.ReadFile(resultFile)
-		if rerr != nil {
-			continue
-		}
-		var res asyncSubAgentResult
-		if json.Unmarshal(data, &res) != nil {
-			continue
-		}
-		agentID := strings.TrimSpace(res.AgentID)
-		if agentID == "" {
-			agentID = e.Name()
-		}
-		status := strings.TrimSpace(res.Status)
-		if status == "" || status == "running" {
-			continue
-		}
-		if _, ok := present[agentID]; ok {
-			continue
-		}
-
-		summary := res.Result
-		if summary == "" {
-			summary = res.Error
-		}
-		summary = truncateRuneString(summary, 1024)
-
-		workspace := filepath.Dir(resultFile)
-		text := fmt.Sprintf(
-			"[后台 Agent 完成通知]\nagent_id: %s\nstatus: %s\nworkspace: %s\nresult_file: %s",
-			agentID, status, workspace, resultFile,
-		)
-		if summary != "" {
-			text += fmt.Sprintf("\nresult_summary:\n%s", summary)
-		}
-		history = append(history, ai.NewUserMsgInfo(text))
-		present[agentID] = struct{}{}
-		injected++
-	}
-	return history, injected
-}
-
-// scanNotifiedAgentIDs extracts the agent_id values already recorded in a
-// historical notification message body ("agent_id: <name>" lines).
-func scanNotifiedAgentIDs(content string) []string {
-	if content == "" {
-		return nil
-	}
-	var ids []string
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if rest, ok := strings.CutPrefix(line, "agent_id:"); ok {
-			if id := strings.TrimSpace(rest); id != "" {
-				ids = append(ids, id)
-			}
-		}
-	}
-	return ids
-}
-
-func msgContentString(content any) string {
-	if content == nil {
-		return ""
-	}
-	if s, ok := content.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", content)
-}
-
-func truncateRuneString(s string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return s
-	}
-	r := []rune(s)
-	if len(r) <= maxRunes {
-		return s
-	}
-	return string(r[:maxRunes]) + "..."
 }
 
 func loadSessionWorkspaceState(baseDir, sessionID string) (*builtin_tools.WorkspaceState, error) {

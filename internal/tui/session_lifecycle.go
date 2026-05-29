@@ -140,17 +140,8 @@ func (m *Model) switchSession(idOrPrefix string) {
 			if m.agentCtx != nil {
 				history, histErr := loadSessionAIHistory(m.store.BaseDir(), s.ID)
 				if histErr == nil {
-					history, injected := backfillCompletedSubAgents(m.store.BaseDir(), s.ID, history)
 					m.agentCtx.InitialHistory = history
 					m.recalcUsageFromHistory(history)
-					if injected > 0 {
-						m.chat.AddPart(DisplayPart{
-							Type: PartTypeSystem,
-							Time: time.Now(),
-							System: &SystemPart{Content: fmt.Sprintf(
-								"recovered %d completed sub-agent result(s) into context", injected)},
-						})
-					}
 				} else {
 					m.agentCtx.InitialHistory = nil
 					m.sessionUsage = ai.TokenUsage{}
