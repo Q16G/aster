@@ -113,6 +113,8 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 --exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
 ```
 
+> **超时提示**：semgrep 扫描大目录常超过默认上限，通过 bash 工具执行时显式传 `timeout_ms`（如 `600000`）避免被提前截断；被取消时整棵进程树（含 `semgrep-core`）会被自动清理，不会残留。
+
 ## 输出要求
 
 ### 1. 覆盖声明（必须输出）
