@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -293,6 +294,9 @@ func (m *Manager) ServerEntries() []*MCPServerEntry {
 		cp := *entry
 		entries = append(entries, &cp)
 	}
+	// Stable order: m.servers is a map (random iteration) filled by concurrent
+	// probes, so without this the selector/sidebar reshuffle on every refresh.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries
 }
 
@@ -306,6 +310,7 @@ func (m *Manager) ResidentServers() []string {
 			names = append(names, name)
 		}
 	}
+	sort.Strings(names)
 	return names
 }
 
