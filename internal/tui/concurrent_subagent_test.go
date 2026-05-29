@@ -143,6 +143,42 @@ func TestConcurrentSubAgentStreamingAttribution(t *testing.T) {
 	}
 }
 
+// A sub-agent that streamed must not suppress the root agent's result fallback.
+// Previously a run-level hadStreamDuringRun flag was set by any streaming agent,
+// so the root's empty-stream result was wrongly dropped. The per-agent flag fixes
+// this, and the fallback TextPart must carry the producing agent's name.
+func TestResultFallbackPerAgentIsolation(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	// A sub-agent streams (sets only its own hadStream flag).
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeStream,
+		AgentName: "sub-call_aaa",
+		Content:   "sub streamed text",
+	})
+	m.flushStreamAndPersist("sub-call_aaa")
+
+	// Root emits a result with no prior streaming of its own. Its fallback must fire.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeResult,
+		AgentName: "root",
+		Payload:   map[string]any{"result": "root final answer"},
+	})
+
+	var rootText *TextPart
+	for _, p := range m.chat.parts {
+		if p.Type == PartTypeText && p.Text != nil && p.Text.Content == "root final answer" {
+			rootText = p.Text
+		}
+	}
+	if rootText == nil {
+		t.Fatal("root result fallback was suppressed by sub-agent streaming")
+	}
+	if rootText.AgentName != "root" {
+		t.Fatalf("root fallback TextPart AgentName = %q, want %q", rootText.AgentName, "root")
+	}
+}
+
 // Same-agent consecutive text merges; different-agent text does not.
 func TestMergeTextRunRespectsAgent(t *testing.T) {
 	parts := []IndexedPart{
