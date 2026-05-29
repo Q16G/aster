@@ -50,9 +50,36 @@ func (w *LimitedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// RunCommandLimited 在指定目录中执行命令，限制 stdout/stderr 大小
+// graceKillDelay 取消命令时，先对进程组发 SIGTERM，宽限期内未退出再整组 SIGKILL。
+// 给 semgrep-core 等子进程留出落盘 / 清理临时文件的时间。
+const graceKillDelay = 3 * time.Second
+
+// procSignal 是跨平台的进程组清理信号抽象，由各平台实现 killGroup 解释。
+type procSignal int
+
+const (
+	termSignal procSignal = iota // 优雅终止
+	killSignal                   // 强制终止
+)
+
+// RunCommandLimited 在指定目录中执行命令，限制 stdout/stderr 大小。
+// 命令在独立进程组中启动；ctx 取消时对整个进程组优雅降级清理
+// （SIGTERM → 宽限期 → SIGKILL），避免 shell 之下的孙子进程（如 semgrep-core）孤儿残留。
 func RunCommandLimited(ctx context.Context, dir, exe string, args []string, maxStdout, maxStderr int64, waitDelay time.Duration) *CommandRunResult {
 	cmd := exec.CommandContext(ctx, exe, args...)
+	setProcGroup(cmd)
+	done := make(chan struct{})
+	cmd.Cancel = func() error {
+		killGroup(cmd, termSignal)
+		go func() {
+			select {
+			case <-done:
+			case <-time.After(graceKillDelay):
+				killGroup(cmd, killSignal)
+			}
+		}()
+		return nil
+	}
 	if waitDelay > 0 {
 		cmd.WaitDelay = waitDelay
 	}
@@ -62,6 +89,7 @@ func RunCommandLimited(ctx context.Context, dir, exe string, args []string, maxS
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	err := cmd.Run()
+	close(done)
 
 	exitCode := 0
 	if err != nil {
