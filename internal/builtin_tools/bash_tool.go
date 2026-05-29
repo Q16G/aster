@@ -15,6 +15,7 @@ import (
 const (
 	bashDefaultTimeoutMs   int64 = 120_000
 	bashBuildTestTimeoutMs int64 = 300_000
+	bashSemgrepTimeoutMs   int64 = 600_000
 	bashMaxTimeoutMs       int64 = 900_000
 	bashCaptureMaxStdout   int64 = 1 * 1024 * 1024 // 1 MiB
 	bashCaptureMaxStderr   int64 = 1 * 1024 * 1024 // 1 MiB
@@ -251,6 +252,9 @@ func (t *BashTool) resolveTimeout(args map[string]any, command string) int64 {
 		}
 	}
 	base := extractCommandBase(command)
+	if base == "semgrep" {
+		return bashSemgrepTimeoutMs
+	}
 	if isBuildTestCommand(base, command) {
 		return bashBuildTestTimeoutMs
 	}
