@@ -45,7 +45,8 @@ type UserPart struct {
 }
 
 type TextPart struct {
-	Content string `json:"content"`
+	Content   string `json:"content"`
+	AgentName string `json:"agent_name,omitempty"`
 }
 
 type ToolPart struct {

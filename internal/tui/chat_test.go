@@ -175,7 +175,7 @@ func TestFlushRender_DoesNotSnapBackAfterUserScrollsUp(t *testing.T) {
 		t.Fatal("expected auto-follow to be disabled after scrolling away from bottom")
 	}
 
-	m.AppendStream("more streaming output")
+	m.AppendStream("", "more streaming output")
 	if !m.FlushRender() {
 		t.Fatal("expected FlushRender to render pending stream content")
 	}
