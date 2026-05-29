@@ -66,6 +66,11 @@ type Agent struct {
 	historyChangeHook   func(change *HistoryChange)
 
 	asyncRegistry *AsyncAgentRegistry
+
+	// resumeChildRecovery 是一个瞬态标记：仅在 resume 回合置位（ContextCarry/ContextReplan/FullResume），
+	// 表示「这是一次恢复」。它只是注入中断点子 agent 现场的必要条件——是否真注入由 runPlanPhase
+	// 计算的「存在 ParentStepKey 未综合进 step_outcome 的 child_agent」条件决定。判定一次后即清。
+	resumeChildRecovery bool
 }
 
 // NewReActAgent 创建 ReAct Agent

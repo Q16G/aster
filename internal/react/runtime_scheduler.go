@@ -156,13 +156,16 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 
 	snapshot = a.state.Snapshot()
+	// 恢复回合：判定是否需要注入中断点子 agent 现场（gate 见 buildRecoveryChildContextJSON），用后即清标记。
+	recoveryContextJSON := a.maybeBuildRecoveryChildContextJSON(snapshot)
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentRole:          strings.TrimSpace(a.cfg.Role),
-		AgentBackground:    strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
-		HandoffContext:     strings.TrimSpace(extraText),
-		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
-		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
+		AgentRole:           strings.TrimSpace(a.cfg.Role),
+		AgentBackground:     strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:    strings.TrimSpace(a.cfg.Instruction),
+		HandoffContext:      strings.TrimSpace(extraText),
+		WorkspaceRootDir:    strings.TrimSpace(a.workspaceRootDir),
+		WorkspaceNamespace:  strings.TrimSpace(a.workspaceNamespace),
+		RecoveryContextJSON: recoveryContextJSON,
 	})
 	if inputStr == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -423,13 +426,13 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 						"description": "调查阶段的简要总结，概括项目结构发现和规划依据",
 					},
 					"tool_calls_digest": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
 						"description": "调查阶段的工具调用摘要，格式：[工具名] 参数摘要 → 结果要点",
 					},
 					"key_facts": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
 						"description": "调查过程中发现的关键事实（文件路径、架构模式、技术栈等）",
 					},
 				},
@@ -466,12 +469,14 @@ func parseSubmitPlanArgs(args any) (*builtin_tools.TaskPlannerResult, error) {
 }
 
 type PlannerInputOptions struct {
-	AgentRole        string
-	AgentBackground  string
-	AgentInstruction string
-	HandoffContext   string
+	AgentRole          string
+	AgentBackground    string
+	AgentInstruction   string
+	HandoffContext     string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
+	// RecoveryContextJSON 仅在恢复回合且命中 gate 时非空，渲染为 planner prompt 的独立 RECOVERY 段。
+	RecoveryContextJSON string
 }
 
 type plannerStepOutcomeView struct {
@@ -516,10 +521,11 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	opts.WorkspaceNamespace = strings.TrimSpace(opts.WorkspaceNamespace)
 
 	data := plannerInputData{
-		AgentRole:        opts.AgentRole,
-		AgentBackground:  opts.AgentBackground,
-		AgentInstruction: opts.AgentInstruction,
-		HandoffContext:   opts.HandoffContext,
+		AgentRole:           opts.AgentRole,
+		AgentBackground:     opts.AgentBackground,
+		AgentInstruction:    opts.AgentInstruction,
+		HandoffContext:      opts.HandoffContext,
+		RecoveryContextJSON: strings.TrimSpace(opts.RecoveryContextJSON),
 	}
 
 	// Build INPUT_TIMELINE

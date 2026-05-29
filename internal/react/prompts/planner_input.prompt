@@ -52,7 +52,14 @@
 {{.WorkspaceContextsJSON}}
 </WORKSPACE_STEP_CONTEXTS>
 {{- end}}
-{{- if not (or .TaskItemsJSON .ReplanContextJSON .HasExecutionLine)}}
+{{- if .RecoveryContextJSON}}
+
+<RECOVERY_CHILD_AGENTS>
+恢复回合：上一个 step 在中断前未被综合，其子 agent 产出对你不可见。以下为中断点子 agent 现场指针与中断 step 的盘上产出目录，请用文件工具读取后续跑或综合。
+{{.RecoveryContextJSON}}
+</RECOVERY_CHILD_AGENTS>
+{{- end}}
+{{- if not (or .TaskItemsJSON .ReplanContextJSON .HasExecutionLine .RecoveryContextJSON)}}
 
 <PLANNING_HINT>
 这是一个全新任务。请先使用工具做轻量调查，了解与任务相关的上下文，然后再调用 submit_plan 提交有针对性的计划。
