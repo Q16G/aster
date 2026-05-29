@@ -120,6 +120,7 @@ func DefaultHelpSections() []HelpSection {
 			Items: []HelpItem{
 				{"Tab", "Cycle focus: Input → Sidebar → Chat"},
 				{"Esc", "Return to input"},
+				{"Enter", "On a sub-agent card: open its detail view"},
 				{"Ctrl+L", "Clear chat display"},
 			},
 		},

@@ -334,6 +334,83 @@ func (m *ChatModel) lookupSpawnByChild(agentName string) (agentSpawnInfo, bool) 
 	return agentSpawnInfo{}, false
 }
 
+// partAgentName returns the producing agent's name for parts that carry one.
+func partAgentName(p DisplayPart) string {
+	switch p.Type {
+	case PartTypeText:
+		if p.Text != nil {
+			return p.Text.AgentName
+		}
+	case PartTypeTool:
+		if p.Tool != nil {
+			return p.Tool.AgentName
+		}
+	case PartTypePlan:
+		if p.Plan != nil {
+			return p.Plan.AgentName
+		}
+	case PartTypeSummary:
+		if p.Summary != nil {
+			return p.Summary.AgentName
+		}
+	}
+	return ""
+}
+
+// partsForChild returns the indices of parts belonging to the sub-agent spawned
+// by callID: the spawning SubAgent card itself plus every attributed part whose
+// producing agent resolves (via lookupSpawnByChild) back to that callID.
+func (m *ChatModel) partsForChild(callID string) []int {
+	if callID == "" {
+		return nil
+	}
+	var idxs []int
+	for i, p := range m.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
+			idxs = append(idxs, i)
+			continue
+		}
+		name := partAgentName(p)
+		if name == "" {
+			continue
+		}
+		if info, ok := m.lookupSpawnByChild(name); ok && info.CallID == callID {
+			idxs = append(idxs, i)
+		}
+	}
+	return idxs
+}
+
+// RenderAgentTranscript builds the drill-in transcript for the sub-agent spawned
+// by callID: its filtered parts rendered at the given width with cards
+// force-expanded. The expand/width mutations are restored before returning, so
+// the main view is unaffected. Returns ok=false when no parts belong to the child.
+func (m *ChatModel) RenderAgentTranscript(callID string, width int) (string, bool) {
+	idxs := m.partsForChild(callID)
+	if len(idxs) == 0 {
+		return "", false
+	}
+	savedWidth := m.width
+	m.width = width
+	saved := make(map[int]bool, len(idxs))
+	for _, i := range idxs {
+		saved[i] = m.toolExpanded[i]
+		m.toolExpanded[i] = true
+	}
+	var sb strings.Builder
+	for n, i := range idxs {
+		if n > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(m.renderPart(i, m.parts[i]))
+	}
+	m.width = savedWidth
+	for i, v := range saved {
+		m.toolExpanded[i] = v
+	}
+	return sb.String(), true
+}
+
 func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart)) {
 	matchRoot := agentName == m.rootAgentName
 	for i := len(m.parts) - 1; i >= 0; i-- {
@@ -369,7 +446,16 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			return m, nil
 		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
-				t := m.parts[m.cursor].Type
+				part := m.parts[m.cursor]
+				t := part.Type
+				// Enter on a sub-agent card drills into its dedicated transcript;
+				// Space keeps the lightweight inline expand.
+				if key.String() == "enter" && t == PartTypeSubAgent && part.SubAgent != nil {
+					sa := part.SubAgent
+					return m, func() tea.Msg {
+						return OpenSubAgentDetailMsg{CallID: sa.CallID, ToolName: sa.AgentName}
+					}
+				}
 				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
 					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
 					m.refreshContent()
