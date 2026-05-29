@@ -757,6 +757,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case OpenSubAgentDetailMsg:
+		innerW := m.width - 6
+		if innerW > 96 {
+			innerW = 96
+		}
+		if innerW < 20 {
+			innerW = 20
+		}
+		content, ok := m.chat.RenderAgentTranscript(msg.CallID, innerW)
+		if !ok {
+			return m, nil
+		}
+		title := "子 Agent"
+		if msg.ToolName != "" {
+			title = msg.ToolName
+		}
+		m.dialogStack.Push(NewSubAgentDetailDialog(title, content), nil)
+		m.dialogStack.SetSize(m.width, m.height)
+		return m, nil
+
 	case clipboardCopiedMsg:
 		if msg.text != "" {
 			return m, m.toastManager.Push("copied to clipboard", tuiui.ToastInfo, 2*time.Second)
