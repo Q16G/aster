@@ -12,11 +12,23 @@ import (
 	tuicontext "aster/internal/tui/context"
 )
 
+// markAgentStreamed records that the given agent produced streaming output during
+// the current run. It tracks both a per-agent flag (used by the EventTypeResult
+// fallback to avoid cross-agent interference) and the run-level flag (used by the
+// AgentDoneMsg fallback, which is intentionally run-scoped).
+func (m *Model) markAgentStreamed(agentName string) {
+	if m.hadStreamByAgent == nil {
+		m.hadStreamByAgent = map[string]bool{}
+	}
+	m.hadStreamByAgent[agentName] = true
+	m.hadStreamDuringRun = true
+}
+
 func (m *Model) flushStreamAndPersist(agentName string) bool {
 	content := m.chat.StreamContent(agentName)
 	flushed := m.chat.FlushStream(agentName)
 	if flushed && content != "" {
-		m.hadStreamDuringRun = true
+		m.markAgentStreamed(agentName)
 		m.persistPartWithAgent("stream", "", agentName, content)
 	}
 	return flushed
@@ -76,19 +88,19 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeStream:
 		m.chat.FlushThinking()
 		m.chat.AppendStream(event.AgentName, event.Content)
-		m.hadStreamDuringRun = true
+		m.markAgentStreamed(event.AgentName)
 
 	case react.EventTypeResult:
 		m.chat.FlushThinking()
 		hadStream := m.flushStreamAndPersist(event.AgentName)
-		if !hadStream && !m.hadStreamDuringRun {
+		if !hadStream && !m.hadStreamByAgent[event.AgentName] {
 			if result, ok := event.Payload["result"]; ok {
 				resultStr := fmt.Sprintf("%v", result)
 				if resultStr != "" && resultStr != "<nil>" {
 					m.chat.AddPart(DisplayPart{
 						Type: PartTypeText,
 						Time: time.Now(),
-						Text: &TextPart{Content: resultStr},
+						Text: &TextPart{Content: resultStr, AgentName: event.AgentName},
 					})
 					m.persistPart("result", "", resultStr)
 				}

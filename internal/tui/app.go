@@ -88,6 +88,7 @@ type Model struct {
 	focus                   FocusTarget
 	runStartTime            time.Time
 	hadStreamDuringRun      bool
+	hadStreamByAgent        map[string]bool
 	hadFinalAnswerDuringRun bool
 	externalInterrupt       *builtin_tools.ExternalInterrupt
 	pendingInterrupt        *builtin_tools.PendingInterrupt
@@ -463,6 +464,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.SetEnabled(false)
 		m.agentRunning = true
 		m.hadStreamDuringRun = false
+		m.hadStreamByAgent = nil
 		m.hadFinalAnswerDuringRun = false
 		m.externalInterrupt = nil
 		m.thinkingPanel.Reset()
@@ -617,6 +619,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pendingInterrupt != nil && msg.DialogID == m.pendingInterrupt.InterruptID && m.agentCtx != nil {
 			m.agentRunning = true
 			m.hadStreamDuringRun = false
+			m.hadStreamByAgent = nil
 			m.hadFinalAnswerDuringRun = false
 			m.externalInterrupt = nil
 			m.thinkingPanel.Reset()
