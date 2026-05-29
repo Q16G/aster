@@ -81,6 +81,54 @@ func TestResidentServers(t *testing.T) {
 	}
 }
 
+func TestServerEntriesStableOrder(t *testing.T) {
+	mgr := NewManager()
+	for _, name := range []string{"delta", "alpha", "charlie", "bravo"} {
+		mgr.servers[name] = &MCPServerEntry{
+			Name:   name,
+			Config: &MCPServerConfig{},
+			Status: MCPStatusConnected,
+		}
+	}
+
+	want := []string{"alpha", "bravo", "charlie", "delta"}
+	for call := 0; call < 5; call++ {
+		entries := mgr.ServerEntries()
+		if len(entries) != len(want) {
+			t.Fatalf("call %d: got %d entries, want %d", call, len(entries), len(want))
+		}
+		for i, e := range entries {
+			if e.Name != want[i] {
+				t.Fatalf("call %d: entries[%d]=%q, want %q", call, i, e.Name, want[i])
+			}
+		}
+	}
+}
+
+func TestResidentServersStableOrder(t *testing.T) {
+	mgr := NewManager()
+	for _, name := range []string{"delta", "alpha", "charlie", "bravo"} {
+		mgr.servers[name] = &MCPServerEntry{
+			Name:   name,
+			Config: &MCPServerConfig{Resident: true},
+			Status: MCPStatusConnected,
+		}
+	}
+
+	want := []string{"alpha", "bravo", "charlie", "delta"}
+	for call := 0; call < 5; call++ {
+		residents := mgr.ResidentServers()
+		if len(residents) != len(want) {
+			t.Fatalf("call %d: got %d residents, want %d", call, len(residents), len(want))
+		}
+		for i, n := range residents {
+			if n != want[i] {
+				t.Fatalf("call %d: residents[%d]=%q, want %q", call, i, n, want[i])
+			}
+		}
+	}
+}
+
 func TestGetAdapters_Empty(t *testing.T) {
 	mgr := NewManager()
 	adapters := mgr.GetAdapters("nonexistent")
