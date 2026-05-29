@@ -24,4 +24,5 @@ type plannerInputData struct {
 	HasExecutionLine      bool
 	WorkspaceContextsJSON string
 	HasWorkspaceContexts  bool
+	RecoveryContextJSON   string
 }

@@ -400,15 +400,18 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			if err := a.restoreRuntimeFromV2Snapshot(store, v2Snap); err != nil {
 				return nil, err
 			}
+			a.resumeChildRecovery = true
 
 		case ResumeIntentContextCarry, ResumeIntentContextReplan:
 			a.softResetWithContext(ctx, runClient, store, v2Snap)
 			if needsClassification && !cfg.skipIntentClassification {
 				_ = a.state.SetPhase(builtin_tools.AgentPhaseIntentClassification)
 			}
+			a.resumeChildRecovery = true
 
 		default: // ResumeIntentColdStart
 			a.state.Reset()
+			a.resumeChildRecovery = false
 		}
 
 		// Only a "real" user submission should extend the goal timeline. Interrupt resolution/cancel
