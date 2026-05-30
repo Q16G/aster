@@ -19,12 +19,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// maxBackgroundWait is a generous safety-net upper bound for a single park on
-// background sub-agents. A completion wakes the loop early, so in practice this
-// only caps a stuck/never-completing child; the park is also interruptible via
-// ctx cancellation.
-const maxBackgroundWait = 60 * time.Minute
-
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
 	for iter := 1; iter <= maxIterations; iter++ {
 		a.drainAsyncAgentNotifications()
@@ -119,11 +113,11 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		// Out-of-band park: when await_subagents was requested (explicitly via the
 		// tool, or implicitly by the A4 guard in runStepPhase), block here without
-		// any model call until a background sub-agent completes, the safety-net
-		// timeout fires, or ctx is canceled. The next iteration's
-		// drainAsyncAgentNotifications injects the completion into stepHistory.
-		// The flag is cleared unconditionally so a stale request (e.g. await called
-		// when no sub-agent was running) never leaks into a later iteration.
+		// any model call until a background sub-agent completes or ctx is canceled.
+		// No timeout is imposed. The next iteration's drainAsyncAgentNotifications
+		// injects the completion into stepHistory. The flag is cleared
+		// unconditionally so a stale request (e.g. await called when no sub-agent
+		// was running) never leaks into a later iteration.
 		if a.awaitBackgroundRequested {
 			a.awaitBackgroundRequested = false
 			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
@@ -132,7 +126,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 					"running": len(a.asyncRegistry.RunningAgents()),
 				})
 				a.emitter.EmitIteration(iter, maxIterations, "awaiting_background")
-				a.asyncRegistry.WaitForCompletion(ctx, maxBackgroundWait)
+				a.asyncRegistry.WaitForCompletion(ctx)
 			}
 		}
 
