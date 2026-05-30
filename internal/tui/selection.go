@@ -5,6 +5,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
@@ -244,10 +245,25 @@ func ExtractSelectedText(lines []string, startLine, startCellCol, endLine, endCe
 			continue
 		}
 
-		sb.WriteString(string(runes[runeStart:runeEnd]))
+		sb.WriteString(stripLeftGutter(string(runes[runeStart:runeEnd])))
 		if i < endLine {
 			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
+}
+
+// stripLeftGutter removes the decorative left border that chat parts render
+// via lipgloss BorderLeft + PaddingLeft(1). When a selection starts at column
+// 0 the box-drawing glyph "│" (U+2502) and its padding space land in the
+// copied text; they are never meaningful content, so drop them. The ASCII pipe
+// "|" used by Markdown tables is left untouched.
+func stripLeftGutter(segment string) string {
+	rest := strings.TrimLeft(segment, " ")
+	glyph := lipgloss.NormalBorder().Left
+	if glyph == "" || !strings.HasPrefix(rest, glyph) {
+		return segment
+	}
+	rest = rest[len(glyph):]
+	return strings.TrimPrefix(rest, " ")
 }
