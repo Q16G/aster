@@ -101,6 +101,7 @@ type SummaryPart struct {
 }
 
 type StepResultPart struct {
+	AgentName     string `json:"agent_name,omitempty"`
 	StepID        string `json:"step_id,omitempty"`
 	StepName      string `json:"step_name,omitempty"`
 	Status        string `json:"status,omitempty"`

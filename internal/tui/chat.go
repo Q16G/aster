@@ -447,6 +447,10 @@ func partAgentName(p DisplayPart) string {
 		if p.StepSummary != nil {
 			return p.StepSummary.AgentName
 		}
+	case PartTypeStepResult:
+		if p.StepResult != nil {
+			return p.StepResult.AgentName
+		}
 	case PartTypeFinalAnswer:
 		if p.FinalAnswer != nil {
 			return p.FinalAnswer.AgentName

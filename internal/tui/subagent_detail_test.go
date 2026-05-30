@@ -106,6 +106,62 @@ func TestMainTimelineExcludesNonRootDetails(t *testing.T) {
 	}
 }
 
+// step_result must be attributed to its producing agent like step_summary:
+// root step_results stay in the main timeline, sub-agent step_results are
+// collapsed out of main and surface only in their child's drill-in.
+//
+// Fixture replays the real session ~/.aster/sessions/3f9f4a89-…: 5 step_result
+// events — recon/analysis (root code-audit) stay; scan-scm/summarize (child
+// 4SEEm) and step-3 (child WLXEc) leak before the fix and must be folded after.
+func TestStepResultAttributedByAgent(t *testing.T) {
+	const rootName = "code-audit"
+	const childA = "sub-call_4SEEm" // owns scan-scm + summarize
+	const childB = "sub-call_WLXEc" // owns step-3
+
+	m := NewChatModel()
+	m.rootAgentName = rootName
+	m.SetSize(120, 60)
+	m.agentSpawnByCallID[childA] = agentSpawnInfo{CallID: childA, SubScheme: true}
+	m.agentSpawnByCallID[childB] = agentSpawnInfo{CallID: childB, SubScheme: true}
+
+	sr := func(agent, stepID, stepName string) DisplayPart {
+		return DisplayPart{Type: PartTypeStepResult, StepResult: &StepResultPart{
+			AgentName: agent, StepID: stepID, StepName: stepName,
+			Status: "completed", DisplayResult: "RESULT_" + stepID,
+		}}
+	}
+	m.parts = []DisplayPart{
+		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: childA, Status: "running"}},
+		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: childB, Status: "running"}},
+		sr(rootName, "recon", "STEP_RECON"),     // root → main
+		sr(rootName, "analysis", "STEP_ANALYS"), // root → main
+		sr(childA, "scan-scm", "STEP_SCANSCM"),  // child A → folded
+		sr(childA, "summarize", "STEP_SUMM"),    // child A → folded
+		sr(childB, "step-3", "STEP_STEP3"),      // child B → folded
+	}
+	m.refreshContent()
+
+	out := m.fullContent
+	for _, keep := range []string{"STEP_RECON", "STEP_ANALYS"} {
+		if !strings.Contains(out, keep) {
+			t.Errorf("root step_result %q missing from main timeline", keep)
+		}
+	}
+	for _, leak := range []string{"STEP_SCANSCM", "STEP_SUMM", "STEP_STEP3"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("sub-agent step_result %q leaked into main timeline", leak)
+		}
+	}
+
+	// The folded step_results must be collectable in their child's drill-in.
+	if got := m.partsForChild(childA); !reflect.DeepEqual(got, []int{0, 4, 5}) {
+		t.Fatalf("child A parts = %v, want [0 4 5] (card + scan-scm + summarize)", got)
+	}
+	if got := m.partsForChild(childB); !reflect.DeepEqual(got, []int{1, 6}) {
+		t.Fatalf("child B parts = %v, want [1 6] (card + step-3)", got)
+	}
+}
+
 // Enter on a focused sub-agent card emits EnterSubAgentMsg (in-place drill-in);
 // Space keeps the inline toggle (no message).
 func TestEnterOnSubAgentEmitsEnterDetail(t *testing.T) {
