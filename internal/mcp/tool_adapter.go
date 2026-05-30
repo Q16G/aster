@@ -6,23 +6,28 @@ import (
 	"fmt"
 	"strings"
 
-	mcpclient "github.com/mark3labs/mcp-go/client"
 	mcpprotocol "github.com/mark3labs/mcp-go/mcp"
 )
+
+// toolCaller 在调用时解析实时连接并代为发起 CallTool，使 adapter 不再持有
+// 可能失效的 client 引用；断线重连后由实现方透明切换底层连接。
+type toolCaller interface {
+	CallTool(ctx context.Context, serverName string, req mcpprotocol.CallToolRequest) (*mcpprotocol.CallToolResult, error)
+}
 
 type ToolAdapter struct {
 	serverName string
 	fullName   string
 	tool       mcpprotocol.Tool
-	client     mcpclient.MCPClient
+	caller     toolCaller
 }
 
-func NewToolAdapter(serverName string, tool mcpprotocol.Tool, client mcpclient.MCPClient) *ToolAdapter {
+func NewToolAdapter(serverName string, tool mcpprotocol.Tool, caller toolCaller) *ToolAdapter {
 	return &ToolAdapter{
 		serverName: serverName,
 		fullName:   tool.Name,
 		tool:       tool,
-		client:     client,
+		caller:     caller,
 	}
 }
 
@@ -52,7 +57,7 @@ func (a *ToolAdapter) Execute(ctx context.Context, args map[string]any) (string,
 	req.Params.Name = a.tool.Name
 	req.Params.Arguments = args
 
-	result, err := a.client.CallTool(ctx, req)
+	result, err := a.caller.CallTool(ctx, a.serverName, req)
 	if err != nil {
 		return "", fmt.Errorf("mcp call %s/%s failed: %w", a.serverName, a.tool.Name, err)
 	}
