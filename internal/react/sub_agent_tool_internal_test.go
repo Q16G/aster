@@ -283,6 +283,52 @@ func TestResolveChildToolNames_FiltersPolicyManagedTools(t *testing.T) {
 	}
 }
 
+// TestResolveChildToolNames_ExcludesAgentResidentMCPTools guards the fix for
+// the bug where a parent's MCP tool adapters (registered directly on the agent,
+// not in the ToolRegistry) leaked into the child's ToolNames and caused
+// Build's resolveTools to fail with "tool ... not registered".
+func TestResolveChildToolNames_ExcludesAgentResidentMCPTools(t *testing.T) {
+	const mcpToolName = "rename_payload_group"
+
+	parent, err := NewReActAgent("parent", &stubClient{},
+		WithEmitter(NewDummyEmitter()),
+		WithTools(builtin_tools.NewReadFileTool()),
+	)
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	// Simulate an MCP adapter: registered directly on the agent, absent from
+	// the registry.
+	if err := parent.registerTool(&unsafeTool{name: mcpToolName}); err != nil {
+		t.Fatalf("register mcp-like tool: %v", err)
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+	sub := NewSubAgentTool(parent, factory)
+
+	// Explicit request: the MCP name is dropped, the registry name is kept.
+	explicit := sub.resolveChildToolNames([]string{"read_file", mcpToolName})
+	if slices.Contains(explicit, mcpToolName) {
+		t.Errorf("explicit path must drop agent-resident %q, got %v", mcpToolName, explicit)
+	}
+	if !slices.Contains(explicit, builtin_tools.ReadFileToolName) {
+		t.Errorf("explicit path must keep registry tool read_file, got %v", explicit)
+	}
+
+	// Default inheritance: same expectation.
+	inherited := sub.parentDomainToolNames()
+	if slices.Contains(inherited, mcpToolName) {
+		t.Errorf("inheritance must drop agent-resident %q, got %v", mcpToolName, inherited)
+	}
+	if !slices.Contains(inherited, builtin_tools.ReadFileToolName) {
+		t.Errorf("inheritance must keep registry tool read_file, got %v", inherited)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Demo: Sub-agent pending 步骤信息丢失的完整复现
 // ---------------------------------------------------------------------------
