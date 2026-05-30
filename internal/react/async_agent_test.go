@@ -13,7 +13,7 @@ import (
 func TestAsyncAgentRegistry_WaitForCompletion_NoRunningReturnsImmediately(t *testing.T) {
 	r := NewAsyncAgentRegistry()
 	start := time.Now()
-	r.WaitForCompletion(context.Background(), time.Hour)
+	r.WaitForCompletion(context.Background())
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		t.Fatalf("WaitForCompletion should return immediately with no running agents, took %s", elapsed)
 	}
@@ -28,29 +28,18 @@ func TestAsyncAgentRegistry_WaitForCompletion_WakesOnComplete(t *testing.T) {
 		r.Complete("bg", &builtin_tools.RunResult{Success: true, Result: "done"})
 	}()
 
+	// Backstop ctx so a regression cannot hang the test forever (no timer in prod path).
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	start := time.Now()
-	r.WaitForCompletion(context.Background(), 5*time.Second)
+	r.WaitForCompletion(ctx)
 	elapsed := time.Since(start)
 	if elapsed < 40*time.Millisecond {
 		t.Fatalf("WaitForCompletion returned too early (%s), should wait for completion", elapsed)
 	}
 	if elapsed > 2*time.Second {
 		t.Fatalf("WaitForCompletion did not wake on completion, took %s", elapsed)
-	}
-}
-
-func TestAsyncAgentRegistry_WaitForCompletion_TimeoutBranch(t *testing.T) {
-	r := NewAsyncAgentRegistry()
-	r.Register("bg", "task", "/tmp/ws") // never completes
-
-	start := time.Now()
-	r.WaitForCompletion(context.Background(), 80*time.Millisecond)
-	elapsed := time.Since(start)
-	if elapsed < 70*time.Millisecond {
-		t.Fatalf("WaitForCompletion returned before timeout, took %s", elapsed)
-	}
-	if elapsed > 1*time.Second {
-		t.Fatalf("WaitForCompletion overran timeout, took %s", elapsed)
 	}
 }
 
@@ -65,7 +54,7 @@ func TestAsyncAgentRegistry_WaitForCompletion_CtxCancelBranch(t *testing.T) {
 	}()
 
 	start := time.Now()
-	r.WaitForCompletion(ctx, 5*time.Second)
+	r.WaitForCompletion(ctx)
 	elapsed := time.Since(start)
 	if elapsed > 2*time.Second {
 		t.Fatalf("WaitForCompletion did not wake on ctx cancel, took %s", elapsed)
@@ -92,7 +81,7 @@ func TestAsyncAgentRegistry_WaitForCompletion_OneKickForManyCompletions(t *testi
 	}
 
 	start := time.Now()
-	r.WaitForCompletion(context.Background(), 5*time.Second)
+	r.WaitForCompletion(context.Background())
 	if elapsed := time.Since(start); elapsed > 1*time.Second {
 		// HasRunning is false now (all completed), so it should return immediately.
 		t.Fatalf("WaitForCompletion should return promptly when nothing is running, took %s", elapsed)

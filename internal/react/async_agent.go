@@ -109,19 +109,19 @@ func (r *AsyncAgentRegistry) Complete(agentID string, result *builtin_tools.RunR
 	}
 }
 
-// WaitForCompletion blocks until any background sub-agent completes, the
-// maxWait timer fires, or ctx is cancelled. Returns immediately if no agents
-// are currently running. Consumes at most one coalesced wake token per call;
-// the scheduler loop drains the actual notifications on its next iteration.
-func (r *AsyncAgentRegistry) WaitForCompletion(ctx context.Context, maxWait time.Duration) {
+// WaitForCompletion blocks until any background sub-agent completes or ctx is
+// cancelled. Returns immediately if no agents are currently running. No timeout
+// is imposed: Complete() always fires via a defer/recover in the spawn goroutine
+// (sub_agent_tool.go), so a finishing child always wakes the park; ctx.Done()
+// covers user interruption and parent cancellation. Consumes at most one
+// coalesced wake token per call; the scheduler loop drains the actual
+// notifications on its next iteration.
+func (r *AsyncAgentRegistry) WaitForCompletion(ctx context.Context) {
 	if r == nil || !r.HasRunning() {
 		return
 	}
-	timer := time.NewTimer(maxWait)
-	defer timer.Stop()
 	select {
 	case <-r.completed:
-	case <-timer.C:
 	case <-ctx.Done():
 	}
 }
