@@ -8,6 +8,47 @@ import (
 	"aster/internal/react"
 )
 
+func subAgentCardStatus(m *Model, callID string) (string, bool) {
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
+			return p.SubAgent.Status, true
+		}
+	}
+	return "", false
+}
+
+// The card may receive both the child's own terminal event (from its goroutine
+// defer) and the cancel-path fallback. Only the first running->terminal flip
+// wins; later duplicate end events must be ignored.
+func TestHandleAgentEventSubAgentBgEndIsIdempotent(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeSubAgentBgStart,
+		Payload: map[string]any{"agent_id": "sub-x", "instruction": "scan"},
+	})
+	if got, ok := subAgentCardStatus(&m, "sub-x"); !ok || got != "running" {
+		t.Fatalf("expected running card, got %q (ok=%v)", got, ok)
+	}
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeSubAgentBgEnd,
+		Payload: map[string]any{"agent_id": "sub-x", "status": "completed", "summary": "done"},
+	})
+	if got, _ := subAgentCardStatus(&m, "sub-x"); got != "completed" {
+		t.Fatalf("expected completed after first end, got %q", got)
+	}
+
+	// Late cancel-path fallback must not overwrite the settled status.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeSubAgentBgEnd,
+		Payload: map[string]any{"agent_id": "sub-x", "status": "cancelled"},
+	})
+	if got, _ := subAgentCardStatus(&m, "sub-x"); got != "completed" {
+		t.Fatalf("expected status to stay completed, got %q", got)
+	}
+}
+
 func TestHandleAgentEventLogDoesNotOverwriteStatus(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.statusText = "thinking..."

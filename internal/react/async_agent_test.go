@@ -282,6 +282,125 @@ func TestAsyncAgentRegistry_DrainSkipsStaleNotification(t *testing.T) {
 	}
 }
 
+// bgEndRecorder builds an Emitter that records the agent_id + status of every
+// EventTypeSubAgentBgEnd event, for asserting sub-agent panel card settlement.
+func bgEndRecorder() (*Emitter, func() map[string]string) {
+	var mu sync.Mutex
+	seen := map[string]string{}
+	em := NewEmitter("", "", func(e *AgentOutputEvent) error {
+		if e == nil || e.Type != EventTypeSubAgentBgEnd {
+			return nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		id, _ := e.Payload["agent_id"].(string)
+		status, _ := e.Payload["status"].(string)
+		if id != "" {
+			seen[id] = status
+		}
+		return nil
+	})
+	return em, func() map[string]string {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make(map[string]string, len(seen))
+		for k, v := range seen {
+			out[k] = v
+		}
+		return out
+	}
+}
+
+// Q2: await must not resume until ALL background sub-agents complete, and must
+// inject each completion into stepHistory. Panel-card settlement (BgEnd) is now
+// emitted from the child goroutine's defer (see TestEmitSubAgentCardEnd), not
+// from drain, so drain emits no BgEnd here.
+func TestAwaitAllBackgroundSubAgents_WaitsForAll(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg-0", "task", "/tmp/ws0")
+	r.Register("bg-1", "task", "/tmp/ws1")
+
+	em, snapshot := bgEndRecorder()
+	agent := &Agent{asyncRegistry: r, emitter: em}
+
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		r.Complete("bg-0", &builtin_tools.RunResult{Success: true, Result: "r0"})
+		time.Sleep(30 * time.Millisecond)
+		r.Complete("bg-1", &builtin_tools.RunResult{Success: true, Result: "r1"})
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	agent.awaitAllBackgroundSubAgents(ctx)
+
+	if r.HasRunning() {
+		t.Fatal("awaitAllBackgroundSubAgents returned while sub-agents still running")
+	}
+	if len(agent.stepHistory) != 2 {
+		t.Errorf("expected 2 stepHistory notifications, got %d", len(agent.stepHistory))
+	}
+	if got := snapshot(); len(got) != 0 {
+		t.Errorf("drain must not emit BgEnd, got %v", got)
+	}
+}
+
+// Q1: a completion that landed but was not yet drained (parent reached terminal
+// first) must still be injected into stepHistory once settled.
+func TestAwaitAllBackgroundSubAgents_DrainsAlreadyCompleted(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws")
+	r.Complete("bg", &builtin_tools.RunResult{Success: true, Result: "done"})
+
+	agent := &Agent{asyncRegistry: r, emitter: NewDummyEmitter()}
+
+	agent.awaitAllBackgroundSubAgents(context.Background())
+
+	if len(agent.stepHistory) != 1 {
+		t.Fatalf("expected 1 stepHistory notification, got %d", len(agent.stepHistory))
+	}
+}
+
+// emitSubAgentCardEnd settles the panel card from the child goroutine's defer,
+// decoupled from parent draining. Status derives from the RunResult.
+func TestEmitSubAgentCardEnd(t *testing.T) {
+	cases := []struct {
+		name       string
+		result     *builtin_tools.RunResult
+		wantStatus string
+	}{
+		{"success", &builtin_tools.RunResult{Success: true, Result: "ok"}, "completed"},
+		{"failure", &builtin_tools.RunResult{Success: false, Error: "boom"}, "failed"},
+		{"nil", nil, "failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			em, snapshot := bgEndRecorder()
+			agent := &Agent{emitter: em}
+			agent.emitSubAgentCardEnd("sub-card", tc.result)
+			if got := snapshot()["sub-card"]; got != tc.wantStatus {
+				t.Fatalf("expected status %q, got %q", tc.wantStatus, got)
+			}
+		})
+	}
+}
+
+// Q1: on a cancel/forced-failure path, still-running cards must be settled as
+// cancelled so they do not stay stuck on "running".
+func TestCancelRunningSubAgents_EmitsCancelled(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg-running", "task", "/tmp/ws")
+
+	em, snapshot := bgEndRecorder()
+	agent := &Agent{asyncRegistry: r, emitter: em}
+
+	agent.cancelRunningSubAgents()
+
+	if got := snapshot()["bg-running"]; got != "cancelled" {
+		t.Fatalf("expected bg-running BgEnd cancelled, got %q", got)
+	}
+}
+
 func TestAsyncAgentRegistry_ConcurrentCompleteAndPurge(t *testing.T) {
 	r := NewAsyncAgentRegistry()
 	const n = 100

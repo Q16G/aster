@@ -51,6 +51,18 @@ func (m *Model) flushAllStreamsAndPersist() bool {
 // call_id: sub_agent -> "sub-<callID[:8]>", skill fork -> "skill-<name>-<callID[:6]>".
 // (A skill name may itself contain '-', so the token is the segment after the
 // LAST '-'.) Returns "" for names that match neither scheme (e.g. the root agent).
+// isTerminalSubAgentStatus reports whether a sub-agent panel card has already
+// reached a final state, so a later duplicate end event (child defer vs.
+// cancel-path fallback) does not overwrite the first settled status.
+func isTerminalSubAgentStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
 func childAgentCallToken(agentName string) string {
 	switch {
 	case strings.HasPrefix(agentName, "sub-"):
@@ -309,6 +321,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			cardCallID = info.CallID
 		}
 		m.chat.UpdateSubAgentByCallID(cardCallID, func(sa *SubAgentPart) {
+			// Idempotent: a card may receive both the child's own terminal event
+			// (emitted from its goroutine defer) and the cancel-path fallback.
+			// Only the first running->terminal flip wins; ignore later updates.
+			if isTerminalSubAgentStatus(sa.Status) {
+				return
+			}
 			if status != "" {
 				sa.Status = status
 			} else {

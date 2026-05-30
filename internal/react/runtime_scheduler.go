@@ -48,6 +48,9 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusCanceled, ctx.Err().Error())
 			a.syncStepHistoryLayer(a.state.Snapshot())
 			snapshot, _ = a.runFinalAnswerPhase(ctx, iter, runClient)
+			// ctx is already canceled, so awaiting would return immediately; settle
+			// any still-running sub-agent cards as cancelled instead.
+			a.cancelRunningSubAgents()
 			a.emitter.EmitIteration(iter, maxIterations, "terminal")
 			return a.finalizeResult(snapshot), nil
 		}
@@ -100,6 +103,13 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 		snapshot = a.state.Snapshot()
 		a.syncStepHistoryLayer(snapshot)
 		if snapshot.Phase == builtin_tools.AgentPhaseFinalAnswer && snapshot.Terminal() {
+			// Settle background sub-agents before returning so their panel cards do
+			// not stay stuck on "running": their completion notifications are
+			// otherwise silently discarded by asyncRegistry.Reset() next turn.
+			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+				a.awaitAllBackgroundSubAgents(ctx)
+				a.cancelRunningSubAgents()
+			}
 			a.emitRuntimeLog("info", "scheduler iteration ended", snapshot, map[string]any{
 				"event":                "scheduler_iteration_end",
 				"next_phase":           snapshot.Phase,
@@ -113,11 +123,11 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		// Out-of-band park: when await_subagents was requested (explicitly via the
 		// tool, or implicitly by the A4 guard in runStepPhase), block here without
-		// any model call until a background sub-agent completes or ctx is canceled.
-		// No timeout is imposed. The next iteration's drainAsyncAgentNotifications
-		// injects the completion into stepHistory. The flag is cleared
-		// unconditionally so a stale request (e.g. await called when no sub-agent
-		// was running) never leaks into a later iteration.
+		// any model call until ALL background sub-agents complete or ctx is
+		// canceled. No timeout is imposed. Each completion is drained into
+		// stepHistory as it arrives. The flag is cleared unconditionally so a stale
+		// request (e.g. await called when no sub-agent was running) never leaks
+		// into a later iteration.
 		if a.awaitBackgroundRequested {
 			a.awaitBackgroundRequested = false
 			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
@@ -126,7 +136,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 					"running": len(a.asyncRegistry.RunningAgents()),
 				})
 				a.emitter.EmitIteration(iter, maxIterations, "awaiting_background")
-				a.asyncRegistry.WaitForCompletion(ctx)
+				a.awaitAllBackgroundSubAgents(ctx)
 			}
 		}
 
@@ -148,6 +158,10 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 	_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, fmt.Sprintf("reach max iterations: %d", maxIterations))
 	a.syncStepHistoryLayer(a.state.Snapshot())
 	snapshot, _ = a.runFinalAnswerPhase(ctx, maxIterations, runClient)
+	if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+		a.awaitAllBackgroundSubAgents(ctx)
+		a.cancelRunningSubAgents()
+	}
 	return a.finalizeResult(snapshot), nil
 }
 
@@ -955,6 +969,9 @@ func (a *Agent) handlePhaseError(
 	_ = a.state.EnterFinalAnswer(builtin_tools.TaskStatusFailed, normalizeRuntimeErrorText(err))
 	a.syncStepHistoryLayer(a.state.Snapshot())
 	snapshot, faErr := a.runFinalAnswerPhase(ctx, iter, runClient)
+	// Forced-failure terminal path: settle still-running sub-agent cards as
+	// cancelled so they do not stay stuck on "running".
+	a.cancelRunningSubAgents()
 	if faErr != nil {
 		a.emitRuntimeLog("error", "final answer phase failed during error handling", snapshot, map[string]any{
 			"event":          "final_answer_phase_error_in_fallback",

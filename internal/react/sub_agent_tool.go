@@ -204,6 +204,12 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 			}
 			t.finalizeChildAgent(setup.runtime, setup.childName, setup.childRootDir, result)
 			registry.Complete(setup.childName, result)
+			// Close the panel card the instant the child settles, independent of
+			// when the parent scheduler next drains. Coupling this to drain leaves
+			// the card stuck on "running" whenever the parent is parked
+			// (awaitBackgroundRequested), mid model call, or cancelled. stepHistory
+			// injection stays in drainAsyncAgentNotifications (parent-only writer).
+			t.parentAgent.emitSubAgentCardEnd(setup.childName, result)
 		}()
 
 		var err error
