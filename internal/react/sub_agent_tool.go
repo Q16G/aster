@@ -310,12 +310,6 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 	if len(requested) > 0 {
-		parentSet := make(map[string]bool)
-		if t.parentAgent != nil && t.parentAgent.tools != nil {
-			for _, name := range t.parentAgent.tools.Keys() {
-				parentSet[name] = true
-			}
-		}
 		var result []string
 		for _, name := range requested {
 			name = strings.TrimSpace(name)
@@ -325,7 +319,11 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 			if policyManagedTools[name] {
 				continue
 			}
-			if parentSet[name] || (t.factory.toolRegistry != nil && t.factory.toolRegistry.Has(name)) {
+			// Only registry-resolvable names are kept: Build realizes
+			// def.ToolNames via toolRegistry.Resolve, so agent-resident tools
+			// (MCP adapters, bash, skill, orchestration) must not enter the
+			// list. They reach the child via their own registration paths.
+			if t.factory.toolRegistry != nil && t.factory.toolRegistry.Has(name) {
 				result = append(result, name)
 			}
 		}
@@ -354,6 +352,12 @@ var policyManagedTools = map[string]bool{
 // (no explicit tools) path. It is a superset of policyManagedTools: registry-
 // resident skill-management tools are also excluded because sub-agents should
 // not manage skills by default.
+//
+// Agent-resident tools that live outside the ToolRegistry (e.g. MCP adapters
+// registered directly on the agent in AgentFactory.Build) are intentionally
+// NOT listed here: both inheritance paths gate on toolRegistry.Has, which
+// already drops them. They are re-registered on the child by Build's MCP
+// block, so excluding their names from ToolNames loses no capability.
 var excludeFromInheritance = map[string]bool{
 	builtin_tools.UpdateCurrentStepToolName: true,
 	builtin_tools.TaskStatusQueryToolName:   true,
@@ -375,6 +379,13 @@ func (t *SubAgentTool) parentDomainToolNames() []string {
 	var names []string
 	for _, name := range t.parentAgent.tools.Keys() {
 		if excludeFromInheritance[name] {
+			continue
+		}
+		// Only inherit registry-resolvable names. Agent-resident tools (MCP
+		// adapters, bash, etc.) are not in the registry and would fail
+		// Build's resolveTools; the child re-acquires them via their own
+		// registration paths.
+		if t.factory == nil || t.factory.toolRegistry == nil || !t.factory.toolRegistry.Has(name) {
 			continue
 		}
 		names = append(names, name)
