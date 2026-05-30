@@ -483,6 +483,44 @@ func (m *ChatModel) SubAgentSummaries() []SubAgentPart {
 	return out
 }
 
+// lastUserPartIndex returns the index of the most recent user message part, or
+// -1 when none exists. It marks the start of the current turn: everything after
+// it belongs to the turn the user just kicked off.
+func (m *ChatModel) lastUserPartIndex() int {
+	for i := len(m.parts) - 1; i >= 0; i-- {
+		if m.parts[i].Type == PartTypeUser {
+			return i
+		}
+	}
+	return -1
+}
+
+// HasSubAgentsThisTurn reports whether the current turn spawned any sub-agent,
+// regardless of whether it is still running. Unlike HasRunningSubAgents this
+// keeps the panel visible after the children settle, matching the Todo nesting
+// which also survives termination. A new user turn naturally drops the previous
+// turn's cards because lastUserPartIndex advances past them.
+func (m *ChatModel) HasSubAgentsThisTurn() bool {
+	for i := m.lastUserPartIndex() + 1; i < len(m.parts); i++ {
+		if p := m.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// SubAgentCardsThisTurn returns every sub-agent card spawned in the current turn
+// (running and terminal) in timeline order, for the right-side panel.
+func (m *ChatModel) SubAgentCardsThisTurn() []SubAgentPart {
+	var out []SubAgentPart
+	for i := m.lastUserPartIndex() + 1; i < len(m.parts); i++ {
+		if p := m.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
+			out = append(out, *p.SubAgent)
+		}
+	}
+	return out
+}
+
 // childTitle returns the display name of the sub-agent spawned by callID.
 func (m *ChatModel) childTitle(callID string) string {
 	for _, p := range m.parts {

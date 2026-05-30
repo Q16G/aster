@@ -19,6 +19,7 @@ import (
 	"aster/internal/builtin_tools"
 	"aster/internal/mcp"
 	"aster/internal/provider"
+	"aster/internal/runtimelog"
 	"aster/internal/selfupdate"
 	"aster/internal/service"
 	tuicontext "aster/internal/tui/context"
@@ -98,6 +99,10 @@ type Model struct {
 	hadStreamDuringRun      bool
 	hadStreamByAgent        map[string]bool
 	hadFinalAnswerDuringRun bool
+	// subAgentPanelVisibleLog tracks the last logged panel-visibility value so
+	// Step-0 instrumentation only emits on transitions (the predicate is polled
+	// every frame).
+	subAgentPanelVisibleLog *bool
 	externalInterrupt       *builtin_tools.ExternalInterrupt
 	pendingInterrupt        *builtin_tools.PendingInterrupt
 	runtimePhase            string
@@ -1494,15 +1499,27 @@ func (m *Model) logMCPError(name string) {
 // --- Layout ---
 
 // subAgentPanelVisible reports whether the right-side sub-agent panel should
-// render: only while at least one sub-agent is still running.
+// render: while the current turn has any sub-agent (running or already settled),
+// so the panel persists after the children finish — like the Todo nesting — and
+// only clears when the next user turn begins.
 func (m *Model) subAgentPanelVisible() bool {
-	return m.chat.HasRunningSubAgents()
+	visible := m.chat.HasSubAgentsThisTurn()
+	if m.subAgentPanelVisibleLog == nil || *m.subAgentPanelVisibleLog != visible {
+		runtimelog.LogJSON("debug", map[string]any{
+			"event":       "subagent_panel_visible",
+			"this_turn":   visible,
+			"has_running": m.chat.HasRunningSubAgents(),
+		})
+		m.subAgentPanelVisibleLog = &visible
+	}
+	return visible
 }
 
-// refreshSubAgentPanel rebuilds the panel's snapshot from the current sub-agent
-// cards (timeline order), keeping live elapsed times up to date.
+// refreshSubAgentPanel rebuilds the panel's snapshot from the current turn's
+// sub-agent cards (timeline order, running and terminal), keeping live elapsed
+// times up to date. Terminal cards render with their status icon (●/✗).
 func (m *Model) refreshSubAgentPanel() {
-	sums := m.chat.SubAgentSummaries()
+	sums := m.chat.SubAgentCardsThisTurn()
 	items := make([]subAgentPanelItem, 0, len(sums))
 	for i := range sums {
 		sa := sums[i]

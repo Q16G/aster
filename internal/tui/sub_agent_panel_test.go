@@ -35,6 +35,42 @@ func TestSubAgentPanelSnapshotAndCursorClamp(t *testing.T) {
 	}
 }
 
+// The panel scope is the current turn, not transient "running": once a turn
+// spawns a sub-agent the panel stays visible after it settles (matching the Todo
+// nesting), and the cards list includes terminal ones. A new user turn drops the
+// previous turn's cards.
+func TestSubAgentPanelScopedToTurn(t *testing.T) {
+	m := NewChatModel()
+	m.AddPart(DisplayPart{Type: PartTypeUser, User: &UserPart{Content: "turn 1"}})
+	m.AddPart(DisplayPart{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_a", Status: "running"}})
+
+	if !m.HasSubAgentsThisTurn() {
+		t.Fatal("running sub-agent should make the panel visible")
+	}
+	if got := len(m.SubAgentCardsThisTurn()); got != 1 {
+		t.Fatalf("cards this turn = %d, want 1", got)
+	}
+
+	// The sub-agent finishes: panel must persist (unlike the old running-only gate).
+	m.UpdateSubAgentByCallID("call_a", func(sa *SubAgentPart) { sa.Status = "completed" })
+	if !m.HasSubAgentsThisTurn() {
+		t.Fatal("finished sub-agent must keep the panel visible for the turn")
+	}
+	cards := m.SubAgentCardsThisTurn()
+	if len(cards) != 1 || cards[0].Status != "completed" {
+		t.Fatalf("terminal card not retained: %+v", cards)
+	}
+
+	// A new user turn drops the previous turn's card.
+	m.AddPart(DisplayPart{Type: PartTypeUser, User: &UserPart{Content: "turn 2"}})
+	if m.HasSubAgentsThisTurn() {
+		t.Fatal("new turn must clear the previous turn's sub-agent cards")
+	}
+	if got := len(m.SubAgentCardsThisTurn()); got != 0 {
+		t.Fatalf("cards after new turn = %d, want 0", got)
+	}
+}
+
 // MoveUp/MoveDown must stay within bounds and never wrap.
 func TestSubAgentPanelMoveBounds(t *testing.T) {
 	p := NewSubAgentPanel()
