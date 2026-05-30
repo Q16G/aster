@@ -570,6 +570,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		presentation := payloadString(event.Payload, "presentation")
 		if presentation == "step_result" {
 			part := StepResultPart{
+				AgentName:     event.AgentName,
 				StepID:        payloadString(event.Payload, "step_id"),
 				StepName:      payloadString(event.Payload, "step_name"),
 				Status:        payloadString(event.Payload, "step_status"),
