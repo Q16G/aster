@@ -19,6 +19,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// maxBackgroundWait is a generous safety-net upper bound for a single park on
+// background sub-agents. A completion wakes the loop early, so in practice this
+// only caps a stuck/never-completing child; the park is also interruptible via
+// ctx cancellation.
+const maxBackgroundWait = 60 * time.Minute
+
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
 	for iter := 1; iter <= maxIterations; iter++ {
 		a.drainAsyncAgentNotifications()
@@ -109,6 +115,25 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			})
 			a.emitter.EmitIteration(iter, maxIterations, "terminal")
 			return a.finalizeResult(snapshot), nil
+		}
+
+		// Out-of-band park: when await_subagents was requested (explicitly via the
+		// tool, or implicitly by the A4 guard in runStepPhase), block here without
+		// any model call until a background sub-agent completes, the safety-net
+		// timeout fires, or ctx is canceled. The next iteration's
+		// drainAsyncAgentNotifications injects the completion into stepHistory.
+		// The flag is cleared unconditionally so a stale request (e.g. await called
+		// when no sub-agent was running) never leaks into a later iteration.
+		if a.awaitBackgroundRequested {
+			a.awaitBackgroundRequested = false
+			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+				a.emitRuntimeLog("info", "waiting for background sub-agents", snapshot, map[string]any{
+					"event":   "await_background_subagents",
+					"running": len(a.asyncRegistry.RunningAgents()),
+				})
+				a.emitter.EmitIteration(iter, maxIterations, "awaiting_background")
+				a.asyncRegistry.WaitForCompletion(ctx, maxBackgroundWait)
+			}
 		}
 
 		a.emitRuntimeLog("info", "scheduler iteration ended", snapshot, map[string]any{
@@ -1005,6 +1030,19 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// step phase 必须推进当前 step：如果模型未调用任何工具但输出了正文，
 	// runtime 将其视为该 step 的最小可交付事实，自动提交 step 终态，避免空转到迭代上限。
 	if callResult != nil && len(callResult.ToolCalls) == 0 {
+		// A4 守卫：若仍有后台子 Agent 在运行，禁止此时自动完成 step（无论是否有正文）。
+		// 否则父 turn 结束会取消子 Agent 的 ctx 并 Reset registry，丢失子 Agent 结果。
+		// 改为置 await 标志，交由调度循环 park 等待；下一轮模型看到完成通知后再决定终态。
+		// 这是「do NOT poll, you will be notified」的代码级安全网，不依赖模型记得调 await_subagents。
+		if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+			a.awaitBackgroundRequested = true
+			a.emitRuntimeLog("info", "deferring step completion: background sub-agents running", snapshot, map[string]any{
+				"event":   "step_defer_for_background",
+				"step_id": stepIDOf(currentStep),
+				"running": len(a.asyncRegistry.RunningAgents()),
+			})
+			return nil
+		}
 		assistantText := strings.TrimSpace(callResult.AssistantText)
 		if assistantText == "" {
 			a.emitRuntimeLog("error", "step phase produced empty output", snapshot, map[string]any{

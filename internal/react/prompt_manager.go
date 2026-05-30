@@ -32,6 +32,7 @@ type ThinkActPromptInput struct {
 	Unresolved              any
 	ExtraContext            string
 	SupportsVision          bool
+	CanSpawnSubAgent        bool
 }
 
 type StepReplanPromptInput struct {
@@ -230,6 +231,7 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
 		"SUPPORTS_VISION":               input.SupportsVision,
+		"CAN_SPAWN_SUBAGENT":            input.CanSpawnSubAgent,
 	}); err != nil {
 		return "", err
 	}

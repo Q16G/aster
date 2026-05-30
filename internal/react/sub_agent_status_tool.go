@@ -28,7 +28,7 @@ func (t *SubAgentStatusTool) Name() string { return builtin_tools.SubAgentStatus
 func (t *SubAgentStatusTool) ConcurrencySafe() bool { return true }
 
 func (t *SubAgentStatusTool) Description() string {
-	return "查询正在运行中的后台子 Agent 状态。completed/failed 的结果已自动推送到上下文，不在此返回。"
+	return "查询正在运行中的后台子 Agent 状态。仅用于偶发性确认“是否仍在运行”；completed/failed 结果会自动推送到上下文，不要把它当作高频轮询工具。等待后台子 Agent 完成时使用 await_subagents 让出执行权，由系统在完成时自动唤醒，而不是用本工具紧密轮询。"
 }
 
 func (t *SubAgentStatusTool) Parameters() any {
