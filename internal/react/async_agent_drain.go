@@ -45,6 +45,14 @@ func (a *Agent) drainAsyncAgentNotifications() {
 			a.stepHistory = append(a.stepHistory, notifMsg)
 			a.asyncRegistry.MarkDelivered(notif.AgentID)
 
+			// Close out the durable sub-agent panel card opened by the matching
+			// EventTypeSubAgentBgStart (sub_agent_tool.go executeAsync).
+			a.emitter.EmitJSON(EventTypeSubAgentBgEnd, notif.AgentID, map[string]any{
+				"agent_id": notif.AgentID,
+				"status":   notif.Status,
+				"summary":  summary,
+			})
+
 		default:
 			a.asyncRegistry.PurgeDelivered()
 			return
