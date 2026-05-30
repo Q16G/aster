@@ -12,7 +12,6 @@ type ProviderModelRef struct {
 }
 
 type LocalPreferences struct {
-	ToolVerbose             bool               `json:"tool_verbose"`
 	SidebarMode             string             `json:"sidebar_mode"`
 	HeaderVisible           bool               `json:"header_visible"`
 	TipsHidden              bool               `json:"tips_hidden"`
@@ -70,13 +69,6 @@ func (l *LocalProvider) MigrateRecentModels(defaultProviderID string) {
 			})
 		}
 		p.RecentModelIDs = nil
-		return p
-	})
-}
-
-func (l *LocalProvider) ToggleToolVerbose() {
-	l.Update(func(p LocalPreferences) LocalPreferences {
-		p.ToolVerbose = !p.ToolVerbose
 		return p
 	})
 }

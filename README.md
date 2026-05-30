@@ -395,7 +395,6 @@ providers:
 | `/session [new\|list\|switch\|delete]` | 会话管理 |
 | `/new` | 新建会话 |
 | `/clear` | 清空聊天 |
-| `/verbose` | 切换工具详情显示 |
 | `/theme` | 切换主题 |
 | `/help` | 帮助 |
 | `/exit` | 退出 |

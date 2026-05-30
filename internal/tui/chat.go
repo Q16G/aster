@@ -31,7 +31,6 @@ type ChatModel struct {
 	thinkingOrder    []string
 	width            int
 	height           int
-	toolVerbose      bool
 	toolExpanded     map[int]bool
 	cursor           int
 	focused          bool
@@ -328,9 +327,6 @@ func (m *ChatModel) UpdateLastTool(fn func(*ToolPart)) {
 	for i := len(m.parts) - 1; i >= 0; i-- {
 		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
 			fn(m.parts[i].Tool)
-			if m.parts[i].Tool.State == "error" {
-				m.toolExpanded[i] = true
-			}
 			m.refreshContent()
 			return
 		}
@@ -345,9 +341,6 @@ func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
 	for i := len(m.parts) - 1; i >= 0; i-- {
 		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil && m.parts[i].Tool.CallID == callID {
 			fn(m.parts[i].Tool)
-			if m.parts[i].Tool.State == "error" {
-				m.toolExpanded[i] = true
-			}
 			m.refreshContent()
 			return
 		}
@@ -709,7 +702,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 						return EnterSubAgentMsg{CallID: sa.CallID}
 					}
 				}
-				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
+				if t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
 					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
 					m.refreshContent()
 					m.scrollToCursor()
@@ -930,16 +923,6 @@ func (m *ChatModel) scrollToCursor() {
 	}
 }
 
-func (m *ChatModel) SetToolVerbose(v bool) {
-	m.toolVerbose = v
-	m.refreshContent()
-}
-
-func (m *ChatModel) ToggleToolVerbose() {
-	m.toolVerbose = !m.toolVerbose
-	m.refreshContent()
-}
-
 func (m *ChatModel) SetParts(parts []DisplayPart) {
 	m.parts = parts
 	m.toolExpanded = make(map[int]bool)
@@ -1116,81 +1099,37 @@ func (m *ChatModel) renderToolPart(idx int, part DisplayPart, maxWidth int) stri
 	if t == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
 	selected := m.focused && idx == m.cursor
 	icon := ToolIcon(t.Name)
 
-	if !expanded {
-		summary := t.Name
-		if t.Arguments != "" {
-			args := truncateOneLine(t.Arguments, 40)
-			summary += " " + args
-		}
-		if t.State == "completed" && t.Duration > 0 {
-			summary += " · " + formatDuration(t.Duration)
-		}
-		if t.State == "error" && t.Error != "" {
-			summary += " · " + truncateDisplayWidth(t.Error, 50)
-		} else if t.State == "running" {
-			summary += " · running..."
-		}
-
-		var style lipgloss.Style
-		switch t.State {
-		case "running":
-			style = lipgloss.NewStyle().Foreground(toolBorderColor)
-		case "error":
-			style = lipgloss.NewStyle().Foreground(toolErrorColor)
-		default:
-			style = lipgloss.NewStyle().Foreground(toolCompletedColor)
-		}
-		if selected {
-			style = style.Bold(true)
-		}
-		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
-		return style.Render(line)
+	summary := t.Name
+	if t.Arguments != "" {
+		args := truncateOneLine(t.Arguments, 40)
+		summary += " " + args
+	}
+	if t.State == "completed" && t.Duration > 0 {
+		summary += " · " + formatDuration(t.Duration)
+	}
+	if t.State == "error" && t.Error != "" {
+		summary += " · " + truncateDisplayWidth(t.Error, 50)
+	} else if t.State == "running" {
+		summary += " · running..."
 	}
 
-	// Expanded mode
-	borderColor := toolBorderColor
+	var style lipgloss.Style
 	switch t.State {
+	case "running":
+		style = lipgloss.NewStyle().Foreground(toolBorderColor)
 	case "error":
-		borderColor = toolErrorColor
-	case "completed":
-		borderColor = toolCompletedColor
+		style = lipgloss.NewStyle().Foreground(toolErrorColor)
+	default:
+		style = lipgloss.NewStyle().Foreground(toolCompletedColor)
 	}
 	if selected {
-		borderColor = lipgloss.Color("15")
+		style = style.Bold(true)
 	}
-
-	style := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderLeft(true).
-		BorderForeground(borderColor).
-		PaddingLeft(1).
-		Width(maxWidth)
-
-	var content string
-	if t.Error != "" {
-		content = t.Error
-	} else if t.Result != "" {
-		content = t.Result
-	}
-	if !m.toolVerbose {
-		lines := strings.Split(content, "\n")
-		if len(lines) > 20 {
-			content = strings.Join(lines[:20], "\n") + fmt.Sprintf("\n... (%d more lines)", len(lines)-20)
-		}
-	}
-
-	header := icon + " " + t.Name
-	if t.Duration > 0 {
-		header += " · " + formatDuration(t.Duration)
-	}
-	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
-
-	result := headerStyle.Render(header) + "\n" + style.Render(wrapText(content, maxWidth-4))
-	return result
+	line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+	return style.Render(line)
 }
 
 func (m *ChatModel) renderStepResultPart(idx int, part DisplayPart, maxWidth int) string {
