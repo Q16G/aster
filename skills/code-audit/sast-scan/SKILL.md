@@ -115,6 +115,35 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 
 > **超时提示**：semgrep 扫描大目录常超过默认上限，通过 bash 工具执行时显式传 `timeout_ms`（如 `600000`）避免被提前截断；被取消时整棵进程树（含 `semgrep-core`）会被自动清理，不会残留。
 
+### 大项目分批扫描
+
+大型项目（monorepo、文件数巨大）一次性扫整个目录有三个风险：被 bash 超时杀掉导致整次结果全丢、`--max-memory` 下 OOM、产出量过大难以逐条处理。
+
+**何时触发**：执行扫描前先用 `list_files` 估算扫描面文件数。`list_files` 默认上限就是 5000、最高 20000，超出会被截断——这本身就是信号。**若扫描面文件数超过 5000，进入分批模式。**
+
+**如何切分**：按顶层模块/目录边界切分，**不要机械地按「每 5000 文件一片」切**。优先沿项目已有的模块边界走，例如：
+
+- maven 多模块的各 module 目录
+- go 的各子 module / 子服务目录
+- monorepo 下的 `service-a/`、`service-b/`、`web/` 等顶层目录
+
+每个子目录作为一次独立 `semgrep scan` 的 `<target_path>`。
+
+**每批命令**：复用上面的标准命令，只把 `<target_path>` 换成子目录，`--json --timeout 600 --max-memory 4096` 与排除项保持不变，并通过 bash 显式传 `timeout_ms`：
+
+```bash
+semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout 600 --max-memory 4096 \
+  --exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
+```
+
+**单批失败隔离**：某批超时或 OOM 时，把该模块明确记入「扫描缺口」，其余批的结果仍然有效，**不得因为一批失败就放弃全部**。
+
+**结果归并**（关键）：分批是手段，最终仍必须输出**一份**报告：
+
+- 覆盖声明合并为一份：扫描面统计（文件数 / XML mapper / 配置 / 模板）为各批之和，并列出本次实际分了哪几批、每批对应哪个目录。
+- 三个分桶（high_confidence / needs_dataflow_confirmation / high_noise）跨批统一归并、统一去重后再输出。
+- 仍受下面「输出要求」的全部硬约束：禁止聚合计数、每个 finding 独占一行、不得用「等/略」省略。**分批不是省略 finding 的借口。**
+
 ## 输出要求
 
 ### 1. 覆盖声明（必须输出）
@@ -245,3 +274,4 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 - 不要在 XML mapper 没扫到时，仍宣称 SQL 注入已被完整覆盖
 - 不要将多个 finding 合并为聚合计数（如"50 处任意文件下载 + 13 处路径穿越"），每个 finding 必须独占一行，包含 file:line
 - 不要用"等"、"..."、"（略）"、"（其余 N 条略）"等方式省略 finding 列表中的条目，所有发现必须完整枚举
+- 不要因为项目大就只扫了部分模块却宣称"完整审计已完成"；分批扫描时未扫到的模块必须显式列入"扫描缺口"
