@@ -55,6 +55,7 @@ func (m *Model) newSession() bool {
 	m.currentSessionID = uuid.New().String()
 	m.sessionMaterialized = false
 	m.bindSessionToAgent()
+	m.mcpLastLogged = nil
 
 	if m.agentCtx != nil {
 		m.agentCtx.InitialHistory = nil
@@ -113,6 +114,7 @@ func (m *Model) switchSession(idOrPrefix string) {
 			m.currentSessionID = s.ID
 			m.sessionMaterialized = true
 			m.sessionMeta = parseSessionMeta(s.Metadata)
+			m.mcpLastLogged = nil
 			if strings.TrimSpace(s.Metadata) == "" {
 				if ws, wsErr := loadSessionWorkspaceState(m.store.BaseDir(), s.ID); wsErr == nil && ws != nil {
 					m.sessionMeta.ActiveSkillNames = builtin_tools.CloneStringSlice(ws.ActiveSkillNames)
@@ -336,6 +338,20 @@ func (m *Model) persistPartWithCallID(partType, name, callID, content string) {
 	})
 }
 
+func (m *Model) persistPartWithCallIDAndAgent(partType, name, callID, agentName, content string) {
+	if m.store == nil || m.currentSessionID == "" {
+		return
+	}
+	_ = appendSessionPart(m.store.BaseDir(), m.currentSessionID, persistedPart{
+		Type:      partType,
+		Name:      name,
+		CallID:    callID,
+		AgentName: agentName,
+		Content:   content,
+		Time:      time.Now(),
+	})
+}
+
 func (m *Model) persistPartWithAgent(partType, name, agentName, content string) {
 	if m.store == nil || m.currentSessionID == "" {
 		return
@@ -379,12 +395,28 @@ func (m *Model) toggleSessionSkill(name string, enabled bool) {
 }
 
 func (m *Model) toggleSessionMCP(name string, connect bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+
+	agentDefaults := m.agentDefaultMCPSet()
+	_, isAgentDefault := agentDefaults[name]
+
 	if connect {
-		if !stringsContains(m.sessionMeta.ActiveMCPServers, name) {
-			m.sessionMeta.ActiveMCPServers = append(m.sessionMeta.ActiveMCPServers, name)
+		m.sessionMeta.DisabledMCPServers = stringsRemove(m.sessionMeta.DisabledMCPServers, name)
+		// Only persist "user active" when the MCP is NOT part of the current agent defaults.
+		// Agent defaults are derived dynamically from the profile and can be overridden via disabled_mcp_servers.
+		if !isAgentDefault {
+			if !stringsContains(m.sessionMeta.ActiveMCPServers, name) {
+				m.sessionMeta.ActiveMCPServers = append(m.sessionMeta.ActiveMCPServers, name)
+			}
 		}
 	} else {
 		m.sessionMeta.ActiveMCPServers = stringsRemove(m.sessionMeta.ActiveMCPServers, name)
+		if !stringsContains(m.sessionMeta.DisabledMCPServers, name) {
+			m.sessionMeta.DisabledMCPServers = append(m.sessionMeta.DisabledMCPServers, name)
+		}
 	}
 	m.persistSessionMeta()
 	m.applySessionRuntimeState()
@@ -457,6 +489,12 @@ func (m *Model) applySessionRuntimeState() {
 		return
 	}
 
+	// newSession/switchSession rebuild m.chat via NewChatModel(), which resets
+	// rootAgentName to "". Restore it here so the main timeline's per-agent
+	// filtering keeps recognizing the root agent's parts (otherwise every
+	// non-empty-named root part is dropped and the main agent shows nothing).
+	m.chat.rootAgentName = m.agentCtx.Definition.Name
+
 	workspaceState, err := loadSessionWorkspaceState(m.store.BaseDir(), m.currentSessionID)
 	if err != nil || workspaceState == nil {
 		workspaceState = &builtin_tools.WorkspaceState{SessionID: m.currentSessionID}
@@ -464,21 +502,7 @@ func (m *Model) applySessionRuntimeState() {
 
 	snapshot := builtin_tools.StateSnapshot{
 		ActiveSkillNames: builtin_tools.CloneStringSlice(m.effectiveActiveSkillNames()),
-		ActiveMCPServers: builtin_tools.CloneStringSlice(m.sessionMeta.ActiveMCPServers),
-	}
-
-	if mcpDefs := m.agentCtx.Definition.MCPServers; len(mcpDefs) > 0 {
-		set := make(map[string]struct{}, len(snapshot.ActiveMCPServers))
-		for _, n := range snapshot.ActiveMCPServers {
-			set[n] = struct{}{}
-		}
-		for _, sc := range mcpDefs {
-			if sc != nil && sc.Name != "" {
-				if _, ok := set[sc.Name]; !ok {
-					snapshot.ActiveMCPServers = append(snapshot.ActiveMCPServers, sc.Name)
-				}
-			}
-		}
+		ActiveMCPServers: builtin_tools.CloneStringSlice(m.desiredMCPNames()),
 	}
 
 	m.agentCtx.InitialState = snapshot
@@ -521,6 +545,82 @@ func (m *Model) effectiveActiveSkillSet() map[string]struct{} {
 		return nil
 	}
 	return set
+}
+
+func (m *Model) agentDefaultMCPNames() []string {
+	if m == nil || m.agentCtx == nil || len(m.agentCtx.Definition.MCPServers) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m.agentCtx.Definition.MCPServers))
+	seen := make(map[string]struct{}, len(m.agentCtx.Definition.MCPServers))
+	for _, sc := range m.agentCtx.Definition.MCPServers {
+		if sc == nil {
+			continue
+		}
+		name := strings.TrimSpace(sc.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (m *Model) agentDefaultMCPSet() map[string]struct{} {
+	names := m.agentDefaultMCPNames()
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		set[n] = struct{}{}
+	}
+	return set
+}
+
+func (m *Model) desiredMCPNames() []string {
+	if m == nil {
+		return nil
+	}
+
+	desired := mergeDistinctNames(m.agentDefaultMCPNames(), m.sessionMeta.ActiveMCPServers)
+	if len(desired) == 0 {
+		return nil
+	}
+
+	if len(m.sessionMeta.DisabledMCPServers) == 0 {
+		return desired
+	}
+	disabled := make(map[string]struct{}, len(m.sessionMeta.DisabledMCPServers))
+	for _, raw := range m.sessionMeta.DisabledMCPServers {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		disabled[name] = struct{}{}
+	}
+	if len(disabled) == 0 {
+		return desired
+	}
+
+	filtered := make([]string, 0, len(desired))
+	for _, name := range desired {
+		if _, ok := disabled[name]; ok {
+			continue
+		}
+		filtered = append(filtered, name)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func (m *Model) isPreloadedSkill(name string) bool {
@@ -592,7 +692,12 @@ func (m *Model) reconcileSessionMCP(desired []string) {
 			continue
 		}
 		if entry.Status == mcp.MCPStatusConnected {
-			_, _ = m.mcpManager.Disconnect(name)
+			// Off the Bubble Tea Update goroutine: Disconnect closes a stdio
+			// subprocess and synchronously notifies status, which must not block
+			// the message loop.
+			go func(serverName string) {
+				_, _ = m.mcpManager.Disconnect(serverName)
+			}(name)
 		}
 	}
 }

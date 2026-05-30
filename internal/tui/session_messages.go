@@ -227,7 +227,7 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 			existing = append(existing, DisplayPart{
 				Type: PartTypeTool,
 				Time: rp.Time,
-				Tool: &ToolPart{Name: rp.Name, CallID: rp.CallID, Arguments: rp.Content, State: "running"},
+				Tool: &ToolPart{Name: rp.Name, CallID: rp.CallID, Arguments: rp.Content, State: "running", AgentName: rp.AgentName},
 			})
 		case "tool_end":
 			existing = recoveryUpdateTool(existing, rp, func(t *ToolPart) {

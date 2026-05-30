@@ -63,6 +63,41 @@ func childAgentCallToken(agentName string) string {
 	return ""
 }
 
+// subAgentDescription pulls a short human description out of a sub_agent tool's
+// arguments for the collapsed card. It checks the common field names produced by
+// the sub_agent / skill-fork tools and falls back to "" when none are present.
+// raw is the original arguments value (may be a map); jsonStr is its marshaled
+// form (used when raw was already a JSON string).
+func subAgentDescription(raw any, jsonStr string) string {
+	pick := func(mp map[string]any) string {
+		for _, k := range []string{"description", "task", "prompt", "goal", "instruction", "instructions"} {
+			if v, ok := mp[k].(string); ok {
+				if s := strings.TrimSpace(v); s != "" {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+	switch v := raw.(type) {
+	case map[string]any:
+		if s := pick(v); s != "" {
+			return s
+		}
+	case string:
+		jsonStr = v
+	}
+	if jsonStr != "" {
+		var mp map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &mp); err == nil {
+			if s := pick(mp); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	if event == nil {
 		return
@@ -133,6 +168,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				State:      "running",
 				IsAgent:    isAgent,
 				StackDepth: stackDepth,
+				AgentName:  event.AgentName,
 			},
 		})
 		if isAgent {
@@ -153,16 +189,21 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				Type: PartTypeSubAgent,
 				Time: time.Now(),
 				SubAgent: &SubAgentPart{
-					AgentName: toolName,
-					CallID:    callID,
-					Status:    "running",
+					AgentName:   toolName,
+					CallID:      callID,
+					Status:      "running",
+					Description: subAgentDescription(event.Payload["arguments"], args),
+					StartedAt:   time.Now(),
 				},
 			})
+			// The first sub-agent card makes the right-side panel appear, which
+			// reflows the chat width — recompute the layout now.
+			m.updateLayout()
 			m.statusText = fmt.Sprintf("agent: %s", toolName)
 		} else {
 			m.statusText = fmt.Sprintf("calling %s...", toolName)
 		}
-		m.persistPartWithCallID("tool_start", toolName, callID, args)
+		m.persistPartWithCallIDAndAgent("tool_start", toolName, callID, event.AgentName, args)
 
 	case react.EventTypeToolEnd:
 		toolName, _ := event.Payload["tool_name"].(string)
@@ -190,6 +231,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 		if isAgent {
 			m.updateSubAgentByCallID(callID, result, errStr)
+			// A finished sub-agent drops out of the right-side panel; once the
+			// last one ends the panel hides, so reflow the chat width back.
+			m.updateLayout()
 		}
 		display := result
 		if errStr != "" {
@@ -211,7 +255,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				if groupID == "" {
 					groupID = strings.TrimSpace(event.EventID)
 				}
-				m.chat.AppendThinkingWithGroupID(thinkDelta, groupID)
+				m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID)
 			}
 		}
 		m.statusText = "thinking..."

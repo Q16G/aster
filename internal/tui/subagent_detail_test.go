@@ -2,6 +2,7 @@ package tui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -65,9 +66,49 @@ func TestRenderAgentTranscriptRestoresState(t *testing.T) {
 	}
 }
 
-// Enter on a focused sub-agent card emits OpenSubAgentDetailMsg; Space keeps the
-// inline toggle (no message).
-func TestEnterOnSubAgentEmitsOpenDetail(t *testing.T) {
+// Sub-agent think/tool/text must be collapsed out of the main timeline (only the
+// SubAgent card and root parts render inline) while remaining collectable by
+// partsForChild for the drill-in view.
+func TestMainTimelineExcludesNonRootDetails(t *testing.T) {
+	m := NewChatModel()
+	m.rootAgentName = "root"
+	m.SetSize(100, 40)
+	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+
+	m.parts = []DisplayPart{
+		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running", Description: "CARD_DESC"}},
+		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "SECRET_THINKING", AgentName: "sub-call_aaa"}},
+		{Type: PartTypeTool, Tool: &ToolPart{Name: "rg", Arguments: "SECRET_TOOL_ARGS", State: "completed", AgentName: "sub-call_aaa"}},
+		{Type: PartTypeText, Text: &TextPart{Content: "ROOT_VISIBLE", AgentName: "root"}},
+		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "ROOT_THINKING", AgentName: "root"}},
+	}
+	m.refreshContent()
+
+	out := m.fullContent
+	if strings.Contains(out, "SECRET_THINKING") {
+		t.Error("sub-agent thinking leaked into main timeline")
+	}
+	if strings.Contains(out, "SECRET_TOOL_ARGS") {
+		t.Error("sub-agent tool leaked into main timeline")
+	}
+	if !strings.Contains(out, "ROOT_VISIBLE") {
+		t.Error("root text missing from main timeline")
+	}
+	if !strings.Contains(out, "ROOT_THINKING") {
+		t.Error("root thinking missing from main timeline")
+	}
+	if !strings.Contains(out, "CARD_DESC") {
+		t.Error("sub-agent card (with description) missing from main timeline")
+	}
+
+	if got := m.partsForChild("call_aaa1234"); !reflect.DeepEqual(got, []int{0, 1, 2}) {
+		t.Fatalf("partsForChild = %v, want [0 1 2] (card + thinking + tool)", got)
+	}
+}
+
+// Enter on a focused sub-agent card emits EnterSubAgentMsg (in-place drill-in);
+// Space keeps the inline toggle (no message).
+func TestEnterOnSubAgentEmitsEnterDetail(t *testing.T) {
 	m := NewChatModel()
 	m.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_xyz", Status: "running"}},
@@ -78,9 +119,9 @@ func TestEnterOnSubAgentEmitsOpenDetail(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected a command from Enter on sub-agent card")
 	}
-	open, ok := cmd().(OpenSubAgentDetailMsg)
+	open, ok := cmd().(EnterSubAgentMsg)
 	if !ok {
-		t.Fatalf("expected OpenSubAgentDetailMsg, got %T", cmd())
+		t.Fatalf("expected EnterSubAgentMsg, got %T", cmd())
 	}
 	if open.CallID != "call_xyz" {
 		t.Fatalf("CallID = %q, want call_xyz", open.CallID)
@@ -89,5 +130,53 @@ func TestEnterOnSubAgentEmitsOpenDetail(t *testing.T) {
 	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	if cmd != nil {
 		t.Fatal("Space should toggle inline (no command), not drill in")
+	}
+}
+
+// EnterChild swaps the chat area to the sub-agent transcript in-place; ExitChild
+// restores the main timeline. Verifies the child's collapsed details surface in
+// the drill-in content and disappear again on exit.
+func TestEnterExitChildSwapsMainContent(t *testing.T) {
+	m := NewChatModel()
+	m.rootAgentName = "root"
+	m.SetSize(100, 40)
+	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.parts = []DisplayPart{
+		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running", Description: "CARD_DESC"}},
+		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "CHILD_THINKING", AgentName: "sub-call_aaa"}},
+		{Type: PartTypeText, Text: &TextPart{Content: "ROOT_VISIBLE", AgentName: "root"}},
+	}
+	m.refreshContent()
+
+	if strings.Contains(m.fullContent, "CHILD_THINKING") {
+		t.Fatal("child thinking should not be inline in the main timeline")
+	}
+
+	if !m.EnterChild("call_aaa1234") {
+		t.Fatal("EnterChild should succeed for a known sub-agent")
+	}
+	if m.ViewingChild() != "call_aaa1234" {
+		t.Fatalf("ViewingChild = %q, want call_aaa1234", m.ViewingChild())
+	}
+	if !strings.Contains(m.fullContent, "CHILD_THINKING") {
+		t.Error("drill-in content should contain the child's thinking")
+	}
+	if strings.Contains(m.fullContent, "ROOT_VISIBLE") {
+		t.Error("drill-in content must not contain root parts")
+	}
+
+	m.ExitChild()
+	if m.ViewingChild() != "" {
+		t.Fatalf("ViewingChild after exit = %q, want empty", m.ViewingChild())
+	}
+	if !strings.Contains(m.fullContent, "ROOT_VISIBLE") {
+		t.Error("main timeline should be restored after exit")
+	}
+	if strings.Contains(m.fullContent, "CHILD_THINKING") {
+		t.Error("child thinking should be collapsed again after exit")
+	}
+
+	if m.EnterChild("call_missing") {
+		t.Error("EnterChild should fail for an unknown call_id")
 	}
 }

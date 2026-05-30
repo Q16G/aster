@@ -637,6 +637,7 @@ func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 		}
 		m.toggleSessionMCP(args[1], true)
 		m.statusText = fmt.Sprintf("MCP connecting: %s", args[1])
+		return m, nil
 	case "disconnect":
 		if len(args) < 2 {
 			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mcp disconnect <name>"}})
@@ -644,6 +645,7 @@ func (m *Model) cmdMCP(args []string) (tea.Model, tea.Cmd) {
 		}
 		m.toggleSessionMCP(args[1], false)
 		m.statusText = fmt.Sprintf("MCP disconnected: %s", args[1])
+		return m, nil
 	default:
 		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "usage: /mcp [list|connect|disconnect] [name]"}})
 	}
@@ -660,12 +662,14 @@ func (m *Model) mcpList() (tea.Model, tea.Cmd) {
 	var sb strings.Builder
 	sb.WriteString("MCP Servers:\n")
 	for _, e := range entries {
-		active := stringsContains(m.sessionMeta.ActiveMCPServers, e.Name)
+		active := stringsContains(m.desiredMCPNames(), e.Name)
 		icon := "○"
-		if active && e.Status == mcp.MCPStatusConnected {
-			icon = "●"
-		} else if e.Status == mcp.MCPStatusError {
+		if e.Status == mcp.MCPStatusError {
 			icon = "✗"
+		} else if active && e.Status == mcp.MCPStatusConnected {
+			icon = "●"
+		} else if active && e.Status == mcp.MCPStatusConnecting {
+			icon = "◐"
 		}
 		sb.WriteString(fmt.Sprintf("  %s %s  [%s]", icon, e.Name, e.Status))
 		if e.ToolCount > 0 {
@@ -689,12 +693,14 @@ func (m *Model) openMCPSelector() (tea.Model, tea.Cmd) {
 	}
 	options := make([]tuiui.SelectOption, len(entries))
 	for i, e := range entries {
-		active := stringsContains(m.sessionMeta.ActiveMCPServers, e.Name)
+		active := stringsContains(m.desiredMCPNames(), e.Name)
 		icon := "○"
-		if active && e.Status == mcp.MCPStatusConnected {
-			icon = "●"
-		} else if e.Status == mcp.MCPStatusError {
+		if e.Status == mcp.MCPStatusError {
 			icon = "✗"
+		} else if active && e.Status == mcp.MCPStatusConnected {
+			icon = "●"
+		} else if active && e.Status == mcp.MCPStatusConnecting {
+			icon = "◐"
 		}
 		desc := string(e.Status)
 		if e.ToolCount > 0 {

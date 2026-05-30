@@ -117,6 +117,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	bridge := tui.NewEventBridge()
 	humanBridge := tui.NewHumanInputBridge()
+	mcpBridge := tui.NewMCPBridge()
 	syncStore := tuicontext.NewSyncStore()
 	defer syncStore.Close()
 	bridge.BindSyncStore(syncStore)
@@ -171,6 +172,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	}
 
 	mcpManager := mcp.NewManager()
+	mcpManager.SetStatusChangeHandler(mcpBridge.NotifyStatusChanged)
 	if mcpCfg := appCfg.ToMCPConfig(); mcpCfg != nil {
 		mcpManager.LoadFromConfigWithProbe(ctx, mcpCfg, bootstrapEmitter)
 	}
@@ -274,6 +276,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	bridge.Bind(p)
 	humanBridge.Bind(p)
+	mcpBridge.Bind(p)
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("tui: %w", err)

@@ -50,19 +50,19 @@ type TextPart struct {
 }
 
 type ToolPart struct {
-	Name       string        `json:"name"`
-	CallID     string        `json:"call_id,omitempty"`
-	Arguments  string        `json:"args,omitempty"`
-	Result     string        `json:"result,omitempty"`
-	Error      string        `json:"error,omitempty"`
-	State      string        `json:"state"`
-	Duration   time.Duration `json:"duration,omitempty"`
-	IsAgent    bool          `json:"is_agent,omitempty"`
-	StackDepth int           `json:"stack_depth,omitempty"`
-	AgentName  string        `json:"agent_name,omitempty"`
-	WorkspaceRoot string     `json:"workspace_root,omitempty"`
-	Summary    string        `json:"summary,omitempty"`
-	ChildRef   string        `json:"child_ref,omitempty"`
+	Name          string        `json:"name"`
+	CallID        string        `json:"call_id,omitempty"`
+	Arguments     string        `json:"args,omitempty"`
+	Result        string        `json:"result,omitempty"`
+	Error         string        `json:"error,omitempty"`
+	State         string        `json:"state"`
+	Duration      time.Duration `json:"duration,omitempty"`
+	IsAgent       bool          `json:"is_agent,omitempty"`
+	StackDepth    int           `json:"stack_depth,omitempty"`
+	AgentName     string        `json:"agent_name,omitempty"`
+	WorkspaceRoot string        `json:"workspace_root,omitempty"`
+	Summary       string        `json:"summary,omitempty"`
+	ChildRef      string        `json:"child_ref,omitempty"`
 }
 
 type PlanPart struct {
@@ -85,9 +85,10 @@ type SystemPart struct {
 }
 
 type ThinkingPart struct {
-	Content string `json:"content"`
-	EventID string `json:"event_id,omitempty"`
-	GroupID string `json:"group_id,omitempty"`
+	Content   string `json:"content"`
+	EventID   string `json:"event_id,omitempty"`
+	GroupID   string `json:"group_id,omitempty"`
+	AgentName string `json:"agent_name,omitempty"`
 }
 
 type SummaryPart struct {
@@ -130,13 +131,15 @@ type StepReplanPart struct {
 }
 
 type SubAgentPart struct {
-	AgentName string        `json:"agent_name"`
-	CallID    string        `json:"call_id,omitempty"`
-	Status    string        `json:"status"`
-	Summary   string        `json:"summary,omitempty"`
-	WorkspaceRoot string    `json:"workspace_root,omitempty"`
-	ChildRef      string    `json:"child_ref,omitempty"`
-	Duration  time.Duration `json:"duration,omitempty"`
+	AgentName     string        `json:"agent_name"`
+	CallID        string        `json:"call_id,omitempty"`
+	Status        string        `json:"status"`
+	Summary       string        `json:"summary,omitempty"`
+	Description   string        `json:"description,omitempty"`
+	WorkspaceRoot string        `json:"workspace_root,omitempty"`
+	ChildRef      string        `json:"child_ref,omitempty"`
+	Duration      time.Duration `json:"duration,omitempty"`
+	StartedAt     time.Time     `json:"started_at,omitempty"`
 }
 
 type FinalAnswerPart struct {
