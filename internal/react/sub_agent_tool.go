@@ -105,7 +105,7 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	if callID == "" {
 		callID = generateRandomString(8)
 	}
-	childName := fmt.Sprintf("sub-%s", truncateID(callID, 8))
+	childName := fmt.Sprintf("sub-%s", childAgentToken(callID))
 
 	childDef := AgentDefinition{
 		Name:        childName,
@@ -376,15 +376,29 @@ func (t *SubAgentTool) parentDomainToolNames() []string {
 	return names
 }
 
-func truncateID(id string, maxLen int) string {
-	id = strings.TrimSpace(id)
-	if len(id) > maxLen {
-		return id[:maxLen]
+// childAgentToken derives the unique, name-safe token a child agent embeds in
+// its name from the spawning tool's call_id. The full call_id is kept (not
+// truncated): provider call ids like "call_00_<rand>" share a non-unique
+// "call_00_" prefix, so truncating to a fixed length collapses distinct calls
+// into one childName (shared workspace dir / registry slot / durable pointer).
+// Non [a-z0-9_] runes are folded to '_' so the token is filesystem-safe and
+// free of '-' (skill children split their token on the last '-').
+func childAgentToken(callID string) string {
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return generateRandomString(8)
 	}
-	if id == "" {
-		return generateRandomString(maxLen)
+	var b strings.Builder
+	b.Grow(len(callID))
+	for _, r := range callID {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
 	}
-	return id
+	return b.String()
 }
 
 func formatSubAgentResult(agentName, workspaceRoot string, result *builtin_tools.RunResult) string {

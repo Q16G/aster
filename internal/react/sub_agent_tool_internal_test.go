@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"aster/internal/ai"
@@ -116,6 +117,77 @@ func TestPreRegisterChildAgent_NilParentRuntime(t *testing.T) {
 
 	// Should not panic
 	tool.preRegisterChildAgent(builtin_tools.ToolRuntimeInfo{}, "sub-x", "/tmp/x")
+}
+
+func TestChildAgentToken(t *testing.T) {
+	cases := []struct {
+		name   string
+		callID string
+		want   string
+	}{
+		{"plain", "call_00_abcd", "call_00_abcd"},
+		{"keeps full suffix", "call_07_zzzz9999", "call_07_zzzz9999"},
+		{"sanitizes dashes", "call-7-uuid-xyz", "call_7_uuid_xyz"},
+		{"sanitizes other", "id/with.dots:colon", "id_with_dots_colon"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := childAgentToken(tc.callID); got != tc.want {
+				t.Fatalf("childAgentToken(%q) = %q, want %q", tc.callID, got, tc.want)
+			}
+		})
+	}
+
+	// Empty call_id must fall back to a non-empty random token.
+	if got := childAgentToken(""); got == "" {
+		t.Fatal("empty call_id must produce a random token, got empty")
+	}
+
+	// Regression: two call_ids sharing an 8-char prefix must NOT collapse to the
+	// same token (the old truncateID(callID, 8) bug collapsed both to "call_00_").
+	a := childAgentToken("call_00_aaaa")
+	b := childAgentToken("call_00_bbbb")
+	if a == b {
+		t.Fatalf("tokens for distinct call_ids collided: %q == %q", a, b)
+	}
+}
+
+// TestBuildChild_NoCollisionOnSharedCallIDPrefix is the end-to-end regression
+// for the childName collision: two sub_agent spawns whose call_ids share the
+// "call_00_" provider prefix must get distinct childNames (hence distinct
+// workspace dirs / registry slots / durable pointers).
+func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	parent.workspaceRootDir = t.TempDir()
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	args := map[string]any{"instruction": "do work"}
+	setupA, err := tool.buildChild(context.Background(), args, builtin_tools.ToolRuntimeInfo{CallID: "call_00_aaaa"})
+	if err != nil {
+		t.Fatalf("buildChild A: %v", err)
+	}
+	setupB, err := tool.buildChild(context.Background(), args, builtin_tools.ToolRuntimeInfo{CallID: "call_00_bbbb"})
+	if err != nil {
+		t.Fatalf("buildChild B: %v", err)
+	}
+
+	if setupA.childName == setupB.childName {
+		t.Fatalf("childName collision: both = %q", setupA.childName)
+	}
+	if setupA.childRootDir == setupB.childRootDir {
+		t.Fatalf("childRootDir collision: both = %q", setupA.childRootDir)
+	}
+	if !strings.HasPrefix(setupA.childName, "sub-") {
+		t.Fatalf("expected sub- prefix, got %q", setupA.childName)
+	}
 }
 
 type stubClient struct{}
