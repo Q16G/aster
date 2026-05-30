@@ -64,7 +64,6 @@ func (m *Model) newSession() bool {
 	m.sessionUsage = ai.TokenUsage{}
 	m.sessionCost = 0
 	m.chat = NewChatModel()
-	m.restoreToolVerbose()
 	m.updateLayout()
 
 	_ = ensureSessionWorkspace(m.store.BaseDir(), m.currentSessionID)
@@ -125,7 +124,6 @@ func (m *Model) switchSession(idOrPrefix string) {
 
 			parts, err := loadSessionDisplayParts(m.store.BaseDir(), s.ID)
 			m.chat = NewChatModel()
-			m.restoreToolVerbose()
 			m.updateLayout()
 			if err == nil && len(parts) > 0 {
 				m.chat.SetParts(parts)
@@ -455,10 +453,6 @@ func (m *Model) currentPermissionMode() builtin_tools.PermissionMode {
 		return m.agentCtx.Definition.Policies.BashPermissionContext.PermCtx.Mode
 	}
 	return builtin_tools.PermissionModeManual
-}
-
-func (m *Model) restoreToolVerbose() {
-	m.chat.SetToolVerbose(m.localProvider.Get().ToolVerbose)
 }
 
 func (m *Model) restoreSessionProvider(rec *SessionRecord) {

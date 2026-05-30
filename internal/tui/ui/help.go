@@ -148,7 +148,6 @@ func DefaultHelpSections() []HelpSection {
 				{"/mcp", "Toggle MCP servers"},
 				{"/session", "Session management"},
 				{"/theme", "Toggle dark/light theme"},
-				{"/verbose", "Toggle tool output verbosity"},
 				{"/mode", "Switch bash permission mode"},
 				{"/clear", "Clear chat"},
 				{"/help", "Show this help"},

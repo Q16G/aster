@@ -25,7 +25,6 @@ var slashCommands = []tuiui.CommandEntry{
 	{Name: "/session", Description: "Session management"},
 	{Name: "/new", Description: "New session"},
 	{Name: "/clear", Description: "Clear chat history"},
-	{Name: "/verbose", Description: "Toggle tool call detail"},
 	{Name: "/mode", Description: "Switch bash permission mode (yolo/manual/ai)"},
 	{Name: "/theme", Description: "Switch theme"},
 	{Name: "/sidebar", Description: "Toggle sidebar (show/hide/auto)"},
@@ -41,7 +40,6 @@ const helpText = `Available commands:
   /mcp [connect|disconnect] <name> — Toggle MCP for current session
   /session [new|list|switch|delete] — Session management / selector
   /clear                 — Clear chat history
-  /verbose               — Toggle tool call detail level
   /mode [yolo|manual|ai] — Switch bash permission mode
   /theme                 — Toggle dark/light theme
   /sidebar [show|hide|auto] — Toggle or set sidebar mode
@@ -93,18 +91,8 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m.cmdSession(parts[1:])
 	case "/clear":
 		m.chat = NewChatModel()
-		m.restoreToolVerbose()
 		m.updateLayout()
 		m.persistCurrentSession()
-		return m, nil
-	case "/verbose":
-		m.localProvider.ToggleToolVerbose()
-		m.chat.SetToolVerbose(m.localProvider.Get().ToolVerbose)
-		state := "compact"
-		if m.localProvider.Get().ToolVerbose {
-			state = "verbose"
-		}
-		m.statusText = fmt.Sprintf("tool display: %s", state)
 		return m, nil
 	case "/mode":
 		return m.cmdMode(parts[1:])
