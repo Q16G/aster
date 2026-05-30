@@ -18,6 +18,16 @@
 <!-- TODO: 在这里放一张终端运行截图或 GIF -->
 <!-- <p align="center"><img src="docs/assets/demo.gif" width="720"></p> -->
 
+<p align="center">
+  <details>
+    <summary>扫码加入 aster 交流群</summary>
+    <br>
+    <img src="docs/assets/wechat-group-qr.png" width="320" alt="aster 交流群微信二维码">
+    <br>
+    <sub>二维码失效请提 issue 获取最新入群方式</sub>
+  </details>
+</p>
+
 ---
 
 ### 亮点
