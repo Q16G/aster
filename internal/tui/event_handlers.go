@@ -9,6 +9,7 @@ import (
 
 	"aster/internal/builtin_tools"
 	"aster/internal/react"
+	"aster/internal/runtimelog"
 	tuicontext "aster/internal/tui/context"
 )
 
@@ -308,6 +309,13 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		// First background card makes the right-side panel appear; reflow width.
 		m.updateLayout()
 		m.statusText = fmt.Sprintf("agent: %s", agentID)
+		runtimelog.LogJSON("debug", map[string]any{
+			"event":       "subagent_card_bgstart",
+			"agent_id":    agentID,
+			"cardCallID":  cardCallID,
+			"status":      "running",
+			"has_running": m.chat.HasRunningSubAgents(),
+		})
 
 	case react.EventTypeSubAgentBgEnd:
 		agentID, _ := event.Payload["agent_id"].(string)
@@ -338,6 +346,13 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 		// A finished background sub-agent drops out of the panel; reflow width.
 		m.updateLayout()
+		runtimelog.LogJSON("debug", map[string]any{
+			"event":       "subagent_card_bgend",
+			"agent_id":    agentID,
+			"cardCallID":  cardCallID,
+			"status":      status,
+			"has_running": m.chat.HasRunningSubAgents(),
+		})
 
 	case react.EventTypeThink:
 		m.flushStreamAndPersist(event.AgentName)
