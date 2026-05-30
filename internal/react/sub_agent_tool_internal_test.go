@@ -517,6 +517,52 @@ func TestAwaitSubAgentsTool_ExcludedFromInheritanceMaps(t *testing.T) {
 	}
 }
 
+func TestBuild_SubAgentOmitsOrchestrationTools(t *testing.T) {
+	orchestrationTools := []string{
+		builtin_tools.SubAgentToolName,
+		builtin_tools.SubAgentStatusToolName,
+		builtin_tools.AwaitSubAgentsToolName,
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+
+	t.Run("sub-agent does not register or expose them", func(t *testing.T) {
+		child, err := factory.Build(AgentDefinition{Name: "child", IsSubAgent: true})
+		if err != nil {
+			t.Fatalf("build sub-agent: %v", err)
+		}
+		for _, name := range orchestrationTools {
+			if _, ok := child.GetTool(name); ok {
+				t.Errorf("sub-agent must not register %q", name)
+			}
+		}
+		fnTools, _ := child.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+		for _, ft := range fnTools {
+			if ft.Function == nil {
+				continue
+			}
+			if slices.Contains(orchestrationTools, ft.Function.Name) {
+				t.Errorf("sub-agent prompt must not expose %q", ft.Function.Name)
+			}
+		}
+	})
+
+	t.Run("root agent still registers them", func(t *testing.T) {
+		root, err := factory.Build(AgentDefinition{Name: "root"})
+		if err != nil {
+			t.Fatalf("build root: %v", err)
+		}
+		for _, name := range orchestrationTools {
+			if _, ok := root.GetTool(name); !ok {
+				t.Errorf("root agent must register %q", name)
+			}
+		}
+	})
+}
+
 func TestRunningChildAgentNames(t *testing.T) {
 	root := t.TempDir()
 	ws, err := newLocalWorkspaceRuntime("sess-1", root, "root")

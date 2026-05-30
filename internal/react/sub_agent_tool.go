@@ -111,6 +111,7 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 		Name:        childName,
 		Instruction: instruction,
 		ToolNames:   t.resolveChildToolNames(toolNames),
+		IsSubAgent:  true,
 		Policies: AgentPolicies{
 			MaxIterations: t.childMaxIterations(),
 		},
