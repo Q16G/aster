@@ -27,9 +27,8 @@ type ChatModel struct {
 	parts            []DisplayPart
 	streamingByAgent map[string]*strings.Builder
 	streamingOrder   []string
-	thinkingBuf      *strings.Builder
-	thinkingGroupID  string
-	isThinking       bool
+	thinkingByAgent  map[string]*thinkingState
+	thinkingOrder    []string
 	width            int
 	height           int
 	toolVerbose      bool
@@ -41,6 +40,9 @@ type ChatModel struct {
 	autoFollowBottom bool
 	fullContent      string
 	rootAgentName    string
+	// viewingChild is the call_id of the sub-agent whose transcript currently
+	// replaces the main timeline in-place ("" = showing the main timeline).
+	viewingChild string
 
 	activeStepByAgent map[string]string
 	// agentSpawnByCallID maps a child agent's spawning tool call_id to the spawn
@@ -58,7 +60,7 @@ func NewChatModel() ChatModel {
 	return ChatModel{
 		viewport:           vp,
 		streamingByAgent:   make(map[string]*strings.Builder),
-		thinkingBuf:        &strings.Builder{},
+		thinkingByAgent:    make(map[string]*thinkingState),
 		toolExpanded:       make(map[int]bool),
 		autoFollowBottom:   true,
 		activeStepByAgent:  make(map[string]string),
@@ -158,49 +160,128 @@ func (m *ChatModel) FlushStream(agentName string) bool {
 	return flushed
 }
 
+// thinkingState is one agent's in-progress thinking buffer. Per-agent buffers
+// keep concurrent sub-agents' thinking from cross-contaminating each other,
+// mirroring streamingByAgent.
+type thinkingState struct {
+	buf     strings.Builder
+	groupID string
+}
+
+func (m *ChatModel) thinkingStateFor(agentName string) *thinkingState {
+	s, ok := m.thinkingByAgent[agentName]
+	if !ok {
+		s = &thinkingState{}
+		m.thinkingByAgent[agentName] = s
+		m.thinkingOrder = append(m.thinkingOrder, agentName)
+	}
+	return s
+}
+
+func (m *ChatModel) dropThinking(agentName string) {
+	if _, ok := m.thinkingByAgent[agentName]; !ok {
+		return
+	}
+	delete(m.thinkingByAgent, agentName)
+	for i, n := range m.thinkingOrder {
+		if n == agentName {
+			m.thinkingOrder = append(m.thinkingOrder[:i], m.thinkingOrder[i+1:]...)
+			break
+		}
+	}
+}
+
+func (m *ChatModel) anyThinking() bool {
+	for _, s := range m.thinkingByAgent {
+		if s.buf.Len() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ChatModel) isRootAgent(name string) bool {
+	return name == m.rootAgentName || name == ""
+}
+
+// rootThinkingState returns the first root-agent thinking buffer with pending
+// content, or nil. Only root thinking is shown live in the main timeline.
+func (m *ChatModel) rootThinkingState() *thinkingState {
+	for _, name := range m.thinkingOrder {
+		if m.isRootAgent(name) {
+			if s := m.thinkingByAgent[name]; s != nil && s.buf.Len() > 0 {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
 func (m *ChatModel) AppendThinking(delta string) {
 	m.AppendThinkingWithGroupID(delta, "")
 }
 
-// AppendThinkingWithGroupID appends a thinking delta and aggregates by group_id.
-// group_id is the primary aggregation key; event_id is record-unique and should not be used for grouping.
+// AppendThinkingWithGroupID appends a root-agent thinking delta. Kept for
+// callers/tests that don't carry an agent name.
 func (m *ChatModel) AppendThinkingWithGroupID(delta string, groupID string) {
-	if groupID != "" && m.thinkingGroupID != "" && groupID != m.thinkingGroupID {
-		m.FlushThinking()
+	m.AppendThinkingForAgent("", delta, groupID)
+}
+
+// AppendThinkingForAgent appends a thinking delta for a specific agent and
+// aggregates by group_id within that agent's stream. group_id is the primary
+// aggregation key; event_id is record-unique and should not be used for grouping.
+func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
+	s := m.thinkingStateFor(agentName)
+
+	if groupID != "" && s.groupID != "" && groupID != s.groupID {
+		m.FlushThinkingForAgent(agentName)
+		s = m.thinkingStateFor(agentName)
 	}
 
-	if groupID != "" && !m.isThinking && m.thinkingBuf.Len() == 0 {
+	if groupID != "" && s.buf.Len() == 0 {
 		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.GroupID == groupID {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil &&
+				m.parts[i].Thinking.GroupID == groupID && m.parts[i].Thinking.AgentName == agentName {
 				m.parts[i].Thinking.Content += delta
-				m.thinkingGroupID = groupID
+				s.groupID = groupID
 				m.markDirty()
 				return
 			}
 		}
 	}
 
-	m.thinkingGroupID = groupID
-	m.thinkingBuf.WriteString(delta)
-	m.isThinking = true
+	s.groupID = groupID
+	s.buf.WriteString(delta)
 	m.markDirty()
 }
 
+// FlushThinking flushes every agent's pending thinking buffer into parts. Used
+// at boundaries (stream/tool/result/run-end) where no single agent is implied.
 func (m *ChatModel) FlushThinking() bool {
-	if m.thinkingBuf.Len() == 0 {
-		m.isThinking = false
+	flushed := false
+	for _, name := range append([]string(nil), m.thinkingOrder...) {
+		if m.FlushThinkingForAgent(name) {
+			flushed = true
+		}
+	}
+	return flushed
+}
+
+func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
+	s, ok := m.thinkingByAgent[agentName]
+	if !ok || s.buf.Len() == 0 {
+		m.dropThinking(agentName)
 		return false
 	}
-	content := m.thinkingBuf.String()
-	groupID := m.thinkingGroupID
+	content := s.buf.String()
+	groupID := s.groupID
 
 	if groupID != "" {
 		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil && m.parts[i].Thinking.GroupID == groupID {
+			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil &&
+				m.parts[i].Thinking.GroupID == groupID && m.parts[i].Thinking.AgentName == agentName {
 				m.parts[i].Thinking.Content += content
-				m.thinkingBuf.Reset()
-				m.thinkingGroupID = ""
-				m.isThinking = false
+				m.dropThinking(agentName)
 				m.markDirty()
 				return true
 			}
@@ -210,11 +291,9 @@ func (m *ChatModel) FlushThinking() bool {
 	m.parts = append(m.parts, DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     time.Now(),
-		Thinking: &ThinkingPart{Content: content, GroupID: groupID},
+		Thinking: &ThinkingPart{Content: content, GroupID: groupID, AgentName: agentName},
 	})
-	m.thinkingBuf.Reset()
-	m.thinkingGroupID = ""
-	m.isThinking = false
+	m.dropThinking(agentName)
 	m.markDirty()
 	return true
 }
@@ -353,8 +432,49 @@ func partAgentName(p DisplayPart) string {
 		if p.Summary != nil {
 			return p.Summary.AgentName
 		}
+	case PartTypeThinking:
+		if p.Thinking != nil {
+			return p.Thinking.AgentName
+		}
 	}
 	return ""
+}
+
+// HasRunningSubAgents reports whether any sub-agent is still running. The
+// right-side panel only lists running sub-agents, so it hides once they finish.
+func (m *ChatModel) HasRunningSubAgents() bool {
+	for _, p := range m.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// SubAgentSummaries returns the running sub-agent cards in timeline order, for
+// the right-side panel. Finished sub-agents drop out of the panel (they remain
+// reachable via their collapsed card in the main timeline).
+func (m *ChatModel) SubAgentSummaries() []SubAgentPart {
+	var out []SubAgentPart
+	for _, p := range m.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.Status == "running" {
+			out = append(out, *p.SubAgent)
+		}
+	}
+	return out
+}
+
+// childTitle returns the display name of the sub-agent spawned by callID.
+func (m *ChatModel) childTitle(callID string) string {
+	for _, p := range m.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
+			if p.SubAgent.AgentName != "" {
+				return p.SubAgent.AgentName
+			}
+			return "sub_agent"
+		}
+	}
+	return "sub_agent"
 }
 
 // partsForChild returns the indices of parts belonging to the sub-agent spawned
@@ -381,34 +501,131 @@ func (m *ChatModel) partsForChild(callID string) []int {
 	return idxs
 }
 
+// PlanForChild returns the latest PlanPart owned by the sub-agent spawned by
+// callID (matched via lookupSpawnByChild), or nil when it has no plan yet.
+func (m *ChatModel) PlanForChild(callID string) *PlanPart {
+	if callID == "" {
+		return nil
+	}
+	var found *PlanPart
+	for _, p := range m.parts {
+		if p.Type == PartTypePlan && p.Plan != nil && !m.isRootAgent(p.Plan.AgentName) {
+			if info, ok := m.lookupSpawnByChild(p.Plan.AgentName); ok && info.CallID == callID {
+				found = p.Plan
+			}
+		}
+	}
+	return found
+}
+
+// EnterChild switches the chat area to the in-place transcript of the sub-agent
+// spawned by callID. Returns false (and stays on the main timeline) when callID
+// does not name a known sub-agent.
+func (m *ChatModel) EnterChild(callID string) bool {
+	if callID == "" {
+		return false
+	}
+	if _, ok := m.agentSpawnByCallID[callID]; !ok {
+		return false
+	}
+	m.viewingChild = callID
+	m.refreshContent()
+	m.viewport.GotoTop()
+	return true
+}
+
+// ExitChild returns the chat area to the main timeline.
+func (m *ChatModel) ExitChild() {
+	if m.viewingChild == "" {
+		return
+	}
+	m.viewingChild = ""
+	m.refreshContent()
+}
+
+func (m *ChatModel) ViewingChild() string { return m.viewingChild }
+
 // RenderAgentTranscript builds the drill-in transcript for the sub-agent spawned
 // by callID: its filtered parts rendered at the given width with cards
 // force-expanded. The expand/width mutations are restored before returning, so
 // the main view is unaffected. Returns ok=false when no parts belong to the child.
 func (m *ChatModel) RenderAgentTranscript(callID string, width int) (string, bool) {
+	return m.renderChildTranscript(callID, width)
+}
+
+func (m *ChatModel) renderChildTranscript(callID string, width int) (string, bool) {
 	idxs := m.partsForChild(callID)
 	if len(idxs) == 0 {
 		return "", false
 	}
 	savedWidth := m.width
+	savedFocused := m.focused
 	m.width = width
+	// The transcript is a standalone view: no cursor selection should be drawn.
+	m.focused = false
 	saved := make(map[int]bool, len(idxs))
+	indexed := make([]IndexedPart, 0, len(idxs))
 	for _, i := range idxs {
 		saved[i] = m.toolExpanded[i]
 		m.toolExpanded[i] = true
+		indexed = append(indexed, IndexedPart{Index: i, Part: m.parts[i]})
 	}
+
 	var sb strings.Builder
-	for n, i := range idxs {
-		if n > 0 {
+	rendered := 0
+	for _, turn := range groupIndexedPartsIntoTurns(indexed) {
+		if rendered > 0 {
+			sb.WriteString(m.renderTurnSeparator())
 			sb.WriteString("\n")
 		}
-		sb.WriteString(m.renderPart(i, m.parts[i]))
+		rendered++
+		switch turn.Type {
+		case TurnTypeUser:
+			for _, ip := range turn.Parts {
+				if r := m.renderPart(ip.Index, ip.Part); r != "" {
+					sb.WriteString(r)
+					sb.WriteString("\n")
+				}
+			}
+		case TurnTypeAssistant:
+			m.renderTranscriptAssistantTurn(&sb, turn.Parts)
+		}
 	}
+
 	m.width = savedWidth
+	m.focused = savedFocused
 	for i, v := range saved {
 		m.toolExpanded[i] = v
 	}
-	return sb.String(), true
+	return strings.TrimRight(sb.String(), "\n"), true
+}
+
+// renderTranscriptAssistantTurn renders an assistant turn for the drill-in
+// transcript, merging contiguous same-agent text runs exactly like the main
+// timeline but without cursor/offset bookkeeping.
+func (m *ChatModel) renderTranscriptAssistantTurn(sb *strings.Builder, parts []IndexedPart) {
+	maxWidth := m.width - 4
+	if maxWidth < 10 {
+		maxWidth = 10
+	}
+	i := 0
+	for i < len(parts) {
+		ip := parts[i]
+		if ip.Part.Type == PartTypeText && ip.Part.Text != nil {
+			mergedContent, count := mergeTextRun(parts, i)
+			if rendered := m.renderMergedTextBlock(mergedContent, maxWidth); rendered != "" {
+				sb.WriteString(rendered)
+				sb.WriteString("\n")
+			}
+			i += count
+			continue
+		}
+		if rendered := m.renderPart(ip.Index, ip.Part); rendered != "" {
+			sb.WriteString(rendered)
+			sb.WriteString("\n")
+		}
+		i++
+	}
 }
 
 func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart)) {
@@ -427,18 +644,32 @@ func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart))
 
 func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
+		// In the in-place sub-agent transcript, navigation keys scroll the
+		// drill-in view. Exit (left/esc) is handled at the Model level.
+		if m.viewingChild != "" {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(key)
+			m.syncAutoFollowFromViewport()
+			return m, cmd
+		}
 		switch key.String() {
 		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+			for j := m.cursor - 1; j >= 0; j-- {
+				if m.mainVisible(j) {
+					m.cursor = j
+					break
+				}
 			}
 			m.refreshContent()
 			m.scrollToCursor()
 			m.syncAutoFollowFromViewport()
 			return m, nil
 		case "down", "j":
-			if m.cursor < len(m.parts)-1 {
-				m.cursor++
+			for j := m.cursor + 1; j < len(m.parts); j++ {
+				if m.mainVisible(j) {
+					m.cursor = j
+					break
+				}
 			}
 			m.refreshContent()
 			m.scrollToCursor()
@@ -448,12 +679,12 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
 				part := m.parts[m.cursor]
 				t := part.Type
-				// Enter on a sub-agent card drills into its dedicated transcript;
+				// Enter on a sub-agent card drills into its in-place transcript;
 				// Space keeps the lightweight inline expand.
 				if key.String() == "enter" && t == PartTypeSubAgent && part.SubAgent != nil {
 					sa := part.SubAgent
 					return m, func() tea.Msg {
-						return OpenSubAgentDetailMsg{CallID: sa.CallID, ToolName: sa.AgentName}
+						return EnterSubAgentMsg{CallID: sa.CallID}
 					}
 				}
 				if t == PartTypeTool || t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
@@ -486,24 +717,72 @@ func (m ChatModel) ViewWithSelection(sel *SelectionModel) string {
 	return strings.Join(highlighted, "\n")
 }
 
+// filterMainParts keeps only parts that belong in the main timeline: root-agent
+// parts and SubAgent cards. Non-root details collapse behind their card.
+func (m *ChatModel) filterMainParts(parts []IndexedPart) []IndexedPart {
+	out := make([]IndexedPart, 0, len(parts))
+	for _, ip := range parts {
+		if ip.Part.Type == PartTypeSubAgent || m.isRootAgent(partAgentName(ip.Part)) {
+			out = append(out, ip)
+		}
+	}
+	return out
+}
+
+// mainVisible reports whether the part at index i is shown in the main timeline
+// (and thus a valid cursor target).
+func (m *ChatModel) mainVisible(i int) bool {
+	if i < 0 || i >= len(m.parts) {
+		return false
+	}
+	p := m.parts[i]
+	return p.Type == PartTypeSubAgent || m.isRootAgent(partAgentName(p))
+}
+
+// hasRootStreamingContent reports whether any root agent has pending live stream
+// content. Non-root live streams are not shown inline in the main timeline.
+func (m *ChatModel) hasRootStreamingContent() bool {
+	for name, b := range m.streamingByAgent {
+		if m.isRootAgent(name) && b.Len() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *ChatModel) refreshContent() {
+	if m.viewingChild != "" {
+		m.refreshChildContent()
+		return
+	}
+
 	var sb strings.Builder
 	m.partLineOffsets = make([]int, len(m.parts))
 	lineCount := 0
 
 	turns := groupPartsIntoTurns(m.parts)
 
-	for ti, turn := range turns {
-		if ti > 0 {
+	renderedTurns := 0
+	for _, turn := range turns {
+		// Sub-agent details (think/tool/text/plan) are collapsed behind their
+		// SubAgent card in the main timeline; only root parts and the cards
+		// themselves render inline. Indices on IndexedPart are preserved, so
+		// filtering here keeps partLineOffsets correct.
+		parts := m.filterMainParts(turn.Parts)
+		if len(parts) == 0 {
+			continue
+		}
+		if renderedTurns > 0 {
 			sep := m.renderTurnSeparator()
 			sb.WriteString(sep)
 			sb.WriteString("\n")
 			lineCount += strings.Count(sep, "\n") + 1
 		}
+		renderedTurns++
 
 		switch turn.Type {
 		case TurnTypeUser:
-			for _, ip := range turn.Parts {
+			for _, ip := range parts {
 				m.partLineOffsets[ip.Index] = lineCount
 				rendered := m.renderPart(ip.Index, ip.Part)
 				if rendered == "" {
@@ -514,21 +793,44 @@ func (m *ChatModel) refreshContent() {
 				lineCount += strings.Count(rendered, "\n") + 1
 			}
 		case TurnTypeAssistant:
-			m.renderAssistantTurn(&sb, turn.Parts, &lineCount)
+			m.renderAssistantTurn(&sb, parts, &lineCount)
 		}
 	}
 
-	if m.isThinking {
+	if m.rootThinkingState() != nil {
 		sb.WriteString(m.renderThinkingStream())
 		sb.WriteString("\n")
 	}
-	if m.hasStreamingContent() {
+	if m.hasRootStreamingContent() {
 		sb.WriteString(m.renderStreamingContent())
 		sb.WriteString("\n")
 	}
-	if len(m.parts) == 0 && !m.hasStreamingContent() && !m.isThinking {
+	if len(m.parts) == 0 && !m.hasStreamingContent() && !m.anyThinking() {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
+	m.fullContent = sb.String()
+	m.viewport.SetContent(m.fullContent)
+}
+
+// refreshChildContent renders the in-place sub-agent transcript (drill-in view)
+// into the chat viewport, with a header pointing back to the main timeline.
+func (m *ChatModel) refreshChildContent() {
+	m.partLineOffsets = make([]int, len(m.parts))
+
+	title := m.childTitle(m.viewingChild)
+	header := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true).
+		Render("‹ 子 Agent: "+title) +
+		lipgloss.NewStyle().Faint(true).Render("   （← 返回）")
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	sb.WriteString("\n\n")
+	if body, ok := m.renderChildTranscript(m.viewingChild, m.width); ok {
+		sb.WriteString(body)
+	} else {
+		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("（子 agent 暂无事件）"))
+	}
+
 	m.fullContent = sb.String()
 	m.viewport.SetContent(m.fullContent)
 }
@@ -738,11 +1040,13 @@ func (m *ChatModel) renderStreamingContent() string {
 		BorderForeground(assistantBorderColor).
 		PaddingLeft(1).
 		Width(maxWidth)
-	labelStyle := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8"))
-
 	var sb strings.Builder
 	first := true
 	for _, name := range m.streamingOrder {
+		// Only root live streams render inline; sub-agent streams stay collapsed.
+		if !m.isRootAgent(name) {
+			continue
+		}
 		b, ok := m.streamingByAgent[name]
 		if !ok || b.Len() == 0 {
 			continue
@@ -751,9 +1055,6 @@ func (m *ChatModel) renderStreamingContent() string {
 			sb.WriteString("\n")
 		}
 		first = false
-		if name != "" && name != m.rootAgentName {
-			sb.WriteString(labelStyle.Render("⤷ "+name) + "\n")
-		}
 		content := wrapText(b.String(), maxWidth-4) + "▌"
 		sb.WriteString(style.Render(content))
 	}
@@ -774,7 +1075,11 @@ func (m *ChatModel) renderThinkingStream() string {
 		Width(maxWidth).
 		Foreground(lipgloss.Color("8"))
 
-	content := wrapText("Thinking: "+m.thinkingBuf.String(), maxWidth-4) + "▌"
+	var raw string
+	if s := m.rootThinkingState(); s != nil {
+		raw = s.buf.String()
+	}
+	content := wrapText("Thinking: "+raw, maxWidth-4) + "▌"
 	return style.Render(content)
 }
 

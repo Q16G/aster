@@ -135,7 +135,7 @@ func TestAppendThinkingWithGroupID_SessionSwitch(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected 1 flushed part from old session, got %d", count)
 	}
-	if !m.isThinking {
+	if !m.anyThinking() {
 		t.Fatal("should still be thinking with new session")
 	}
 }

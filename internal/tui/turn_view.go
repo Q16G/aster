@@ -49,6 +49,37 @@ func groupPartsIntoTurns(parts []DisplayPart) []Turn {
 	return turns
 }
 
+// groupIndexedPartsIntoTurns groups an already-indexed part slice into turns,
+// preserving each IndexedPart's original Index. Used by the sub-agent drill-in
+// transcript so its grouping matches the main timeline while still pointing back
+// at the real part indices (for toolExpanded state).
+func groupIndexedPartsIntoTurns(parts []IndexedPart) []Turn {
+	if len(parts) == 0 {
+		return nil
+	}
+
+	var turns []Turn
+	var assistantParts []IndexedPart
+
+	flushAssistant := func() {
+		if len(assistantParts) > 0 {
+			turns = append(turns, Turn{Type: TurnTypeAssistant, Parts: assistantParts})
+			assistantParts = nil
+		}
+	}
+
+	for _, ip := range parts {
+		if ip.Part.Type == PartTypeUser {
+			flushAssistant()
+			turns = append(turns, Turn{Type: TurnTypeUser, Parts: []IndexedPart{ip}})
+		} else {
+			assistantParts = append(assistantParts, ip)
+		}
+	}
+	flushAssistant()
+	return turns
+}
+
 func mergeTextRun(parts []IndexedPart, localIdx int) (string, int) {
 	var sb strings.Builder
 	count := 0

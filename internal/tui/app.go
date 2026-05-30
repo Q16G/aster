@@ -32,11 +32,18 @@ type FocusTarget int
 const (
 	FocusInput FocusTarget = iota
 	FocusSidebar
+	FocusSubAgents
 	FocusChat
 )
 
 type renderTickMsg struct{}
 type sessionRestoreMsg struct{}
+
+// MCPStatusChangedMsg 由 MCPBridge 在 MCP manager 状态迁移时推送，触发侧边栏/footer 刷新。
+type MCPStatusChangedMsg struct {
+	Name   string
+	Status string
+}
 
 const renderInterval = 33 * time.Millisecond
 
@@ -65,6 +72,7 @@ type Model struct {
 	chat            ChatModel
 	input           InputModel
 	sidebar         SidebarModel
+	subAgentPanel   SubAgentPanel
 	thinkingPanel   ThinkingPanelModel
 	agentCtx        *AgentExecContext
 	humanBridge     *HumanInputBridge
@@ -99,6 +107,7 @@ type Model struct {
 	replanThinkBuf          *strings.Builder
 	renderScheduled         bool
 	sessionRestoredOnce     bool
+	mcpLastLogged           map[string]string
 
 	layoutChatWidth    int
 	layoutChatHeight   int
@@ -106,10 +115,10 @@ type Model struct {
 	layoutInputHeight  int
 	layoutContentWidth int
 
-	sessionUsage     ai.TokenUsage
-	sessionCost      float64
-	turnStartUsage   ai.TokenUsage
-	turnStartCost    float64
+	sessionUsage   ai.TokenUsage
+	sessionCost    float64
+	turnStartUsage ai.TokenUsage
+	turnStartCost  float64
 
 	currentVersion string
 	updateChecker  *selfupdate.UpdateChecker
@@ -155,6 +164,7 @@ func NewModel(deps ModelDeps) Model {
 		chat:            NewChatModel(),
 		input:           NewInputModel(),
 		sidebar:         NewSidebarModel(),
+		subAgentPanel:   NewSubAgentPanel(),
 		thinkingPanel:   NewThinkingPanelModel(),
 		agentCtx:        deps.AgentCtx,
 		humanBridge:     deps.HumanBridge,
@@ -368,6 +378,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// In-place sub-agent transcript: left/esc exits back to the panel,
+		// before keybinds (esc-to-input) or focus routing can claim the key.
+		if m.chat.ViewingChild() != "" {
+			switch msg.String() {
+			case "left", "h", "esc":
+				m.chat.ExitChild()
+				m.refreshSidebarData()
+				m.setFocus(FocusSubAgents)
+				return m, nil
+			}
+		}
+
 		if action, ok := m.keybindProvider.Resolve(msg.String()); ok {
 			switch action {
 			case tuicontext.KeyActionOpenAgents:
@@ -391,6 +413,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case tuicontext.KeyActionClearChat:
 				m.chat = NewChatModel()
+				if m.agentCtx != nil {
+					m.chat.rootAgentName = m.agentCtx.Definition.Name
+				}
 				m.updateLayout()
 				return m, nil
 			case tuicontext.KeyActionOpenModels:
@@ -428,6 +453,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebar, cmd = m.sidebar.Update(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
+		case FocusSubAgents:
+			switch msg.String() {
+			case "up", "k":
+				m.subAgentPanel.MoveUp()
+			case "down", "j":
+				m.subAgentPanel.MoveDown()
+			case "enter", "right", "l", " ":
+				if it, ok := m.subAgentPanel.Selected(); ok {
+					if m.chat.EnterChild(it.CallID) {
+						m.refreshSidebarData()
+						m.setFocus(FocusChat)
+					}
+				}
+			case "left", "h", "esc":
+				m.setFocus(FocusChat)
 			}
 			return m, tea.Batch(cmds...)
 		case FocusChat:
@@ -495,6 +537,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderScheduled = false
 		m.chat.FlushRender()
 		m.thinkingPanel.FlushRender()
+		if m.subAgentPanelVisible() {
+			m.refreshSubAgentPanel()
+		}
+		return m, nil
+
+	case MCPStatusChangedMsg:
+		m.refreshSidebarData()
+		if msg.Status == string(mcp.MCPStatusError) {
+			m.logMCPError(msg.Name)
+		}
 		return m, nil
 
 	case AgentDoneMsg:
@@ -723,7 +775,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "mcp-select":
 			if msg.Value != "" {
-				active := stringsContains(m.sessionMeta.ActiveMCPServers, msg.Value)
+				active := stringsContains(m.desiredMCPNames(), msg.Value)
 				m.toggleSessionMCP(msg.Value, !active)
 				return m.openMCPSelector()
 			}
@@ -757,24 +809,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case OpenSubAgentDetailMsg:
-		innerW := m.width - 6
-		if innerW > 96 {
-			innerW = 96
+	case EnterSubAgentMsg:
+		if m.chat.EnterChild(msg.CallID) {
+			m.refreshSidebarData()
+			m.setFocus(FocusChat)
 		}
-		if innerW < 20 {
-			innerW = 20
-		}
-		content, ok := m.chat.RenderAgentTranscript(msg.CallID, innerW)
-		if !ok {
-			return m, nil
-		}
-		title := "子 Agent"
-		if msg.ToolName != "" {
-			title = msg.ToolName
-		}
-		m.dialogStack.Push(NewSubAgentDetailDialog(title, content), nil)
-		m.dialogStack.SetSize(m.width, m.height)
 		return m, nil
 
 	case clipboardCopiedMsg:
@@ -1096,10 +1135,18 @@ func (m *Model) cycleFocus() {
 	case FocusInput:
 		if m.sidebarVisible() {
 			m.setFocus(FocusSidebar)
+		} else if m.subAgentPanelVisible() {
+			m.setFocus(FocusSubAgents)
 		} else {
 			m.setFocus(FocusChat)
 		}
 	case FocusSidebar:
+		if m.subAgentPanelVisible() {
+			m.setFocus(FocusSubAgents)
+		} else {
+			m.setFocus(FocusChat)
+		}
+	case FocusSubAgents:
 		m.setFocus(FocusChat)
 	case FocusChat:
 		m.setFocus(FocusInput)
@@ -1112,8 +1159,12 @@ func (m *Model) setFocus(target FocusTarget) {
 	if target == FocusSidebar && !m.sidebarVisible() {
 		target = FocusChat
 	}
+	if target == FocusSubAgents && !m.subAgentPanelVisible() {
+		target = FocusChat
+	}
 	m.focus = target
 	m.sidebar.SetFocused(target == FocusSidebar)
+	m.subAgentPanel.SetFocused(target == FocusSubAgents)
 	m.chat.SetFocused(target == FocusChat)
 	m.input.SetEnabled(target == FocusInput)
 }
@@ -1178,23 +1229,44 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 
 	if m.mcpManager != nil {
-		for _, e := range m.mcpManager.ServerEntries() {
+		desiredMCPs := m.desiredMCPNames()
+		desiredSet := make(map[string]struct{}, len(desiredMCPs))
+		for _, name := range desiredMCPs {
+			if name == "" {
+				continue
+			}
+			desiredSet[name] = struct{}{}
+		}
+
+		entries := m.mcpManager.ServerEntries()
+		byName := make(map[string]*mcp.MCPServerEntry, len(entries))
+		for _, e := range entries {
 			if e == nil {
 				continue
 			}
-			active := false
-			for _, name := range m.sessionMeta.ActiveMCPServers {
-				if name == e.Name {
-					active = true
-					break
-				}
+			byName[strings.TrimSpace(e.Name)] = e
+		}
+
+		for _, e := range entries {
+			if e == nil {
+				continue
 			}
+			_, active := desiredSet[e.Name]
 			snap.MCPServers = append(snap.MCPServers, MCPStatusEntry{
 				Name:      e.Name,
 				Status:    string(e.Status),
 				ToolCount: e.ToolCount,
 				Active:    active,
 			})
+		}
+
+		// Active: show only desired MCPs that are connected.
+		for _, name := range desiredMCPs {
+			entry := byName[name]
+			if entry == nil || entry.Status != mcp.MCPStatusConnected {
+				continue
+			}
+			snap.ActiveMCPs = append(snap.ActiveMCPs, name)
 		}
 	}
 
@@ -1256,7 +1328,12 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 			}
 		}
 	}
-	if rootPlan != nil {
+	if childCallID := m.chat.ViewingChild(); childCallID != "" {
+		// 下钻中：只扁平化该子 agent 的整棵子树（depth 从 0 起，不对 root 去重）。
+		if childPlan := m.chat.PlanForChild(childCallID); childPlan != nil {
+			flattenPlan(childPlan, 0, false)
+		}
+	} else if rootPlan != nil {
 		flattenPlan(rootPlan, 0, true)
 		for _, orphan := range childrenByParentStep[""] {
 			flattenPlan(orphan, 1, false)
@@ -1268,7 +1345,6 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 
 	snap.ActiveSkills = m.effectiveActiveSkillNames()
-	snap.ActiveMCPs = m.sessionMeta.ActiveMCPServers
 	snap.DismissedGettingStarted = m.localProvider.Get().DismissedGettingStarted
 	snap.Workdir = m.footer.Workdir()
 
@@ -1382,7 +1458,70 @@ func (m *Model) refreshSidebarCmd() tea.Cmd {
 	return func() tea.Msg { return RefreshSidebarMsg{} }
 }
 
+// logMCPError 在某个 MCP 进入 error 状态时向 chat 写一次错误（按错误文本去重）。
+func (m *Model) logMCPError(name string) {
+	if m == nil || m.mcpManager == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+
+	errText := ""
+	for _, e := range m.mcpManager.ServerEntries() {
+		if e != nil && strings.TrimSpace(e.Name) == name {
+			errText = strings.TrimSpace(e.Error)
+			break
+		}
+	}
+
+	if m.mcpLastLogged == nil {
+		m.mcpLastLogged = make(map[string]string)
+	}
+	logKey := "error:" + errText
+	if m.mcpLastLogged[name] == logKey {
+		return
+	}
+	m.mcpLastLogged[name] = logKey
+
+	msg := fmt.Sprintf("MCP %q error (try /mcp list)", name)
+	if errText != "" {
+		msg = fmt.Sprintf("MCP %q error: %s (try /mcp list)", name, truncateOneLine(errText, 200))
+	}
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: msg}})
+}
+
 // --- Layout ---
+
+// subAgentPanelVisible reports whether the right-side sub-agent panel should
+// render: only while at least one sub-agent is still running.
+func (m *Model) subAgentPanelVisible() bool {
+	return m.chat.HasRunningSubAgents()
+}
+
+// refreshSubAgentPanel rebuilds the panel's snapshot from the current sub-agent
+// cards (timeline order), keeping live elapsed times up to date.
+func (m *Model) refreshSubAgentPanel() {
+	sums := m.chat.SubAgentSummaries()
+	items := make([]subAgentPanelItem, 0, len(sums))
+	for i := range sums {
+		sa := sums[i]
+		title := sa.AgentName
+		if title == "" {
+			title = "sub_agent"
+		}
+		items = append(items, subAgentPanelItem{
+			CallID:      sa.CallID,
+			Title:       title,
+			Description: sa.Description,
+			Status:      sa.Status,
+			Elapsed:     subAgentElapsed(&sa),
+			Running:     sa.Status == "running",
+		})
+	}
+	m.subAgentPanel.SetSnapshot(items)
+}
 
 func (m *Model) sidebarVisible() bool {
 	mode := m.localProvider.Get().SidebarMode
@@ -1531,7 +1670,12 @@ func (m *Model) updateLayout() {
 		sbWidth = sidebarWidth + 1
 	}
 
-	chatWidth := m.width - sbWidth
+	sapWidth := 0
+	if m.subAgentPanelVisible() {
+		sapWidth = subAgentPanelWidth + 1
+	}
+
+	chatWidth := m.width - sbWidth - sapWidth
 	if chatWidth < 1 {
 		chatWidth = 1
 	}
@@ -1561,6 +1705,10 @@ func (m *Model) updateLayout() {
 
 	if m.sidebarVisible() {
 		m.sidebar.SetSize(sidebarWidth, mainHeight)
+	}
+	if m.subAgentPanelVisible() {
+		m.subAgentPanel.SetSize(subAgentPanelWidth, mainHeight)
+		m.refreshSubAgentPanel()
 	}
 	m.chat.SetSize(contentWidth, chatHeight)
 	m.thinkingPanel.SetWidth(contentWidth)
@@ -1666,13 +1814,19 @@ func (m Model) View() string {
 		}
 	}
 
-	var mainArea string
-	if m.sidebarVisible() {
-		sidebarView := m.sidebar.View()
-		mainArea = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, sidebarView)
-	} else {
-		mainArea = leftPane
+	cols := []string{leftPane}
+	if m.subAgentPanelVisible() {
+		(&m).refreshSubAgentPanel()
+		if v := m.subAgentPanel.View(); v != "" {
+			cols = append(cols, v)
+		}
 	}
+	if m.sidebarVisible() {
+		if v := m.sidebar.View(); v != "" {
+			cols = append(cols, v)
+		}
+	}
+	mainArea := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	mainArea = lipgloss.NewStyle().Width(m.width).Height(mainHeight).Render(mainArea)
 
 	spinnerView := ""
@@ -1684,8 +1838,17 @@ func (m Model) View() string {
 	}
 	focusHint := ""
 	switch m.focus {
+	case FocusInput:
+		focusHint = "Tab 切换焦点"
+	case FocusSidebar:
+		focusHint = "侧栏 · ↑↓ 选择 · Tab 切换"
+	case FocusSubAgents:
+		focusHint = "子Agent · ↑↓ 选择 · Enter 进入 · Tab 切换"
 	case FocusChat:
-		focusHint = "[chat]"
+		focusHint = "聊天 · Tab 切换"
+	}
+	if m.chat.ViewingChild() != "" {
+		focusHint = "子Agent 详情 · ↑↓ 滚动 · ← 返回"
 	}
 
 	m.footer.SetModeIndicator(string(m.currentPermissionMode()))

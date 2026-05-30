@@ -87,10 +87,8 @@ type CommandPickerRequestMsg struct{}
 
 type FilePickerRequestMsg struct{}
 
-// OpenSubAgentDetailMsg requests a drill-in modal showing only the events that
-// belong to the sub-agent spawned by the tool call CallID. ToolName is the
-// spawning tool's name (sub_agent / skill), used only for the dialog title.
-type OpenSubAgentDetailMsg struct {
-	CallID   string
-	ToolName string
+// EnterSubAgentMsg requests the in-place drill-in: the chat area is replaced by
+// the transcript of the sub-agent spawned by the tool call CallID.
+type EnterSubAgentMsg struct {
+	CallID string
 }
