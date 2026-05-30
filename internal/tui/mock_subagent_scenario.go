@@ -193,6 +193,117 @@ func MockTwoSubAgentScenario() (events []MockEvent, aName, aCallID, bName, bCall
 	return events, aName, aCallID, bName, bCallID
 }
 
+// MockRealSessionScenario replays the shape of the real on-disk session
+// ~/.aster/sessions/3f9f4a89-… that surfaced the two fixed bugs, so both fixes
+// can be eyeballed in the real TUI:
+//
+//   - Bug 1 (step_result leak): the root emits step_results recon/analysis (which
+//     belong in the main timeline) while the two BACKGROUND sub-agents emit their
+//     own step_results (scan-scm/summarize for A, step-3 for B). After the fix the
+//     sub-agent step_results must NOT appear in the main timeline — they fold
+//     behind each sub-agent's card and surface only on drill-in.
+//   - Bug 2 (panel vanishes): the two sub-agents run in the background (driven by
+//     EventTypeSubAgentBgStart/End, the real async path). After the fix the panel
+//     must stay visible once both finish — showing their terminal cards — instead
+//     of disappearing the instant the last one settles.
+//
+// The call IDs / step IDs mirror the real session; the result prose is
+// anonymized (no audit-target project name). The root emits under AgentName "" —
+// the harness model's actual root identity (rootAgentName == "") — so the root's
+// own step_results correctly stay in the main timeline.
+func MockRealSessionScenario() (events []MockEvent, aName, aCallID, bName, bCallID string) {
+	// childName must be "sub-<callID>" so lookupSpawnByChild resolves the durable
+	// background card back to the parent sub_agent tool_start's call_id.
+	aCallID, aName = "call_00_4SEEmColkPUOMW2YZAYk7024", "sub-call_00_4SEEmColkPUOMW2YZAYk7024"
+	bCallID, bName = "call_00_WLXEcAiIbtJtTdlviPvb8112", "sub-call_00_WLXEcAiIbtJtTdlviPvb8112"
+
+	root := func(t react.EventType) *react.AgentOutputEvent {
+		return &react.AgentOutputEvent{Type: t, AgentName: "", Payload: map[string]any{}}
+	}
+	agent := func(name string, t react.EventType) *react.AgentOutputEvent {
+		return &react.AgentOutputEvent{Type: t, AgentName: name, Payload: map[string]any{}}
+	}
+	stream := func(ev *react.AgentOutputEvent, text string) *react.AgentOutputEvent {
+		ev.Content = text
+		return ev
+	}
+	// stepResult builds an EventTypeToolUpdate carrying a step_result card under
+	// the producing agent's name — the exact event the TUI renders and (after the
+	// fix) attributes via event.AgentName.
+	stepResult := func(ev *react.AgentOutputEvent, stepID, stepName, displayResult string) *react.AgentOutputEvent {
+		ev.Payload["presentation"] = "step_result"
+		ev.Payload["step_id"] = stepID
+		ev.Payload["step_name"] = stepName
+		ev.Payload["step_status"] = "completed"
+		ev.Payload["display_result"] = displayResult
+		return ev
+	}
+	// spawnBg is the parent's sub_agent tool_start with run_in_background=true; it
+	// registers the spawn (so the child resolves its parent) but creates no sync
+	// card — the durable card is driven by the BgStart bridge below.
+	spawnBg := func(callID, description string) *react.AgentOutputEvent {
+		ev := root(react.EventTypeToolStart)
+		ev.Payload["tool_name"] = builtin_tools.SubAgentToolName
+		ev.Payload["call_id"] = callID
+		ev.Payload["is_agent"] = true
+		ev.Payload["arguments"] = map[string]any{
+			"run_in_background": true,
+			"description":       description,
+		}
+		return ev
+	}
+	bgStart := func(childName, instruction string) *react.AgentOutputEvent {
+		ev := agent(childName, react.EventTypeSubAgentBgStart)
+		ev.Payload["agent_id"] = childName
+		ev.Payload["tool_name"] = builtin_tools.SubAgentToolName
+		ev.Payload["instruction"] = instruction
+		return ev
+	}
+	bgEnd := func(childName, status, summary string) *react.AgentOutputEvent {
+		ev := agent(childName, react.EventTypeSubAgentBgEnd)
+		ev.Payload["agent_id"] = childName
+		ev.Payload["status"] = status
+		ev.Payload["summary"] = summary
+		return ev
+	}
+
+	events = []MockEvent{
+		{"root 流式（主时间线）", stream(root(react.EventTypeStream), "先侦察项目结构与攻击面，再分批做 SAST 扫描。")},
+		{"root step_result: recon（根 → 留在主区）", stepResult(root(react.EventTypeToolUpdate),
+			"recon", "项目框架与攻击面侦察",
+			"## 侦察完成\n技术栈: Spring MVC + 企业 NC/UAP 框架；入口点: 2 Controller / 30+ Servlet / 72 Adaptor。")},
+		{"root step_result: analysis（根 → 留在主区）", stepResult(root(react.EventTypeToolUpdate),
+			"analysis", "确定审计方向与优先级",
+			"## 审计方案\nMUST: SAST 扫描 / 认证授权复核 / 敏感信息检测。分 3 模块并行扫描。")},
+
+		{"root 派生子 agent A（后台）", spawnBg(aCallID, "Semgrep 扫描 scm 等模块")},
+		{"BgStart A（面板出现 A，running）", bgStart(aName, "对 scm 模块执行 Semgrep SAST 扫描")},
+		{"root 派生子 agent B（后台）", spawnBg(bCallID, "检查系统资源并跑 hpu 模块扫描")},
+		{"BgStart B（面板出现 A、B）", bgStart(bName, "检查资源后对 hpu 模块执行扫描")},
+
+		{"A step_result: scan-scm（子 → 应折叠，不进主区）", stepResult(agent(aName, react.EventTypeToolUpdate),
+			"scan-scm", "使用 Semgrep 对 scm 模块执行 SAST 扫描",
+			"## scm 扫描完成\n输出 JSON：发现若干 SQL 注入与路径穿越候选，待人工确认。")},
+		{"A step_result: summarize（子 → 应折叠，不进主区）", stepResult(agent(aName, react.EventTypeToolUpdate),
+			"summarize", "汇总三个模块的扫描结果",
+			"## 汇总\n从各 JSON 输出文件提取 findings，按规则与严重度聚合。")},
+		{"B step_result: step-3（子 → 应折叠，不进主区）", stepResult(agent(bName, react.EventTypeToolUpdate),
+			"step-3", "检查当前系统资源并确定并发度",
+			"## 资源检查\n内存与 Load 评估完成，确定 hpu 扫描的并发度。")},
+
+		{"BgEnd A 完成（修复后面板保留 A 终态卡片）", bgEnd(aName, "completed", "scm 模块扫描完成，产出 findings JSON。")},
+		{"BgEnd B 完成（修复后面板仍在，A、B 均为终态）", bgEnd(bName, "completed", "hpu 模块扫描完成。")},
+
+		{"root 总结流式（主时间线）", stream(root(react.EventTypeStream), "两个后台子 agent 扫描完成，下面汇总发现……")},
+		{"root 结果", func() *react.AgentOutputEvent {
+			ev := root(react.EventTypeResult)
+			ev.Payload["result"] = "扫描汇总完成。"
+			return ev
+		}()},
+	}
+	return events, aName, aCallID, bName, bCallID
+}
+
 // MockMainAgentScenario scripts a pure root-agent run (no sub-agents) that mirrors
 // the shape of a real deep-analysis session: the root agent thinks, calls a couple
 // of plain tools (read_file / list_files), streams a reply, then returns a result.

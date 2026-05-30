@@ -19,6 +19,7 @@
 //
 // Run:  go run ./cmd/subagent-mock                 (two-agent demo)
 //
+//	go run ./cmd/subagent-mock -real          (replay real session: step_result-leak + panel-persistence fixes)
 //	go run ./cmd/subagent-mock -single        (single sub-agent that finishes)
 //	go run ./cmd/subagent-mock -delay 1.5s    (slow the replay down)
 package main
@@ -40,6 +41,7 @@ func main() {
 	delay := flag.Duration("delay", 900*time.Millisecond, "delay between scripted events")
 	headless := flag.Bool("headless", false, "drive the model without a TTY and exit (panic smoke check)")
 	single := flag.Bool("single", false, "use the single-sub-agent scenario instead of the two-agent demo")
+	real := flag.Bool("real", false, "replay the real on-disk session 3f9f4a89 (two background sub-agents + step_results) to review the step_result-leak and panel-persistence fixes")
 	mainAgent := flag.Bool("main", false, "use the pure root-agent scenario (no sub-agents) to inspect main-timeline attribution")
 	rootName := flag.String("root-name", "code-audit", "AgentName the root agent emits under in -main mode")
 	flag.Parse()
@@ -58,6 +60,11 @@ func main() {
 	var events []tui.MockEvent
 	var drillCallID string
 	switch {
+	case *real:
+		// Replay of the real session: two background sub-agents emit their own
+		// step_results (must fold, not leak) and finish (panel must persist).
+		// Drill into A to inspect its folded step_results.
+		events, _, drillCallID, _, _ = tui.MockRealSessionScenario()
 	case *mainAgent:
 		// Pure root-agent run; no sub-agent to drill into. The harness leaves
 		// rootAgentName == "" (no AgentCtx), so passing -root-name=code-audit
@@ -133,6 +140,28 @@ func runHeadless(model tui.Model, events []tui.MockEvent, drillCallID string) {
 		report("text", "分析结论")
 		return
 	}
+
+	// Main-timeline content check: the root's own step_results must show, while
+	// the background sub-agents' step_results must be folded out (Bug 1 fix).
+	mainView := tm.View()
+	reportMain := func(label, needle string, wantShown bool) {
+		shown := strings.Contains(mainView, needle)
+		mark := "shown"
+		if !shown {
+			mark = "MISSING"
+		}
+		ok := "OK"
+		if shown != wantShown {
+			ok = "FAIL"
+		}
+		fmt.Printf("  [%s] %-22s %q -> %s\n", ok, label, needle, mark)
+	}
+	fmt.Println("main-timeline contents (root step_results shown, sub-agent step_results folded):")
+	reportMain("root step recon", "项目框架与攻击面侦察", true)
+	reportMain("root step analysis", "确定审计方向与优先级", true)
+	reportMain("sub-A step scan-scm", "对 scm 模块执行 SAST 扫描", false)
+	reportMain("sub-A step summarize", "汇总三个模块的扫描结果", false)
+	reportMain("sub-B step step-3", "检查当前系统资源并确定并发度", false)
 
 	// Exercise the in-place drill-in render path: enter a sub-agent transcript,
 	// render, then exit back to the main timeline and render again.
