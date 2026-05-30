@@ -378,6 +378,16 @@ func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
 			}
 		}
 	}
+	// Background sub-agent cards have no backing tool part (their launcher
+	// tool call already ended); fall back to the sub-agent part's own time so
+	// elapsed is computed from when the card was created.
+	if callID != "" {
+		for i := len(m.parts) - 1; i >= 0; i-- {
+			if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
+				return m.parts[i].Time
+			}
+		}
+	}
 	return time.Now()
 }
 
@@ -435,6 +445,18 @@ func partAgentName(p DisplayPart) string {
 	case PartTypeThinking:
 		if p.Thinking != nil {
 			return p.Thinking.AgentName
+		}
+	case PartTypeStepReplan:
+		if p.StepReplan != nil {
+			return p.StepReplan.AgentName
+		}
+	case PartTypeStepSummary:
+		if p.StepSummary != nil {
+			return p.StepSummary.AgentName
+		}
+	case PartTypeFinalAnswer:
+		if p.FinalAnswer != nil {
+			return p.FinalAnswer.AgentName
 		}
 	}
 	return ""

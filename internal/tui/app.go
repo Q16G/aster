@@ -424,11 +424,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case tuicontext.KeyActionCycleFocus:
-				if !m.agentRunning {
-					m.cycleFocus()
-					return m, m.focusCmd()
-				}
-				return m, nil
+				// Allowed during a run too: inspecting sub-agents while they
+				// execute is the whole point of the panel.
+				m.cycleFocus()
+				return m, m.focusCmd()
 			case tuicontext.KeyActionEscape:
 				if m.agentRunning && m.agentCtx != nil {
 					m.agentCtx.CancelTurn()

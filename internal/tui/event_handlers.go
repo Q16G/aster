@@ -98,6 +98,20 @@ func subAgentDescription(raw any, jsonStr string) string {
 	return ""
 }
 
+// argsRunInBackground reports whether a sub_agent tool-call argument JSON sets
+// run_in_background:true.
+func argsRunInBackground(jsonStr string) bool {
+	if jsonStr == "" {
+		return false
+	}
+	var mp map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &mp); err != nil {
+		return false
+	}
+	b, _ := mp["run_in_background"].(bool)
+	return b
+}
+
 func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	if event == nil {
 		return
@@ -185,20 +199,27 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					SubScheme:    toolName == builtin_tools.SubAgentToolName,
 				}
 			}
-			m.chat.AddPart(DisplayPart{
-				Type: PartTypeSubAgent,
-				Time: time.Now(),
-				SubAgent: &SubAgentPart{
-					AgentName:   toolName,
-					CallID:      callID,
-					Status:      "running",
-					Description: subAgentDescription(event.Payload["arguments"], args),
-					StartedAt:   time.Now(),
-				},
-			})
-			// The first sub-agent card makes the right-side panel appear, which
-			// reflows the chat width — recompute the layout now.
-			m.updateLayout()
+			// A run_in_background sub_agent returns from its tool call immediately,
+			// so its tool_start/tool_end collapse to ~0 and a card created here
+			// would vanish at once. Its durable panel card is instead driven by the
+			// EventTypeSubAgentBgStart/End bridge (keyed by agent_id), so skip
+			// creating one here to avoid a duplicate flicker.
+			if !argsRunInBackground(args) {
+				m.chat.AddPart(DisplayPart{
+					Type: PartTypeSubAgent,
+					Time: time.Now(),
+					SubAgent: &SubAgentPart{
+						AgentName:   toolName,
+						CallID:      callID,
+						Status:      "running",
+						Description: subAgentDescription(event.Payload["arguments"], args),
+						StartedAt:   time.Now(),
+					},
+				})
+				// The first sub-agent card makes the right-side panel appear, which
+				// reflows the chat width — recompute the layout now.
+				m.updateLayout()
+			}
 			m.statusText = fmt.Sprintf("agent: %s", toolName)
 		} else {
 			m.statusText = fmt.Sprintf("calling %s...", toolName)
@@ -240,6 +261,61 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			display = "error: " + errStr
 		}
 		m.persistPartWithCallID("tool_end", toolName, callID, display)
+
+	case react.EventTypeSubAgentBgStart:
+		agentID, _ := event.Payload["agent_id"].(string)
+		if agentID == "" {
+			return
+		}
+		toolName, _ := event.Payload["tool_name"].(string)
+		if toolName == "" {
+			toolName = builtin_tools.SubAgentToolName
+		}
+		// Key the card by the parent launcher's call_id (same as sync sub-agents)
+		// so EnterChild / partsForChild / spawn attribution all resolve. The
+		// agent_id (childName) only embeds a truncation of that call_id.
+		cardCallID := agentID
+		if info, ok := m.chat.lookupSpawnByChild(agentID); ok {
+			cardCallID = info.CallID
+		}
+		m.chat.AddPart(DisplayPart{
+			Type: PartTypeSubAgent,
+			Time: time.Now(),
+			SubAgent: &SubAgentPart{
+				AgentName:   toolName,
+				CallID:      cardCallID,
+				Status:      "running",
+				Description: subAgentDescription(event.Payload["instruction"], ""),
+				StartedAt:   time.Now(),
+			},
+		})
+		// First background card makes the right-side panel appear; reflow width.
+		m.updateLayout()
+		m.statusText = fmt.Sprintf("agent: %s", agentID)
+
+	case react.EventTypeSubAgentBgEnd:
+		agentID, _ := event.Payload["agent_id"].(string)
+		if agentID == "" {
+			return
+		}
+		status, _ := event.Payload["status"].(string)
+		summary, _ := event.Payload["summary"].(string)
+		cardCallID := agentID
+		if info, ok := m.chat.lookupSpawnByChild(agentID); ok {
+			cardCallID = info.CallID
+		}
+		m.chat.UpdateSubAgentByCallID(cardCallID, func(sa *SubAgentPart) {
+			if status != "" {
+				sa.Status = status
+			} else {
+				sa.Status = "completed"
+			}
+			if summary != "" {
+				sa.Summary = summary
+			}
+		})
+		// A finished background sub-agent drops out of the panel; reflow width.
+		m.updateLayout()
 
 	case react.EventTypeThink:
 		m.flushStreamAndPersist(event.AgentName)
@@ -522,6 +598,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				Type: PartTypeStepSummary,
 				Time: time.Now(),
 				StepSummary: &StepSummaryPart{
+					AgentName:       event.AgentName,
 					StepID:          stepID,
 					StepName:        stepName,
 					ShortSummary:    shortSummary,
@@ -533,6 +610,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				},
 			})
 			partJSON, _ := json.Marshal(StepSummaryPart{
+				AgentName:       event.AgentName,
 				StepID:          stepID,
 				StepName:        stepName,
 				ShortSummary:    shortSummary,
@@ -559,6 +637,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.thinkingPanel.PushEntry("step_replan", "continue current plan")
 		}
 		part := StepReplanPart{
+			AgentName:    event.AgentName,
 			StepID:       stepID,
 			StepName:     stepName,
 			ShouldReplan: shouldReplan,
@@ -590,12 +669,13 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				Type: PartTypeFinalAnswer,
 				Time: time.Now(),
 				FinalAnswer: &FinalAnswerPart{
+					AgentName:  event.AgentName,
 					Content:    content,
 					Source:     source,
 					References: references,
 				},
 			})
-			m.persistPart("final_answer", source, content)
+			m.persistPartWithAgent("final_answer", source, event.AgentName, content)
 		}
 
 	case react.EventTypeStepFinish:

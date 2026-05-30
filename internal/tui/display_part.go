@@ -110,6 +110,7 @@ type StepResultPart struct {
 }
 
 type StepSummaryPart struct {
+	AgentName       string   `json:"agent_name,omitempty"`
 	StepID          string   `json:"step_id"`
 	StepName        string   `json:"step_name"`
 	ShortSummary    string   `json:"short_summary"`
@@ -121,6 +122,7 @@ type StepSummaryPart struct {
 }
 
 type StepReplanPart struct {
+	AgentName    string   `json:"agent_name,omitempty"`
 	StepID       string   `json:"step_id,omitempty"`
 	StepName     string   `json:"step_name,omitempty"`
 	ShouldReplan bool     `json:"should_replan"`
@@ -143,6 +145,7 @@ type SubAgentPart struct {
 }
 
 type FinalAnswerPart struct {
+	AgentName  string   `json:"agent_name,omitempty"`
 	Content    string   `json:"content"`
 	Source     string   `json:"source,omitempty"`
 	References []string `json:"references,omitempty"`
