@@ -179,6 +179,18 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 	}
 	registry.Register(setup.childName, instrSummary, setup.childRootDir)
 
+	// Bridge the background lifecycle to the TUI: the launcher tool's own
+	// tool_start/tool_end collapse to near-zero here (executeAsync returns
+	// immediately), so the right-side sub-agent panel would never see a running
+	// card. Emit a durable start event keyed by agent_id; the matching end event
+	// is emitted from drainAsyncAgentNotifications when the child completes.
+	t.parentAgent.emitter.EmitJSON(EventTypeSubAgentBgStart, setup.childName, map[string]any{
+		"agent_id":    setup.childName,
+		"tool_name":   builtin_tools.SubAgentToolName,
+		"instruction": instrSummary,
+		"workspace":   setup.childRootDir,
+	})
+
 	// ctx is the parent scheduler's context: child is cancelled when parent finishes or is aborted.
 	go func() {
 		var result *builtin_tools.RunResult

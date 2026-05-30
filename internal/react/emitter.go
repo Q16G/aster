@@ -36,6 +36,8 @@ const (
 	EventTypeStepSummaryResult EventType = "step_summary_result"
 	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
+	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"
+	EventTypeSubAgentBgEnd     EventType = "subagent_bg_end"
 )
 
 // AgentOutputEvent 统一的事件结构
