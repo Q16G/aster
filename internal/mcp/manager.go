@@ -33,6 +33,10 @@ type Manager struct {
 	servers   map[string]*MCPServerEntry
 	clients   map[string]mcpclient.MCPClient
 	adapters  map[string][]*ToolAdapter
+
+	// onStatusChange 在服务器状态发生运行时迁移后（锁外）被调用，
+	// 供 UI 做事件驱动刷新。在 program 启动前设置一次，无并发问题。
+	onStatusChange func(name string, status MCPServerStatus)
 }
 
 func NewManager() *Manager {
@@ -40,6 +44,18 @@ func NewManager() *Manager {
 		servers:  make(map[string]*MCPServerEntry),
 		clients:  make(map[string]mcpclient.MCPClient),
 		adapters: make(map[string][]*ToolAdapter),
+	}
+}
+
+// SetStatusChangeHandler 注册状态变更回调。需在任何 Connect/Disconnect 之前调用一次。
+func (m *Manager) SetStatusChangeHandler(fn func(name string, status MCPServerStatus)) {
+	m.onStatusChange = fn
+}
+
+// notifyStatus 必须在释放 m.mu 之后调用，避免持锁回调进 UI。
+func (m *Manager) notifyStatus(name string, status MCPServerStatus) {
+	if m.onStatusChange != nil {
+		m.onStatusChange(name, status)
 	}
 }
 
@@ -192,6 +208,7 @@ func (m *Manager) Connect(ctx context.Context, name string) ([]*ToolAdapter, err
 	entry.Error = ""
 	globalEnv := m.globalEnv
 	m.mu.Unlock()
+	m.notifyStatus(name, MCPStatusConnecting)
 
 	mergedEnv := MergeEnv(globalEnv, entry.Config.Env)
 	client, err := createClient(entry.Config, mergedEnv)
@@ -236,6 +253,7 @@ func (m *Manager) Connect(ctx context.Context, name string) ([]*ToolAdapter, err
 	entry.ToolNames = toolNames
 	entry.ConnectedAt = time.Now()
 	m.mu.Unlock()
+	m.notifyStatus(name, MCPStatusConnected)
 
 	return ads, nil
 }
@@ -248,10 +266,10 @@ func (m *Manager) GetAdapters(name string) []*ToolAdapter {
 
 func (m *Manager) Disconnect(name string) ([]string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	entry, ok := m.servers[name]
 	if !ok {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("mcp server %q not found", name)
 	}
 
@@ -268,6 +286,9 @@ func (m *Manager) Disconnect(name string) ([]string, error) {
 	entry.ToolCount = 0
 	entry.ToolNames = nil
 	entry.Error = ""
+
+	m.mu.Unlock()
+	m.notifyStatus(name, MCPStatusDisconnected)
 
 	return removedNames, nil
 }
@@ -316,26 +337,37 @@ func (m *Manager) ResidentServers() []string {
 
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	for name, client := range m.clients {
 		_ = client.Close()
 		delete(m.clients, name)
 	}
+	disconnected := make([]string, 0, len(m.servers))
 	for name, entry := range m.servers {
 		entry.Status = MCPStatusDisconnected
 		entry.ToolCount = 0
 		entry.ToolNames = nil
 		delete(m.adapters, name)
+		disconnected = append(disconnected, name)
+	}
+	m.mu.Unlock()
+
+	for _, name := range disconnected {
+		m.notifyStatus(name, MCPStatusDisconnected)
 	}
 }
 
 func (m *Manager) setError(name string, err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if entry, ok := m.servers[name]; ok {
+	_, ok := m.servers[name]
+	if ok {
+		entry := m.servers[name]
 		entry.Status = MCPStatusError
 		entry.Error = err.Error()
+	}
+	m.mu.Unlock()
+	if ok {
+		m.notifyStatus(name, MCPStatusError)
 	}
 }
 
