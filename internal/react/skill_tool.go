@@ -116,7 +116,7 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 	if callID == "" {
 		callID = generateRandomString(8)
 	}
-	childName := fmt.Sprintf("skill-%s-%s", info.Name, truncateID(callID, 6))
+	childName := fmt.Sprintf("skill-%s-%s", info.Name, childAgentToken(callID))
 
 	childDef := AgentDefinition{
 		Name:        childName,
