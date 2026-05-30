@@ -21,7 +21,16 @@ import (
 const (
 	defaultConnectTimeout  = 30 * time.Second
 	defaultResponseTimeout = 30 * time.Second
+	maxReconnectAttempts   = 3
+	pingTimeout            = 5 * time.Second
 )
+
+// reconnectBackoffs 控制重连重试的退避节奏，长度须等于 maxReconnectAttempts。
+var reconnectBackoffs = []time.Duration{
+	200 * time.Millisecond,
+	500 * time.Millisecond,
+	time.Second,
+}
 
 type WarningEmitter interface {
 	EmitWarning(message string)
@@ -34,6 +43,14 @@ type Manager struct {
 	clients   map[string]mcpclient.MCPClient
 	adapters  map[string][]*ToolAdapter
 
+	// generations 记录每个 server 的连接代次，每次成功建立连接自增，
+	// 供 CallTool/reconnect 做并发去重（避免对同一断链重复重启进程）。
+	generations map[string]uint64
+	// reconnectLocks 为每个 server 提供一把重连串行锁。
+	reconnectLocks map[string]*sync.Mutex
+	// newClientFn 默认指向 createClient，测试可注入以替换底层 client 构造。
+	newClientFn func(cfg *MCPServerConfig, env map[string]string) (mcpclient.MCPClient, error)
+
 	// onStatusChange 在服务器状态发生运行时迁移后（锁外）被调用，
 	// 供 UI 做事件驱动刷新。在 program 启动前设置一次，无并发问题。
 	onStatusChange func(name string, status MCPServerStatus)
@@ -41,9 +58,12 @@ type Manager struct {
 
 func NewManager() *Manager {
 	return &Manager{
-		servers:  make(map[string]*MCPServerEntry),
-		clients:  make(map[string]mcpclient.MCPClient),
-		adapters: make(map[string][]*ToolAdapter),
+		servers:        make(map[string]*MCPServerEntry),
+		clients:        make(map[string]mcpclient.MCPClient),
+		adapters:       make(map[string][]*ToolAdapter),
+		generations:    make(map[string]uint64),
+		reconnectLocks: make(map[string]*sync.Mutex),
+		newClientFn:    createClient,
 	}
 }
 
@@ -97,48 +117,16 @@ func (m *Manager) LoadFromConfigWithProbe(ctx context.Context, cfg *Config, emit
 			defer wg.Done()
 
 			mergedEnv := MergeEnv(cfg.GlobalEnv, serverCfg.Env)
-			timeout := serverTimeout(serverCfg)
 
-			probeCtx, cancel := context.WithTimeout(ctx, timeout)
+			probeCtx, cancel := context.WithTimeout(ctx, serverTimeout(serverCfg))
 			defer cancel()
 
-			client, err := createClient(serverCfg, mergedEnv)
+			client, ads, toolNames, err := m.establish(probeCtx, name, serverCfg, mergedEnv)
 			if err != nil {
 				mu.Lock()
 				warns = append(warns, fmt.Sprintf("MCP Server %q 不可用，已跳过: %s", name, err))
 				mu.Unlock()
 				return
-			}
-
-			initReq := mcpprotocol.InitializeRequest{}
-			initReq.Params.ProtocolVersion = mcpprotocol.LATEST_PROTOCOL_VERSION
-			initReq.Params.ClientInfo = mcpprotocol.Implementation{
-				Name:    "aster",
-				Version: "1.0.0",
-			}
-			if _, err := client.Initialize(probeCtx, initReq); err != nil {
-				_ = client.Close()
-				mu.Lock()
-				warns = append(warns, fmt.Sprintf("MCP Server %q Initialize 失败，已跳过: %s", name, err))
-				mu.Unlock()
-				return
-			}
-
-			toolsResult, err := client.ListTools(probeCtx, mcpprotocol.ListToolsRequest{})
-			if err != nil {
-				_ = client.Close()
-				mu.Lock()
-				warns = append(warns, fmt.Sprintf("MCP Server %q ListTools 失败，已跳过: %s", name, err))
-				mu.Unlock()
-				return
-			}
-
-			ads := make([]*ToolAdapter, 0, len(toolsResult.Tools))
-			toolNames := make([]string, 0, len(toolsResult.Tools))
-			for _, t := range toolsResult.Tools {
-				adapter := NewToolAdapter(name, t, client)
-				ads = append(ads, adapter)
-				toolNames = append(toolNames, adapter.Name())
 			}
 
 			mu.Lock()
@@ -167,6 +155,7 @@ func (m *Manager) LoadFromConfigWithProbe(ctx context.Context, cfg *Config, emit
 	for _, r := range results {
 		m.clients[r.name] = r.client
 		m.adapters[r.name] = r.ads
+		m.generations[r.name]++
 		m.servers[r.name] = &MCPServerEntry{
 			Name:        r.name,
 			Config:      r.cfg,
@@ -211,43 +200,16 @@ func (m *Manager) Connect(ctx context.Context, name string) ([]*ToolAdapter, err
 	m.notifyStatus(name, MCPStatusConnecting)
 
 	mergedEnv := MergeEnv(globalEnv, entry.Config.Env)
-	client, err := createClient(entry.Config, mergedEnv)
+	client, ads, toolNames, err := m.establish(ctx, name, entry.Config, mergedEnv)
 	if err != nil {
 		m.setError(name, err)
-		return nil, fmt.Errorf("create mcp client %q: %w", name, err)
-	}
-
-	initReq := mcpprotocol.InitializeRequest{}
-	initReq.Params.ProtocolVersion = mcpprotocol.LATEST_PROTOCOL_VERSION
-	initReq.Params.ClientInfo = mcpprotocol.Implementation{
-		Name:    "aster",
-		Version: "1.0.0",
-	}
-
-	if _, err := client.Initialize(ctx, initReq); err != nil {
-		_ = client.Close()
-		m.setError(name, err)
-		return nil, fmt.Errorf("initialize mcp %q: %w", name, err)
-	}
-
-	toolsResult, err := client.ListTools(ctx, mcpprotocol.ListToolsRequest{})
-	if err != nil {
-		_ = client.Close()
-		m.setError(name, err)
-		return nil, fmt.Errorf("list tools from mcp %q: %w", name, err)
-	}
-
-	ads := make([]*ToolAdapter, 0, len(toolsResult.Tools))
-	toolNames := make([]string, 0, len(toolsResult.Tools))
-	for _, t := range toolsResult.Tools {
-		adapter := NewToolAdapter(name, t, client)
-		ads = append(ads, adapter)
-		toolNames = append(toolNames, adapter.Name())
+		return nil, fmt.Errorf("connect mcp %q: %w", name, err)
 	}
 
 	m.mu.Lock()
 	m.clients[name] = client
 	m.adapters[name] = ads
+	m.generations[name]++
 	entry.Status = MCPStatusConnected
 	entry.ToolCount = len(ads)
 	entry.ToolNames = toolNames
@@ -256,6 +218,168 @@ func (m *Manager) Connect(ctx context.Context, name string) ([]*ToolAdapter, err
 	m.notifyStatus(name, MCPStatusConnected)
 
 	return ads, nil
+}
+
+// establish 执行一次完整握手：构造 client -> Initialize -> ListTools -> 构建 adapters。
+// 仅负责建立连接与生成 adapter，不写入 Manager 的任何状态 map，由调用方决定如何存储。
+// 失败时内部已关闭 client。adapter 以 m 作为 toolCaller，断线重连后透明切换底层连接。
+func (m *Manager) establish(ctx context.Context, name string, cfg *MCPServerConfig, env map[string]string) (mcpclient.MCPClient, []*ToolAdapter, []string, error) {
+	client, err := m.newClientFn(cfg, env)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	initReq := mcpprotocol.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcpprotocol.LATEST_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcpprotocol.Implementation{
+		Name:    "aster",
+		Version: "1.0.0",
+	}
+	if _, err := client.Initialize(ctx, initReq); err != nil {
+		_ = client.Close()
+		return nil, nil, nil, fmt.Errorf("initialize: %w", err)
+	}
+
+	toolsResult, err := client.ListTools(ctx, mcpprotocol.ListToolsRequest{})
+	if err != nil {
+		_ = client.Close()
+		return nil, nil, nil, fmt.Errorf("list tools: %w", err)
+	}
+
+	ads := make([]*ToolAdapter, 0, len(toolsResult.Tools))
+	toolNames := make([]string, 0, len(toolsResult.Tools))
+	for _, t := range toolsResult.Tools {
+		adapter := NewToolAdapter(name, t, m)
+		ads = append(ads, adapter)
+		toolNames = append(toolNames, adapter.Name())
+	}
+	return client, ads, toolNames, nil
+}
+
+// CallTool 在调用时解析实时连接并代发 CallTool，是 ToolAdapter 的 toolCaller 实现。
+// 调用前先 Ping 探活，断链时按退避策略自动重连并重试，对上层透明。
+func (m *Manager) CallTool(ctx context.Context, serverName string, req mcpprotocol.CallToolRequest) (*mcpprotocol.CallToolResult, error) {
+	client, gen, ok := m.snapshotClient(serverName)
+	if !ok {
+		if _, err := m.Connect(ctx, serverName); err != nil {
+			return nil, err
+		}
+		client, gen, ok = m.snapshotClient(serverName)
+		if !ok {
+			return nil, fmt.Errorf("mcp server %q not connected", serverName)
+		}
+	}
+
+	// 调用前健康探测：Ping 失败且非用户取消时先重连，拿到可用连接再调用。
+	if err := m.pingClient(ctx, client); err != nil && ctx.Err() == nil {
+		if nc, ng, rerr := m.reconnect(ctx, serverName, gen); rerr == nil {
+			client, gen = nc, ng
+		}
+	}
+
+	result, err := client.CallTool(ctx, req)
+	if err == nil {
+		return result, nil
+	}
+
+	// 传输/协议层失败（业务错误经 result.IsError 返回，不会到这里）且非用户取消/超时：
+	// 退避重连并重试；ctx 被取消则立即中止，避免反复重启进程。
+	for attempt := 0; attempt < maxReconnectAttempts && ctx.Err() == nil; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(reconnectBackoffs[attempt]):
+		}
+
+		nc, ng, rerr := m.reconnect(ctx, serverName, gen)
+		if rerr != nil {
+			continue
+		}
+		client, gen = nc, ng
+
+		result, err = client.CallTool(ctx, req)
+		if err == nil {
+			return result, nil
+		}
+	}
+	return nil, err
+}
+
+func (m *Manager) pingClient(ctx context.Context, client mcpclient.MCPClient) error {
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	return client.Ping(pingCtx)
+}
+
+func (m *Manager) snapshotClient(name string) (mcpclient.MCPClient, uint64, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	client, ok := m.clients[name]
+	if !ok {
+		return nil, 0, false
+	}
+	return client, m.generations[name], true
+}
+
+func (m *Manager) reconnectLock(name string) *sync.Mutex {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	lk, ok := m.reconnectLocks[name]
+	if !ok {
+		lk = &sync.Mutex{}
+		m.reconnectLocks[name] = lk
+	}
+	return lk
+}
+
+// reconnect 串行重建指定 server 的连接并返回新 client 与代次。
+// 进锁后若发现代次已变化（其他并发者已重连），直接复用其结果以去重。
+func (m *Manager) reconnect(ctx context.Context, name string, observedGen uint64) (mcpclient.MCPClient, uint64, error) {
+	lk := m.reconnectLock(name)
+	lk.Lock()
+	defer lk.Unlock()
+
+	if client, gen, ok := m.snapshotClient(name); ok && gen != observedGen {
+		return client, gen, nil
+	}
+
+	m.mu.Lock()
+	entry, ok := m.servers[name]
+	if !ok {
+		m.mu.Unlock()
+		return nil, 0, fmt.Errorf("mcp server %q not found", name)
+	}
+	cfg := entry.Config
+	globalEnv := m.globalEnv
+	if old, ok := m.clients[name]; ok {
+		_ = old.Close()
+		delete(m.clients, name)
+	}
+	m.mu.Unlock()
+
+	mergedEnv := MergeEnv(globalEnv, cfg.Env)
+	rctx, cancel := context.WithTimeout(ctx, serverTimeout(cfg))
+	defer cancel()
+
+	client, ads, toolNames, err := m.establish(rctx, name, cfg, mergedEnv)
+	if err != nil {
+		m.setError(name, err)
+		return nil, 0, fmt.Errorf("reconnect mcp %q: %w", name, err)
+	}
+
+	m.mu.Lock()
+	m.clients[name] = client
+	m.adapters[name] = ads
+	m.generations[name]++
+	gen := m.generations[name]
+	entry.Status = MCPStatusConnected
+	entry.ToolCount = len(ads)
+	entry.ToolNames = toolNames
+	entry.ConnectedAt = time.Now()
+	m.mu.Unlock()
+	m.notifyStatus(name, MCPStatusConnected)
+
+	return client, gen, nil
 }
 
 func (m *Manager) GetAdapters(name string) []*ToolAdapter {
