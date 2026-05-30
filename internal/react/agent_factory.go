@@ -163,16 +163,20 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 		return nil, fmt.Errorf("build agent %q failed: %w", def.Name, err)
 	}
 
-	if err := agent.registerTool(NewSubAgentTool(agent, f)); err != nil {
-		return nil, fmt.Errorf("register sub_agent tool for %q failed: %w", def.Name, err)
-	}
+	// Orchestration tools are only registered for non-sub-agents. Sub-agents
+	// (depth>0) must neither register nor expose these in their prompt.
+	if !def.IsSubAgent {
+		if err := agent.registerTool(NewSubAgentTool(agent, f)); err != nil {
+			return nil, fmt.Errorf("register sub_agent tool for %q failed: %w", def.Name, err)
+		}
 
-	if err := agent.registerTool(NewSubAgentStatusTool(agent)); err != nil {
-		return nil, fmt.Errorf("register sub_agent_status tool for %q failed: %w", def.Name, err)
-	}
+		if err := agent.registerTool(NewSubAgentStatusTool(agent)); err != nil {
+			return nil, fmt.Errorf("register sub_agent_status tool for %q failed: %w", def.Name, err)
+		}
 
-	if err := agent.registerTool(NewAwaitSubAgentsTool(agent)); err != nil {
-		return nil, fmt.Errorf("register await_subagents tool for %q failed: %w", def.Name, err)
+		if err := agent.registerTool(NewAwaitSubAgentsTool(agent)); err != nil {
+			return nil, fmt.Errorf("register await_subagents tool for %q failed: %w", def.Name, err)
+		}
 	}
 
 	if f.skillLookup != nil {

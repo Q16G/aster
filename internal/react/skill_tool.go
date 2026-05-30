@@ -122,6 +122,7 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 		Name:        childName,
 		Instruction: body,
 		ToolNames:   t.resolveToolNames(info.AllowedTools),
+		IsSubAgent:  true,
 		Policies: AgentPolicies{
 			MaxIterations: defaultSubAgentMaxIter,
 		},

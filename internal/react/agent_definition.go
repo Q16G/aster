@@ -18,6 +18,10 @@ type AgentDefinition struct {
 	MCPServers      []*mcp.MCPServerConfig
 	Policies        AgentPolicies
 	Context         []TaskContextEntry
+	// IsSubAgent marks a definition built for a depth>0 child agent. Sub-agents
+	// must not register or expose the orchestration tools (sub_agent /
+	// sub_agent_status / await_subagents).
+	IsSubAgent bool
 }
 
 // AgentPolicies controls runtime behavior boundaries.
