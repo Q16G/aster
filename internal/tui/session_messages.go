@@ -347,8 +347,9 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					Type: PartTypeFinalAnswer,
 					Time: rp.Time,
 					FinalAnswer: &FinalAnswerPart{
-						Content: rp.Content,
-						Source:  rp.Name,
+						AgentName: rp.AgentName,
+						Content:   rp.Content,
+						Source:    rp.Name,
 					},
 				})
 			}
