@@ -492,6 +492,8 @@ func TestParentDomainToolNames_ExcludesInheritanceBlocked(t *testing.T) {
 	for _, blocked := range []string{
 		builtin_tools.BashToolName,
 		builtin_tools.SubAgentToolName,
+		builtin_tools.SubAgentStatusToolName,
+		builtin_tools.AwaitSubAgentsToolName,
 		builtin_tools.UpdateCurrentStepToolName,
 		builtin_tools.TaskStatusQueryToolName,
 		builtin_tools.HumanConfirmToolName,
@@ -503,6 +505,15 @@ func TestParentDomainToolNames_ExcludesInheritanceBlocked(t *testing.T) {
 		if slices.Contains(names, blocked) {
 			t.Errorf("parentDomainToolNames should not contain %q, got %v", blocked, names)
 		}
+	}
+}
+
+func TestAwaitSubAgentsTool_ExcludedFromInheritanceMaps(t *testing.T) {
+	if !excludeFromInheritance[builtin_tools.AwaitSubAgentsToolName] {
+		t.Error("await_subagents must be in excludeFromInheritance")
+	}
+	if !policyManagedTools[builtin_tools.AwaitSubAgentsToolName] {
+		t.Error("await_subagents must be in policyManagedTools")
 	}
 }
 

@@ -44,6 +44,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	}
 
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
+	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
 		AgentRole:               strings.TrimSpace(a.cfg.Role),
@@ -70,6 +71,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
 		SupportsVision:          supportsVision,
+		CanSpawnSubAgent:        canSpawnSubAgent,
 	})
 	if err == nil {
 		return prompt
@@ -80,6 +82,21 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		return strings.TrimSpace(a.cfg.Instruction)
 	}
 	return fmt.Sprintf("%s\n\n运行时状态：\n%s", strings.TrimSpace(a.cfg.Instruction), fallbackState)
+}
+
+// canSpawnSubAgent reports whether this agent can actually delegate to sub_agent.
+// True only when the sub_agent tool is registered AND the agent is not itself a
+// sub-agent. The sub_agent tool is registered for every agent but is disabled at
+// runtime for stack_depth>0 (see sub_agent_tool.go), so registration alone is not
+// a reliable signal; we mirror the same stack-depth gate via the tool runtime.
+func (a *Agent) canSpawnSubAgent(ctx context.Context) bool {
+	if _, ok := a.GetTool(builtin_tools.SubAgentToolName); !ok {
+		return false
+	}
+	if rt, ok := builtin_tools.GetToolRuntime(ctx); ok && rt.StackDepth > 0 {
+		return false
+	}
+	return true
 }
 
 func latestStepOutcome(outcomes []*builtin_tools.StepOutcome) *builtin_tools.StepOutcome {

@@ -171,6 +171,10 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 		return nil, fmt.Errorf("register sub_agent_status tool for %q failed: %w", def.Name, err)
 	}
 
+	if err := agent.registerTool(NewAwaitSubAgentsTool(agent)); err != nil {
+		return nil, fmt.Errorf("register await_subagents tool for %q failed: %w", def.Name, err)
+	}
+
 	if f.skillLookup != nil {
 		if err := agent.registerTool(NewSkillTool(agent, f, f.skillLookup)); err != nil {
 			return nil, fmt.Errorf("register skill tool for %q failed: %w", def.Name, err)

@@ -67,6 +67,11 @@ type Agent struct {
 
 	asyncRegistry *AsyncAgentRegistry
 
+	// awaitBackgroundRequested 由 await_subagents 工具置位，调度循环读到后会在
+	// 非终态时 park 等待后台子 Agent 完成（等待期间零模型调用），随后无条件清除。
+	// 仅在调度 goroutine 上读写，无并发问题。
+	awaitBackgroundRequested bool
+
 	// resumeChildRecovery 是一个瞬态标记：仅在 resume 回合置位（ContextCarry/ContextReplan/FullResume），
 	// 表示「这是一次恢复」。它只是注入中断点子 agent 现场的必要条件——是否真注入由 runPlanPhase
 	// 计算的「存在 ParentStepKey 未综合进 step_outcome 的 child_agent」条件决定。判定一次后即清。

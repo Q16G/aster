@@ -1,6 +1,7 @@
 package react
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,10 @@ type AsyncAgentRegistry struct {
 	mu            sync.RWMutex
 	agents        map[string]*AsyncAgentEntry
 	notifications chan *AsyncAgentNotification
+	// completed is a coalescing wake signal (cap=1). Complete() pushes a
+	// non-blocking token so the scheduler loop can park on WaitForCompletion
+	// and wake immediately when any background sub-agent finishes.
+	completed chan struct{}
 }
 
 type AsyncAgentEntry struct {
@@ -42,6 +47,7 @@ func NewAsyncAgentRegistry() *AsyncAgentRegistry {
 	return &AsyncAgentRegistry{
 		agents:        make(map[string]*AsyncAgentEntry),
 		notifications: make(chan *AsyncAgentNotification, 64),
+		completed:     make(chan struct{}, 1),
 	}
 }
 
@@ -92,6 +98,31 @@ func (r *AsyncAgentRegistry) Complete(agentID string, result *builtin_tools.RunR
 			"agent_id": agentID,
 			"reason":   "channel full",
 		})
+	}
+
+	// Coalescing kick: wake any scheduler loop parked on WaitForCompletion.
+	// cap=1 + non-blocking means multiple concurrent completions need only one
+	// token to wake the loop, which then drains all pending notifications.
+	select {
+	case r.completed <- struct{}{}:
+	default:
+	}
+}
+
+// WaitForCompletion blocks until any background sub-agent completes, the
+// maxWait timer fires, or ctx is cancelled. Returns immediately if no agents
+// are currently running. Consumes at most one coalesced wake token per call;
+// the scheduler loop drains the actual notifications on its next iteration.
+func (r *AsyncAgentRegistry) WaitForCompletion(ctx context.Context, maxWait time.Duration) {
+	if r == nil || !r.HasRunning() {
+		return
+	}
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+	select {
+	case <-r.completed:
+	case <-timer.C:
+	case <-ctx.Done():
 	}
 }
 
@@ -199,6 +230,12 @@ func (r *AsyncAgentRegistry) Reset() {
 		select {
 		case <-r.notifications:
 		default:
+			// Drain the coalesced wake token too, so a stale completion from a
+			// previous turn does not immediately un-park the next turn's wait.
+			select {
+			case <-r.completed:
+			default:
+			}
 			return
 		}
 	}

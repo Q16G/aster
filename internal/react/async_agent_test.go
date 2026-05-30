@@ -1,12 +1,118 @@
 package react
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"aster/internal/builtin_tools"
 )
+
+func TestAsyncAgentRegistry_WaitForCompletion_NoRunningReturnsImmediately(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	start := time.Now()
+	r.WaitForCompletion(context.Background(), time.Hour)
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("WaitForCompletion should return immediately with no running agents, took %s", elapsed)
+	}
+}
+
+func TestAsyncAgentRegistry_WaitForCompletion_WakesOnComplete(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws")
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		r.Complete("bg", &builtin_tools.RunResult{Success: true, Result: "done"})
+	}()
+
+	start := time.Now()
+	r.WaitForCompletion(context.Background(), 5*time.Second)
+	elapsed := time.Since(start)
+	if elapsed < 40*time.Millisecond {
+		t.Fatalf("WaitForCompletion returned too early (%s), should wait for completion", elapsed)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("WaitForCompletion did not wake on completion, took %s", elapsed)
+	}
+}
+
+func TestAsyncAgentRegistry_WaitForCompletion_TimeoutBranch(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws") // never completes
+
+	start := time.Now()
+	r.WaitForCompletion(context.Background(), 80*time.Millisecond)
+	elapsed := time.Since(start)
+	if elapsed < 70*time.Millisecond {
+		t.Fatalf("WaitForCompletion returned before timeout, took %s", elapsed)
+	}
+	if elapsed > 1*time.Second {
+		t.Fatalf("WaitForCompletion overran timeout, took %s", elapsed)
+	}
+}
+
+func TestAsyncAgentRegistry_WaitForCompletion_CtxCancelBranch(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws") // never completes
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	r.WaitForCompletion(ctx, 5*time.Second)
+	elapsed := time.Since(start)
+	if elapsed > 2*time.Second {
+		t.Fatalf("WaitForCompletion did not wake on ctx cancel, took %s", elapsed)
+	}
+}
+
+func TestAsyncAgentRegistry_WaitForCompletion_OneKickForManyCompletions(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	for i := 0; i < 5; i++ {
+		r.Register(fmt.Sprintf("bg-%d", i), "task", "/tmp/ws")
+	}
+
+	// Complete several agents before anyone waits; the coalescing cap=1 channel
+	// holds a single token, which is enough to wake one parked waiter.
+	for i := 0; i < 5; i++ {
+		r.Complete(fmt.Sprintf("bg-%d", i), &builtin_tools.RunResult{Success: true})
+	}
+	// drain notifications so they don't fill up (not strictly required here)
+	for i := 0; i < 5; i++ {
+		select {
+		case <-r.notifications:
+		default:
+		}
+	}
+
+	start := time.Now()
+	r.WaitForCompletion(context.Background(), 5*time.Second)
+	if elapsed := time.Since(start); elapsed > 1*time.Second {
+		// HasRunning is false now (all completed), so it should return immediately.
+		t.Fatalf("WaitForCompletion should return promptly when nothing is running, took %s", elapsed)
+	}
+}
+
+func TestAsyncAgentRegistry_ResetDrainsCompletedToken(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws")
+	r.Complete("bg", &builtin_tools.RunResult{Success: true})
+	// completed token is now buffered
+
+	r.Reset()
+
+	select {
+	case <-r.completed:
+		t.Fatal("completed channel should be drained after Reset")
+	default:
+	}
+}
 
 func TestAsyncAgentRegistry_PurgeDelivered(t *testing.T) {
 	r := NewAsyncAgentRegistry()
