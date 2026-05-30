@@ -309,6 +309,147 @@ func TestHandleAgentEventTaskItemUpdatesCorrectAgentPlan(t *testing.T) {
 	}
 }
 
+// TestSubAgentPhaseEventsDoNotLeakIntoMainArea verifies the fix for sub-agent
+// step_replan / thinking / final_answer leaking into the main agent's runtime
+// panel and status line. Sub-agent phase activity must only produce parts
+// attributed to that sub-agent (collapsed behind its card); it must NOT touch
+// the global thinkingPanel, runtimePhase, statusText, or hadFinalAnswerDuringRun.
+func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "code-audit"},
+		},
+	})
+	const sub = "sub-call_99abc"
+	m.statusText = "ready-sentinel"
+
+	// 1. Sub-agent enters final_answer phase — must not drive the main panel.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeStateChange,
+		AgentName: sub,
+		Payload:   map[string]any{"phase": "final_answer"},
+	})
+	if m.runtimePhase != "" {
+		t.Fatalf("sub-agent StateChange must not set runtimePhase, got %q", m.runtimePhase)
+	}
+	if m.thinkingPanel.visible {
+		t.Fatal("sub-agent StateChange must not show the main thinking panel")
+	}
+	if m.statusText != "ready-sentinel" {
+		t.Fatalf("sub-agent StateChange must not overwrite statusText, got %q", m.statusText)
+	}
+
+	// 2. Sub-agent thinking — must go to its own buffer, not the panel.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeThink,
+		AgentName: sub,
+		GroupID:   "g-sub-1",
+		Payload:   map[string]any{"think_content": "子agent内部推理片段"},
+	})
+	if len(m.thinkingPanel.entries) != 0 {
+		t.Fatalf("sub-agent thinking must not push panel entries, got %d", len(m.thinkingPanel.entries))
+	}
+	if m.statusText != "ready-sentinel" {
+		t.Fatalf("sub-agent thinking must not overwrite statusText, got %q", m.statusText)
+	}
+
+	// 3. Sub-agent step_replan result — part attributed, no panel entry.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeStepReplanResult,
+		AgentName: sub,
+		Payload: map[string]any{
+			"step_id":       "s-1",
+			"should_replan": true,
+			"replan_reason": "子agent需要补一轮验证",
+		},
+	})
+	if len(m.thinkingPanel.entries) != 0 {
+		t.Fatalf("sub-agent step_replan must not push panel entries, got %d", len(m.thinkingPanel.entries))
+	}
+
+	// 4. Sub-agent final_answer result — must not set the root's run flag.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeFinalAnswerResult,
+		AgentName: sub,
+		Payload:   map[string]any{"content": "子agent的最终答案", "source": "sub_final"},
+	})
+	if m.hadFinalAnswerDuringRun {
+		t.Fatal("sub-agent final_answer must not set hadFinalAnswerDuringRun")
+	}
+	if m.thinkingPanel.visible || len(m.thinkingPanel.entries) != 0 {
+		t.Fatalf("sub-agent final_answer must not touch the panel (visible=%v entries=%d)", m.thinkingPanel.visible, len(m.thinkingPanel.entries))
+	}
+
+	// The sub-agent's thinking, replan and final_answer must exist as parts
+	// attributed to the sub-agent (so they render behind its card / drill-in),
+	// and must NOT be attributed to the root agent.
+	m.chat.FlushThinking()
+	var sawSubThinking, sawSubReplan, sawSubFinal bool
+	for _, p := range m.chat.Parts() {
+		if name := partAgentName(p); name != "" && name != sub {
+			t.Fatalf("unexpected part attributed to %q (expected only sub-agent or root): %+v", name, p)
+		}
+		switch p.Type {
+		case PartTypeThinking:
+			if p.Thinking != nil && p.Thinking.AgentName == sub && strings.Contains(p.Thinking.Content, "子agent内部推理片段") {
+				sawSubThinking = true
+			}
+		case PartTypeStepReplan:
+			if p.StepReplan != nil && p.StepReplan.AgentName == sub {
+				sawSubReplan = true
+			}
+		case PartTypeFinalAnswer:
+			if p.FinalAnswer != nil && p.FinalAnswer.AgentName == sub {
+				sawSubFinal = true
+			}
+		}
+	}
+	if !sawSubThinking {
+		t.Error("expected sub-agent thinking part attributed to the sub-agent")
+	}
+	if !sawSubReplan {
+		t.Error("expected sub-agent step_replan part attributed to the sub-agent")
+	}
+	if !sawSubFinal {
+		t.Error("expected sub-agent final_answer part attributed to the sub-agent")
+	}
+}
+
+// TestRootPhaseEventsStillDriveMainPanel is the control case for
+// TestSubAgentPhaseEventsDoNotLeakIntoMainArea: the root agent's phase events
+// must continue to drive the global panel, status line, and run flag.
+func TestRootPhaseEventsStillDriveMainPanel(t *testing.T) {
+	m := NewModel(ModelDeps{
+		AgentCtx: &AgentExecContext{
+			Definition: react.AgentDefinition{Name: "code-audit"},
+		},
+	})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeStateChange,
+		AgentName: "code-audit",
+		Payload:   map[string]any{"phase": "step_replan"},
+	})
+	if m.runtimePhase != "step_replan" {
+		t.Fatalf("expected root runtimePhase=step_replan, got %q", m.runtimePhase)
+	}
+	if !m.thinkingPanel.visible {
+		t.Fatal("expected root step_replan to show the thinking panel")
+	}
+	if m.statusText != "evaluating plan..." {
+		t.Fatalf("expected root step_replan status text, got %q", m.statusText)
+	}
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeFinalAnswerResult,
+		AgentName: "code-audit",
+		Payload:   map[string]any{"content": "最终答案", "source": "final"},
+	})
+	if !m.hadFinalAnswerDuringRun {
+		t.Fatal("expected root final_answer to set hadFinalAnswerDuringRun")
+	}
+}
+
 func TestBuildSidebarSnapshotHierarchicalPlan(t *testing.T) {
 	m := NewModel(ModelDeps{
 		AgentCtx: &AgentExecContext{
