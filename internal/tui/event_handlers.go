@@ -116,6 +116,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	if event == nil {
 		return
 	}
+	// Only the root agent drives global UI state (thinking panel, runtime phase,
+	// status line). Sub-agent phase activity (think/replan/summary/final_answer)
+	// stays attributed to its own card and must not leak into the main area.
+	isRoot := m.chat.isRootAgent(event.AgentName)
 	switch event.Type {
 	case react.EventTypeStream,
 		react.EventTypeResult,
@@ -320,10 +324,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeThink:
 		m.flushStreamAndPersist(event.AgentName)
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
-			if m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer" {
+			if isRoot && (m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer") {
 				m.replanThinkBuf.WriteString(thinkDelta)
 				m.thinkingPanel.UpdateLastEntry(m.runtimePhase, formatStepReplanPanelText(m.replanThinkBuf.String()))
-			} else if m.isStructuredOutputPhase() {
+			} else if isRoot && m.isStructuredOutputPhase() {
 				m.thinkingPanel.UpdateLastEntry("thinking", "thinking...")
 			} else {
 				groupID := strings.TrimSpace(event.GroupID)
@@ -334,17 +338,26 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID)
 			}
 		}
-		m.statusText = "thinking..."
+		if isRoot {
+			m.statusText = "thinking..."
+		}
 
 	case react.EventTypeIteration:
 		m.flushStreamAndPersist(event.AgentName)
-		current := payloadInt(event.Payload, "current")
-		max := payloadInt(event.Payload, "max")
-		iterText := fmt.Sprintf("iteration %d/%d", current, max)
-		m.statusText = iterText
-		m.thinkingPanel.PushEntry("iteration", iterText)
+		if isRoot {
+			current := payloadInt(event.Payload, "current")
+			max := payloadInt(event.Payload, "max")
+			iterText := fmt.Sprintf("iteration %d/%d", current, max)
+			m.statusText = iterText
+			m.thinkingPanel.PushEntry("iteration", iterText)
+		}
 
 	case react.EventTypeStateChange:
+		if !isRoot {
+			// Sub-agent phase/progress changes must not overwrite the main
+			// agent's runtime panel, status line, or sidebar.
+			break
+		}
 		m.externalInterrupt = payloadExternalInterrupt(event.Payload)
 		statusSummary := strings.TrimSpace(payloadString(event.Payload, "status_summary"))
 		if statusSummary != "" {
@@ -580,9 +593,11 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		// handled by HumanInputBridge
 
 	case react.EventTypeStepSummaryResult:
-		m.thinkingPanel.PushEntry("step_summary", "step summary completed")
-		m.thinkingPanel.Hide()
-		m.updateLayout()
+		if isRoot {
+			m.thinkingPanel.PushEntry("step_summary", "step summary completed")
+			m.thinkingPanel.Hide()
+			m.updateLayout()
+		}
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist(event.AgentName)
 		stepID := payloadString(event.Payload, "step_id")
@@ -631,10 +646,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		nextGoal := payloadString(event.Payload, "next_goal")
 		missingItems := payloadStringSlice(event.Payload, "missing_items")
 		warnings := payloadStringSlice(event.Payload, "warnings")
-		if shouldReplan {
-			m.thinkingPanel.PushEntry("step_replan", "replan requested")
-		} else {
-			m.thinkingPanel.PushEntry("step_replan", "continue current plan")
+		if isRoot {
+			if shouldReplan {
+				m.thinkingPanel.PushEntry("step_replan", "replan requested")
+			} else {
+				m.thinkingPanel.PushEntry("step_replan", "continue current plan")
+			}
 		}
 		part := StepReplanPart{
 			AgentName:    event.AgentName,
@@ -655,12 +672,14 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		m.persistPart("step_replan", stepID, string(partJSON))
 
 	case react.EventTypeFinalAnswerResult:
-		m.thinkingPanel.PushEntry("final_answer", "answer delivered")
-		m.thinkingPanel.Hide()
-		m.updateLayout()
+		if isRoot {
+			m.thinkingPanel.PushEntry("final_answer", "answer delivered")
+			m.thinkingPanel.Hide()
+			m.updateLayout()
+			m.hadFinalAnswerDuringRun = true
+		}
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist(event.AgentName)
-		m.hadFinalAnswerDuringRun = true
 		content := payloadString(event.Payload, "content")
 		source := payloadString(event.Payload, "source")
 		references := payloadStringSlice(event.Payload, "references")
