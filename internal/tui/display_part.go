@@ -68,6 +68,7 @@ type ToolPart struct {
 type PlanPart struct {
 	AgentName    string         `json:"agent_name,omitempty"`
 	ParentStepID string         `json:"parent_step_id,omitempty"`
+	ParentAgent  string         `json:"parent_agent,omitempty"`
 	Explanation  string         `json:"explanation,omitempty"`
 	Items        []PlanItemView `json:"items,omitempty"`
 }

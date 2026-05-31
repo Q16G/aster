@@ -1280,33 +1280,92 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 			latestPlans[p.Plan.AgentName] = p.Plan
 		}
 	}
-	childrenByParentStep := map[string][]*PlanPart{}
-	var rootPlan *PlanPart
+	// Iterate plans in a stable order (by agent name): map iteration is random,
+	// which would otherwise reshuffle root selection, orphan items, and the
+	// no-root fallback between renders.
+	orderedPlans := make([]*PlanPart, 0, len(latestPlans))
 	for _, plan := range latestPlans {
+		orderedPlans = append(orderedPlans, plan)
+	}
+	sort.Slice(orderedPlans, func(i, j int) bool {
+		return orderedPlans[i].AgentName < orderedPlans[j].AgentName
+	})
+	// Child plans are attached to their parent by (parent agent, parent step id).
+	// Keying on the step id alone is wrong because step ids are agent-local (e.g.
+	// every sub-agent numbers its steps "1","2",…), so sibling sub-agents spawned
+	// under the same parent step would otherwise be nested into each other.
+	type parentKey struct{ agent, step string }
+	resolveParentAgent := func(plan *PlanPart) string {
+		if plan.ParentAgent != "" {
+			return plan.ParentAgent
+		}
+		if info, ok := m.chat.lookupSpawnByChild(plan.AgentName); ok {
+			return info.ParentAgent
+		}
+		return ""
+	}
+	childrenByAgentStep := map[parentKey][]*PlanPart{}
+	// Legacy/old sessions persisted no parent agent; fall back to step-only keying
+	// (the historical behavior) for those so nothing disappears from the tree.
+	childrenByStepWildcard := map[string][]*PlanPart{}
+	var rootPlan *PlanPart
+	for _, plan := range orderedPlans {
 		if m.chat.isRootAgentPlan(plan) {
 			rootPlan = plan
+			continue
+		}
+		if pa := resolveParentAgent(plan); pa != "" {
+			key := parentKey{pa, plan.ParentStepID}
+			childrenByAgentStep[key] = append(childrenByAgentStep[key], plan)
 		} else {
-			childrenByParentStep[plan.ParentStepID] = append(childrenByParentStep[plan.ParentStepID], plan)
+			childrenByStepWildcard[plan.ParentStepID] = append(childrenByStepWildcard[plan.ParentStepID], plan)
 		}
 	}
-	for _, children := range childrenByParentStep {
+	sortChildren := func(children []*PlanPart) {
 		sort.Slice(children, func(i, j int) bool {
 			return children[i].AgentName < children[j].AgentName
 		})
 	}
-	// Collect IDs and normalized step texts from all child plans
-	// so we can deduplicate when the root plan replans and copies sub-agent items.
-	childItemIDs := map[string]bool{}
+	for _, children := range childrenByAgentStep {
+		sortChildren(children)
+	}
+	for _, children := range childrenByStepWildcard {
+		sortChildren(children)
+	}
+	childrenOf := func(agent, step string) []*PlanPart {
+		known := childrenByAgentStep[parentKey{agent, step}]
+		wild := childrenByStepWildcard[step]
+		switch {
+		case len(wild) == 0:
+			return known
+		case len(known) == 0:
+			return wild
+		default:
+			out := make([]*PlanPart, 0, len(known)+len(wild))
+			out = append(out, known...)
+			out = append(out, wild...)
+			return out
+		}
+	}
+	// Collect normalized step texts from all child plans so we can deduplicate
+	// when the root plan replans and copies sub-agent items into itself. We match
+	// on text only, never on item id: ids are agent-local ("1","2",…), so an id
+	// match would misfire and silently drop genuine root steps that merely share a
+	// number with some sub-agent item. A replanned copy carries the same text, so
+	// text matching is both sufficient and safe.
 	childStepNorm := map[string]bool{}
-	for _, children := range childrenByParentStep {
+	addChildItems := func(children []*PlanPart) {
 		for _, childPlan := range children {
 			for _, item := range childPlan.Items {
-				if item.ID != "" {
-					childItemIDs[item.ID] = true
-				}
 				childStepNorm[normalizeStepText(item.Step)] = true
 			}
 		}
+	}
+	for _, children := range childrenByAgentStep {
+		addChildItems(children)
+	}
+	for _, children := range childrenByStepWildcard {
+		addChildItems(children)
 	}
 	visited := map[string]bool{}
 	var flattenPlan func(plan *PlanPart, depth int, dedup bool)
@@ -1316,15 +1375,16 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 			agentLabel = plan.AgentName
 		}
 		for _, item := range plan.Items {
-			if dedup && len(childrenByParentStep[item.ID]) == 0 {
-				if childItemIDs[item.ID] || childStepNorm[normalizeStepText(item.Step)] {
+			children := childrenOf(plan.AgentName, item.ID)
+			if dedup && len(children) == 0 {
+				if childStepNorm[normalizeStepText(item.Step)] {
 					continue
 				}
 			}
 			item.Depth = depth
 			item.AgentName = agentLabel
 			snap.PlanItems = append(snap.PlanItems, item)
-			for _, childPlan := range childrenByParentStep[item.ID] {
+			for _, childPlan := range children {
 				if !visited[childPlan.AgentName] {
 					visited[childPlan.AgentName] = true
 					flattenPlan(childPlan, depth+1, false)
@@ -1334,16 +1394,23 @@ func (m *Model) buildSidebarSnapshot() SidebarSnapshot {
 	}
 	if childCallID := m.chat.ViewingChild(); childCallID != "" {
 		// 下钻中：只扁平化该子 agent 的整棵子树（depth 从 0 起，不对 root 去重）。
+		// 先标记自身 visited，避免通配回退把自己当作子节点重复展开。
 		if childPlan := m.chat.PlanForChild(childCallID); childPlan != nil {
+			visited[childPlan.AgentName] = true
 			flattenPlan(childPlan, 0, false)
 		}
 	} else if rootPlan != nil {
 		flattenPlan(rootPlan, 0, true)
-		for _, orphan := range childrenByParentStep[""] {
-			flattenPlan(orphan, 1, false)
+		// 把仍未挂载的非根子计划作为孤儿以 depth=1 追加，保证不丢条目。
+		for _, plan := range orderedPlans {
+			if plan == rootPlan || visited[plan.AgentName] {
+				continue
+			}
+			visited[plan.AgentName] = true
+			flattenPlan(plan, 1, false)
 		}
 	} else {
-		for _, plan := range latestPlans {
+		for _, plan := range orderedPlans {
 			flattenPlan(plan, 0, false)
 		}
 	}
