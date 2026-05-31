@@ -509,6 +509,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				}
 				if info, ok := m.chat.agentParent[event.AgentName]; ok {
 					planPart.ParentStepID = info.ParentStepID
+					planPart.ParentAgent = info.ParentAgent
 				}
 			}
 			m.chat.AddPart(DisplayPart{
@@ -560,6 +561,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				}
 				if info, ok := m.chat.agentParent[event.AgentName]; ok {
 					fallbackPlan.ParentStepID = info.ParentStepID
+					fallbackPlan.ParentAgent = info.ParentAgent
 				}
 				m.chat.AddPart(DisplayPart{
 					Type: PartTypePlan,

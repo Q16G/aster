@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"aster/internal/builtin_tools"
+
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -971,6 +973,23 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 	for i, part := range parts {
 		if shouldAutoExpandPart(part.Type) {
 			m.toolExpanded[i] = true
+		}
+		// Rebuild the spawn map from loaded parts: the live EventTypeToolStart
+		// handler is the only other writer, so a freshly loaded session would
+		// otherwise have an empty map — breaking sub-agent drill-in (EnterChild,
+		// PlanForChild) and the sidebar's parent-agent resolution. The spawning
+		// tool's ToolPart round-trips with IsAgent + the parent's AgentName, which
+		// is all we need (ParentStepID isn't persisted on the tool, but the render
+		// path reads it from the plan, not from here). Don't clobber richer live
+		// entries that may already carry ParentStepID.
+		if part.Type == PartTypeTool && part.Tool != nil && part.Tool.IsAgent && part.Tool.CallID != "" {
+			if _, ok := m.agentSpawnByCallID[part.Tool.CallID]; !ok {
+				m.agentSpawnByCallID[part.Tool.CallID] = agentSpawnInfo{
+					ParentAgent: part.Tool.AgentName,
+					CallID:      part.Tool.CallID,
+					SubScheme:   part.Tool.Name == builtin_tools.SubAgentToolName,
+				}
+			}
 		}
 	}
 	m.refreshContent()
