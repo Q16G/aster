@@ -143,6 +143,7 @@ func DefaultHelpSections() []HelpSection {
 			Items: []HelpItem{
 				{"/agent", "Switch agent profile"},
 				{"/model", "Switch model"},
+				{"/variant", "Switch model variant"},
 				{"/provider", "Switch AI provider"},
 				{"/skill", "Toggle skills"},
 				{"/mcp", "Toggle MCP servers"},

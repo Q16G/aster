@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ var slashCommands = []tuiui.CommandEntry{
 	{Name: "/agent", Description: "Switch agent profile"},
 	{Name: "/provider", Description: "List or switch AI provider"},
 	{Name: "/model", Description: "Switch model"},
+	{Name: "/variant", Description: "Switch model variant"},
 	{Name: "/skill", Description: "Toggle skill"},
 	{Name: "/mcp", Description: "Toggle MCP connection"},
 	{Name: "/session", Description: "Session management"},
@@ -36,6 +38,7 @@ const helpText = `Available commands:
   /agent [name]          — Switch agent profile (or open selector)
   /provider [name]       — List or switch AI provider
   /model [name]          — Open selector or switch model
+  /variant [name]        — Switch variant of current model (or open selector)
   /skill [enable|disable] <name> — Toggle skill for current session
   /mcp [connect|disconnect] <name> — Toggle MCP for current session
   /session [new|list|switch|delete] — Session management / selector
@@ -74,6 +77,8 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m.cmdProvider(parts[1:])
 	case "/model", "/models":
 		return m.cmdModel(parts[1:])
+	case "/variant", "/variants":
+		return m.cmdVariant(parts[1:])
 	case "/skill":
 		return m.cmdSkill(parts[1:])
 	case "/mcp", "/mcps":
@@ -347,16 +352,105 @@ func (m *Model) cmdModel(args []string) (tea.Model, tea.Cmd) {
 		return m, m.fetchAllProviderModelsCmd()
 	}
 
-	m.providerCfg.ModelID = args[0]
-	if m.agentCtx != nil {
-		m.agentCtx.Definition.ModelID = args[0]
+	modelArg := args[0]
+	return m, func() tea.Msg {
+		return ModelSwitchMsg{ModelID: encodeModelValue(m.providerCfg.Name, modelArg)}
 	}
-	m.localProvider.SetPreferredModel(m.providerCfg.Name, args[0])
-	m.rememberRecentModel(args[0])
-	m.persistSessionMeta()
-	m.refreshSidebarData()
-	m.statusText = fmt.Sprintf("model: %s", args[0])
+}
+
+func (m *Model) cmdVariant(args []string) (tea.Model, tea.Cmd) {
+	if m.providerCfg == nil {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "provider config not available"}})
+		return m, nil
+	}
+	pid := m.providerCfg.Name
+	base := strings.TrimSpace(m.providerCfg.ModelID)
+	if base == "" {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "no model selected; use /model first"}})
+		return m, nil
+	}
+
+	names := m.variantNamesForModel(pid, base)
+
+	if len(args) > 0 {
+		target := strings.TrimSpace(args[0])
+		switch strings.ToLower(target) {
+		case "none", "off", "clear", "base":
+			return m, func() tea.Msg {
+				return ModelSwitchMsg{ModelID: encodeModelValue(pid, base)}
+			}
+		}
+		found := false
+		for _, n := range names {
+			if n == target {
+				found = true
+				break
+			}
+		}
+		if !found {
+			avail := "(none)"
+			if len(names) > 0 {
+				avail = strings.Join(names, ", ")
+			}
+			m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("unknown variant %q for %s; available: %s", target, base, avail)}})
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			return ModelSwitchMsg{ModelID: encodeModelValue(pid, base+":"+target)}
+		}
+	}
+
+	if len(names) == 0 {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("no variants defined for %s", base)}})
+		return m, nil
+	}
+
+	current := strings.TrimSpace(m.providerCfg.Variant)
+	options := []tuiui.SelectOption{
+		{Label: base + "  (no variant)", Value: encodeModelValue(pid, base)},
+	}
+	for _, n := range names {
+		label := n
+		if n == current {
+			label = "● " + n
+		}
+		options = append(options, tuiui.SelectOption{
+			Label: label,
+			Value: encodeModelValue(pid, base+":"+n),
+		})
+	}
+	dialog := tuiui.NewSelectDialog("model-select", "Select Variant — "+base, options)
+	m.dialogStack.Push(dialog, nil)
+	m.dialogStack.SetSize(m.width, m.height)
+	m.statusText = "select variant"
 	return m, nil
+}
+
+func (m *Model) variantNamesForModel(pid, base string) []string {
+	seen := make(map[string]bool)
+	var names []string
+	if m.appCfg != nil {
+		if pc := m.appCfg.Providers[pid]; pc != nil {
+			for n := range pc.Variants {
+				if n = strings.TrimSpace(n); n != "" && !seen[n] {
+					seen[n] = true
+					names = append(names, n)
+				}
+			}
+		}
+	}
+	if m.registry != nil {
+		if mi, ok := m.registry.GetModel(pid, base); ok && mi.Variants != nil {
+			for n := range mi.Variants {
+				if n = strings.TrimSpace(n); n != "" && !seen[n] {
+					seen[n] = true
+					names = append(names, n)
+				}
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 type providerFetchInfo struct {
