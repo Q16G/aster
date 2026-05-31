@@ -624,7 +624,7 @@ npm install -g agent-browser && agent-browser install
 ```
 aster
 > /agent pentest
-> /mode ai
+> /mode yolo
 > 对 http://localhost:8080 做一次全面渗透测试
 ```
 
@@ -632,7 +632,7 @@ aster
 |------|------|---------------|
 | `agent-browser` + Chrome/Chromium | **必需** | 浏览器自动化不可用；SQL 注入、IDOR 等技能仍可基于代码分析工作 |
 
-> **权限模式**：渗透测试产生大量浏览器命令，推荐 `/mode ai`（基于风险自动决策）或 `/mode yolo`（隔离环境全自动）。默认 `/mode manual` 需逐条确认，体验较差。
+> **权限模式**：渗透测试产生大量浏览器命令，推荐 `/mode yolo`（隔离环境全自动）。默认 `/mode manual` 需逐条确认，体验较差。
 
 支持自签证书、SPA/MPA、需认证的站点。
 
@@ -643,7 +643,7 @@ aster
 ```
 aster
 > /agent host-defense
-> /mode ai
+> /mode yolo
 > 检查当前主机的安全基线配置
 ```
 
