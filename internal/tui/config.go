@@ -16,16 +16,17 @@ import (
 )
 
 type ProviderConfig struct {
-	BaseURL        string                       `yaml:"base_url"`
-	APIKey         string                       `yaml:"api_key"`
-	DefaultModel   string                       `yaml:"default_model"`
-	Headers        map[string]string            `yaml:"headers,omitempty"`
-	PromptCache    *ai.PromptCacheConfig        `yaml:"prompt_cache,omitempty"`
-	Variants       map[string]map[string]any    `yaml:"variants,omitempty"`
-	Env            map[string]string            `yaml:"env,omitempty"`
-	SupportsVision *bool                        `yaml:"supports_vision,omitempty"`
-	SupportsAudio  *bool                        `yaml:"supports_audio,omitempty"`
-	Timeout        *int                         `yaml:"timeout,omitempty"`
+	BaseURL        string                    `yaml:"base_url"`
+	APIKey         string                    `yaml:"api_key"`
+	DefaultModel   string                    `yaml:"default_model"`
+	Protocol       string                    `yaml:"protocol,omitempty"`
+	Headers        map[string]string         `yaml:"headers,omitempty"`
+	PromptCache    *ai.PromptCacheConfig     `yaml:"prompt_cache,omitempty"`
+	Variants       map[string]map[string]any `yaml:"variants,omitempty"`
+	Env            map[string]string         `yaml:"env,omitempty"`
+	SupportsVision *bool                     `yaml:"supports_vision,omitempty"`
+	SupportsAudio  *bool                     `yaml:"supports_audio,omitempty"`
+	Timeout        *int                      `yaml:"timeout,omitempty"`
 }
 
 type AppConfig struct {
@@ -173,6 +174,10 @@ default_provider: openai
 # Provider 配置
 # API Key 支持直接填写或引用环境变量: ${ENV_VAR}
 # 也可以在 TUI 中通过 /provider 命令在线配置
+#
+# protocol: 显式指定该 provider 的 API 风格，可选 openai / anthropic
+#   - 不填时按内置注册表（provider 名字）自动推断，注册表也没有则默认 openai
+#   - anthropic 风格会自动补全 /messages 路径
 providers:
   openai:
     base_url: https://api.openai.com/v1
@@ -180,6 +185,12 @@ providers:
     default_model: gpt-4o
   # env:
   #   HTTPS_PROXY: http://127.0.0.1:7890
+
+  # minimax-cn:                    # A社(anthropic)风格示例
+  #   protocol: anthropic          # 可省略，注册表已知 minimax-cn 为 anthropic
+  #   base_url: https://api.minimaxi.com/anthropic/v1  # 可省略，会自动补 /messages
+  #   api_key: ${MINIMAX_API_KEY}
+  #   default_model: MiniMax-M2
 
   # anthropic:
   #   base_url: https://api.anthropic.com/v1
@@ -542,12 +553,17 @@ func (c *AppConfig) ResolveProviderState(cliProvider, cliModel, cliBaseURL, cliA
 		credKey = creds.Get(providerName)
 	}
 
+	protocol := normalizeProtocol(p.Protocol)
+	if protocol == "" {
+		protocol = regProtocol
+	}
+
 	baseURL = firstNonEmpty(cliBaseURL, os.Getenv("ASTER_BASE_URL"), expandProviderValue(p.BaseURL, resolvedEnv), regBaseURL, "https://api.openai.com/v1")
 	apiKey = firstNonEmpty(cliAPIKey, os.Getenv("ASTER_API_KEY"), credKey, regAPIKey, expandProviderValue(p.APIKey, resolvedEnv))
 	model = firstNonEmpty(cliModel, os.Getenv("ASTER_MODEL"), p.DefaultModel, "gpt-4o")
 	return &ProviderState{
 		Name:           providerName,
-		Protocol:       regProtocol,
+		Protocol:       protocol,
 		BaseURL:        baseURL,
 		APIKey:         apiKey,
 		ModelID:        model,
@@ -625,6 +641,24 @@ func expandMCPHeaders(sc *mcp.MCPServerConfig) {
 			}
 			return "${" + key + "}"
 		})
+	}
+}
+
+// normalizeProtocol 将 config 中用户填写的 protocol 风格归一化为内部协议名。
+// 空字符串表示用户未配置，由调用方回退到注册表推断。
+func normalizeProtocol(s string) string {
+	v := strings.ToLower(strings.TrimSpace(s))
+	switch v {
+	case "":
+		return ""
+	case "anthropic", "claude":
+		return "anthropic"
+	case "native-openai", "openai-responses", "responses":
+		return "native-openai"
+	case "openai", "openai-compatible":
+		return "openai-compatible"
+	default:
+		return "openai-compatible"
 	}
 }
 
