@@ -450,41 +450,53 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 				"type":     "object",
 				"required": []string{"needs_planning", "plan", "explanation"},
 				"properties": map[string]any{
-					"needs_planning": map[string]any{"type": "boolean"},
+					"needs_planning": map[string]any{
+						"type":        "boolean",
+						"description": "是否需要执行计划。true=需多步骤规划并输出 plan；false=简单问答，仅填 direct_response。",
+					},
 					"plan": map[string]any{
-						"type": "array",
+						"type":        "array",
+						"description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。",
 						"items": map[string]any{
 							"type":     "object",
 							"required": []string{"id", "step", "status", "depends_on"},
 							"properties": map[string]any{
-								"id":   map[string]any{"type": "string"},
-								"step": map[string]any{"type": "string"},
+								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
+								"step": map[string]any{"type": "string", "description": "步骤描述，不得为空；不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
 								"status": map[string]any{
-									"type": "string",
-									"enum": []string{"pending", "in_progress", "completed", "failed"},
+									"type":        "string",
+									"enum":        []string{"pending", "in_progress", "completed", "failed"},
+									"description": "步骤状态。新规划步骤填 pending；承接已完成步骤时保留其原状态。",
 								},
 								"depends_on": map[string]any{
-									"type":  "array",
-									"items": map[string]any{"type": "string"},
+									"type":        "array",
+									"items":       map[string]any{"type": "string"},
+									"description": "前置依赖的步骤 id 列表；不得引用无效 id 或形成循环依赖。",
 								},
 							},
 						},
 					},
-					"explanation":     map[string]any{"type": "string"},
-					"direct_response": map[string]any{"type": "string"},
+					"explanation": map[string]any{
+						"type":        "string",
+						"description": "用 1-2 句话说明规划判断依据，不复述全部步骤。",
+					},
+					"direct_response": map[string]any{
+						"type":        "string",
+						"description": "当 needs_planning=false 时，直接输出对用户的完整回复；此字段仅在 needs_planning=false 时必填。",
+					},
 					"summary": map[string]any{
 						"type":        "string",
-						"description": "调查阶段的简要总结，概括项目结构发现和规划依据",
+						"description": "调查阶段的简要总结。如果你在提交 plan 前使用了工具进行调查，请在此总结调查发现，后续执行步骤将获得此上下文。",
 					},
 					"tool_calls_digest": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "调查阶段的工具调用摘要，格式：[工具名] 参数摘要 → 结果要点",
+						"description": "工具调用摘要。格式：[工具名] 参数摘要 → 结果要点。如果你使用了工具，请填写此字段。",
 					},
 					"key_facts": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "调查过程中发现的关键事实（文件路径、架构模式、技术栈等）",
+						"description": "调查过程中发现的关键事实（文件路径、架构模式、技术栈、关键函数等）。",
 					},
 				},
 			},

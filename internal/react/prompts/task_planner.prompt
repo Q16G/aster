@@ -148,47 +148,56 @@
 ## 7. submit_plan 参数 Schema
 <JSON-SCHEMA>
 {
-  “type”: “object”,
-  “required”: [“needs_planning”, “plan”, “explanation”],
-  “properties”: {
-    “needs_planning”: { “type”: “boolean” },
-    “plan”: {
-      “type”: “array”,
-      “items”: {
-        “type”: “object”,
-        “required”: [“id”, “step”, “status”, “depends_on”],
-        “properties”: {
-          “id”: { “type”: “string” },
-          “step”: { “type”: “string” },
-          “status”: {
-            “type”: “string”,
-            “enum”: [“pending”, “in_progress”, “completed”, “failed”]
+  "type": "object",
+  "required": ["needs_planning", "plan", "explanation"],
+  "properties": {
+    "needs_planning": {
+      "type": "boolean",
+      "description": "是否需要执行计划。true=需多步骤规划并输出 plan；false=简单问答，仅填 direct_response。"
+    },
+    "plan": {
+      "type": "array",
+      "description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。",
+      "items": {
+        "type": "object",
+        "required": ["id", "step", "status", "depends_on"],
+        "properties": {
+          "id": { "type": "string", "description": "步骤唯一标识，不得为空或重复。" },
+          "step": { "type": "string", "description": "步骤描述，不得为空；不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed", "failed"],
+            "description": "步骤状态。新规划步骤填 pending；承接已完成步骤时保留其原状态。"
           },
-          “depends_on”: {
-            “type”: “array”,
-            “items”: { “type”: “string” }
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "前置依赖的步骤 id 列表；不得引用无效 id 或形成循环依赖。"
           }
         }
       }
     },
-    “explanation”: { “type”: “string” },
-    “direct_response”: {
-      “type”: “string”,
-      “description”: “当 needs_planning=false 时，直接输出对用户的完整回复。此字段仅在 needs_planning=false 时必填。”
+    "explanation": {
+      "type": "string",
+      "description": "用 1-2 句话说明规划判断依据，不复述全部步骤。"
     },
-    “summary”: {
-      “type”: “string”,
-      “description”: “调查阶段的简要总结。如果你在提交 plan 前使用了工具进行调查，请在此总结调查发现，后续执行步骤将获得此上下文。”
+    "direct_response": {
+      "type": "string",
+      "description": "当 needs_planning=false 时，直接输出对用户的完整回复；此字段仅在 needs_planning=false 时必填。"
     },
-    “tool_calls_digest”: {
-      “type”: “array”,
-      “items”: { “type”: “string” },
-      “description”: “工具调用摘要。格式：[工具名] 参数摘要 → 结果要点。如果你使用了工具，请填写此字段。”
+    "summary": {
+      "type": "string",
+      "description": "调查阶段的简要总结。如果你在提交 plan 前使用了工具进行调查，请在此总结调查发现，后续执行步骤将获得此上下文。"
     },
-    “key_facts”: {
-      “type”: “array”,
-      “items”: { “type”: “string” },
-      “description”: “调查过程中发现的关键事实（文件路径、架构模式、技术栈、关键函数等）。”
+    "tool_calls_digest": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "工具调用摘要。格式：[工具名] 参数摘要 → 结果要点。如果你使用了工具，请填写此字段。"
+    },
+    "key_facts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "调查过程中发现的关键事实（文件路径、架构模式、技术栈、关键函数等）。"
     }
   }
 }
