@@ -166,6 +166,13 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 }
 
 func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
+	// 防御：卡在 Step 但已无可跑 step 且全部 terminal —— 任何路径走到这都改道收尾，杜绝空转。
+	if snapshot.Phase == builtin_tools.AgentPhaseStep &&
+		len(snapshot.Plan) > 0 &&
+		builtin_tools.NextRunnablePlanStepID(snapshot.Plan) == "" &&
+		builtin_tools.AllPlanStepsTerminal(snapshot.Plan) {
+		return builtin_tools.AgentPhaseFinalAnswer
+	}
 	switch snapshot.Phase {
 	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan, builtin_tools.AgentPhaseFinalAnswer, builtin_tools.AgentPhaseIntentClassification:
 		return snapshot.Phase
@@ -310,6 +317,17 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		"explanation":         explanation,
 		"planner_explanation": plannerExplanation,
 	})
+
+	// 计划非空但所有 step 已 terminal：UpdatePlan 会把 Phase 误设为 Step 且无 runnable step，
+	// 导致相位机空转。改道 final_answer 阶段，让模型基于已完成的 step 产出收尾报告。
+	if builtin_tools.AllPlanStepsTerminal(items) {
+		snapshot = a.state.SetPhase(builtin_tools.AgentPhaseFinalAnswer)
+		a.emitter.EmitStateChange(snapshot)
+		a.emitRuntimeLog("info", "all plan steps terminal after plan phase, route to final answer", snapshot, map[string]any{
+			"event":      "plan_all_terminal_to_final",
+			"plan_count": len(items),
+		})
+	}
 	return nil
 }
 

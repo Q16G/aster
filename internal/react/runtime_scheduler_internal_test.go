@@ -294,6 +294,109 @@ func TestApplyReplanResultEntersFinalAnswerWhenNoPendingSteps(t *testing.T) {
 	t.Log("CONFIRMED: all-completed plan + should_replan=false → FinalAnswer phase.")
 }
 
+// TestCurrentPhaseGuard exercises the defensive reroute in currentPhase with a
+// table of positive cases (must reroute to FinalAnswer) and negative cases
+// (must keep the stored phase). The guard only fires for a plan that is parked
+// in Step phase, has no runnable step, AND is fully terminal — the exact state
+// that caused the observed sub-agent spin.
+func TestCurrentPhaseGuard(t *testing.T) {
+	completed := builtin_tools.PlanStepCompleted
+	failed := builtin_tools.PlanStepFailed
+	skipped := builtin_tools.PlanStepSkipped
+	pending := builtin_tools.PlanStepPending
+	inProgress := builtin_tools.PlanStepInProgress
+
+	step := func(id string, status builtin_tools.PlanStepStatus) *builtin_tools.PlanItem {
+		return &builtin_tools.PlanItem{ID: id, Step: id, Status: status}
+	}
+
+	cases := []struct {
+		name  string
+		phase builtin_tools.AgentPhase
+		plan  []*builtin_tools.PlanItem
+		want  builtin_tools.AgentPhase
+	}{
+		// ---- positive: guard must reroute to final_answer ----
+		{
+			name:  "step/all completed",
+			phase: builtin_tools.AgentPhaseStep,
+			plan:  []*builtin_tools.PlanItem{step("a", completed), step("b", completed)},
+			want:  builtin_tools.AgentPhaseFinalAnswer,
+		},
+		{
+			name:  "step/mixed terminal (completed+failed+skipped)",
+			phase: builtin_tools.AgentPhaseStep,
+			plan:  []*builtin_tools.PlanItem{step("a", completed), step("b", failed), step("c", skipped)},
+			want:  builtin_tools.AgentPhaseFinalAnswer,
+		},
+		{
+			name:  "step/single completed",
+			phase: builtin_tools.AgentPhaseStep,
+			plan:  []*builtin_tools.PlanItem{step("only", completed)},
+			want:  builtin_tools.AgentPhaseFinalAnswer,
+		},
+
+		// ---- negative: guard must NOT fire ----
+		{
+			name:  "step/has runnable pending",
+			phase: builtin_tools.AgentPhaseStep,
+			plan:  []*builtin_tools.PlanItem{step("a", completed), step("b", pending)},
+			want:  builtin_tools.AgentPhaseStep,
+		},
+		{
+			// No runnable step (pending blocked by in_progress dep) but NOT all
+			// terminal — a step is still running, so we must NOT force-finalize.
+			name:  "step/in_progress still running, dependent blocked",
+			phase: builtin_tools.AgentPhaseStep,
+			plan: []*builtin_tools.PlanItem{
+				step("a", completed),
+				step("b", inProgress),
+				{ID: "c", Step: "c", Status: pending, DependsOn: []string{"b"}},
+			},
+			want: builtin_tools.AgentPhaseStep,
+		},
+		{
+			name:  "step/empty plan (handled by plan phase)",
+			phase: builtin_tools.AgentPhaseStep,
+			plan:  nil,
+			want:  builtin_tools.AgentPhaseStep,
+		},
+		{
+			name:  "plan/all terminal stays plan",
+			phase: builtin_tools.AgentPhasePlan,
+			plan:  []*builtin_tools.PlanItem{step("a", completed)},
+			want:  builtin_tools.AgentPhasePlan,
+		},
+		{
+			name:  "step_replan/all terminal stays step_replan",
+			phase: builtin_tools.AgentPhaseStepReplan,
+			plan:  []*builtin_tools.PlanItem{step("a", completed)},
+			want:  builtin_tools.AgentPhaseStepReplan,
+		},
+		{
+			name:  "final_answer/all terminal stays final_answer",
+			phase: builtin_tools.AgentPhaseFinalAnswer,
+			plan:  []*builtin_tools.PlanItem{step("a", completed)},
+			want:  builtin_tools.AgentPhaseFinalAnswer,
+		},
+		{
+			name:  "unknown phase defaults to plan",
+			phase: builtin_tools.AgentPhase("bogus"),
+			plan:  []*builtin_tools.PlanItem{step("a", completed)},
+			want:  builtin_tools.AgentPhasePlan,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := builtin_tools.StateSnapshot{Phase: tc.phase, Plan: tc.plan}
+			if got := currentPhase(snap); got != tc.want {
+				t.Fatalf("currentPhase(phase=%q) = %q, want %q", tc.phase, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeStepText(t *testing.T) {
 	cases := []struct {
 		in, want string
