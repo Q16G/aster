@@ -9,6 +9,8 @@ import (
 
 type Config struct {
 	URL string
+	// URLAutoComplete 控制是否在请求时自动将 URL 补全到 /messages 接口路径。
+	URLAutoComplete bool
 
 	APIKey  string
 	Model   string
@@ -37,6 +39,12 @@ type Option func(*Config)
 func WithURL(url string) Option {
 	return func(c *Config) {
 		c.URL = url
+	}
+}
+
+func WithURLAutoComplete(enabled bool) Option {
+	return func(c *Config) {
+		c.URLAutoComplete = enabled
 	}
 }
 
@@ -153,12 +161,13 @@ func WithUsagePricing(model aiusage.PricingModel) Option {
 func DefaultConfig() *Config {
 	supportsVision := true
 	return &Config{
-		URL:            "https://api.anthropic.com/v1/messages",
-		Version:        "2023-06-01",
-		Timeout:        300 * time.Second,
-		MaxRetries:     5,
-		MaxTokens:      16384,
-		Headers:        map[string]string{},
-		SupportsVision: &supportsVision,
+		URL:             "https://api.anthropic.com/v1/messages",
+		URLAutoComplete: true,
+		Version:         "2023-06-01",
+		Timeout:         300 * time.Second,
+		MaxRetries:      5,
+		MaxTokens:       16384,
+		Headers:         map[string]string{},
+		SupportsVision:  &supportsVision,
 	}
 }

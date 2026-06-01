@@ -483,7 +483,11 @@ func (c *Client) doRequest(ctx context.Context, reqBody map[string]any) ([]*ai.C
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimSpace(c.config.URL), bytes.NewReader(bodyBytes))
+	endpoint := strings.TrimSpace(c.config.URL)
+	if c.config.URLAutoComplete {
+		endpoint = ResolveMessagesURL(endpoint)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
