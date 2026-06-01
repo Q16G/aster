@@ -87,8 +87,13 @@ func (c *UpdateChecker) checkOnce(ctx context.Context) {
 		c.setLatest(cached)
 	}
 
-	rel, err := FetchLatestRelease(ctx, &FetchOptions{Proxy: c.proxy})
+	releases, err := FetchReleases(ctx, &FetchOptions{Proxy: c.proxy})
 	if err != nil {
+		return
+	}
+
+	rel := SelectLatest(releases, DefaultChannels)
+	if rel == nil {
 		return
 	}
 
