@@ -66,18 +66,20 @@ func Apply(ctx context.Context, release *Release, proxy string, progressFn func(
 }
 
 func assetNames(tag string) (archive, binary string) {
+	return assetNamesFor(tag, runtime.GOOS, runtime.GOARCH)
+}
+
+func assetNamesFor(tag, goos, goarch string) (archive, binary string) {
 	version := strings.TrimPrefix(tag, "v")
-	osName := runtime.GOOS
-	arch := runtime.GOARCH
 	binary = "aster"
 
 	ext := "tar.gz"
-	if osName == "windows" {
+	if goos == "windows" {
 		ext = "zip"
 		binary = "aster.exe"
 	}
 
-	archive = fmt.Sprintf("aster_%s_%s_%s.%s", version, osName, arch, ext)
+	archive = fmt.Sprintf("aster_%s_%s_%s.%s", version, goos, goarch, ext)
 	return archive, binary
 }
 
