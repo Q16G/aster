@@ -381,16 +381,27 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 				"type":     "object",
 				"required": []string{"should_replan", "replan_reason", "next_goal", "missing_items", "warnings"},
 				"properties": map[string]any{
-					"should_replan": map[string]any{"type": "boolean"},
-					"replan_reason": map[string]any{"type": "string"},
-					"next_goal":     map[string]any{"type": "string"},
+					"should_replan": map[string]any{
+						"type":        "boolean",
+						"description": "是否需要回流重新规划。仅当出现新攻击面/缺口且 agent 仍能继续执行补齐时为 true。",
+					},
+					"replan_reason": map[string]any{
+						"type":        "string",
+						"description": "should_replan=false 时填空字符串；true 时填一句人类可读的总括说明。",
+					},
+					"next_goal": map[string]any{
+						"type":        "string",
+						"description": "should_replan=false 时填空字符串；true 时填明确的下一轮目标，不要写「等待用户输入」。",
+					},
 					"missing_items": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "相对 agent 职责与技能覆盖面仍缺失的要点；聚焦约束生效时仅限聚焦方向内。",
 					},
 					"warnings": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "风险或注意事项，例如聚焦方向外发现的高危信号。",
 					},
 				},
 			},
