@@ -20,12 +20,19 @@ func TestReadFileLargeTruncationMessage(t *testing.T) {
 }
 
 func TestReadFileTruncationMessage(t *testing.T) {
-	msg := ReadFileTruncationMessage(2048)
-	if !strings.Contains(msg, "max_bytes=2048") {
+	msg := ReadFileTruncationMessage(128, 64)
+	if !strings.Contains(msg, "offset=128") || !strings.Contains(msg, "limit=64") {
 		t.Fatalf("unexpected message: %q", msg)
 	}
-	if !strings.Contains(msg, "...") {
-		t.Fatalf("expected ellipsis hint: %q", msg)
+}
+
+func TestReadFilePageMessage(t *testing.T) {
+	msg := ReadFilePageMessage(42, 20, "行")
+	if !strings.Contains(msg, "offset=42") || !strings.Contains(msg, "limit=20") {
+		t.Fatalf("unexpected message: %q", msg)
+	}
+	if !strings.Contains(msg, "行") {
+		t.Fatalf("expected unit hint: %q", msg)
 	}
 }
 

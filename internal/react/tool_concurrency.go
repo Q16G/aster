@@ -21,9 +21,9 @@ type ConcurrencySafeTool interface {
 }
 
 var defaultConcurrencySafeTools = map[string]bool{
-	builtin_tools.ListFilesToolName:    true,
-	builtin_tools.ReadFileToolName:     true,
-	builtin_tools.RgToolName:           true,
+	builtin_tools.ListFilesToolName:       true,
+	builtin_tools.ReadFileToolName:        true,
+	builtin_tools.RgToolName:              true,
 	builtin_tools.TaskStatusQueryToolName: true,
 }
 
@@ -125,18 +125,18 @@ func (a *Agent) executeToolCallsSequentially(ctx context.Context, iter int, tool
 }
 
 type concurrentToolSlot struct {
-	tc        *ai.FunctionTool
-	toolName  string
-	callID    string
-	argsMap   map[string]any
-	tool      Tool
-	isAgent   bool
+	tc         *ai.FunctionTool
+	toolName   string
+	callID     string
+	argsMap    map[string]any
+	tool       Tool
+	isAgent    bool
 	stackDepth int
 
 	validationErr string
 
-	rawOut  string
-	rawErr  string
+	rawOut string
+	rawErr string
 
 	out      string
 	errText  string
@@ -307,20 +307,25 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		if strings.TrimSpace(displayOut) == "" && strings.TrimSpace(slot.errText) != "" {
 			displayOut = fmt.Sprintf("Error: %s", slot.errText)
 		}
+		render := buildToolResultRender(slot.toolName, slot.out)
 		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText)
-		a.AICallProxyWriteToolResult(slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, displayOut, slot.errText, slot.isAgent)
+		a.AICallProxyWriteToolResult(slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
 		if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
+			payload := map[string]any{
+				"tool":   slot.toolName,
+				"args":   slot.argsMap,
+				"result": slot.out,
+				"error":  slot.errText,
+			}
+			if len(render.Media) > 0 {
+				payload["media"] = render.Media
+			}
 			_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
-				TS:   time.Now().UTC(),
-				Type: "tool_call",
-				Key:  slot.callID,
-				Payload: map[string]any{
-					"tool":   slot.toolName,
-					"args":   slot.argsMap,
-					"result": slot.out,
-					"error":  slot.errText,
-				},
+				TS:      time.Now().UTC(),
+				Type:    "tool_call",
+				Key:     slot.callID,
+				Payload: payload,
 			})
 		}
 
@@ -331,6 +336,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 			StackDepth: slot.stackDepth,
 			Result:     displayOut,
 			Error:      slot.errText,
+			Media:      render.Media,
 		})
 
 		executed++

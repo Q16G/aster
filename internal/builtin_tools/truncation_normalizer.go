@@ -80,11 +80,15 @@ func buildTruncationMessage(toolName string, payload map[string]any) string {
 			}
 			return ReadFileLargeTruncationMessage(threshold, int(preview), omitted)
 		}
-		maxBytes := int64(0)
-		if n, ok := asInt64Any(payload["max_bytes"]); ok && n > 0 {
-			maxBytes = n
+		nextOffset := int64(0)
+		if n, ok := asInt64Any(payload["next_offset"]); ok && n >= 0 {
+			nextOffset = n
 		}
-		return ReadFileTruncationMessage(maxBytes)
+		limit := int64(0)
+		if n, ok := asInt64Any(payload["limit"]); ok && n > 0 {
+			limit = n
+		}
+		return ReadFileTruncationMessage(nextOffset, limit)
 	case RgToolName:
 		captureLimitBytes := int64(0)
 		if n, ok := asInt64Any(payload["capture_limit_bytes"]); ok && n > 0 {

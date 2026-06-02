@@ -121,6 +121,7 @@ func NormalizeMsgInfoInPlace(msg *MsgInfo) *MsgInfo {
 	msg.Type = strings.TrimSpace(msg.Type)
 	msg.ToolCallID = strings.TrimSpace(msg.ToolCallID)
 	msg.ReasoningOutput = strings.TrimSpace(msg.ReasoningOutput)
+	msg.Content = normalizeMsgContent(msg.Content)
 	msg.Usage = NormalizeTokenUsagePtr(msg.Usage)
 	if len(msg.ToolCalls) == 0 {
 		msg.ToolCalls = nil
@@ -138,6 +139,34 @@ func NormalizeMsgInfoInPlace(msg *MsgInfo) *MsgInfo {
 	}
 	msg.ToolCalls = out
 	return msg
+}
+
+func normalizeMsgContent(content any) any {
+	items, ok := content.([]any)
+	if !ok || len(items) == 0 {
+		return content
+	}
+
+	contexts := make([]*ChatContext, 0, len(items))
+	for _, item := range items {
+		block, ok := item.(map[string]any)
+		if !ok {
+			return content
+		}
+		raw, err := json.Marshal(block)
+		if err != nil {
+			return content
+		}
+		var ctx ChatContext
+		if err := json.Unmarshal(raw, &ctx); err != nil || strings.TrimSpace(ctx.Type) == "" {
+			return content
+		}
+		contexts = append(contexts, &ctx)
+	}
+	if len(contexts) == 0 {
+		return content
+	}
+	return contexts
 }
 
 func NormalizeMsgInfoSlice(items []*MsgInfo) []*MsgInfo {
