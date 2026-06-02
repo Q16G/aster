@@ -13,3 +13,4 @@ dist/
 tmp/
 .ai/
 **/sub_agents/
+internal/react/artifacts/
