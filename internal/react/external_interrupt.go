@@ -85,7 +85,6 @@ func buildExternalInterruptModelOutput(snapshot builtin_tools.StateSnapshot, inf
 		Reason:       reason,
 		ShouldReplan: false,
 		NextGoal:     "",
-		MissingItems: nil,
 		Warnings:     nil,
 		UserMessage:  buildExternalInterruptFinalAnswer(snapshot, info),
 		References:   nil,
@@ -267,7 +266,8 @@ func applyExternalInterruptDecision(snapshot builtin_tools.StateSnapshot, decisi
 	decision.model.IsComplete = true
 	decision.model.ShouldReplan = false
 	decision.model.NextGoal = ""
-	decision.model.MissingItems = nil
+	decision.model.IncompleteItems = nil
+	decision.model.NewSurfaces = nil
 	decision.isTerminal = true
 	if shouldForceCompletedOnExternalInterrupt(snapshot) {
 		decision.status = builtin_tools.TaskStatusCompleted

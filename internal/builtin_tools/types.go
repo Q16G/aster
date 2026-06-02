@@ -272,12 +272,13 @@ type CurrentStepUpdate struct {
 }
 
 type ReplanContext struct {
-	SourceStepID   string   `json:"source_step_id,omitempty"`
-	Reason         string   `json:"reason,omitempty"`
-	NextGoal       string   `json:"next_goal,omitempty"`
-	MissingItems   []string `json:"missing_items,omitempty"`
-	Warnings       []string `json:"warnings,omitempty"`
-	ReplacePending bool     `json:"replace_pending,omitempty"`
+	SourceStepID    string   `json:"source_step_id,omitempty"`
+	Reason          string   `json:"reason,omitempty"`
+	NextGoal        string   `json:"next_goal,omitempty"`
+	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①步骤内未完成（源 step 自身声明范围内仍未达成）
+	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴②步骤外新面（超出源 step 的新维度/攻击面）
+	Warnings        []string `json:"warnings,omitempty"`
+	ReplacePending  bool     `json:"replace_pending,omitempty"`
 }
 
 // ToolCall 工具调用

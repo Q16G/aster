@@ -267,12 +267,13 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 	}
 
 	var result struct {
-		IsComplete   bool     `json:"is_complete"`
-		Status       string   `json:"status"`
-		ShouldReplan bool     `json:"should_replan"`
-		MissingItems []string `json:"missing_items"`
-		Reason       string   `json:"reason"`
-		UserMessage  string   `json:"user_message"`
+		IsComplete      bool     `json:"is_complete"`
+		Status          string   `json:"status"`
+		ShouldReplan    bool     `json:"should_replan"`
+		IncompleteItems []string `json:"incomplete_items"`
+		NewSurfaces     []string `json:"new_surfaces"`
+		Reason          string   `json:"reason"`
+		UserMessage     string   `json:"user_message"`
 	}
 	if err := json.Unmarshal([]byte(cleanResp), &result); err != nil {
 		t.Logf("Failed to parse response as JSON: %v", err)
@@ -280,7 +281,8 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 	} else {
 		t.Logf("is_complete=%v status=%s should_replan=%v", result.IsComplete, result.Status, result.ShouldReplan)
 		t.Logf("reason=%s", result.Reason)
-		t.Logf("missing_items=%v", result.MissingItems)
+		t.Logf("incomplete_items=%v", result.IncompleteItems)
+		t.Logf("new_surfaces=%v", result.NewSurfaces)
 		t.Logf("user_message length=%d", len(result.UserMessage))
 
 		if result.ShouldReplan {
@@ -292,12 +294,13 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 		if result.Status != "completed" {
 			t.Errorf("FAIL: status=%s, expected completed", result.Status)
 		}
-		// 检查 missing_items 不应包含非聚焦维度
-		for _, item := range result.MissingItems {
+		// 检查 incomplete_items（聚焦方向内的完成度缺口）不应包含非聚焦维度；
+		// 非聚焦维度若出现应落在 new_surfaces，且不驱动 replan（已由 should_replan=false 验证）。
+		for _, item := range result.IncompleteItems {
 			itemLower := strings.ToLower(item)
 			for _, kw := range []string{"auth", "认证", "授权", "client", "客户端", "csp", "config", "配置", "密钥", "依赖", "xss"} {
 				if strings.Contains(itemLower, kw) {
-					t.Errorf("FAIL: missing_items contains non-focus keyword %q: %s", kw, item)
+					t.Errorf("FAIL: incomplete_items contains non-focus keyword %q: %s", kw, item)
 				}
 			}
 		}

@@ -29,7 +29,7 @@ func TestExecute_SingleStepFastClose(t *testing.T) {
 				},
 			},
 			// step replan (LLM always runs now)
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
 		},
 	}
 	planner := &executeModelStaticPlanner{
@@ -94,8 +94,8 @@ func TestExecute_SubAgentDoesNotFastClose(t *testing.T) {
 				},
 			},
 			// step replan (LLM always runs now)
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`},
-			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"sub-final","references":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"sub-final","references":[]}`},
 		},
 	}
 	planner := &executeModelStaticPlanner{

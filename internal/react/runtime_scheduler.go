@@ -553,6 +553,7 @@ type plannerStepOutcomeView struct {
 	References    []string `json:"references,omitempty"`
 	SummaryFile   string   `json:"summary_file,omitempty"`
 	ResultFile    string   `json:"result_file,omitempty"`
+	TimelineFile  string   `json:"timeline_file,omitempty"`
 	ContextKey    string   `json:"context_key,omitempty"`
 }
 
@@ -567,6 +568,7 @@ type plannerStepContextView struct {
 	ResultKeys           []string `json:"result_keys,omitempty"`
 	SummaryFile          string   `json:"summary_file,omitempty"`
 	ResultFile           string   `json:"result_file,omitempty"`
+	TimelineFile         string   `json:"timeline_file,omitempty"`
 	References           []string `json:"references,omitempty"`
 	InheritedContextKeys []string `json:"inherited_context_keys,omitempty"`
 }
@@ -624,7 +626,7 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 
 	// EXECUTION_LINE
 	if len(snapshot.StepOutcomes) > 0 || len(snapshot.Plan) > 0 || strings.TrimSpace(snapshot.CurrentStepID) != "" || strings.TrimSpace(snapshot.CurrentGoal) != "" {
-		executionLineJSON := buildExecutionLineJSON(snapshot)
+		executionLineJSON := buildExecutionLineJSON(snapshot, opts.WorkspaceRootDir)
 		data.ExecutionLineJSON = executionLineJSON
 		data.HasExecutionLine = true
 	}
@@ -645,7 +647,8 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	return buf.String()
 }
 
-func buildExecutionLineJSON(snapshot builtin_tools.StateSnapshot) string {
+func buildExecutionLineJSON(snapshot builtin_tools.StateSnapshot, workspaceRootDir string) string {
+	workspaceRootDir = strings.TrimSpace(workspaceRootDir)
 	outcomesByID := make(map[string]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
 	for _, outcome := range snapshot.StepOutcomes {
 		if outcome == nil {
@@ -684,8 +687,9 @@ func buildExecutionLineJSON(snapshot builtin_tools.StateSnapshot) string {
 			KeyFacts:      cloneAndTruncateStrings(outcome.KeyFacts, 20, 240),
 			OpenQuestions: cloneAndTruncateStrings(outcome.OpenQuestions, 12, 240),
 			References:    builtin_tools.CloneStringSlice(outcome.References),
-			SummaryFile:   strings.TrimSpace(outcome.SummaryFile),
-			ResultFile:    strings.TrimSpace(outcome.ResultFile),
+			SummaryFile:   builtin_tools.WorkspaceArtifactPath(workspaceRootDir, outcome.SummaryFile),
+			ResultFile:    builtin_tools.WorkspaceArtifactPath(workspaceRootDir, outcome.ResultFile),
+			TimelineFile:  builtin_tools.WorkspaceArtifactPath(workspaceRootDir, outcome.TimelineFile),
 			ContextKey:    strings.TrimSpace(outcome.ContextKey),
 		}
 		if len(view.KeyFacts) == 0 {
@@ -761,6 +765,7 @@ func buildWorkspaceContextsJSON(workspaceRootDir, workspaceNamespace string) str
 			ResultKeys:           builtin_tools.CloneStringSlice(rec.ResultKeys),
 			SummaryFile:          strings.TrimSpace(rec.SummaryFile),
 			ResultFile:           strings.TrimSpace(rec.ResultFile),
+			TimelineFile:         strings.TrimSpace(rec.TimelineFile),
 			References:           builtin_tools.CloneStringSlice(rec.References),
 			InheritedContextKeys: builtin_tools.CloneStringSlice(rec.InheritedContextKeys),
 		}
@@ -1457,20 +1462,25 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	if strings.TrimSpace(displayOut) == "" && strings.TrimSpace(errText) != "" {
 		displayOut = fmt.Sprintf("Error: %s", errText)
 	}
+	render := buildToolResultRender(toolName, out)
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
-	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, displayOut, errText, isAgent)
+	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
 	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
+		payload := map[string]any{
+			"tool":   toolName,
+			"args":   argsMap,
+			"result": out,
+			"error":  errText,
+		}
+		if len(render.Media) > 0 {
+			payload["media"] = render.Media
+		}
 		_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
-			TS:   time.Now().UTC(),
-			Type: "tool_call",
-			Key:  callID,
-			Payload: map[string]any{
-				"tool":   toolName,
-				"args":   argsMap,
-				"result": out,
-				"error":  errText,
-			},
+			TS:      time.Now().UTC(),
+			Type:    "tool_call",
+			Key:     callID,
+			Payload: payload,
 		})
 	}
 
@@ -1481,6 +1491,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		StackDepth: stackDepth,
 		Result:     displayOut,
 		Error:      errText,
+		Media:      render.Media,
 	})
 
 	if toolName == builtin_tools.UpdateCurrentStepToolName {

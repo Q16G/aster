@@ -13,11 +13,14 @@ import (
 )
 
 type stepReplanModelOutput struct {
-	ShouldReplan bool     `json:"should_replan"`
-	ReplanReason string   `json:"replan_reason"`
-	NextGoal     string   `json:"next_goal"`
-	MissingItems []string `json:"missing_items"`
-	Warnings     []string `json:"warnings"`
+	ShouldReplan bool   `json:"should_replan"`
+	ReplanReason string `json:"replan_reason"`
+	NextGoal     string `json:"next_goal"`
+	// IncompleteItems 轴①完成度：本 step 自身声明目标内、尚未达成的项。
+	IncompleteItems []string `json:"incomplete_items"`
+	// NewSurfaces 轴②泛化：超出本 step 的新维度/攻击面，驱动扩面 replan。
+	NewSurfaces []string `json:"new_surfaces"`
+	Warnings    []string `json:"warnings"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -61,12 +64,34 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
+	// 注入 prompt 前，为各 step outcome 补上绝对路径的 timeline_file（对齐 final_answer）。
+	// 仅增强注入投影，不改 state（state 的回填仍由 applyReplanResult 用相对路径完成）。
+	enrichedOutcomes := snapshot.StepOutcomes
+	enrichedCurrent := rawOutcome
+	if a.workspaceRuntime != nil {
+		sharedDir := a.workspaceRuntime.SharedDir()
+		enrichedOutcomes = make([]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
+		for i, o := range snapshot.StepOutcomes {
+			if o == nil {
+				continue
+			}
+			clone := *o // 浅拷贝：只写标量 TimelineFile，不触碰 slice 字段
+			if clone.StepID != "" && stepTimelineExists(sharedDir, clone.StepID) {
+				clone.TimelineFile = filepath.Join(sharedDir, clone.StepID, "timeline.jsonl")
+			}
+			enrichedOutcomes[i] = &clone
+		}
+		if c := findOutcome(enrichedOutcomes, stepID); c != nil {
+			enrichedCurrent = c
+		}
+	}
+
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":         snapshot.CurrentGoal,
 		"current_step":         current,
-		"step_outcome":         rawOutcome,
+		"step_outcome":         enrichedCurrent,
 		"task_plan":            snapshot.Plan,
-		"step_outcomes":        snapshot.StepOutcomes,
+		"step_outcomes":        enrichedOutcomes,
 		"warnings":             snapshot.Warnings,
 		"unresolved":           snapshot.Unresolved,
 		"step_result_path":     stepResultPath,
@@ -157,12 +182,13 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
 		replanContext = &builtin_tools.ReplanContext{
-			SourceStepID:   stepID,
-			Reason:         strings.TrimSpace(decision.ReplanReason),
-			NextGoal:       nextGoal,
-			MissingItems:   normalizeStringSlice(decision.MissingItems),
-			Warnings:       normalizeStringSlice(decision.Warnings),
-			ReplacePending: true,
+			SourceStepID:    stepID,
+			Reason:          strings.TrimSpace(decision.ReplanReason),
+			NextGoal:        nextGoal,
+			IncompleteItems: normalizeStringSlice(decision.IncompleteItems),
+			NewSurfaces:     normalizeStringSlice(decision.NewSurfaces),
+			Warnings:        normalizeStringSlice(decision.Warnings),
+			ReplacePending:  true,
 		}
 	}
 	return a.applyReplanResult(stepID, &decision, replanContext, snapshot, "")
@@ -192,10 +218,10 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
 	}
 
-	var replanWarnings, replanMissingItems []string
+	var replanWarnings, replanUnresolved []string
 	if replanContext != nil {
 		replanWarnings = replanContext.Warnings
-		replanMissingItems = replanContext.MissingItems
+		replanUnresolved = mergeAxisItems(replanContext.IncompleteItems, replanContext.NewSurfaces)
 	}
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
@@ -221,7 +247,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
 		CurrentGoal:       summaryGoal,
 		Warnings:          replanWarnings,
-		Unresolved:        replanMissingItems,
+		Unresolved:        replanUnresolved,
 		ReplanContext:     replanContext,
 		NextPhase:         nextPhase,
 	})
@@ -256,7 +282,7 @@ func (a *Agent) checkChildAgentsCompletion() *builtin_tools.ReplanContext {
 	}
 	return &builtin_tools.ReplanContext{
 		Reason:         "child agents still running",
-		MissingItems:   running,
+		Warnings:       running,
 		ReplacePending: false,
 	}
 }
@@ -348,6 +374,15 @@ func findOutcome(outcomes []*builtin_tools.StepOutcome, stepID string) *builtin_
 	return nil
 }
 
+// mergeAxisItems 把双轴字段（完成度缺口 + 泛化新面）合并为单一扁平列表，
+// 仅用于 state.Unresolved 这种本就扁平的下游字段；ReplanContext / 事件 payload 保留双轴。
+func mergeAxisItems(incomplete, surfaces []string) []string {
+	merged := make([]string, 0, len(incomplete)+len(surfaces))
+	merged = append(merged, incomplete...)
+	merged = append(merged, surfaces...)
+	return normalizeStringSlice(merged)
+}
+
 func normalizeStringSlice(in []string) []string {
 	if len(in) == 0 {
 		return nil
@@ -379,7 +414,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 			Description: "当你完成评估、准备好输出重规划决策时，调用此工具提交。参数即为决策的结构化内容。",
 			Parameters: map[string]any{
 				"type":     "object",
-				"required": []string{"should_replan", "replan_reason", "next_goal", "missing_items", "warnings"},
+				"required": []string{"should_replan", "replan_reason", "next_goal", "incomplete_items", "new_surfaces", "warnings"},
 				"properties": map[string]any{
 					"should_replan": map[string]any{
 						"type":        "boolean",
@@ -393,10 +428,15 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 						"type":        "string",
 						"description": "should_replan=false 时填空字符串；true 时填明确的下一轮目标，不要写「等待用户输入」。",
 					},
-					"missing_items": map[string]any{
+					"incomplete_items": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "相对 agent 职责与技能覆盖面仍缺失的要点；聚焦约束生效时仅限聚焦方向内。",
+						"description": "轴①完成度/存在性：本 step 目标内、相对 agent 职责与技能覆盖面根本没做的项；聚焦约束生效时仅限聚焦方向内。",
+					},
+					"new_surfaces": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "轴③泛化扩面：对照整体任务目标的资产/攻击面全集、尚未被任何已完成工作覆盖的面。聚焦方向外的高危信号另填 warnings。",
 					},
 					"warnings": map[string]any{
 						"type":        "array",

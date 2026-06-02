@@ -75,7 +75,8 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.SourceStepID = strings.TrimSpace(in.SourceStepID)
 	out.Reason = strings.TrimSpace(in.Reason)
 	out.NextGoal = strings.TrimSpace(in.NextGoal)
-	out.MissingItems = CloneStringSlice(in.MissingItems)
+	out.IncompleteItems = CloneStringSlice(in.IncompleteItems)
+	out.NewSurfaces = CloneStringSlice(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
 	return &out
 }

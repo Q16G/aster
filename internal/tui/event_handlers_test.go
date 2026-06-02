@@ -223,13 +223,14 @@ func TestHandleAgentEventStepReplanResultAddsPart(t *testing.T) {
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeStepReplanResult,
 		Payload: map[string]any{
-			"step_id":       "step-1",
-			"step_name":     "检查上下文",
-			"should_replan": true,
-			"replan_reason": "旧计划未覆盖新增验证缺口",
-			"next_goal":     "围绕新缺口补齐验证",
-			"missing_items": []any{"missing-1"},
-			"warnings":      []any{"warn-1"},
+			"step_id":          "step-1",
+			"step_name":        "检查上下文",
+			"should_replan":    true,
+			"replan_reason":    "旧计划未覆盖新增验证缺口",
+			"next_goal":        "围绕新缺口补齐验证",
+			"incomplete_items": []any{"missing-1"},
+			"new_surfaces":     []any{"surface-1"},
+			"warnings":         []any{"warn-1"},
 		},
 	})
 
