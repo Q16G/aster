@@ -576,6 +576,7 @@ aster agent reset --force   # 强制覆盖所有内置 Agent（自定义 Agent �
 | 审计源代码中的安全漏洞 | `code-audit`（默认） | `aster` |
 | 对运行中的 Web 应用渗透测试 | `pentest` | 启动后 `/agent pentest` |
 | 主机安全基线检查与应急响应 | `host-defense` | 启动后 `/agent host-defense` |
+| 解 Web 方向 CTF 题、捕获 flag | `ctf` | 启动后 `/agent ctf` |
 
 ### 场景 1: 代码审计（默认 Agent）
 
@@ -653,6 +654,25 @@ aster
 | `yara` / `chkrootkit` / `rkhunter` | 可选 | 恶意软件检测退化为 AI 启发式分析 + 内置 bash 检查 |
 
 > **操作系统**：Linux 完整支持，macOS 部分支持，暂不支持 Windows。
+
+### 场景 4: Web CTF 解题
+
+`ctf` Agent 面向 Web 方向 CTF：对给定靶机 URL 做黑盒侦察、识别考点、构造链式利用并捕获 flag。与 `pentest` 的「输出漏洞报告」不同，它是单目标的解题导向，产物为 flag + 解题 writeup。
+
+```
+aster
+> /agent ctf
+> /mode yolo
+> 解这道 web 题，拿到 flag：http://localhost:8080
+```
+
+| 工具 | 状态 | 不安装时的影响 |
+|------|------|---------------|
+| `curl` | **必需** | 主力 HTTP 探测/利用工具 |
+| `sqlmap` | 可选 | SQL 注入自动化退化为手动构造 payload |
+| `agent-browser` + Chrome/Chromium | 可选 | 客户端题（XSS bot、headless admin、前端逻辑）交互不可用 |
+
+> 仅用于授权的 CTF 比赛或靶场环境。覆盖 SQLi/SSTI/命令注入/SSRF/XXE/文件上传/LFI/反序列化/JWT/信息泄露(.git)/越权/客户端等常见 Web 考点。
 
 ---
 
