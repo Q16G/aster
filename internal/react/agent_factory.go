@@ -114,6 +114,7 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 		WithInstruction(def.Instruction),
 		WithAgentIdentity(def.Role, def.Background),
 		WithEmitter(f.resolveEmitter(def.Name)),
+		WithIsSubAgent(def.IsSubAgent),
 	}
 
 	if def.ModelID != "" {

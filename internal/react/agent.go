@@ -164,7 +164,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 		}
 	}
 
-	// 平台级内置工具：状态回写和人工确认，所有 Agent 共享。
+	// 平台级内置工具：状态回写、任务状态查询所有 Agent 共享；human_confirm 仅顶层注册（见下）。
 	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
 	ucsTool.ChildAgentChecker = agent.runningChildAgentNames
 	if err := agent.registerTool(ucsTool); err != nil {
@@ -173,8 +173,12 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	if err := agent.registerTool(builtin_tools.NewTaskStatusQueryTool(agent)); err != nil {
 		return nil, err
 	}
-	if err := agent.registerTool(builtin_tools.NewHumanConfirmTool(agent)); err != nil {
-		return nil, err
+	// human_confirm 只在顶层 agent 注册：子 agent 发起的 durable interrupt 永远到不了人类，
+	// 请求只会挂起直到 ctx 取消并把整个子 agent 标记为失败。
+	if !cfg.IsSubAgent {
+		if err := agent.registerTool(builtin_tools.NewHumanConfirmTool(agent)); err != nil {
+			return nil, err
+		}
 	}
 	if cfg.BashTool != nil {
 		bashTool := builtin_tools.NewBashTool(agent, cfg.BashTool.PermCtx, cfg.BashTool.SessionAL)

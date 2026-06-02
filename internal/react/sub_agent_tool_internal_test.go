@@ -681,6 +681,49 @@ func TestBuild_SubAgentOmitsOrchestrationTools(t *testing.T) {
 	})
 }
 
+func TestBuild_SubAgentOmitsHumanConfirm(t *testing.T) {
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+
+	exposesHumanConfirm := func(agent *Agent) bool {
+		fnTools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+		for _, ft := range fnTools {
+			if ft.Function != nil && ft.Function.Name == builtin_tools.HumanConfirmToolName {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("sub-agent neither registers nor exposes human_confirm", func(t *testing.T) {
+		child, err := factory.Build(AgentDefinition{Name: "child", IsSubAgent: true})
+		if err != nil {
+			t.Fatalf("build sub-agent: %v", err)
+		}
+		if _, ok := child.GetTool(builtin_tools.HumanConfirmToolName); ok {
+			t.Errorf("sub-agent must not register %q", builtin_tools.HumanConfirmToolName)
+		}
+		if exposesHumanConfirm(child) {
+			t.Errorf("sub-agent prompt must not expose %q", builtin_tools.HumanConfirmToolName)
+		}
+	})
+
+	t.Run("root agent registers and exposes human_confirm", func(t *testing.T) {
+		root, err := factory.Build(AgentDefinition{Name: "root"})
+		if err != nil {
+			t.Fatalf("build root: %v", err)
+		}
+		if _, ok := root.GetTool(builtin_tools.HumanConfirmToolName); !ok {
+			t.Errorf("root agent must register %q", builtin_tools.HumanConfirmToolName)
+		}
+		if !exposesHumanConfirm(root) {
+			t.Errorf("root agent prompt must expose %q", builtin_tools.HumanConfirmToolName)
+		}
+	})
+}
+
 func TestRunningChildAgentNames(t *testing.T) {
 	root := t.TempDir()
 	ws, err := newLocalWorkspaceRuntime("sess-1", root, "root")

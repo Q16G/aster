@@ -2555,6 +2555,83 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 	}
 }
 
+// TestExecute_SubAgentHumanConfirmDoesNotInterrupt verifies the end-to-end
+// guarantee of the human_confirm sub-agent gate: a sub-agent (IsSubAgent=true)
+// that emits a human_confirm tool call mid-step does NOT enter a durable
+// interrupt. Because human_confirm is unregistered for sub-agents, the call
+// hits the scheduler's "tool not found" path, the loop continues, and the run
+// completes normally instead of hanging in WAITING_FOR_HUMAN until ctx cancel.
+func TestExecute_SubAgentHumanConfirmDoesNotInterrupt(t *testing.T) {
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			{
+				// step phase, iter 1: model tries to ask the human. The tool is
+				// not registered on a sub-agent, so this resolves to "tool not
+				// found" and the loop proceeds rather than raising an interrupt.
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-human", builtin_tools.HumanConfirmToolName, map[string]any{
+						"question": "need approval?",
+					}),
+				},
+			},
+			{
+				// step phase, iter 2: complete the step.
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status":         "completed",
+						"summary":        "ok",
+						"display_result": "step ok",
+						"result":         "step ok",
+					}),
+				},
+			},
+			{
+				// final answer phase.
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"sub-final","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"sub-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(5),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithIsSubAgent(true),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: false,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "执行用户请求", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success run result, got %#v", runResult)
+	}
+	if runResult.PendingInterrupt != nil {
+		t.Fatalf("sub-agent human_confirm must not raise a durable interrupt, got %#v", runResult.PendingInterrupt)
+	}
+	if runResult.TurnStatus == "interrupted" {
+		t.Fatalf("sub-agent turn must not be interrupted, got status %q", runResult.TurnStatus)
+	}
+	// The run proceeded past the swallowed human_confirm to a terminal,
+	// non-empty result instead of hanging in WAITING_FOR_HUMAN.
+	if strings.TrimSpace(runResult.Result) == "" {
+		t.Fatalf("expected sub-agent to proceed to a final result, got empty")
+	}
+}
+
 func mustBuildToolCall(t *testing.T, callID string, name string, args map[string]any) *ai.FunctionTool {
 	t.Helper()
 	raw, err := json.Marshal(args)
