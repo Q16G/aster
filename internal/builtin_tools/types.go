@@ -289,14 +289,24 @@ type ToolCall struct {
 	Arguments  map[string]any `json:"arguments,omitempty"`
 }
 
+type ToolResultMedia struct {
+	Kind      string `json:"kind,omitempty"`
+	Path      string `json:"path,omitempty"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+}
+
 // ToolResult 工具调用结果
 type ToolResult struct {
-	ID         string `json:"id,omitempty"`
-	Name       string `json:"name"`
-	IsAgent    bool   `json:"is_agent,omitempty"`
-	StackDepth int    `json:"stack_depth,omitempty"`
-	Result     string `json:"result,omitempty"`
-	Error      string `json:"error,omitempty"`
+	ID         string            `json:"id,omitempty"`
+	Name       string            `json:"name"`
+	IsAgent    bool              `json:"is_agent,omitempty"`
+	StackDepth int               `json:"stack_depth,omitempty"`
+	Result     string            `json:"result,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	Media      []ToolResultMedia `json:"media,omitempty"`
 }
 
 // StateSnapshot Agent 状态快照

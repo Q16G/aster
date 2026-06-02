@@ -8,7 +8,7 @@ import (
 )
 
 func TestNormalizeToolStructuredOutput_ReadFile(t *testing.T) {
-	in := `{"ok":true,"truncated":true,"content":"line2","max_bytes":5}`
+	in := `{"ok":true,"truncated":true,"content":"line2","next_offset":7,"limit":5}`
 	out := NormalizeToolStructuredOutput(ReadFileToolName, in)
 
 	var payload map[string]any
@@ -20,8 +20,8 @@ func TestNormalizeToolStructuredOutput_ReadFile(t *testing.T) {
 		t.Fatalf("expected read_file content with ellipsis, got %q", content)
 	}
 	msg, _ := payload["message"].(string)
-	if !strings.Contains(msg, "max_bytes") {
-		t.Fatalf("expected read_file message with max_bytes, got %q", msg)
+	if !strings.Contains(msg, "offset=7") || !strings.Contains(msg, "limit=5") {
+		t.Fatalf("expected read_file message with offset/limit, got %q", msg)
 	}
 }
 

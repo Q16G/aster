@@ -247,18 +247,22 @@ func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
 // EmitToolEnd 发射工具结束事件
 func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
 	e.ResetThinkGroupID()
+	payload := map[string]any{
+		"call_id":     result.ID,
+		"tool_name":   result.Name,
+		"is_agent":    result.IsAgent,
+		"stack_depth": result.StackDepth,
+		"result":      result.Result,
+		"error":       result.Error,
+	}
+	if len(result.Media) > 0 {
+		payload["media"] = result.Media
+	}
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolEnd,
 		NodeID:    "tool:" + result.Name,
 		Iteration: iteration,
-		Payload: map[string]any{
-			"call_id":     result.ID,
-			"tool_name":   result.Name,
-			"is_agent":    result.IsAgent,
-			"stack_depth": result.StackDepth,
-			"result":      result.Result,
-			"error":       result.Error,
-		},
+		Payload:   payload,
 	})
 }
 

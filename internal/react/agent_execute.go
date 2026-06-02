@@ -1501,22 +1501,12 @@ func mergeFunctionToolDeltas(existing []*ai.FunctionTool, incoming []*ai.Functio
 	return existing
 }
 
-func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string, args map[string]any, result, errText string, isAgent bool) {
+func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string, args map[string]any, content any, errText string, isAgent bool) {
 	if a == nil {
 		return
 	}
 
-	content := result
-	trimmedErr := strings.TrimSpace(errText)
-	if trimmedErr != "" {
-		if strings.TrimSpace(content) != "" {
-			content = fmt.Sprintf("%s\n\nError: %s", content, trimmedErr)
-		} else {
-			content = fmt.Sprintf("Error: %s", trimmedErr)
-		}
-	}
-
-	toolResultMsg := ai.NewToolCallResultMsgInfo(content, callID)
+	toolResultMsg := ai.NewToolCallResultMsgInfo(finalizeToolResultContent(content, errText), callID)
 	// Step phase: tool results are step-local transcript and should not be persisted to long-term ai.history.
 	a.stepHistory = append(a.stepHistory, toolResultMsg)
 	a.persistInFlightStepHistory()

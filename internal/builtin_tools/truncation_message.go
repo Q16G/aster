@@ -14,11 +14,21 @@ func ReadFileLargeTruncationMessage(thresholdBytes int64, previewBytes int, omit
 	)
 }
 
-func ReadFileTruncationMessage(maxBytes int64) string {
-	if maxBytes > 0 {
-		return fmt.Sprintf("read_file 内容已按 max_bytes=%d 截断，后续内容以 ... 省略。可使用 start_line/end_line 或更小 max_bytes 分段读取。", maxBytes)
+func ReadFileTruncationMessage(nextOffset int64, limit int64) string {
+	if nextOffset > 0 && limit > 0 {
+		return fmt.Sprintf("read_file 当前页内容未完整展示，可继续使用 offset=%d、limit=%d 读取后续内容。", nextOffset, limit)
 	}
-	return "read_file 内容已截断，后续内容以 ... 省略。可使用 start_line/end_line 或更小 max_bytes 分段读取。"
+	return "read_file 当前页内容未完整展示，可继续使用 offset/limit 分页读取后续内容。"
+}
+
+func ReadFilePageMessage(nextOffset int64, limit int64, unit string) string {
+	if unit == "" {
+		unit = "项"
+	}
+	if nextOffset > 0 && limit > 0 {
+		return fmt.Sprintf("当前页后仍有更多%s，可继续使用 offset=%d、limit=%d 读取下一页。", unit, nextOffset, limit)
+	}
+	return fmt.Sprintf("当前页后仍有更多%s，可继续使用 offset/limit 读取下一页。", unit)
 }
 
 func RgTruncationMessage(captureLimitBytes int64) string {
