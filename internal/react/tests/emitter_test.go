@@ -1,6 +1,7 @@
 package react_test
 
 import (
+	"aster/internal/builtin_tools"
 	. "aster/internal/react"
 	"testing"
 )
@@ -85,5 +86,37 @@ func TestEmitter_AssignsRecordUniqueEventID(t *testing.T) {
 	}
 	if eventIDs[0] != "demo-session:1" || eventIDs[1] != "demo-session:2" {
 		t.Fatalf("unexpected event ID assignment: got=%v want=%v", eventIDs, []string{"demo-session:1", "demo-session:2"})
+	}
+}
+
+func TestEmitter_EmitToolEndIncludesMediaMetadata(t *testing.T) {
+	var payload map[string]any
+
+	emitter := NewEmitter("demo-session", "demo-agent", func(e *AgentOutputEvent) error {
+		if e != nil {
+			payload = e.Payload
+		}
+		return nil
+	})
+
+	emitter.EmitToolEnd(1, builtin_tools.ToolResult{
+		ID:   "call-1",
+		Name: builtin_tools.ReadFileToolName,
+		Media: []builtin_tools.ToolResultMedia{{
+			Kind:     "image",
+			Path:     "/tmp/demo.png",
+			MIMEType: "image/png",
+		}},
+	})
+
+	if payload == nil {
+		t.Fatal("expected payload to be emitted")
+	}
+	media, ok := payload["media"].([]builtin_tools.ToolResultMedia)
+	if !ok {
+		t.Fatalf("expected typed media payload, got %T", payload["media"])
+	}
+	if len(media) != 1 || media[0].Path != "/tmp/demo.png" {
+		t.Fatalf("unexpected media payload: %+v", media)
 	}
 }
