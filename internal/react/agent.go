@@ -668,6 +668,14 @@ func (a *Agent) UpdatePlan(plan []*builtin_tools.PlanItem, explanation string, n
 	return a.state.UpdatePlan(plan, explanation, needsPlanning)
 }
 
+// SetGoalUnderstanding 记录 planner 对原始输入的结构化理解。
+func (a *Agent) SetGoalUnderstanding(understanding string) builtin_tools.StateSnapshot {
+	if a == nil || a.state == nil {
+		return builtin_tools.StateSnapshot{}
+	}
+	return a.state.SetGoalUnderstanding(understanding)
+}
+
 func (a *Agent) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
 	if a == nil || a.state == nil {
 		return builtin_tools.StateSnapshot{}

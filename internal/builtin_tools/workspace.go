@@ -36,7 +36,7 @@ type WorkspaceState struct {
 	ChildAgents           map[string]*WorkspaceChildAgentPointer  `json:"child_agents,omitempty"`
 	ChildAgentResumeIndex map[string]string                       `json:"child_agent_resume_index,omitempty"`
 	Warnings              []string                                `json:"warnings,omitempty"`
-	Unresolved            []string                                `json:"unresolved,omitempty"`
+	UnresolvedAxes        *ReplanAxes                             `json:"unresolved_axes,omitempty"`
 	ReplanContext         *ReplanContext                          `json:"replan_context,omitempty"`
 	ActiveSkillNames      []string                                `json:"active_skill_names,omitempty"`
 	ActiveMCPServers      []string                                `json:"active_mcp_servers,omitempty"`

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aster/internal/builtin_tools"
 )
 
 func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
@@ -15,22 +17,25 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		skillsCtx = sc
 	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentRole:          strings.TrimSpace(a.cfg.Role),
-		AgentBackground:    strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
-		CurrentGoal:        payload["current_goal"],
-		CurrentStep:        payload["current_step"],
-		StepOutcome:        payload["step_outcome"],
-		TaskPlan:           payload["task_plan"],
-		StepOutcomes:       payload["step_outcomes"],
-		Warnings:           payload["warnings"],
-		Unresolved:         payload["unresolved"],
-		StepResultPath:     stringFromPayload(payload, "step_result_path"),
-		StepContextsPath:   stringFromPayload(payload, "step_contexts_path"),
-		StepTranscriptPath: stringFromPayload(payload, "step_transcript_path"),
-		StepTimelinePath:   stringFromPayload(payload, "step_timeline_path"),
-		SkillsContext:      skillsCtx,
-		HasSkillsTable:     skillsCtx != nil && skillsCtx.HasTable(),
+		AgentRole:              strings.TrimSpace(a.cfg.Role),
+		AgentBackground:        strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
+		CurrentGoal:            payload["current_goal"],
+		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
+		CurrentStep:            payload["current_step"],
+		StepOutcome:            payload["step_outcome"],
+		TaskPlan:               payload["task_plan"],
+		StepOutcomes:           payload["step_outcomes"],
+		Warnings:               payload["warnings"],
+		CarriedIncompleteItems: payload["carried_incomplete_items"],
+		CarriedDepthGaps:       payload["carried_depth_gaps"],
+		CarriedNewSurfaces:     payload["carried_new_surfaces"],
+		StepResultPath:         stringFromPayload(payload, "step_result_path"),
+		StepContextsPath:       stringFromPayload(payload, "step_contexts_path"),
+		StepTranscriptPath:     stringFromPayload(payload, "step_transcript_path"),
+		StepTimelinePath:       stringFromPayload(payload, "step_timeline_path"),
+		SkillsContext:          skillsCtx,
+		HasSkillsTable:         skillsCtx != nil && skillsCtx.HasTable(),
 	})
 }
 
@@ -47,19 +52,47 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 	}
 	showPlanSection, _ := payload["show_plan"].(bool)
 	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentRole:        strings.TrimSpace(a.cfg.Role),
-		AgentBackground:  strings.TrimSpace(a.cfg.Background),
-		AgentInstruction: strings.TrimSpace(a.cfg.Instruction),
-		Status:           payload["status"],
-		StateError:       payload["state_error"],
-		InputTimeline:    payload["input_timeline"],
-		ShowPlanSection:  showPlanSection,
-		Plan:             payload["plan"],
-		PlanVersion:      payload["plan_version"],
-		StepOutcomes:     payload["step_outcomes"],
-		Warnings:         payload["warnings"],
-		Unresolved:       payload["unresolved"],
+		AgentRole:              strings.TrimSpace(a.cfg.Role),
+		AgentBackground:        strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
+		Status:                 payload["status"],
+		StateError:             payload["state_error"],
+		InputTimeline:          payload["input_timeline"],
+		ShowPlanSection:        showPlanSection,
+		Plan:                   payload["plan"],
+		PlanVersion:            payload["plan_version"],
+		StepOutcomes:           payload["step_outcomes"],
+		Warnings:               payload["warnings"],
+		CarriedIncompleteItems: payload["carried_incomplete_items"],
+		CarriedDepthGaps:       payload["carried_depth_gaps"],
+		CarriedNewSurfaces:     payload["carried_new_surfaces"],
 	})
+}
+
+// axisKind 标识三轴未决盘点的某一轴，用于从 sticky 状态取对应承载项。
+type axisKind int
+
+const (
+	axisIncomplete axisKind = iota
+	axisDepth
+	axisNewSurfaces
+)
+
+// carriedAxisItems 从 sticky 三轴状态取出指定轴的承载项；nil 安全。
+func carriedAxisItems(axes *builtin_tools.ReplanAxes, kind axisKind) []string {
+	if axes == nil {
+		return nil
+	}
+	switch kind {
+	case axisIncomplete:
+		return axes.IncompleteItems
+	case axisDepth:
+		return axes.DepthGaps
+	case axisNewSurfaces:
+		return axes.NewSurfaces
+	default:
+		return nil
+	}
 }
 
 func prettyJSON(value any) string {

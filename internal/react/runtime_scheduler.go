@@ -226,9 +226,15 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	a.applyPlannerOverflowHints(&plannerInput)
 
+	// 仅在「全新意图」首次规划时强制要求 goal_understanding：续写/重规划（含 ReplanContext、
+	// 已有 plan）以及从意图感知恢复的回合（snapshot 已带 goal_understanding）一律沿用既有理解，
+	// 不强制重做意图分析；planner 若提交了非空理解仍会覆盖（见 SetGoalUnderstanding）。
+	requireGoalUnderstanding := strings.TrimSpace(snapshot.GoalUnderstanding) == "" &&
+		snapshot.ReplanContext == nil && len(snapshot.Plan) == 0
+
 	var res *builtin_tools.TaskPlannerResult
 	if promptBuilder, ok := planner.(PlannerPromptBuilder); ok {
-		planRes, err := a.runPlanPhaseWithTools(ctx, iter, runClient, plannerInput, promptBuilder)
+		planRes, err := a.runPlanPhaseWithTools(ctx, iter, runClient, plannerInput, promptBuilder, requireGoalUnderstanding)
 		if err != nil {
 			return err
 		}
@@ -306,6 +312,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		return nil
 	}
 
+	if res != nil {
+		a.SetGoalUnderstanding(res.GoalUnderstanding)
+	}
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
 	if res != nil && len(items) > 0 {
 		a.appendPlanContextRecord(res, snapshot)
@@ -332,18 +341,156 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 }
 
 const submitPlanToolName = "submit_plan"
+const requestClarificationToolName = "request_clarification"
 
-func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder) (*builtin_tools.TaskPlannerResult, error) {
+// maxClarificationRounds 限制 Plan 阶段澄清提问的总轮数，防止反复反问造成死循环。
+const maxClarificationRounds = 1
+
+func buildRequestClarificationFunctionTool() *ai.FunctionTool {
+	return &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        requestClarificationToolName,
+			Description: "仅当输入存在会实质改变计划方向/范围、且无法靠 read_file/rg/bash 自行查清的歧义时，向用户发起一次澄清提问。能靠工具查清的不要问。",
+			Parameters: map[string]any{
+				"type":     "object",
+				"required": []string{"questions"},
+				"properties": map[string]any{
+					"questions": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "需要用户澄清的问题，聚焦、可一次问清；可一次列多个子问。",
+					},
+					"reason": map[string]any{
+						"type":        "string",
+						"description": "为何必须澄清（说明该歧义会如何实质改变计划），帮助用户理解。",
+					},
+				},
+			},
+		},
+	}
+}
+
+type clarificationArgs struct {
+	Questions []string `json:"questions"`
+	Reason    string   `json:"reason"`
+}
+
+func parseClarificationArgs(args any) (*clarificationArgs, error) {
+	var data []byte
+	switch v := args.(type) {
+	case string:
+		data = []byte(v)
+	case []byte:
+		data = v
+	default:
+		var err error
+		data, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("request_clarification: marshal args failed: %w", err)
+		}
+	}
+	var result clarificationArgs
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("request_clarification: parse args failed: %w", err)
+	}
+	cleaned := result.Questions[:0]
+	for _, q := range result.Questions {
+		if q = strings.TrimSpace(q); q != "" {
+			cleaned = append(cleaned, q)
+		}
+	}
+	result.Questions = cleaned
+	if len(result.Questions) == 0 {
+		return nil, fmt.Errorf("request_clarification: questions is empty")
+	}
+	return &result, nil
+}
+
+// handleClarificationToolCall 处理 planner 的 request_clarification 调用：
+// 经 OnHumanInput 同步问答通道把问题发给用户，回答作为工具结果写回 stepHistory，
+// 下一轮 planner 据此重做理解与规划。无人工通道或用户取消时优雅降级，不阻塞。
+func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.FunctionTool, rounds int) {
+	callID := strings.TrimSpace(tc.Id)
+	parsed, parseErr := parseClarificationArgs(tc.Function.Arguments)
+	if parseErr != nil {
+		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil, "",
+			fmt.Sprintf("request_clarification 参数无效: %s\n请基于最合理假设继续，并把假设写入 goal_understanding。", parseErr.Error()), false)
+		return
+	}
+
+	if rounds > maxClarificationRounds {
+		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
+			"已达到澄清提问上限（最多一轮）。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
+		return
+	}
+
+	onHumanInput := a.GetOnHumanInput()
+	if onHumanInput == nil {
+		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
+			"当前无人工交互通道，无法澄清。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
+		return
+	}
+
+	question := strings.Join(parsed.Questions, "\n")
+	if reason := strings.TrimSpace(parsed.Reason); reason != "" {
+		question = "需要澄清以下问题以确定计划方向：\n" + question + "\n\n（原因：" + reason + "）"
+	} else {
+		question = "需要澄清以下问题以确定计划方向：\n" + question
+	}
+
+	requestID := uuid.NewString()
+	snapshot := a.state.Snapshot()
+	ctxMap := map[string]any{
+		"request_id": requestID,
+		"input_type": "text",
+		"questions":  parsed.Questions,
+		"reason":     parsed.Reason,
+		"phase":      "plan_clarification",
+	}
+	if a.emitter != nil {
+		a.emitter.EmitHumanRequest(snapshot.Iteration, requestID, question, ctxMap)
+	}
+	pausedSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
+		Task:     "等待规划澄清",
+		Status:   builtin_tools.TaskStatusPaused,
+		Message:  question,
+		Progress: -1,
+	})
+	if a.emitter != nil {
+		a.emitter.EmitStateChange(pausedSnap)
+	}
+
+	answer, err := onHumanInput(ctx, question, ctxMap)
+	resumeSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
+		Task:     "规划澄清结束",
+		Status:   builtin_tools.TaskStatusRunning,
+		Progress: -1,
+	})
+	if a.emitter != nil {
+		a.emitter.EmitStateChange(resumeSnap)
+	}
+	if err != nil || strings.TrimSpace(answer) == "" {
+		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
+			"用户未提供澄清（取消或留空）。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
+		return
+	}
+	a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
+		fmt.Sprintf("用户澄清回复：\n%s\n\n请据此重做输入理解（更新 goal_understanding）并规划。", strings.TrimSpace(answer)), "", false)
+}
+
+func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	prompt, err := promptBuilder.BuildPrompt(input)
 	if err != nil {
 		return nil, fmt.Errorf("build task planner prompt failed: %w", err)
 	}
 
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool())
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
 
 	const maxSubmitRetries = 3
 	submitRetries := 0
+	clarificationRounds := 0
 
 	for round := 0; ; round++ {
 		if ctx.Err() != nil {
@@ -392,7 +539,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				continue
 			}
 			if tc.Function.Name == submitPlanToolName {
-				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments)
+				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding)
 				if parseErr != nil {
 					submitRetries++
 					if submitRetries > maxSubmitRetries {
@@ -424,6 +571,12 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					}
 				}
 				return parsed, nil
+			}
+			if tc.Function.Name == requestClarificationToolName {
+				clarificationRounds++
+				a.handleClarificationToolCall(ctx, tc, clarificationRounds)
+				anyUsefulTool = true
+				continue
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
@@ -480,6 +633,10 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 						"type":        "string",
 						"description": "用 1-2 句话说明规划判断依据，不复述全部步骤。",
 					},
+					"goal_understanding": map[string]any{
+						"type":        "string",
+						"description": "对用户输入的结构化复述，建议覆盖固定小标题：核心目标 / 范围边界 / 约束 / 交付物与验收 / 显式聚焦 / 隐含需求与假设 / 未决歧义。needs_planning=true 时必填。",
+					},
 					"direct_response": map[string]any{
 						"type":        "string",
 						"description": "当 needs_planning=false 时，直接输出对用户的完整回复；此字段仅在 needs_planning=false 时必填。",
@@ -504,7 +661,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 	}
 }
 
-func parseSubmitPlanArgs(args any) (*builtin_tools.TaskPlannerResult, error) {
+func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	var data []byte
 	switch v := args.(type) {
 	case string:
@@ -524,6 +681,9 @@ func parseSubmitPlanArgs(args any) (*builtin_tools.TaskPlannerResult, error) {
 	}
 	if result.NeedsPlanning && len(result.Plan) == 0 {
 		return nil, fmt.Errorf("submit_plan: needs_planning=true but plan is empty")
+	}
+	if requireGoalUnderstanding && result.NeedsPlanning && strings.TrimSpace(result.GoalUnderstanding) == "" {
+		return nil, fmt.Errorf("submit_plan: needs_planning=true but goal_understanding is empty（请先按原则 0.5 完成输入理解，填入 goal_understanding 再提交）")
 	}
 	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
 		return nil, fmt.Errorf("submit_plan: needs_planning=false but direct_response is empty")
@@ -739,7 +899,7 @@ func buildExecutionLineJSON(snapshot builtin_tools.StateSnapshot, workspaceRootD
 		"current_goal":    strings.TrimSpace(snapshot.CurrentGoal),
 		"current_step_id": strings.TrimSpace(snapshot.CurrentStepID),
 		"warnings":        snapshot.Warnings,
-		"unresolved":      snapshot.Unresolved,
+		"unresolved_axes": snapshot.UnresolvedAxes,
 		"step_outcomes":   views,
 	})
 }

@@ -25,8 +25,6 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	executionContexts := a.executionContextsForPrompt(snap)
 	hasDependencySummaries := len(dependencySummaries) > 0
 	hasExecutionContexts := len(executionContexts) > 0
-	hasWarnings := len(snap.Warnings) > 0
-	hasUnresolved := len(snap.Unresolved) > 0
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
 
@@ -61,14 +59,10 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		HasCurrentStep:          currentStep != nil,
 		HasDependencySummaries:  hasDependencySummaries,
 		HasExecutionContexts:    hasExecutionContexts,
-		HasWarnings:             hasWarnings,
-		HasUnresolved:           hasUnresolved,
 		HasSkillsTable:          skillsContext != nil && skillsContext.HasTable(),
 		HasInjectedSkills:       skillsContext != nil && skillsContext.HasInjected(),
 		MCPContext:              mcpContext,
 		HasMCPTable:             mcpContext != nil && mcpContext.HasTable(),
-		Warnings:                snap.Warnings,
-		Unresolved:              snap.Unresolved,
 		ExtraContext:            extra,
 		SupportsVision:          supportsVision,
 		CanSpawnSubAgent:        canSpawnSubAgent,
@@ -251,7 +245,7 @@ func FormatRuntimeStateJSON(snapshot builtin_tools.StateSnapshot, sessionID stri
 		"last_outcome":       latestStepOutcome(snapshot.StepOutcomes),
 		"active_skill_names": snapshot.ActiveSkillNames,
 		"warnings":           snapshot.Warnings,
-		"unresolved":         snapshot.Unresolved,
+		"unresolved_axes":    snapshot.UnresolvedAxes,
 	}, "", "  ")
 	if err != nil {
 		return "{}"

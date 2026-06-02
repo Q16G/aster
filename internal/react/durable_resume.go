@@ -200,7 +200,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		snapshot.StepOutcomes = payload.StepOutcomes
 		snapshot.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(payload.ExternalInterrupt)
 		snapshot.Warnings = payload.Warnings
-		snapshot.Unresolved = payload.Unresolved
+		snapshot.UnresolvedAxes = builtin_tools.CloneReplanAxes(payload.UnresolvedAxes)
 		snapshot.ReplanContext = builtin_tools.CloneReplanContext(payload.ReplanContext)
 		snapshot.ActiveSkillNames = builtin_tools.CloneStringSlice(payload.ActiveSkillNames)
 		snapshot.ActiveMCPServers = builtin_tools.CloneStringSlice(payload.ActiveMCPServers)
@@ -217,8 +217,8 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if len(snapshot.Warnings) == 0 && len(workspaceState.Warnings) > 0 {
 			snapshot.Warnings = builtin_tools.CloneStringSlice(workspaceState.Warnings)
 		}
-		if len(snapshot.Unresolved) == 0 && len(workspaceState.Unresolved) > 0 {
-			snapshot.Unresolved = builtin_tools.CloneStringSlice(workspaceState.Unresolved)
+		if builtin_tools.ReplanAxesEmpty(snapshot.UnresolvedAxes) && !builtin_tools.ReplanAxesEmpty(workspaceState.UnresolvedAxes) {
+			snapshot.UnresolvedAxes = builtin_tools.CloneReplanAxes(workspaceState.UnresolvedAxes)
 		}
 		if snapshot.ReplanContext == nil && workspaceState.ReplanContext != nil {
 			snapshot.ReplanContext = builtin_tools.CloneReplanContext(workspaceState.ReplanContext)
@@ -252,6 +252,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		}
 		if strings.TrimSpace(snapshot.CurrentGoal) == "" && strings.TrimSpace(planCurrent.CurrentGoal) != "" {
 			snapshot.CurrentGoal = strings.TrimSpace(planCurrent.CurrentGoal)
+		}
+		if strings.TrimSpace(snapshot.GoalUnderstanding) == "" && strings.TrimSpace(planCurrent.GoalUnderstanding) != "" {
+			snapshot.GoalUnderstanding = strings.TrimSpace(planCurrent.GoalUnderstanding)
 		}
 		if len(snapshot.InputTimeline) == 0 && len(planCurrent.InputTimeline) > 0 {
 			snapshot.InputTimeline = planCurrent.InputTimeline

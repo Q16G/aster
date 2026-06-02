@@ -7,6 +7,18 @@ import (
 	"text/template"
 )
 
+// anyHasItems 判断模板入参（通常是 []string）是否非空，用于三轴 CARRIED_* 段的渲染门控。
+func anyHasItems(v any) bool {
+	switch items := v.(type) {
+	case []string:
+		return len(items) > 0
+	case nil:
+		return false
+	default:
+		return false
+	}
+}
+
 type ThinkActPromptInput struct {
 	AgentRole               string
 	AgentBackground         string
@@ -22,51 +34,52 @@ type ThinkActPromptInput struct {
 	HasCurrentStep          bool
 	HasDependencySummaries  bool
 	HasExecutionContexts    bool
-	HasWarnings             bool
-	HasUnresolved           bool
 	HasSkillsTable          bool
 	HasInjectedSkills       bool
 	MCPContext              *MCPPromptContext
 	HasMCPTable             bool
-	Warnings                any
-	Unresolved              any
 	ExtraContext            string
 	SupportsVision          bool
 	CanSpawnSubAgent        bool
 }
 
 type StepReplanPromptInput struct {
-	AgentRole          string
-	AgentBackground    string
-	AgentInstruction   string
-	CurrentGoal        any
-	CurrentStep        any
-	StepOutcome        any
-	TaskPlan           any
-	StepOutcomes       any
-	Warnings           any
-	Unresolved         any
-	StepResultPath     string
-	StepContextsPath   string
-	StepTranscriptPath string
-	StepTimelinePath   string
-	SkillsContext      *SkillsPromptContext
-	HasSkillsTable     bool
+	AgentRole              string
+	AgentBackground        string
+	AgentInstruction       string
+	CurrentGoal            any
+	GoalUnderstanding      string
+	CurrentStep            any
+	StepOutcome            any
+	TaskPlan               any
+	StepOutcomes           any
+	Warnings               any
+	CarriedIncompleteItems any
+	CarriedDepthGaps       any
+	CarriedNewSurfaces     any
+	StepResultPath         string
+	StepContextsPath       string
+	StepTranscriptPath     string
+	StepTimelinePath       string
+	SkillsContext          *SkillsPromptContext
+	HasSkillsTable         bool
 }
 
 type FinalAnswerPromptInput struct {
-	AgentRole        string
-	AgentBackground  string
-	AgentInstruction string
-	Status           any
-	StateError       any
-	InputTimeline    any
-	ShowPlanSection  bool
-	Plan             any
-	PlanVersion      any
-	StepOutcomes     any
-	Warnings         any
-	Unresolved       any
+	AgentRole              string
+	AgentBackground        string
+	AgentInstruction       string
+	Status                 any
+	StateError             any
+	InputTimeline          any
+	ShowPlanSection        bool
+	Plan                   any
+	PlanVersion            any
+	StepOutcomes           any
+	Warnings               any
+	CarriedIncompleteItems any
+	CarriedDepthGaps       any
+	CarriedNewSurfaces     any
 }
 
 type HistoryCompactionPromptInput struct {
@@ -134,14 +147,14 @@ type PromptManager interface {
 }
 
 type defaultPromptManager struct {
-	thinkActTmpl               *template.Template
-	stepReplanTmpl             *template.Template
-	finalAnswerTmpl            *template.Template
-	historyCompactionTmpl      *template.Template
-	taskPlannerTmpl            *template.Template
-	agentHandoffTmpl           *template.Template
-	stepOutcomesReducerTmpl    *template.Template
-	intentClassificationTmpl   *template.Template
+	thinkActTmpl             *template.Template
+	stepReplanTmpl           *template.Template
+	finalAnswerTmpl          *template.Template
+	historyCompactionTmpl    *template.Template
+	taskPlannerTmpl          *template.Template
+	agentHandoffTmpl         *template.Template
+	stepOutcomesReducerTmpl  *template.Template
+	intentClassificationTmpl *template.Template
 }
 
 func newDefaultPromptManager() (PromptManager, error) {
@@ -178,14 +191,14 @@ func newDefaultPromptManager() (PromptManager, error) {
 		return nil, fmt.Errorf("parse intent_classification prompt failed: %w", err)
 	}
 	return &defaultPromptManager{
-		thinkActTmpl:               thinkActTmpl,
-		stepReplanTmpl:             stepReplanTmpl,
-		finalAnswerTmpl:            finalAnswerTmpl,
-		historyCompactionTmpl:      historyCompactionTmpl,
-		taskPlannerTmpl:            taskPlannerTmpl,
-		agentHandoffTmpl:           agentHandoffTmpl,
-		stepOutcomesReducerTmpl:    stepOutcomesReducerTmpl,
-		intentClassificationTmpl:   intentClassificationTmpl,
+		thinkActTmpl:             thinkActTmpl,
+		stepReplanTmpl:           stepReplanTmpl,
+		finalAnswerTmpl:          finalAnswerTmpl,
+		historyCompactionTmpl:    historyCompactionTmpl,
+		taskPlannerTmpl:          taskPlannerTmpl,
+		agentHandoffTmpl:         agentHandoffTmpl,
+		stepOutcomesReducerTmpl:  stepOutcomesReducerTmpl,
+		intentClassificationTmpl: intentClassificationTmpl,
 	}, nil
 }
 
@@ -203,11 +216,11 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 	buf := bytes.NewBuffer(nil)
 	if err := m.thinkActTmpl.Execute(buf, map[string]any{
 		"AGENT_ROLE":                    strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
+		"AGENT_BACKGROUND":              strings.TrimSpace(input.AgentBackground),
 		"AGENT_INSTRUCTION":             strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
+		"HAS_AGENT_ROLE":                strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":          strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction) != "",
 		"HAS_WORKSPACE_CONTEXT":         hasWorkspaceContext,
 		"WORKSPACE_ROOT_DIR":            strings.TrimSpace(input.WorkspaceRootDir),
 		"WORKSPACE_NAMESPACE":           strings.TrimSpace(input.WorkspaceNamespace),
@@ -221,14 +234,10 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"HAS_CURRENT_STEP":              input.HasCurrentStep,
 		"HAS_DEPENDENCY_STEP_SUMMARIES": input.HasDependencySummaries,
 		"HAS_EXECUTION_CONTEXTS":        input.HasExecutionContexts,
-		"HAS_WARNINGS":                  input.HasWarnings,
-		"HAS_UNRESOLVED":                input.HasUnresolved,
 		"HAS_SKILLS_TABLE":              input.HasSkillsTable,
 		"HAS_INJECTED_SKILLS":           input.HasInjectedSkills,
 		"MCP_CONTEXT":                   input.MCPContext,
 		"HAS_MCP_TABLE":                 input.HasMCPTable,
-		"WARNINGS":                      prettyJSON(input.Warnings),
-		"UNRESOLVED":                    prettyJSON(input.Unresolved),
 		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
 		"SUPPORTS_VISION":               input.SupportsVision,
 		"CAN_SPAWN_SUBAGENT":            input.CanSpawnSubAgent,
@@ -244,25 +253,32 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
-		"CURRENT_GOAL":          fmt.Sprint(input.CurrentGoal),
-		"CURRENT_STEP":          prettyJSON(input.CurrentStep),
-		"STEP_OUTCOME":          prettyJSON(input.StepOutcome),
-		"TASK_PLAN":             prettyJSON(input.TaskPlan),
-		"STEP_OUTCOMES":         prettyJSON(input.StepOutcomes),
-		"WARNINGS":              prettyJSON(input.Warnings),
-		"UNRESOLVED":            prettyJSON(input.Unresolved),
-		"STEP_RESULT_PATH":      input.StepResultPath,
-		"STEP_CONTEXTS_PATH":    input.StepContextsPath,
-		"STEP_TRANSCRIPT_PATH":  input.StepTranscriptPath,
-		"STEP_TIMELINE_PATH":    input.StepTimelinePath,
-		"SKILLS_CONTEXT":        input.SkillsContext,
-		"HAS_SKILLS_TABLE":      input.HasSkillsTable,
+		"AGENT_ROLE":                   strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
+		"AGENT_INSTRUCTION":            strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
+		"CURRENT_GOAL":                 fmt.Sprint(input.CurrentGoal),
+		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
+		"CURRENT_STEP":                 prettyJSON(input.CurrentStep),
+		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
+		"TASK_PLAN":                    prettyJSON(input.TaskPlan),
+		"STEP_OUTCOMES":                prettyJSON(input.StepOutcomes),
+		"WARNINGS":                     prettyJSON(input.Warnings),
+		"HAS_CARRIED_INCOMPLETE_ITEMS": anyHasItems(input.CarriedIncompleteItems),
+		"CARRIED_INCOMPLETE_ITEMS":     prettyJSON(input.CarriedIncompleteItems),
+		"HAS_CARRIED_DEPTH_GAPS":       anyHasItems(input.CarriedDepthGaps),
+		"CARRIED_DEPTH_GAPS":           prettyJSON(input.CarriedDepthGaps),
+		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
+		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
+		"STEP_RESULT_PATH":             input.StepResultPath,
+		"STEP_CONTEXTS_PATH":           input.StepContextsPath,
+		"STEP_TRANSCRIPT_PATH":         input.StepTranscriptPath,
+		"STEP_TIMELINE_PATH":           input.StepTimelinePath,
+		"SKILLS_CONTEXT":               input.SkillsContext,
+		"HAS_SKILLS_TABLE":             input.HasSkillsTable,
 	}); err != nil {
 		return "", err
 	}
@@ -275,21 +291,26 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
-		"STATUS":                fmt.Sprint(input.Status),
-		"STATE_ERROR":           fmt.Sprint(input.StateError),
-		"INPUT_TIMELINE":        prettyJSON(input.InputTimeline),
-		"SHOW_PLAN_SECTION":     input.ShowPlanSection,
-		"PLAN":                  prettyJSON(input.Plan),
-		"PLAN_VERSION":          prettyJSON(input.PlanVersion),
-		"STEP_OUTCOMES":         prettyJSON(input.StepOutcomes),
-		"WARNINGS":              prettyJSON(input.Warnings),
-		"UNRESOLVED":            prettyJSON(input.Unresolved),
+		"AGENT_ROLE":                   strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
+		"AGENT_INSTRUCTION":            strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
+		"STATUS":                       fmt.Sprint(input.Status),
+		"STATE_ERROR":                  fmt.Sprint(input.StateError),
+		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
+		"SHOW_PLAN_SECTION":            input.ShowPlanSection,
+		"PLAN":                         prettyJSON(input.Plan),
+		"PLAN_VERSION":                 prettyJSON(input.PlanVersion),
+		"STEP_OUTCOMES":                prettyJSON(input.StepOutcomes),
+		"WARNINGS":                     prettyJSON(input.Warnings),
+		"HAS_CARRIED_INCOMPLETE_ITEMS": anyHasItems(input.CarriedIncompleteItems),
+		"CARRIED_INCOMPLETE_ITEMS":     prettyJSON(input.CarriedIncompleteItems),
+		"HAS_CARRIED_DEPTH_GAPS":       anyHasItems(input.CarriedDepthGaps),
+		"CARRIED_DEPTH_GAPS":           prettyJSON(input.CarriedDepthGaps),
+		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
+		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
 	}); err != nil {
 		return "", err
 	}

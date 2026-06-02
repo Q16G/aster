@@ -27,7 +27,6 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 		"plan_version":   1,
 		"step_outcomes":  []any{},
 		"warnings":       []string{},
-		"unresolved":     []string{},
 	})
 	if err != nil {
 		t.Fatalf("buildFinalAnswerPrompt failed: %v", err)

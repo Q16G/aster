@@ -237,7 +237,7 @@ func (w *artifactWriter) PersistPlanArtifacts(snapshot builtin_tools.StateSnapsh
 	state.CurrentPlanVersion = snapshot.PlanVersion
 	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
 	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.Unresolved = builtin_tools.CloneStringSlice(snapshot.Unresolved)
+	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
 	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
 	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
 	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
@@ -265,7 +265,7 @@ func (w *artifactWriter) PersistRuntimeCheckpoint(snapshot builtin_tools.StateSn
 	state.CurrentPlanVersion = snapshot.PlanVersion
 	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
 	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.Unresolved = builtin_tools.CloneStringSlice(snapshot.Unresolved)
+	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
 	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
 	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
 	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
@@ -299,23 +299,24 @@ func (w *artifactWriter) PersistRuntimeCheckpoint(snapshot builtin_tools.StateSn
 
 func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID string, explanation string, latestFinalSeq int) planCurrentCheckpoint {
 	return planCurrentCheckpoint{
-		SessionID:        strings.TrimSpace(sessionID),
-		Phase:            snapshot.Phase,
-		PlanVersion:      snapshot.PlanVersion,
-		CurrentStepID:    strings.TrimSpace(snapshot.CurrentStepID),
-		Status:           snapshot.Status,
-		UpdatedAt:        time.Now(),
-		Explanation:      strings.TrimSpace(explanation),
-		Plan:             snapshot.Plan,
-		Warnings:         snapshot.Warnings,
-		Unresolved:       snapshot.Unresolved,
-		ReplanContext:    builtin_tools.CloneReplanContext(snapshot.ReplanContext),
-		StatusSummary:    strings.TrimSpace(snapshot.StatusSummary),
-		CurrentGoal:      strings.TrimSpace(snapshot.CurrentGoal),
-		InputTimeline:    snapshot.InputTimeline,
-		ActiveSkillNames: builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames),
-		ActiveMCPServers: builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers),
-		LatestFinalSeq:   latestFinalSeq,
+		SessionID:         strings.TrimSpace(sessionID),
+		Phase:             snapshot.Phase,
+		PlanVersion:       snapshot.PlanVersion,
+		CurrentStepID:     strings.TrimSpace(snapshot.CurrentStepID),
+		Status:            snapshot.Status,
+		UpdatedAt:         time.Now(),
+		Explanation:       strings.TrimSpace(explanation),
+		Plan:              snapshot.Plan,
+		Warnings:          snapshot.Warnings,
+		UnresolvedAxes:    builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes),
+		ReplanContext:     builtin_tools.CloneReplanContext(snapshot.ReplanContext),
+		StatusSummary:     strings.TrimSpace(snapshot.StatusSummary),
+		CurrentGoal:       strings.TrimSpace(snapshot.CurrentGoal),
+		GoalUnderstanding: strings.TrimSpace(snapshot.GoalUnderstanding),
+		InputTimeline:     snapshot.InputTimeline,
+		ActiveSkillNames:  builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames),
+		ActiveMCPServers:  builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers),
+		LatestFinalSeq:    latestFinalSeq,
 	}
 }
 
@@ -391,7 +392,7 @@ func (w *artifactWriter) PersistFinalArtifacts(snapshot builtin_tools.StateSnaps
 	state.CurrentPlanVersion = snapshot.PlanVersion
 	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
 	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.Unresolved = builtin_tools.CloneStringSlice(snapshot.Unresolved)
+	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
 	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
 	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
 	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)

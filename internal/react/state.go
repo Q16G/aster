@@ -84,7 +84,7 @@ func isolateSnapshot(src *builtin_tools.StateSnapshot) builtin_tools.StateSnapsh
 	out.ActiveSkillNames = normalizeSkillNames(src.ActiveSkillNames)
 
 	out.Warnings = copyStrings(src.Warnings)
-	out.Unresolved = copyStrings(src.Unresolved)
+	out.UnresolvedAxes = builtin_tools.CloneReplanAxes(src.UnresolvedAxes)
 
 	return out
 }
@@ -96,6 +96,19 @@ func copyStrings(in []string) []string {
 	out := make([]string, len(in))
 	copy(out, in)
 	return out
+}
+
+// normalizeReplanAxes 规范化三轴未决盘点：nil 入参返回 nil（不覆盖 sticky 状态）；
+// 非 nil 入参恒返回非 nil 容器（即使三轴全空），以支持终态写空做复位。
+func normalizeReplanAxes(in *builtin_tools.ReplanAxes) *builtin_tools.ReplanAxes {
+	if in == nil {
+		return nil
+	}
+	return &builtin_tools.ReplanAxes{
+		IncompleteItems: normalizeReferences(in.IncompleteItems),
+		DepthGaps:       normalizeReferences(in.DepthGaps),
+		NewSurfaces:     normalizeReferences(in.NewSurfaces),
+	}
 }
 
 func normalizeSkillNames(in []string) []string {
@@ -374,6 +387,18 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	return *t.state
 }
 
+// SetGoalUnderstanding 记录 planner 对原始输入的结构化理解，供下游 step_replan 锚定原始意图。
+// 空字符串不覆盖已有值，避免重规划回合误清空首次理解。
+func (t *StateTracker) SetGoalUnderstanding(understanding string) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if u := strings.TrimSpace(understanding); u != "" {
+		t.state.GoalUnderstanding = u
+		t.touchLocked()
+	}
+	return *t.state
+}
+
 func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -478,7 +503,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.CurrentGoal = strings.TrimSpace(update.CurrentGoal)
 	update.References = normalizeReferences(update.References)
 	update.Warnings = normalizeReferences(update.Warnings)
-	update.Unresolved = normalizeReferences(update.Unresolved)
+	update.UnresolvedAxes = normalizeReplanAxes(update.UnresolvedAxes)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
 	for _, outcome := range t.state.StepOutcomes {
@@ -511,8 +536,8 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	if update.CurrentGoal != "" {
 		t.state.CurrentGoal = update.CurrentGoal
 	}
-	if update.Unresolved != nil {
-		t.state.Unresolved = update.Unresolved
+	if update.UnresolvedAxes != nil {
+		t.state.UnresolvedAxes = builtin_tools.CloneReplanAxes(update.UnresolvedAxes)
 	}
 	if update.Warnings != nil {
 		t.state.Warnings = normalizeReferences(append(t.state.Warnings, update.Warnings...))
@@ -541,10 +566,10 @@ type stepReplanUpdate struct {
 	InheritedContextKeys []string
 	InheritedRefIDs      []string
 
-	CurrentGoal   string
-	Warnings      []string
-	Unresolved    []string
-	ReplanContext *builtin_tools.ReplanContext
+	CurrentGoal    string
+	Warnings       []string
+	UnresolvedAxes *builtin_tools.ReplanAxes
+	ReplanContext  *builtin_tools.ReplanContext
 
 	NextPhase builtin_tools.AgentPhase
 }
@@ -580,7 +605,7 @@ type finalAnswerPhaseUpdate struct {
 
 	NextGoal          string
 	Warnings          []string
-	Unresolved        []string
+	UnresolvedAxes    *builtin_tools.ReplanAxes
 	ReplanContext     *builtin_tools.ReplanContext
 	ExternalInterrupt *builtin_tools.ExternalInterrupt
 }
@@ -595,6 +620,7 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 	update.FinalAnswerContent = strings.TrimSpace(update.FinalAnswerContent)
 	update.FinalAnswerSource = strings.TrimSpace(update.FinalAnswerSource)
 	update.FinalAnswerReferences = normalizeReferences(update.FinalAnswerReferences)
+	update.UnresolvedAxes = normalizeReplanAxes(update.UnresolvedAxes)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 	update.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(update.ExternalInterrupt)
 
@@ -611,8 +637,8 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 		t.state.CurrentGoal = update.NextGoal
 	}
 
-	if update.Unresolved != nil {
-		t.state.Unresolved = normalizeReferences(update.Unresolved)
+	if update.UnresolvedAxes != nil {
+		t.state.UnresolvedAxes = builtin_tools.CloneReplanAxes(update.UnresolvedAxes)
 	}
 	if update.Warnings != nil {
 		t.state.Warnings = normalizeReferences(append(t.state.Warnings, update.Warnings...))

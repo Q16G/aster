@@ -214,8 +214,7 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 				UpdatedAt:    now.Add(-3 * time.Minute),
 			},
 		},
-		Warnings:   []string{},
-		Unresolved: []string{},
+		Warnings: []string{},
 	}
 
 	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
@@ -227,7 +226,6 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 		"plan_version":   snapshot.PlanVersion,
 		"step_outcomes":  snapshot.StepOutcomes,
 		"warnings":       snapshot.Warnings,
-		"unresolved":     snapshot.Unresolved,
 	})
 	if err != nil {
 		t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
