@@ -24,6 +24,10 @@
 - **原则 2**：完成当前 step 后，必须调用 `update_current_step`；`status` 只能是 `completed` 或 `failed`。
 - **原则 3**：尽量填写 `display_result` 与 `references`，便于后续 `step_summary` / `final_answer` 消费。`references` 中所有文件路径必须使用绝对路径，禁止使用相对路径。workspace 产物路径应基于 Section 5.1b 中的 workspace 路径拼接；源码或外部文件使用其自身的绝对路径。
 - **原则 4**：`update_current_step` 只负责更新当前 step 的状态和结果；是否需要重新规划由后续 `final_answer` phase 判断。
+- **原则 4b（本 step 完成性自检 / 覆盖自查）**：调用 `update_current_step(status=completed)` 前，必须比对 **`current_step` 声明的范围** 与 **本 step 实际处理的范围**：
+  - 若 `current_step` 描述含**全量量词**（全部/所有/每个/逐一/all/every），或本 step 执行中**枚举出一份待处理清单**（端点/候选/子项），则该范围内**每一项**都必须已被处理——`已验证` 或 `已显式标注无法验证 + 理由`。**逐项核对**，禁止「声明测全部却只测子集」「枚举 20 却只处理 15」。
+  - 仍有未处理项时**不得标 `completed`**：要么继续处理直到覆盖完全，要么在 `result` / `open_questions` 中**逐项显式记录**未覆盖项与原因（justified skip），供 `step_replan` / `final_answer` 消费。
+  - **边界**：只核对 `current_step` 自身声明的范围，不越界处理声明外内容（跨步/跨类缺口归 `step_replan` / `final_answer`）。
 - **原则 5**：不要在 `step` phase 直接输出最终答案；最终完成性判断由 `final_answer` phase 负责。
 - **原则 6**：优先做能带来可验证状态变化的动作；需要工具就直接调用，不需要工具时也要围绕当前 step 收敛。
 - **原则 7**：高风险或不可逆动作需要审批。审批方式取决于工具：
@@ -52,6 +56,12 @@
 {{- if .CAN_SPAWN_SUBAGENT}}
 - **原则 12（子 Agent 完成性）**：如果当前 step 中启动了子 Agent（sub_agent），在调用 `update_current_step` 前必须确认所有子 Agent 已完成运行并返回结果。若有子 Agent 仍在运行中，禁止提前提交当前 step 终态。
 - **原则 12a（后台等待策略）**：用 `sub_agent` + `run_in_background=true` 启动后台子 Agent 后，调用一次 `await_subagents` 让出执行权。系统会在**不消耗任何模型调用**的情况下挂起，任一后台子 Agent 完成时自动唤醒并把结果推送进上下文；随后你再决定是继续等待其余子 Agent 还是提交 step 终态。**禁止**用 `sub_agent_status` 连续紧密轮询——它仅用于偶发确认“是否仍在运行”。
+{{- if .WORKSPACE_SHARED_DIR}}
+- **原则 12b（并发子 Agent 共享覆盖账本）**：当本 step 要 **spawn 多个并发子 Agent** 分担一份可枚举清单（端点/候选/资产）时，子 Agent 各自隔离、互相看不见。为避免重复劳动与丢覆盖，约定**共享覆盖账本目录** `{{.WORKSPACE_SHARED_DIR}}/coverage-ledger/`：每个 actor 写自己的分片 `coverage-ledger/<actor-id>.jsonl`，**逐项一行**，记录 `项标识(端点/候选) → 状态(已验证/仅静态/limitation) → 谁产出 → 证据路径`。
+  - **派发时**：在传给每个 `sub_agent` 的 `instruction`/`context` 中**带上同一个账本绝对路径**，并明确指示子 Agent「开工前先 `list_files` + `read_file` 该目录、查看兄弟分片（避免重复处理、接力未决 limitation），收尾时把本 actor 处理的每一项逐行写入自己的分片」。
+  - **汇合时**：所有并发子 Agent 完成后（见原则 12/12a），合并各分片、按项去重，对账 provisional limitation（确认无兄弟已覆盖才转正），再据此提交本 step 终态与原则 4b 的逐项自检。
+  - 单个子 Agent 或不 spawn 子 Agent 的 step **不涉及账本**。
+{{- end}}
 {{- end}}
 
 ## 5. 执行上下文 (Execution Context)
