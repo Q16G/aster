@@ -52,7 +52,7 @@ func TestExecute_DurableResume_ReturnFinalWithoutModel(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"final-answer-1","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"final-answer-1","references":[]}`,
 			},
 		},
 	}

@@ -285,7 +285,7 @@ func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
 			"error":              snapshot.Error,
 			"external_interrupt": snapshot.ExternalInterrupt,
 			"warnings":           snapshot.Warnings,
-			"unresolved":         snapshot.Unresolved,
+			"unresolved_axes":    snapshot.UnresolvedAxes,
 			"plan_version":       snapshot.PlanVersion,
 		},
 	})
@@ -469,6 +469,7 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 			"replan_reason":    strings.TrimSpace(result.ReplanReason),
 			"next_goal":        strings.TrimSpace(result.NextGoal),
 			"incomplete_items": normalizeStringSlice(result.IncompleteItems),
+			"depth_gaps":       normalizeStringSlice(result.DepthGaps),
 			"new_surfaces":     normalizeStringSlice(result.NewSurfaces),
 			"warnings":         normalizeStringSlice(result.Warnings),
 		},

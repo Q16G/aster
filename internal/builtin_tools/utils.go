@@ -76,9 +76,29 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.Reason = strings.TrimSpace(in.Reason)
 	out.NextGoal = strings.TrimSpace(in.NextGoal)
 	out.IncompleteItems = CloneStringSlice(in.IncompleteItems)
+	out.DepthGaps = CloneStringSlice(in.DepthGaps)
 	out.NewSurfaces = CloneStringSlice(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
 	return &out
+}
+
+// ReplanAxesEmpty 判断三轴未决盘点是否为空（nil 或三轴全空）。
+func ReplanAxesEmpty(a *ReplanAxes) bool {
+	if a == nil {
+		return true
+	}
+	return len(a.IncompleteItems) == 0 && len(a.DepthGaps) == 0 && len(a.NewSurfaces) == 0
+}
+
+func CloneReplanAxes(in *ReplanAxes) *ReplanAxes {
+	if in == nil {
+		return nil
+	}
+	return &ReplanAxes{
+		IncompleteItems: CloneStringSlice(in.IncompleteItems),
+		DepthGaps:       CloneStringSlice(in.DepthGaps),
+		NewSurfaces:     CloneStringSlice(in.NewSurfaces),
+	}
 }
 
 func CloneExternalInterrupt(in *ExternalInterrupt) *ExternalInterrupt {

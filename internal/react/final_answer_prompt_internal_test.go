@@ -53,7 +53,6 @@ func TestBuildFinalAnswerPrompt_PreservesResultFromSharedStepView(t *testing.T) 
 		"plan_version":   1,
 		"step_outcomes":  collectAllStepContextViews(plan, stepOutcomes),
 		"warnings":       []string{},
-		"unresolved":     []string{},
 	})
 	if err != nil {
 		t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)

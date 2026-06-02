@@ -12,23 +12,24 @@ import (
 // It intentionally mirrors the JSON payload written by artifactWriter so it can be
 // used for both write and resume load.
 type planCurrentCheckpoint struct {
-	SessionID        string                         `json:"session_id,omitempty"`
-	Phase            builtin_tools.AgentPhase       `json:"phase,omitempty"`
-	PlanVersion      int                            `json:"plan_version,omitempty"`
-	CurrentStepID    string                         `json:"current_step_id,omitempty"`
-	Status           builtin_tools.TaskStatus       `json:"status,omitempty"`
-	UpdatedAt        time.Time                      `json:"updated_at,omitempty"`
-	Explanation      string                         `json:"explanation,omitempty"`
-	Plan             []*builtin_tools.PlanItem      `json:"plan,omitempty"`
-	Warnings         []string                       `json:"warnings,omitempty"`
-	Unresolved       []string                       `json:"unresolved,omitempty"`
-	ReplanContext    *builtin_tools.ReplanContext   `json:"replan_context,omitempty"`
-	StatusSummary    string                         `json:"status_summary,omitempty"`
-	CurrentGoal      string                         `json:"current_goal,omitempty"`
-	InputTimeline    []*builtin_tools.TimelineInput `json:"input_timeline,omitempty"`
-	ActiveSkillNames []string                       `json:"active_skill_names,omitempty"`
-	ActiveMCPServers []string                       `json:"active_mcp_servers,omitempty"`
-	LatestFinalSeq   int                            `json:"latest_final_seq,omitempty"`
+	SessionID         string                         `json:"session_id,omitempty"`
+	Phase             builtin_tools.AgentPhase       `json:"phase,omitempty"`
+	PlanVersion       int                            `json:"plan_version,omitempty"`
+	CurrentStepID     string                         `json:"current_step_id,omitempty"`
+	Status            builtin_tools.TaskStatus       `json:"status,omitempty"`
+	UpdatedAt         time.Time                      `json:"updated_at,omitempty"`
+	Explanation       string                         `json:"explanation,omitempty"`
+	Plan              []*builtin_tools.PlanItem      `json:"plan,omitempty"`
+	Warnings          []string                       `json:"warnings,omitempty"`
+	UnresolvedAxes    *builtin_tools.ReplanAxes      `json:"unresolved_axes,omitempty"`
+	ReplanContext     *builtin_tools.ReplanContext   `json:"replan_context,omitempty"`
+	StatusSummary     string                         `json:"status_summary,omitempty"`
+	CurrentGoal       string                         `json:"current_goal,omitempty"`
+	GoalUnderstanding string                         `json:"goal_understanding,omitempty"`
+	InputTimeline     []*builtin_tools.TimelineInput `json:"input_timeline,omitempty"`
+	ActiveSkillNames  []string                       `json:"active_skill_names,omitempty"`
+	ActiveMCPServers  []string                       `json:"active_mcp_servers,omitempty"`
+	LatestFinalSeq    int                            `json:"latest_final_seq,omitempty"`
 }
 
 type assessedStatePayload struct {
@@ -41,7 +42,7 @@ type assessedStatePayload struct {
 	StepOutcomes      []*builtin_tools.StepOutcome     `json:"step_outcomes,omitempty"`
 	ExternalInterrupt *builtin_tools.ExternalInterrupt `json:"external_interrupt,omitempty"`
 	Warnings          []string                         `json:"warnings,omitempty"`
-	Unresolved        []string                         `json:"unresolved,omitempty"`
+	UnresolvedAxes    *builtin_tools.ReplanAxes        `json:"unresolved_axes,omitempty"`
 	ReplanContext     *builtin_tools.ReplanContext     `json:"replan_context,omitempty"`
 	ActiveSkillNames  []string                         `json:"active_skill_names,omitempty"`
 	ActiveMCPServers  []string                         `json:"active_mcp_servers,omitempty"`

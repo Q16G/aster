@@ -20,9 +20,11 @@ type FinalAnswerModelOutput struct {
 	Reason       string `json:"reason"`
 	ShouldReplan bool   `json:"should_replan"`
 	NextGoal     string `json:"next_goal"`
-	// IncompleteItems 轴①完成度：当前诉求范围内、尚未完成的项。
+	// IncompleteItems 轴①存在性/完成度：当前诉求范围内、根本没做的项。
 	IncompleteItems []string `json:"incomplete_items"`
-	// NewSurfaces 轴②泛化：范围/聚焦方向外的泛化新面（聚焦约束下不单独驱动 replan）。
+	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（static_only 未确认、sink 未追源、悬而未决、水货占位、抽样冒充全量）。
+	DepthGaps []string `json:"depth_gaps"`
+	// NewSurfaces 轴③泛化：对照整体诉求全集、尚未被任何已完成工作覆盖的面（聚焦约束下方向外的新面填此字段但不单独驱动 replan）。
 	NewSurfaces []string `json:"new_surfaces"`
 	Warnings    []string `json:"warnings"`
 	UserMessage string   `json:"user_message"`
@@ -59,30 +61,34 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	}
 
 	payload := map[string]any{
-		"status":             stateStatus,
-		"state_error":        strings.TrimSpace(snapshot.Error),
-		"input_timeline":     snapshot.InputTimeline,
-		"needs_planning":     snapshot.NeedsPlanning,
-		"show_plan":          snapshot.NeedsPlanning,
-		"plan":               snapshot.Plan,
-		"plan_version":       snapshot.PlanVersion,
-		"step_outcomes":      stepOutcomeViews,
-		"external_interrupt": externalInterrupt,
-		"replan_context":     snapshot.ReplanContext,
-		"active_skill_names": snapshot.ActiveSkillNames,
-		"warnings":           snapshot.Warnings,
-		"unresolved":         snapshot.Unresolved,
+		"status":                   stateStatus,
+		"state_error":              strings.TrimSpace(snapshot.Error),
+		"input_timeline":           snapshot.InputTimeline,
+		"needs_planning":           snapshot.NeedsPlanning,
+		"show_plan":                snapshot.NeedsPlanning,
+		"plan":                     snapshot.Plan,
+		"plan_version":             snapshot.PlanVersion,
+		"step_outcomes":            stepOutcomeViews,
+		"external_interrupt":       externalInterrupt,
+		"replan_context":           snapshot.ReplanContext,
+		"active_skill_names":       snapshot.ActiveSkillNames,
+		"warnings":                 snapshot.Warnings,
+		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
+		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
+		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
 	}
 
 	var modelOut FinalAnswerModelOutput
 	rawResponse := ""
 	if externalInterrupt != nil {
 		a.emitRuntimeLog("warning", "final answer model bypassed due to external interrupt", snapshot, map[string]any{
-			"event":            "final_answer_model_bypassed",
-			"reason_code":      strings.TrimSpace(externalInterrupt.ReasonCode),
-			"retryable":        externalInterrupt.Retryable,
-			"warnings_count":   len(snapshot.Warnings),
-			"unresolved_count": len(snapshot.Unresolved),
+			"event":                  "final_answer_model_bypassed",
+			"reason_code":            strings.TrimSpace(externalInterrupt.ReasonCode),
+			"retryable":              externalInterrupt.Retryable,
+			"warnings_count":         len(snapshot.Warnings),
+			"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
+			"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
+			"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
 		})
 		modelOut = buildExternalInterruptModelOutput(snapshot, externalInterrupt)
 	} else {
@@ -108,11 +114,13 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			}
 		} else {
 			a.emitRuntimeLog("info", "final answer model started", snapshot, map[string]any{
-				"event":               "final_answer_model_started",
-				"plan_version":        snapshot.PlanVersion,
-				"step_outcomes_count": len(snapshot.StepOutcomes),
-				"warnings_count":      len(snapshot.Warnings),
-				"unresolved_count":    len(snapshot.Unresolved),
+				"event":                  "final_answer_model_started",
+				"plan_version":           snapshot.PlanVersion,
+				"step_outcomes_count":    len(snapshot.StepOutcomes),
+				"warnings_count":         len(snapshot.Warnings),
+				"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
+				"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
+				"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
 			})
 			runtimelog.LogJSON("info", map[string]any{
 				"event":              "final_answer_model_request",
@@ -193,19 +201,26 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		if nextGoal == "" {
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
-		mergedMissing := mergeAxisItems(decision.model.IncompleteItems, decision.model.NewSurfaces)
+		incompleteItems := normalizeStringSlice(decision.model.IncompleteItems)
+		depthGaps := normalizeStringSlice(decision.model.DepthGaps)
+		newSurfaces := normalizeStringSlice(decision.model.NewSurfaces)
 		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 			NextPhase:     builtin_tools.AgentPhasePlan,
 			Status:        builtin_tools.TaskStatusRunning,
 			StatusSummary: firstNonEmpty(strings.TrimSpace(decision.model.Reason), "任务未完成，回流 plan 继续规划。"),
 			NextGoal:      nextGoal,
 			Warnings:      decision.model.Warnings,
-			Unresolved:    mergedMissing,
+			UnresolvedAxes: &builtin_tools.ReplanAxes{
+				IncompleteItems: incompleteItems,
+				DepthGaps:       depthGaps,
+				NewSurfaces:     newSurfaces,
+			},
 			ReplanContext: &builtin_tools.ReplanContext{
 				Reason:          strings.TrimSpace(decision.model.Reason),
 				NextGoal:        nextGoal,
-				IncompleteItems: normalizeStringSlice(decision.model.IncompleteItems),
-				NewSurfaces:     normalizeStringSlice(decision.model.NewSurfaces),
+				IncompleteItems: incompleteItems,
+				DepthGaps:       depthGaps,
+				NewSurfaces:     newSurfaces,
 				Warnings:        builtin_tools.CloneStringSlice(decision.model.Warnings),
 				ReplacePending:  true,
 			},
@@ -222,9 +237,11 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		})
 
 		a.emitRuntimeLog("info", "final assessment decided to replan", snapshot, map[string]any{
-			"event":       "final_assessment_replan",
-			"next_goal":   nextGoal,
-			"missing_len": len(mergedMissing),
+			"event":                  "final_assessment_replan",
+			"next_goal":              nextGoal,
+			"incomplete_items_count": len(incompleteItems),
+			"depth_gaps_count":       len(depthGaps),
+			"new_surfaces_count":     len(newSurfaces),
 		})
 		return snapshot, nil
 	}
@@ -248,7 +265,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		FinalAnswerSource:     finalAnswerSource,
 		FinalAnswerReferences: decision.model.References,
 		Warnings:              decision.model.Warnings,
-		Unresolved:            []string{},
+		UnresolvedAxes:        &builtin_tools.ReplanAxes{},
 		ExternalInterrupt:     externalInterrupt,
 	})
 	a.emitter.EmitStateChange(snapshot)
@@ -314,6 +331,7 @@ func parseFinalAnswerOutput(raw string) (FinalAnswerModelOutput, error) {
 		"should_replan",
 		"next_goal",
 		"incomplete_items",
+		"depth_gaps",
 		"new_surfaces",
 		"warnings",
 		"user_message",
@@ -345,6 +363,7 @@ func normalizeFinalAnswerDecision(modelOut FinalAnswerModelOutput) finalAnswerDe
 	modelOut.NextGoal = strings.TrimSpace(modelOut.NextGoal)
 	modelOut.UserMessage = strings.TrimSpace(modelOut.UserMessage)
 	modelOut.IncompleteItems = normalizeReferences(modelOut.IncompleteItems)
+	modelOut.DepthGaps = normalizeReferences(modelOut.DepthGaps)
 	modelOut.NewSurfaces = normalizeReferences(modelOut.NewSurfaces)
 	modelOut.Warnings = normalizeReferences(modelOut.Warnings)
 	modelOut.References = normalizeReferences(modelOut.References)

@@ -21,15 +21,15 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	}
 
 	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal": "继续推进",
-		"current_step": map[string]any{"id": "step-1", "step": "执行"},
-		"step_outcome": map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":     []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
-		"step_outcomes": []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":      []string{"warn-1"},
-		"unresolved":    []string{"missing-1"},
-		"step_result_path":   "/tmp/test/result.json",
-		"step_contexts_path": "/tmp/test/step_contexts.jsonl",
+		"current_goal":             "继续推进",
+		"current_step":             map[string]any{"id": "step-1", "step": "执行"},
+		"step_outcome":             map[string]any{"summary": "done", "status": "completed"},
+		"task_plan":                []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
+		"step_outcomes":            []map[string]any{{"step_id": "step-1", "status": "completed"}},
+		"warnings":                 []string{"warn-1"},
+		"carried_incomplete_items": []string{"missing-1"},
+		"step_result_path":         "/tmp/test/result.json",
+		"step_contexts_path":       "/tmp/test/step_contexts.jsonl",
 	})
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
@@ -59,7 +59,6 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 		"task_plan":          []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
 		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
 		"warnings":           []string{},
-		"unresolved":         []string{},
 		"step_result_path":   "/workspace/steps/step-1/result.json",
 		"step_contexts_path": "/workspace/step_contexts.jsonl",
 		"step_timeline_path": "/workspace/shared/step-1/timeline.jsonl",
@@ -104,7 +103,6 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 		"task_plan":          []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
 		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
 		"warnings":           []string{},
-		"unresolved":         []string{},
 		"step_result_path":   "",
 		"step_contexts_path": "",
 		"skills_context": &SkillsPromptContext{
@@ -136,7 +134,6 @@ func TestBuildStepReplanPrompt_WithoutSkillsIndex(t *testing.T) {
 		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
 		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
 		"warnings":           []string{},
-		"unresolved":         []string{},
 		"step_result_path":   "",
 		"step_contexts_path": "",
 	})
@@ -164,7 +161,6 @@ func TestBuildStepReplanPrompt_EmptySkillsTable(t *testing.T) {
 		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
 		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
 		"warnings":           []string{},
-		"unresolved":         []string{},
 		"step_result_path":   "",
 		"step_contexts_path": "",
 		"skills_context":     &SkillsPromptContext{Table: ""},
@@ -196,7 +192,6 @@ func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
 		}
 	}
 }
-
 
 func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 	agent, err := NewReActAgent(

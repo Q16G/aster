@@ -156,7 +156,7 @@ func TestExecute_UsesConfiguredModel(t *testing.T) {
 			},
 			{
 				// final_answer phase (step_replan fast path skips LLM)
-				content: `{"is_complete":true,"status":"completed","reason":"所有步骤已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"primary-final-answer","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"所有步骤已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"primary-final-answer","references":[]}`,
 			},
 		},
 	}
@@ -226,7 +226,7 @@ func TestExecute_ProducesFinalAnswerFromFinalAnswerPhase(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
 			},
 		},
 	}
@@ -276,7 +276,7 @@ func TestExecute_AllowsUnknownTopLevelFieldsInFinalAnswer(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[],"extra_field":"keep-compatible"}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[],"extra_field":"keep-compatible"}`,
 			},
 		},
 	}
@@ -326,7 +326,7 @@ func TestExecute_ReturnsLatestStepResultWhenConfigured(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
 			},
 		},
 	}
@@ -376,7 +376,7 @@ func TestExecute_LatestStepResultModeFallsToFinalAnswerWhenStepResultMissing(t *
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"human-final-answer","references":[]}`,
 			},
 		},
 	}
@@ -426,7 +426,7 @@ func TestExecute_LatestStepResultModeSucceedsEvenWhenFinalAnswerSaysFailed(t *te
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"failed","reason":"发现安全漏洞","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"发现漏洞","references":[]}`,
+				content: `{"is_complete":true,"status":"failed","reason":"发现安全漏洞","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"发现漏洞","references":[]}`,
 			},
 		},
 	}
@@ -478,7 +478,7 @@ func TestExecute_LatestStepResultModeKeepsMarkdownFinalAnswerForDisplay(t *testi
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"审计完成","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":` + strconv.Quote(markdownReport) + `,"references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"审计完成","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":` + strconv.Quote(markdownReport) + `,"references":[]}`,
 			},
 		},
 	}
@@ -625,7 +625,7 @@ func TestExecute_LatestStepResultModeCanceledReturnsError(t *testing.T) {
 			},
 			// call 2 — final_answer phase (step_replan fast path skips LLM; may not be reached if canceled)
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
 		},
 	}
@@ -690,7 +690,7 @@ func TestExecute_LatestStepResultModeRuntimeFailedReturnsError(t *testing.T) {
 			},
 			// call 1+ — final_answer phase (after max iterations hit)
 			{
-				content: `{"is_complete":true,"status":"failed","reason":"max iterations","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"达到最大迭代次数","references":[]}`,
+				content: `{"is_complete":true,"status":"failed","reason":"max iterations","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"达到最大迭代次数","references":[]}`,
 			},
 		},
 	}
@@ -820,7 +820,7 @@ func TestExecute_WritesPhaseLogsToTerminal(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"plain-final-answer","references":[]}`,
 			},
 		},
 	}
@@ -895,7 +895,7 @@ func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
 		},
 	}
@@ -1169,7 +1169,7 @@ func TestExecute_WritesStepReplanLogsWhenStepCompletes(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
 		},
 	}
@@ -1423,8 +1423,8 @@ func TestExecute_StepReplanDefaultInnerRetryRemainsThree(t *testing.T) {
 			},
 			{content: ``},
 			{content: ``},
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
-			{content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`},
 		},
 	}
 	agent, err := NewReActAgent(
@@ -1466,10 +1466,10 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 				},
 			},
 			{
-				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`,
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`,
 			},
 			{
-				content: `{"is_complete":true,"status":"failed","reason":"关键步骤失败且无需重规划。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"final answer for failure","references":[]}`,
+				content: `{"is_complete":true,"status":"failed","reason":"关键步骤失败且无需重规划。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"final answer for failure","references":[]}`,
 			},
 		},
 	}
@@ -1520,7 +1520,7 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 			},
 			{
 				// step-1 replan (LLM always runs now)
-				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`,
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`,
 			},
 			{
 				// step-2
@@ -1535,11 +1535,11 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 			},
 			{
 				// step-2 replan
-				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`,
+				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`,
 			},
 			{
 				// final_answer
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"two-steps-done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"two-steps-done","references":[]}`,
 			},
 		},
 	}
@@ -1654,7 +1654,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"replanned-done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"已完成并可交付。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"replanned-done","references":[]}`,
 			},
 		},
 	}
@@ -1761,7 +1761,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 func TestExecute_AppendsInputTimelineToState(t *testing.T) {
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
-			{content: `{"is_complete":true,"status":"completed","reason":"仅用于测试回路。","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"ok","references":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"仅用于测试回路。","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"ok","references":[]}`},
 		},
 	}
 
@@ -1882,7 +1882,8 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 						"plan": []any{
 							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
 						},
-						"explanation": "需要规划",
+						"explanation":        "需要规划",
+						"goal_understanding": "核心目标：执行用户请求",
 					}),
 				},
 			},
@@ -1899,7 +1900,7 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 			},
 			// final_answer phase (step_replan fast path skips LLM)
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"agentic-plan-final","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"agentic-plan-final","references":[]}`,
 			},
 		},
 	}
@@ -2038,7 +2039,7 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 			},
 			// final_answer phase (step_replan fast path skips LLM)
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"contexts-test-done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"contexts-test-done","references":[]}`,
 			},
 		},
 	}
@@ -2128,7 +2129,7 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 				},
 			},
 			// step-1 replan (LLM always runs now)
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
 			// step-2 completes
 			{
 				toolCalls: []*ai.FunctionTool{
@@ -2144,10 +2145,10 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 				},
 			},
 			// step-2 replan
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
 			// final_answer
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"multi-step-done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"multi-step-done","references":[]}`,
 			},
 		},
 	}
@@ -2294,7 +2295,7 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 				},
 				// final_answer
 				{
-					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"replan-prompt-test","references":[]}`,
+					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"replan-prompt-test","references":[]}`,
 				},
 			},
 		},
@@ -2382,7 +2383,8 @@ func TestPlanPhaseWithTools_MultiRoundRetainsSystemPrompt(t *testing.T) {
 							"plan": []any{
 								map[string]any{"id": "step-1", "step": "执行", "status": "pending"},
 							},
-							"explanation": "planned",
+							"explanation":        "planned",
+							"goal_understanding": "核心目标：执行",
 						}),
 					},
 				},
@@ -2400,7 +2402,7 @@ func TestPlanPhaseWithTools_MultiRoundRetainsSystemPrompt(t *testing.T) {
 				},
 				// final_answer (step_replan fast path skips LLM)
 				{
-					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"plan-prompt-test","references":[]}`,
+					content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"plan-prompt-test","references":[]}`,
 				},
 			},
 		},
@@ -2471,7 +2473,8 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
 							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"S-01"}},
 						},
-						"explanation": "planned",
+						"explanation":        "planned",
+						"goal_understanding": "核心目标：分析并修复漏洞",
 					}),
 				},
 			},
@@ -2484,7 +2487,8 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
 							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"step-0"}},
 						},
-						"explanation": "planned",
+						"explanation":        "planned",
+						"goal_understanding": "核心目标：分析并修复漏洞",
 					}),
 				},
 			},
@@ -2526,7 +2530,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 			},
 			// final_answer
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"validation retry ok","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"validation retry ok","references":[]}`,
 			},
 		},
 	}

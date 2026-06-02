@@ -44,9 +44,9 @@ func TestExecute_WritesTimelineEventsForToolCalls(t *testing.T) {
 				},
 			},
 			// step_replan
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`},
+			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
 			// final_answer
-			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"timeline-test-done","references":[]}`},
+			{content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"timeline-test-done","references":[]}`},
 		},
 	}
 

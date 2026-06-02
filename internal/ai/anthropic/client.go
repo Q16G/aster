@@ -457,8 +457,6 @@ func extractStableSystemPrefix(promptFamily string, text string) string {
 		"<CURRENT_STEP>",
 		"<DEPENDENCY_STEP_SUMMARIES>",
 		"<EXECUTION_CONTEXTS>",
-		"<WARNINGS>",
-		"<UNRESOLVED>",
 	} {
 		if idx := strings.Index(text, marker); idx >= 0 {
 			return strings.TrimSpace(text[:idx])

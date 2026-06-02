@@ -275,10 +275,19 @@ type ReplanContext struct {
 	SourceStepID    string   `json:"source_step_id,omitempty"`
 	Reason          string   `json:"reason,omitempty"`
 	NextGoal        string   `json:"next_goal,omitempty"`
-	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①步骤内未完成（源 step 自身声明范围内仍未达成）
-	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴②步骤外新面（超出源 step 的新维度/攻击面）
+	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性：源 step 自身声明范围内、根本没做的项
+	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度：源 step 做了但不扎实的项（static_only 未确认 / sink 未追源 / 水货占位等）
+	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集、尚未被任何已完成工作覆盖的面
 	Warnings        []string `json:"warnings,omitempty"`
 	ReplacePending  bool     `json:"replace_pending,omitempty"`
+}
+
+// ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。
+// 轴①存在性 / 轴②深度 / 轴③泛化，语义与 ReplanContext 同名字段一致。
+type ReplanAxes struct {
+	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性：声明范围内、根本没做的项
+	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度：做了但不扎实（static_only 未确认 / sink 未追源 / 水货占位等）
+	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集尚未被覆盖的面
 }
 
 // ToolCall 工具调用
@@ -323,6 +332,8 @@ type StateSnapshot struct {
 	CurrentGoal   string           `json:"current_goal,omitempty"`
 	CurrentStepID string           `json:"current_step_id,omitempty"`
 	InputTimeline []*TimelineInput `json:"input_timeline,omitempty"`
+	// GoalUnderstanding 是 planner 对原始输入的结构化理解，贯穿下游用于锚定原始意图。
+	GoalUnderstanding string `json:"goal_understanding,omitempty"`
 
 	Plan          []*PlanItem    `json:"plan,omitempty"`
 	PlanVersion   int            `json:"plan_version,omitempty"`
@@ -336,9 +347,9 @@ type StateSnapshot struct {
 	// ActiveMCPServers 表示当前已连接的 MCP Server 名称集合。
 	ActiveMCPServers []string `json:"active_mcp_servers,omitempty"`
 
-	Warnings   []string `json:"warnings,omitempty"`
-	Unresolved []string `json:"unresolved,omitempty"`
-	Error      string   `json:"error,omitempty"`
+	Warnings       []string    `json:"warnings,omitempty"`
+	UnresolvedAxes *ReplanAxes `json:"unresolved_axes,omitempty"`
+	Error          string      `json:"error,omitempty"`
 
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }

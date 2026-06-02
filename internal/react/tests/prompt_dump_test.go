@@ -16,9 +16,9 @@ import (
 func buildRealisticSnapshot() builtin_tools.StateSnapshot {
 	now := time.Now()
 	return builtin_tools.StateSnapshot{
-		Phase:       builtin_tools.AgentPhaseStep,
-		Status:      builtin_tools.TaskStatusRunning,
-		CurrentGoal: "对项目进行安全审计，识别所有 SQL 注入漏洞",
+		Phase:         builtin_tools.AgentPhaseStep,
+		Status:        builtin_tools.TaskStatusRunning,
+		CurrentGoal:   "对项目进行安全审计，识别所有 SQL 注入漏洞",
 		CurrentStepID: "step-2",
 		PlanVersion:   1,
 		InputTimeline: []*builtin_tools.TimelineInput{
@@ -65,8 +65,10 @@ func buildRealisticSnapshot() builtin_tools.StateSnapshot {
 				UpdatedAt:     now.Add(-5 * time.Minute),
 			},
 		},
-		Warnings:   []string{"repository/user_repo.go 中存在未经过滤的用户输入直接拼接到 SQL"},
-		Unresolved: []string{"需要确认 middleware 层是否有统一的输入校验"},
+		Warnings: []string{"repository/user_repo.go 中存在未经过滤的用户输入直接拼接到 SQL"},
+		UnresolvedAxes: &builtin_tools.ReplanAxes{
+			DepthGaps: []string{"需要确认 middleware 层是否有统一的输入校验"},
+		},
 	}
 }
 
@@ -238,12 +240,14 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"step-1",
 			"已收集项目结构",
 			"项目使用 Gin 框架",
-			"<WARNINGS>",
-			"未经过滤的用户输入",
-			"<UNRESOLVED>",
-			"middleware 层",
 			"项目路径: /repo/project",
 			"扫描模式: deep",
+		})
+
+		// think_act 不再渲染跨步骤未决盘点与告警，那是 replan/复核阶段的职责。
+		mustNotContain(t, "think_act_no_unresolved", prompt, []string{
+			"<UNRESOLVED>",
+			"<WARNINGS>",
 		})
 
 		// Verify dependency summary includes key_facts and tool_calls_digest
@@ -357,7 +361,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 				outcome,
 			},
 			"warnings":           []string{"user_repo.go 存在高危 SQL 注入"},
-			"unresolved":         []string{"middleware 层输入校验未确认"},
+			"carried_depth_gaps": []string{"middleware 层输入校验未确认"},
 			"step_result_path":   "/workspace/steps/step-2/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
 		})
@@ -381,7 +385,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"<STEP_OUTCOMES>",
 			"<WARNINGS>",
 			"高危 SQL 注入",
-			"<UNRESOLVED>",
+			"<CARRIED_DEPTH_GAPS>",
 			"middleware",
 		})
 
@@ -453,18 +457,18 @@ func TestPromptDump_AllPhases(t *testing.T) {
 					"rg(\"db.Raw|db.Exec\") → 8 matches",
 					"read_file(user_repo.go) → SQL injection confirmed",
 				},
-				References:  []string{"shared/step-2.result.json"},
-				ContextKey:  "audit:1:step-2",
-				UpdatedAt:   time.Now().Add(-2 * time.Minute),
+				References: []string{"shared/step-2.result.json"},
+				ContextKey: "audit:1:step-2",
+				UpdatedAt:  time.Now().Add(-2 * time.Minute),
 			},
 			{
-				StepID:         "step-3",
-				Status:         builtin_tools.StepOutcomeCompleted,
-				ShortSummary:   "报告已生成",
-				DisplayResult:  "## SQL 注入审计报告\n\n共发现 3 处高危漏洞...",
-				References:     []string{"shared/audit_report.md"},
-				ContextKey:     "audit:1:step-3",
-				UpdatedAt:      time.Now(),
+				StepID:        "step-3",
+				Status:        builtin_tools.StepOutcomeCompleted,
+				ShortSummary:  "报告已生成",
+				DisplayResult: "## SQL 注入审计报告\n\n共发现 3 处高危漏洞...",
+				References:    []string{"shared/audit_report.md"},
+				ContextKey:    "audit:1:step-3",
+				UpdatedAt:     time.Now(),
 			},
 		}
 
@@ -485,7 +489,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"plan_version":  1,
 			"step_outcomes": completedOutcomes,
 			"warnings":      []string{"user_repo.go 高危"},
-			"unresolved":    []string{},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
@@ -551,7 +554,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"plan_version":  0,
 			"step_outcomes": []*builtin_tools.StepOutcome{},
 			"warnings":      []string{},
-			"unresolved":    []string{},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt no-plan failed: %v", err)
@@ -602,8 +604,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 					UpdatedAt:    time.Now(),
 				},
 			},
-			"warnings":   []string{"执行超时"},
-			"unresolved": []string{"审计未完成"},
+			"warnings":                 []string{"执行超时"},
+			"carried_incomplete_items": []string{"审计未完成"},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt error state failed: %v", err)
@@ -651,7 +653,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"task_plan":          []any{},
 			"step_outcomes":      []any{},
 			"warnings":           []string{},
-			"unresolved":         []string{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		}
@@ -709,7 +710,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"task_plan":          []any{},
 			"step_outcomes":      []any{},
 			"warnings":           []string{},
-			"unresolved":         []string{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		})
@@ -805,8 +805,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 				{StepID: "step-2", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "发现 3 处 SQL 注入", UpdatedAt: now.Add(-10 * time.Minute)},
 				{StepID: "step-3", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "发现 1 处 XSS", UpdatedAt: now.Add(-5 * time.Minute)},
 			},
-			"warnings":   []string{},
-			"unresolved": []string{},
+			"warnings": []string{},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt resume failed: %v", err)
@@ -863,7 +862,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"task_plan":          []any{},
 			"step_outcomes":      []*builtin_tools.StepOutcome{sharedOutcome},
 			"warnings":           []string{},
-			"unresolved":         []string{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		})
@@ -881,7 +879,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"plan_version":   1,
 			"step_outcomes":  []*builtin_tools.StepOutcome{sharedOutcome},
 			"warnings":       []string{},
-			"unresolved":     []string{},
 		})
 		if err != nil {
 			t.Fatalf("consistency final failed: %v", err)
@@ -984,9 +981,9 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 
 	planner := NewDefaultTaskPlanner(&stubChatClient{})
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentRole:        "安全代码审计专家",
-		AgentBackground:  "你是一个专注于 Go 语言安全审计的 AI Agent，熟悉 OWASP Top 10、CWE 分类体系和常见 Go 安全反模式。你的工作是识别真实可利用的安全漏洞，而非风格问题。",
-		AgentInstruction: "对目标项目进行全量安全审计。首先加载 security-code-analysis，它定义了分类审计任务清单。\n\n审计要求：\n- 用户意图优先：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内\n- 分析手段和顺序根据项目实际情况灵活安排\n- 必须满足任务清单中 MUST 标记的任务项",
+		AgentRole:          "安全代码审计专家",
+		AgentBackground:    "你是一个专注于 Go 语言安全审计的 AI Agent，熟悉 OWASP Top 10、CWE 分类体系和常见 Go 安全反模式。你的工作是识别真实可利用的安全漏洞，而非风格问题。",
+		AgentInstruction:   "对目标项目进行全量安全审计。首先加载 security-code-analysis，它定义了分类审计任务清单。\n\n审计要求：\n- 用户意图优先：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内\n- 分析手段和顺序根据项目实际情况灵活安排\n- 必须满足任务清单中 MUST 标记的任务项",
 		WorkspaceRootDir:   "/repo/target-project",
 		WorkspaceNamespace: "audit",
 	})
@@ -1230,8 +1227,8 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			{
 				// 关键：这是子 agent 完成后，父 agent 的 step outcome
 				// formatSubAgentResult 返回的 summary 进入了这个 outcome
-				StepID: "step-3",
-				Status: builtin_tools.StepOutcomeCompleted,
+				StepID:       "step-3",
+				Status:       builtin_tools.StepOutcomeCompleted,
 				ShortSummary: "SAST 扫描完成（由子 Agent sub-a1b2c3d4 执行），发现 15 条告警",
 				LongSummary: `子 Agent sub-a1b2c3d4 使用 semgrep go-security-audit-v3 规则集扫描完成。
 产出 15 条告警：High 5 条（3x SQLi, 1x CMDi, 1x PathTraversal），Medium 7 条（4x SSRF, 2x XXE, 1x Hardcoded Secret），Low 3 条（弱哈希算法）。
@@ -1255,11 +1252,11 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		},
 		// step-3 完成后触发 replan
 		ReplanContext: &builtin_tools.ReplanContext{
-			SourceStepID:    "step-3",
-			Reason:          "step-3 SAST 扫描完成，需要基于扫描结果规划后续分析步骤",
-			NextGoal:        "基于 SAST 扫描的 15 条告警，进行数据流验证和误报排除",
-			NewSurfaces:     []string{"数据流验证尚未开始", "误报排除尚未开始"},
-			ReplacePending:  true,
+			SourceStepID:   "step-3",
+			Reason:         "step-3 SAST 扫描完成，需要基于扫描结果规划后续分析步骤",
+			NextGoal:       "基于 SAST 扫描的 15 条告警，进行数据流验证和误报排除",
+			NewSurfaces:    []string{"数据流验证尚未开始", "误报排除尚未开始"},
+			ReplacePending: true,
 		},
 	}
 
@@ -1367,11 +1364,11 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 				"step":   "执行 SAST 规则扫描（委派子 Agent）",
 				"status": "completed",
 			},
-			"step_outcome": step3Outcome,
-			"task_plan":    parentSnapshot.Plan,
-			"step_outcomes": parentSnapshot.StepOutcomes,
+			"step_outcome":       step3Outcome,
+			"task_plan":          parentSnapshot.Plan,
+			"step_outcomes":      parentSnapshot.StepOutcomes,
 			"warnings":           []string{"High 告警 5 条需要数据流验证"},
-			"unresolved":         []string{"SSRF/XXE 的 Medium 告警是否为误报"},
+			"carried_depth_gaps": []string{"SSRF/XXE 的 Medium 告警是否为误报"},
 			"step_result_path":   "/workspace/steps/step-3/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
 		})
@@ -1400,7 +1397,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			"step-2",
 			"<WARNINGS>",
 			"数据流验证",
-			"<UNRESOLVED>",
+			"<CARRIED_DEPTH_GAPS>",
 			"SSRF/XXE",
 		})
 
