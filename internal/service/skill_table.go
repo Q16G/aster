@@ -46,13 +46,17 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 			continue
 		}
 		name := strings.TrimSpace(item.Name)
+		allowedByName := false
 		if len(allowedSet) > 0 {
 			if _, ok := allowedSet[name]; !ok {
 				continue
 			}
+			allowedByName = true
 		}
 		skillAgent := firstNonEmpty(strings.TrimSpace(item.Agent), "all")
-		if !skillVisibleToAgent(skillAgent, agentName) {
+		// Agent 显式白名单中的 skill 应始终可见，否则像 graybox 这种聚合型
+		// profile 会因为 skill 所属分组不同而看起来“没有技能”。
+		if !allowedByName && !skillVisibleToAgent(skillAgent, agentName) {
 			continue
 		}
 
