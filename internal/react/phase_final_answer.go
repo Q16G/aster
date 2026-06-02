@@ -15,15 +15,18 @@ import (
 )
 
 type FinalAnswerModelOutput struct {
-	IsComplete   bool     `json:"is_complete"`
-	Status       string   `json:"status"`
-	Reason       string   `json:"reason"`
-	ShouldReplan bool     `json:"should_replan"`
-	NextGoal     string   `json:"next_goal"`
-	MissingItems []string `json:"missing_items"`
-	Warnings     []string `json:"warnings"`
-	UserMessage  string   `json:"user_message"`
-	References   []string `json:"references"`
+	IsComplete   bool   `json:"is_complete"`
+	Status       string `json:"status"`
+	Reason       string `json:"reason"`
+	ShouldReplan bool   `json:"should_replan"`
+	NextGoal     string `json:"next_goal"`
+	// IncompleteItems 轴①完成度：当前诉求范围内、尚未完成的项。
+	IncompleteItems []string `json:"incomplete_items"`
+	// NewSurfaces 轴②泛化：范围/聚焦方向外的泛化新面（聚焦约束下不单独驱动 replan）。
+	NewSurfaces []string `json:"new_surfaces"`
+	Warnings    []string `json:"warnings"`
+	UserMessage string   `json:"user_message"`
+	References  []string `json:"references"`
 }
 
 func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.ChatClient) (builtin_tools.StateSnapshot, error) {
@@ -100,7 +103,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				Reason:       strings.TrimSpace(ctx.Err().Error()),
 				ShouldReplan: false,
 				NextGoal:     "",
-				MissingItems: nil,
 				Warnings:     nil,
 				UserMessage:  firstNonEmpty(strings.TrimSpace(errText), "任务已取消。"),
 			}
@@ -191,19 +193,21 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		if nextGoal == "" {
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
+		mergedMissing := mergeAxisItems(decision.model.IncompleteItems, decision.model.NewSurfaces)
 		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 			NextPhase:     builtin_tools.AgentPhasePlan,
 			Status:        builtin_tools.TaskStatusRunning,
 			StatusSummary: firstNonEmpty(strings.TrimSpace(decision.model.Reason), "任务未完成，回流 plan 继续规划。"),
 			NextGoal:      nextGoal,
 			Warnings:      decision.model.Warnings,
-			Unresolved:    decision.model.MissingItems,
+			Unresolved:    mergedMissing,
 			ReplanContext: &builtin_tools.ReplanContext{
-				Reason:         strings.TrimSpace(decision.model.Reason),
-				NextGoal:       nextGoal,
-				MissingItems:   builtin_tools.CloneStringSlice(decision.model.MissingItems),
-				Warnings:       builtin_tools.CloneStringSlice(decision.model.Warnings),
-				ReplacePending: true,
+				Reason:          strings.TrimSpace(decision.model.Reason),
+				NextGoal:        nextGoal,
+				IncompleteItems: normalizeStringSlice(decision.model.IncompleteItems),
+				NewSurfaces:     normalizeStringSlice(decision.model.NewSurfaces),
+				Warnings:        builtin_tools.CloneStringSlice(decision.model.Warnings),
+				ReplacePending:  true,
 			},
 		})
 		a.emitter.EmitStateChange(snapshot)
@@ -220,7 +224,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		a.emitRuntimeLog("info", "final assessment decided to replan", snapshot, map[string]any{
 			"event":       "final_assessment_replan",
 			"next_goal":   nextGoal,
-			"missing_len": len(decision.model.MissingItems),
+			"missing_len": len(mergedMissing),
 		})
 		return snapshot, nil
 	}
@@ -309,7 +313,8 @@ func parseFinalAnswerOutput(raw string) (FinalAnswerModelOutput, error) {
 		"reason",
 		"should_replan",
 		"next_goal",
-		"missing_items",
+		"incomplete_items",
+		"new_surfaces",
 		"warnings",
 		"user_message",
 		"references",
@@ -339,7 +344,8 @@ func normalizeFinalAnswerDecision(modelOut FinalAnswerModelOutput) finalAnswerDe
 	modelOut.Reason = strings.TrimSpace(modelOut.Reason)
 	modelOut.NextGoal = strings.TrimSpace(modelOut.NextGoal)
 	modelOut.UserMessage = strings.TrimSpace(modelOut.UserMessage)
-	modelOut.MissingItems = normalizeReferences(modelOut.MissingItems)
+	modelOut.IncompleteItems = normalizeReferences(modelOut.IncompleteItems)
+	modelOut.NewSurfaces = normalizeReferences(modelOut.NewSurfaces)
 	modelOut.Warnings = normalizeReferences(modelOut.Warnings)
 	modelOut.References = normalizeReferences(modelOut.References)
 

@@ -183,3 +183,34 @@ func TestMaybeBuildRecoveryChildContext_ClearedAfterUse(t *testing.T) {
 		t.Fatalf("expected empty on second plan (flag consumed), got:\n%s", second)
 	}
 }
+
+// 运行中的子 Agent 名必须落在 Warnings 而非 IncompleteItems：
+// task_planner 原则 1.3 会把 incomplete_items 转成补齐步骤（depends_on 源 step），
+// 而此路径 source_step_id 为空、名字实为子 Agent 名，若进 IncompleteItems 会被凭空规划成步骤。
+func TestCheckChildAgentsCompletion_RunningGoToWarnings(t *testing.T) {
+	children := map[string]*builtin_tools.WorkspaceChildAgentPointer{
+		"sub-running-1": {Status: "running", ParentStepKey: "audit-sast"},
+		"sub-pending-2": {Status: "", ParentStepKey: "audit-sast"},
+		"sub-done-3":    {Status: "completed", ParentStepKey: "audit-sast"},
+		"sub-failed-4":  {Status: "failed", ParentStepKey: "audit-sast"},
+	}
+	agent := setupRecoveryParent(t, children)
+
+	rc := agent.checkChildAgentsCompletion()
+	if rc == nil {
+		t.Fatalf("expected non-nil ReplanContext when child agents still running")
+	}
+	if len(rc.IncompleteItems) != 0 {
+		t.Errorf("IncompleteItems must be empty, got %v", rc.IncompleteItems)
+	}
+	got := make(map[string]bool, len(rc.Warnings))
+	for _, w := range rc.Warnings {
+		got[w] = true
+	}
+	if !got["sub-running-1"] || !got["sub-pending-2"] {
+		t.Errorf("Warnings must contain running/pending child names, got %v", rc.Warnings)
+	}
+	if got["sub-done-3"] || got["sub-failed-4"] {
+		t.Errorf("Warnings must not contain completed/failed child names, got %v", rc.Warnings)
+	}
+}

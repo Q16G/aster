@@ -1375,9 +1375,15 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 	if r.NextGoal != "" {
 		body.WriteString("\n\nNext Goal:\n" + r.NextGoal)
 	}
-	if len(r.MissingItems) > 0 {
-		body.WriteString("\n\nMissing Items:")
-		for _, item := range r.MissingItems {
+	if len(r.IncompleteItems) > 0 {
+		body.WriteString("\n\nIncomplete Items (in-step):")
+		for _, item := range r.IncompleteItems {
+			body.WriteString("\n  • " + item)
+		}
+	}
+	if len(r.NewSurfaces) > 0 {
+		body.WriteString("\n\nNew Surfaces (out-of-step):")
+		for _, item := range r.NewSurfaces {
 			body.WriteString("\n  • " + item)
 		}
 	}

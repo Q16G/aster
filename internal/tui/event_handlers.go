@@ -680,7 +680,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		shouldReplan := payloadBool(event.Payload, "should_replan")
 		replanReason := payloadString(event.Payload, "replan_reason")
 		nextGoal := payloadString(event.Payload, "next_goal")
-		missingItems := payloadStringSlice(event.Payload, "missing_items")
+		incompleteItems := payloadStringSlice(event.Payload, "incomplete_items")
+		newSurfaces := payloadStringSlice(event.Payload, "new_surfaces")
 		warnings := payloadStringSlice(event.Payload, "warnings")
 		if isRoot {
 			if shouldReplan {
@@ -690,14 +691,15 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			}
 		}
 		part := StepReplanPart{
-			AgentName:    event.AgentName,
-			StepID:       stepID,
-			StepName:     stepName,
-			ShouldReplan: shouldReplan,
-			ReplanReason: replanReason,
-			NextGoal:     nextGoal,
-			MissingItems: missingItems,
-			Warnings:     warnings,
+			AgentName:       event.AgentName,
+			StepID:          stepID,
+			StepName:        stepName,
+			ShouldReplan:    shouldReplan,
+			ReplanReason:    replanReason,
+			NextGoal:        nextGoal,
+			IncompleteItems: incompleteItems,
+			NewSurfaces:     newSurfaces,
+			Warnings:        warnings,
 		}
 		m.chat.AddPart(DisplayPart{
 			Type:       PartTypeStepReplan,

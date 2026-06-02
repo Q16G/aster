@@ -92,7 +92,7 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 	case 3:
 		// step-1 replan: always return a valid replan decision JSON.
 		// (StepReplan now always runs the LLM loop; see phase_step_replan.go.)
-		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`)
+		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`)
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	case 4:
 		// step-2: ensure no tool transcript from step-1 leaks into the model input.
@@ -120,7 +120,7 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	case 5:
 		// step-2 replan: return a valid replan decision JSON.
-		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`)
+		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`)
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	default:
 		return []*ai.ChatChoices{{Message: ai.NewAIMsgInfo(""), FinishReason: "stop"}}, nil
@@ -130,11 +130,14 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
 	_ = ctx
 	_ = tools
-	if strings.Contains(text, "step_replan") || strings.Contains(text, "`step_replan`") {
-		return `{"should_replan":false,"replan_reason":"","next_goal":"","missing_items":[],"warnings":[]}`, nil
-	}
+	// Check final_answer first: the final_answer prompt may legitimately mention
+	// "step_replan" (e.g. shared actionability criterion), so matching step_replan
+	// first would mis-route the final_answer turn.
 	if strings.Contains(text, "`final_answer`") {
-		return `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","missing_items":[],"warnings":[],"user_message":"done","references":[]}`, nil
+		return `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`, nil
+	}
+	if strings.Contains(text, "step_replan") || strings.Contains(text, "`step_replan`") {
+		return `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"new_surfaces":[],"warnings":[]}`, nil
 	}
 	return "", nil
 }

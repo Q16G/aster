@@ -124,14 +124,15 @@ type StepSummaryPart struct {
 }
 
 type StepReplanPart struct {
-	AgentName    string   `json:"agent_name,omitempty"`
-	StepID       string   `json:"step_id,omitempty"`
-	StepName     string   `json:"step_name,omitempty"`
-	ShouldReplan bool     `json:"should_replan"`
-	ReplanReason string   `json:"replan_reason,omitempty"`
-	NextGoal     string   `json:"next_goal,omitempty"`
-	MissingItems []string `json:"missing_items,omitempty"`
-	Warnings     []string `json:"warnings,omitempty"`
+	AgentName       string   `json:"agent_name,omitempty"`
+	StepID          string   `json:"step_id,omitempty"`
+	StepName        string   `json:"step_name,omitempty"`
+	ShouldReplan    bool     `json:"should_replan"`
+	ReplanReason    string   `json:"replan_reason,omitempty"`
+	NextGoal        string   `json:"next_goal,omitempty"`
+	IncompleteItems []string `json:"incomplete_items,omitempty"`
+	NewSurfaces     []string `json:"new_surfaces,omitempty"`
+	Warnings        []string `json:"warnings,omitempty"`
 }
 
 type SubAgentPart struct {

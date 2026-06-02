@@ -100,11 +100,11 @@ func TestStateTracker_UpdatePlan_ClearsReplanContext(t *testing.T) {
 		Status:      builtin_tools.TaskStatusRunning,
 		CurrentGoal: "新目标",
 		ReplanContext: &builtin_tools.ReplanContext{
-			SourceStepID:   "step-1",
-			NextGoal:       "新目标",
-			MissingItems:   []string{"missing-1"},
-			Warnings:       []string{"warn-1"},
-			ReplacePending: true,
+			SourceStepID:    "step-1",
+			NextGoal:        "新目标",
+			IncompleteItems: []string{"missing-1"},
+			Warnings:        []string{"warn-1"},
+			ReplacePending:  true,
 		},
 	})
 

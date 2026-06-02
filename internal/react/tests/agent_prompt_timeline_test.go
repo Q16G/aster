@@ -132,12 +132,12 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 			{ID: "step-2", Step: "旧步骤", Status: builtin_tools.PlanStepPending},
 		},
 		ReplanContext: &builtin_tools.ReplanContext{
-			SourceStepID:   "step-1",
-			Reason:         "旧计划未覆盖新增缺口",
-			NextGoal:       "围绕新缺口重排计划",
-			MissingItems:   []string{"missing-1"},
-			Warnings:       []string{"warn-1"},
-			ReplacePending: true,
+			SourceStepID:    "step-1",
+			Reason:          "旧计划未覆盖新增缺口",
+			NextGoal:        "围绕新缺口重排计划",
+			IncompleteItems: []string{"missing-1"},
+			Warnings:        []string{"warn-1"},
+			ReplacePending:  true,
 		},
 	}
 
