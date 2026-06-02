@@ -203,6 +203,59 @@ func TestBuildSkillsTableWithStatus_AgentFilterWithV2Field(t *testing.T) {
 	}
 }
 
+func TestBuildSkillsTableWithStatus_AllowedSkillNamesOverrideAgentVisibility(t *testing.T) {
+	svc := NewSkillServiceWithMemory()
+	enabled := true
+
+	for _, skill := range []*MCPSkill{
+		{
+			Name:         "security-code-analysis",
+			Description:  "白盒总控",
+			Instructions: "whitebox",
+			Enabled:      &enabled,
+			Agent:        "code-audit",
+		},
+		{
+			Name:         "web-security-testing",
+			Description:  "黑盒总控",
+			Instructions: "blackbox",
+			Enabled:      &enabled,
+			Agent:        "pentest",
+		},
+		{
+			Name:         "result-with-file",
+			Description:  "输出",
+			Instructions: "report",
+			Enabled:      &enabled,
+			Agent:        "all",
+		},
+	} {
+		if err := svc.ImportSkill(context.Background(), skill); err != nil {
+			t.Fatalf("import %s failed: %v", skill.Name, err)
+		}
+	}
+
+	table, err := svc.BuildSkillsTableWithStatus(
+		context.Background(),
+		"graybox-test",
+		[]string{"security-code-analysis", "web-security-testing", "result-with-file"},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
+	}
+
+	for _, expected := range []string{
+		"security-code-analysis",
+		"web-security-testing",
+		"result-with-file",
+	} {
+		if !strings.Contains(table, expected) {
+			t.Fatalf("expected graybox allowlisted table to contain %q, got:\n%s", expected, table)
+		}
+	}
+}
+
 func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 	svc := NewSkillServiceWithMemory()
 	_, err := svc.ImportEmbeddedSkills(context.Background())
@@ -210,26 +263,38 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
 	}
 
-	skills, err := svc.LoadSkills(context.Background(), []string{"sast-scan"})
+	skills, err := svc.LoadSkills(context.Background(), []string{"sast-scan", "graybox-p0"})
 	if err != nil {
 		t.Fatalf("LoadSkills failed: %v", err)
 	}
-	if len(skills) != 1 {
-		t.Fatalf("expected 1 skill, got %d", len(skills))
+	if len(skills) != 2 {
+		t.Fatalf("expected 2 skills, got %d", len(skills))
 	}
 
-	skill := skills[0]
-	if skill.Agent != "all" {
-		t.Fatalf("expected agent 'all', got %q", skill.Agent)
+	var foundGraybox bool
+	var foundSAST bool
+	for _, skill := range skills {
+		if skill.Agent != "all" {
+			t.Fatalf("expected agent 'all' for %q, got %q", skill.Name, skill.Agent)
+		}
+		if skill.WhenToUse == "" {
+			t.Fatalf("expected non-empty when-to-use for %q", skill.Name)
+		}
+		if skill.Context != "inline" {
+			t.Fatalf("expected context 'inline' for %q, got %q", skill.Name, skill.Context)
+		}
+		if skill.Source != "builtin" {
+			t.Fatalf("expected source 'builtin' for %q, got %q", skill.Name, skill.Source)
+		}
+		switch skill.Name {
+		case "sast-scan":
+			foundSAST = true
+		case "graybox-p0":
+			foundGraybox = true
+		}
 	}
-	if skill.WhenToUse == "" {
-		t.Fatal("expected non-empty when-to-use for sast-scan skill")
-	}
-	if skill.Context != "inline" {
-		t.Fatalf("expected context 'inline', got %q", skill.Context)
-	}
-	if skill.Source != "builtin" {
-		t.Fatalf("expected source 'builtin', got %q", skill.Source)
+	if !foundSAST || !foundGraybox {
+		t.Fatalf("expected embedded imports to include sast-scan and graybox-p0, got %+v", skills)
 	}
 }
 
