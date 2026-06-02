@@ -85,6 +85,10 @@ type AgentConfig struct {
 
 	// DefaultToolTimeoutMs 所有工具调用的默认超时（毫秒）。0 表示使用内置默认值（300000）。
 	DefaultToolTimeoutMs int64
+
+	// IsSubAgent 标记本 Agent 是 depth>0 的子 agent。子 agent 不注册 human_confirm：
+	// 嵌套的 durable interrupt 永远无法送达人类，请求只会挂起并失败。
+	IsSubAgent bool
 }
 
 // Option Agent 配置选项
@@ -362,6 +366,16 @@ func WithDefaultToolTimeout(ms int64) Option {
 			return
 		}
 		c.DefaultToolTimeoutMs = ms
+	}
+}
+
+// WithIsSubAgent 标记本 Agent 为子 agent（depth>0），用于门控仅顶层可用的平台工具（如 human_confirm）。
+func WithIsSubAgent(isSubAgent bool) Option {
+	return func(c *AgentConfig) {
+		if c == nil {
+			return
+		}
+		c.IsSubAgent = isSubAgent
 	}
 }
 
