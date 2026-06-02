@@ -69,12 +69,12 @@ type ThoughtProgress struct {
 type AgentPhase string
 
 const (
-	AgentPhaseStep                  AgentPhase = "step"
-	AgentPhasePlan                  AgentPhase = "plan"
-	AgentPhaseStepReplan            AgentPhase = "step_replan"
-	AgentPhaseFinalAnswer           AgentPhase = "final_answer"
-	AgentPhaseIntentClassification  AgentPhase = "intent_classification"
-	AgentPhaseStepOutcomesReducer   AgentPhase = "step_outcomes_reducer"
+	AgentPhaseStep                 AgentPhase = "step"
+	AgentPhasePlan                 AgentPhase = "plan"
+	AgentPhaseStepReplan           AgentPhase = "step_replan"
+	AgentPhaseFinalAnswer          AgentPhase = "final_answer"
+	AgentPhaseIntentClassification AgentPhase = "intent_classification"
+	AgentPhaseStepOutcomesReducer  AgentPhase = "step_outcomes_reducer"
 )
 
 // PlanStepStatus 计划步骤状态
