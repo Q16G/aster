@@ -269,9 +269,13 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 		if isAgent {
 			m.updateSubAgentByCallID(callID, result, errStr)
+			// Reliable reconciliation: cancel the child's still-open items keyed by
+			// call_id, independent of whether the result payload carried agent_name.
+			m.chat.CancelPendingItemsForCallID(callID)
 			// A finished sub-agent drops out of the right-side panel; once the
 			// last one ends the panel hides, so reflow the chat width back.
 			m.updateLayout()
+			m.refreshSidebarData()
 		}
 		display := result
 		if errStr != "" {
@@ -568,6 +572,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					Time: time.Now(),
 					Plan: fallbackPlan,
 				})
+			}
+			// When a parent step completes, reconcile any sub-agent it spawned at
+			// that step: their leftover open items are cancelled so a done parent
+			// doesn't keep dangling pending children in the sidebar.
+			if status == "completed" && itemID != "" {
+				m.chat.CancelSubAgentItemsForParentStep(event.AgentName, itemID)
 			}
 			persistName := itemID
 			if persistName == "" {
@@ -1016,12 +1026,7 @@ func (m *Model) parseSubAgentResult(t *ToolPart, result string) {
 
 func (m *Model) cancelSubAgentPendingItems(agentName string) {
 	m.chat.UpdateLastPlanForAgent(agentName, func(p *PlanPart) {
-		for i := range p.Items {
-			switch p.Items[i].Status {
-			case "pending", "in_progress":
-				p.Items[i].Status = "cancelled"
-			}
-		}
+		cancelOpenItems(p)
 	})
 }
 
