@@ -175,6 +175,7 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 			Reason:         strings.TrimSpace(result.Reason),
 			NextGoal:       latest,
 			ReplacePending: true,
+			RegenerateGoal: true,
 		})
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 
