@@ -189,8 +189,10 @@ func TestCollectEmbeddedPaths_ReturnsNonEmpty(t *testing.T) {
 	hasSkillMD := false
 	for p := range paths {
 		parts := strings.Split(p, "/")
-		if len(parts) < 3 {
-			t.Fatalf("expected at least <group>/<skill>/<file> pattern, got %q", p)
+		// 技能为 <group>/<skill>/<file> 三段式；common 下的共享参考（如
+		// common/closure-verification.md）是合法的两段式直挂文件，故至少两段。
+		if len(parts) < 2 {
+			t.Fatalf("expected at least <group>/<file> pattern, got %q", p)
 		}
 		if strings.HasSuffix(strings.ToLower(p), "skill.md") {
 			hasSkillMD = true
