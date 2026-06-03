@@ -23,9 +23,9 @@ rules:
           - pattern: |
               $RES.send(`...${$REQ.params.$PARAM}...`)
           - pattern: |
-              $RES.send("<..." + $REQ.query.$PARAM + ..."...")
+              $RES.send("..." + $REQ.query.$PARAM + "...")
           - pattern: |
-              $RES.send("<..." + $REQ.body.$PARAM + ..."...")
+              $RES.send("..." + $REQ.body.$PARAM + "...")
     message: >
       Cross-site scripting (XSS) via Express response. User input from
       req.query, req.body, or req.params is sent directly in the HTTP response

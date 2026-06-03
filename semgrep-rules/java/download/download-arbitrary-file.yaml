@@ -33,7 +33,7 @@ rules:
           Path#getFileName() before use.
 
     # ----------- 污点源（覆盖主流 Web 框架） -----------
-    pattern-sources: &sources
+    pattern-sources:
       # ---------- Servlet / JSP ----------
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getParameterValues(...)
@@ -174,7 +174,7 @@ rules:
       - pattern: $ITEM.getName()
 
     # ----------- 污点传播器：处理默认流追踪不到的 mutation -----------
-    pattern-propagators: &propagators
+    pattern-propagators:
       # StringBuilder/StringBuffer.append 是 mutation，默认不会被追踪
       - pattern: $SB.append($T)
         from: $T
@@ -193,7 +193,7 @@ rules:
         to: $MAP
 
     # ----------- 净化器：常见的安全包装 -----------
-    pattern-sanitizers: &sanitizers
+    pattern-sanitizers:
       - pattern: org.apache.commons.io.FilenameUtils.getName(...)
       - pattern: $P.getFileName()
       - pattern: $P.getFileName().toString()
@@ -317,9 +317,185 @@ rules:
           reject results that escape the base directory.
         * Strip the user value to FilenameUtils.getName() before joining.
         * Prefer an allowlist of safe filenames or IDs.
-    pattern-sources: *sources
-    pattern-propagators: *propagators
-    pattern-sanitizers: *sanitizers
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getPathTranslated()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getRequestURL()
+      - pattern: $REQ.getInputStream()
+      - pattern: $REQ.getReader()
+      - pattern: $COOKIE.getValue()
+
+      # ---------- Spring MVC / WebFlux 注解 ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.PathVariable(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestHeader(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.CookieValue(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.RequestBody $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.MatrixVariable(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @org.springframework.web.bind.annotation.ModelAttribute(...) $T $NAME, ...) {
+                ...
+              }
+      - pattern: $REQ.queryParam(...)
+      - pattern: $REQ.pathVariable(...)
+
+      # ---------- JAX-RS / Jersey (javax.* + jakarta.*) ----------
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.HeaderParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.FormParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.CookieParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @javax.ws.rs.MatrixParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.QueryParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.PathParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.HeaderParam(...) $T $NAME, ...) {
+                ...
+              }
+      - patterns:
+          - pattern: $NAME
+          - pattern-inside: |
+              $RET $M(..., @jakarta.ws.rs.FormParam(...) $T $NAME, ...) {
+                ...
+              }
+
+      # ---------- Struts2 ----------
+      - pattern: org.apache.struts2.ServletActionContext.getRequest().getParameter(...)
+      - pattern: org.apache.struts2.ServletActionContext.getRequest().getHeader(...)
+      - pattern: com.opensymphony.xwork2.ActionContext.getContext().getParameters().get(...)
+
+      # ---------- JFinal ----------
+      - pattern: $CTRL.getPara(...)
+      - pattern: $CTRL.getParaValues(...)
+      - pattern: $CTRL.getParaMap()
+      - pattern: $CTRL.getKv()
+
+      # ---------- 文件上传中的客户端文件名 ----------
+      - pattern: $FILE.getOriginalFilename()
+      - pattern: $PART.getSubmittedFileName()
+      - pattern: $ITEM.getName()
+    pattern-propagators:
+      - pattern: $SB.append($T)
+        from: $T
+        to: $SB
+      # Path.resolve 返回新 Path，但 IDE 中常见的 base.resolve(taint) 链
+      # 会把 base 也视作污染，便于跨方法调用追踪
+      - pattern: $P.resolve($T)
+        from: $T
+        to: $P
+      # Collection 注入污点
+      - pattern: $LIST.add($T)
+        from: $T
+        to: $LIST
+      - pattern: $MAP.put($K, $T)
+        from: $T
+        to: $MAP
+    pattern-sanitizers:
+      - pattern: org.apache.commons.io.FilenameUtils.getName(...)
+      - pattern: $P.getFileName()
+      - pattern: $P.getFileName().toString()
+      # 强类型转换 = 不可能含有 ../
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+      - pattern: java.lang.Integer.parseInt(...)
+      - pattern: java.lang.Long.parseLong(...)
+      - pattern: UUID.fromString(...)
+      - pattern: java.util.UUID.fromString(...)
+      # 数值再 toString / valueOf 也是安全的
+      - pattern: String.valueOf(Integer.parseInt(...))
+      - pattern: String.valueOf(Long.parseLong(...))
+      - pattern: String.valueOf(UUID.fromString(...))
+      - pattern: Integer.toString(Integer.parseInt(...))
+      - pattern: Long.toString(Long.parseLong(...))
+      # 用户可能自定义的 path-traversal 校验函数（按命名约定识别）
+      - patterns:
+          - pattern-either:
+              - pattern: $X.checkPathTraversal(...)
+              - pattern: $X.validatePath(...)
+              - pattern: $X.sanitizePath(...)
+              - pattern: $X.cleanPath(...)
+              - pattern: $X.normalizePath(...)
     pattern-sinks:
       # 双参数构造器（API 语义本身就是 base + child）
       - pattern: new java.io.File($DIR, $X)

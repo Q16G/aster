@@ -6,10 +6,10 @@ rules:
           - pattern: https.request($URL, ...)
           - pattern: http.get($URL, ...)
           - pattern: https.get($URL, ...)
-          - pattern: http.request({..., host: $VAR, ...}, ...)
-          - pattern: https.request({..., host: $VAR, ...}, ...)
-          - pattern: http.request({..., hostname: $VAR, ...}, ...)
-          - pattern: https.request({..., hostname: $VAR, ...}, ...)
+          - pattern: "http.request({..., host: $VAR, ...}, ...)"
+          - pattern: "https.request({..., host: $VAR, ...}, ...)"
+          - pattern: "http.request({..., hostname: $VAR, ...}, ...)"
+          - pattern: "https.request({..., hostname: $VAR, ...}, ...)"
       - pattern-not: http.request("...", ...)
       - pattern-not: https.request("...", ...)
       - pattern-not: http.get("...", ...)

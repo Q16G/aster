@@ -6,8 +6,6 @@ rules:
               <$EL dangerouslySetInnerHTML={{__html: $VAR}} />
           - pattern: |
               <$EL dangerouslySetInnerHTML={{__html: $VAR}}>...</$EL>
-          - pattern: |
-              dangerouslySetInnerHTML={{__html: $VAR}}
     message: >
       Cross-site scripting (XSS) via React dangerouslySetInnerHTML. This prop
       bypasses React's built-in XSS protection by injecting raw HTML. If the
