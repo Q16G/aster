@@ -49,6 +49,7 @@ type StepReplanPromptInput struct {
 	AgentInstruction       string
 	CurrentGoal            any
 	GoalUnderstanding      string
+	InputTimeline          any
 	CurrentStep            any
 	StepOutcome            any
 	TaskPlan               any
@@ -72,6 +73,7 @@ type FinalAnswerPromptInput struct {
 	Status                 any
 	StateError             any
 	InputTimeline          any
+	GoalUnderstanding      string
 	ShowPlanSection        bool
 	Plan                   any
 	PlanVersion            any
@@ -262,6 +264,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"CURRENT_GOAL":                 fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
+		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
 		"CURRENT_STEP":                 prettyJSON(input.CurrentStep),
 		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
 		"TASK_PLAN":                    prettyJSON(input.TaskPlan),
@@ -300,6 +303,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"STATUS":                       fmt.Sprint(input.Status),
 		"STATE_ERROR":                  fmt.Sprint(input.StateError),
 		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
+		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
 		"SHOW_PLAN_SECTION":            input.ShowPlanSection,
 		"PLAN":                         prettyJSON(input.Plan),
 		"PLAN_VERSION":                 prettyJSON(input.PlanVersion),

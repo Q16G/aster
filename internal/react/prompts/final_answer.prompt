@@ -36,6 +36,11 @@
   - **闸门**：若仍存在「可行动但未归置/未处理」的残留项 → `is_complete=false`（在全量场景下随之 `should_replan=true`）。
   - **actionability 判据与 step_replan 同源**：是否「可行动」沿用「未来步骤是否还可能解决，且尚未被尝试过并失败」这条唯一标准。逐项归置存疑时，按上文「存疑时按需核实」读 `timeline_file` 取证后再定。**已被 step_replan 降级沉回 `<WARNINGS>` 的不可解项，在此归置为「不可解局限 + 理由」即可，不触发 `is_complete=false`**（避免与 step_replan 的降级判定反复横跳）。
   - **聚焦对齐**：本闸的「逐项覆盖」范围与原则 10 一致——用户/目标级聚焦时收敛到聚焦方向内逐项；但**不因单个步骤措辞窄**而放松范围内的逐项归置要求。
+  - **意图半径对齐（默认恒生效）**：即使无显式聚焦，本闸的「逐项覆盖」范围默认也**受原则 12 的意图半径约束**——落在 `<GOAL_UNDERSTANDING>` 范围边界外、或命中"明确不做"的清单项，归「不在本次意图范围」（可记 `new_surfaces`/`warnings`），**不据此判 `is_complete=false`**；意图半径内的项仍**逐项不折叠**。`<GOAL_UNDERSTANDING>` 缺失或范围为全量/无边界时退回全量逐项判定。
+- **原则 12（意图尺子对齐 step_replan）**：`<GOAL_UNDERSTANDING>`（若注入）是 planner 规划前对原始输入的结构化提炼，与 step_replan 用的是**同一把意图尺子**。完成性自检时，以 `INPUT_TIMELINE` 为当前有效诉求的首要依据，并对照 `<GOAL_UNDERSTANDING>` 的「核心目标 + 范围边界（明确要做/不做）」判断"用户既定范围是否真覆盖完"：
+  - 覆盖判定**只收敛到意图半径内**——落在范围边界外、或命中"明确不做"的维度不计入 `incomplete_items`，与 step_replan 轴③ 对意图外项的降级处理一致（可记 `new_surfaces`/`warnings`，但不据此判未完成）。
+  - `<GOAL_UNDERSTANDING>` 缺失、或范围边界为"全量/无边界"时，退回按全量职责判定（不收敛）。
+  - 二者冲突时以 `INPUT_TIMELINE` 反映的当前有效诉求为准（`<GOAL_UNDERSTANDING>` 是提炼，可能滞后于最新输入）。
 
 ## 5. 判定步骤 (Decision Procedure)
 请严格按以下顺序进行判断：
@@ -94,6 +99,12 @@
 <INPUT_TIMELINE>
 {{.INPUT_TIMELINE}}
 </INPUT_TIMELINE>
+{{- if .HAS_GOAL_UNDERSTANDING}}
+
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+{{- end}}
 
 {{if .SHOW_PLAN_SECTION}}
 <PLAN_VERSION>
@@ -143,7 +154,7 @@
 - **引用要求**：当任务已完成且输入中存在 `references` 时，`user_message` 必须包含一个“References”或“依据/参考”小节，列出支撑最终结论的关键引用。每条引用前必须加一个方括号标签，标明该文件的角色（依据文件名/内容推断），格式为 `- [标签] 绝对路径`。汇总性的最终报告标注为 `[最终报告]`，各专项结果文件按其主题标注，例如 `[攻击面侦察]`、`[SAST 扫描报告]`、`[依赖安全报告]`、`[敏感信息检测]`、`[数据流分析]`、`[认证授权审计]`、`[配置安全审计]`、`[会话安全审计]`、`[XSS 分析报告]` 等；无法明确归类时使用简短的概括性标签。
 - **枚举项保全要求**：生成 `user_message` 时，上游 `step_outcomes` 中已确认的精确聚合总数和分布统计必须原样复用，不得四舍五入或模糊化；已确认的明细枚举项不得静默省略或压缩为 Top-N。若上游已提供结构化结果，优先以结构化方式呈现。
 - **三轴字段要求**：缺口拆为三轴分别输出——这里是**跨全部 step 的总验收**，不局限于任何单个 step：
-  - `incomplete_items`（轴①存在性/完成度）：当前用户诉求范围内、**根本没做**的项。聚焦约束下仅列聚焦方向内的未完成项。
+  - `incomplete_items`（轴①存在性/完成度）：当前用户诉求范围内、**根本没做**的项。默认受原则 12 意图半径约束（仅列意图半径内未完成项，意图外维度不计入）；显式聚焦时进一步收敛到聚焦方向内；`<GOAL_UNDERSTANDING>` 缺失或全量/无边界时按全量职责判定。
   - `depth_gaps`（轴②深度/质量）：跨 step 来看**做了但不扎实**的项。逐条核对已"做过"的工作，命中以下任一「深度气味」即计入：
     - **结论停在半路**：`static_only` / `provisional` / "需确认" / "待复核"的判断没去落定，纯静态推断未做动态/可达性验证。
     - **数据流未闭环**：sink 已定位但**未追到 source**（可达性未验证；每个 source-sink pair 独立判定，不折叠）。
@@ -151,8 +162,11 @@
     - **水货占位挤掉高价值分析**：findings 被弱加密/弱哈希/TLS 配置、通用安全头等已知低信号项（"水货"）大量堆砌，而高价值的结构性漏洞（RCE/SQLi/XXE 等）与语义性问题（业务逻辑/鉴权/RBAC/越权/影响面）分析缺位或被掩盖。
     - **抽样冒充全量**：声称"全量/全部覆盖"，但上游 step_outcomes / coverage-ledger 显示实际只动了子集。
     - 轴②与轴①互斥：根本没做的归轴①，做了没做透的才归轴②；即使每项都"有动作"（轴①为空），只要命中深度气味仍**必须**产出 `depth_gaps`。
-  - `new_surfaces`（轴③泛化）：**对照整体诉求全集**、尚未被任何已完成工作覆盖的面（审计覆盖视角，找全局漏审的面，而非攻击者单点突破视角；范围是整个任务而非某个 step）。聚焦约束下，方向外的新面填此字段但不单独驱动 replan。
-- **replan 要求**：只有在 agent 仍能继续执行补齐缺口时，才允许 `should_replan=true`；若缺口只能依赖用户补充输入，则必须输出 `should_replan=false`。在非聚焦的全量场景下，`should_replan` 可由关键 `incomplete_items`、`depth_gaps` 或 `new_surfaces` 驱动；在聚焦场景下，仅 `incomplete_items`（聚焦方向内）与 `depth_gaps` 可驱动 replan，`new_surfaces` 不单独驱动。
+  - `new_surfaces`（轴③泛化）：**对照意图半径内的诉求全集**、尚未被任何已完成工作覆盖的面（审计覆盖视角，找全局漏审的面，而非攻击者单点突破视角；范围是整个任务而非某个 step）。默认受原则 12 意图半径约束：落在范围边界外/明确不做的面填此字段或 `warnings` 但**不单独驱动 replan**；显式聚焦时方向外的新面同样不单独驱动 replan；`<GOAL_UNDERSTANDING>` 缺失或全量/无边界时对照整体任务全集。
+- **replan 要求**：只有在 agent 仍能继续执行补齐缺口时，才允许 `should_replan=true`；若缺口只能依赖用户补充输入，则必须输出 `should_replan=false`。`should_replan` 的驱动范围按意图半径分档（与原则 12 一致）：
+  - **`<GOAL_UNDERSTANDING>` 缺失或全量/无边界**：`should_replan` 可由关键 `incomplete_items`、`depth_gaps` 或 `new_surfaces` 驱动（对照整体全集）。
+  - **有意图边界但无显式聚焦（默认档）**：意图半径内的 `incomplete_items` 与 `new_surfaces` 可驱动 replan（落在范围边界外/明确不做的新面不单独驱动）；`depth_gaps` **不受意图半径收敛**——质量底线对「已做过的工作」始终生效（与 step_replan 原则 6「意图边界只收敛覆盖范围、不放松质量底线」一致）。
+  - **显式聚焦**：仅 `incomplete_items`（聚焦方向内）与 `depth_gaps` 可驱动 replan，`new_surfaces` 不单独驱动。
 - **next_goal 要求**：只有在确实需要 agent 继续执行时填写；不要把“等待用户输入”写进 `next_goal`。
 
 ## 8. 输出格式
@@ -197,7 +211,7 @@
     },
     "incomplete_items": {
       "type": "array",
-      "description": "轴①存在性/完成度：当前用户诉求范围内、根本没做的要点。聚焦约束下仅列聚焦方向内的未完成项。不含'做了但不扎实'（属 depth_gaps）。",
+      "description": "轴①存在性/完成度：当前用户诉求范围内、根本没做的要点。默认受意图半径约束（原则12），意图外维度不计入；显式聚焦时仅列聚焦方向内的未完成项；GOAL_UNDERSTANDING 缺失或全量/无边界时按全量职责判定。不含'做了但不扎实'（属 depth_gaps）。",
       "items": { "type": "string" }
     },
     "depth_gaps": {
@@ -207,7 +221,7 @@
     },
     "new_surfaces": {
       "type": "array",
-      "description": "轴③泛化：对照整体诉求全集、尚未被任何已完成工作覆盖的面（审计覆盖视角，找全局漏审的面，非攻击者单点视角；范围是整个任务而非某个 step）。聚焦约束下不单独驱动 should_replan。",
+      "description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（审计覆盖视角，找全局漏审的面，非攻击者单点视角；范围是整个任务而非某个 step）。受 GOAL_UNDERSTANDING 范围边界约束（原则12 默认恒生效），意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan；GOAL_UNDERSTANDING 缺失或全量/无边界时对照整体全集。",
       "items": { "type": "string" }
     },
     "warnings": {

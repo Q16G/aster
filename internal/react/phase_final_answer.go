@@ -64,6 +64,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"status":                   stateStatus,
 		"state_error":              strings.TrimSpace(snapshot.Error),
 		"input_timeline":           snapshot.InputTimeline,
+		"goal_understanding":       snapshot.GoalUnderstanding,
 		"needs_planning":           snapshot.NeedsPlanning,
 		"show_plan":                snapshot.NeedsPlanning,
 		"plan":                     snapshot.Plan,

@@ -91,6 +91,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":             snapshot.CurrentGoal,
 		"goal_understanding":       snapshot.GoalUnderstanding,
+		"input_timeline":           snapshot.InputTimeline,
 		"current_step":             current,
 		"step_outcome":             enrichedCurrent,
 		"task_plan":                snapshot.Plan,
