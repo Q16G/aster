@@ -1412,7 +1412,45 @@ func TestSubAgentPendingItemsPersistAfterRootCompletes(t *testing.T) {
 		t.Fatalf("expected %d sub-agent pending items, got %d: %v", len(expectedPendingIDs), len(subPendingIDs), subPendingIDs)
 	}
 
-	t.Log("CONFIRMED: sub-agent pending items persist in sidebar after root plan completes.")
-	t.Log("Root scheduler only checks its own plan → enters FinalAnswer.")
-	t.Log("Sidebar flattenPlan merges root + sub-agent plans → pending items visible to user.")
+	t.Log("CONFIRMED: sub-agent leftover items are cancelled once the parent step completes.")
+}
+
+// TestSidebarSubAgentGroupHeaderNoPerItemPrefix verifies the naming fix: a
+// sub-agent's items render under a single short group header instead of
+// repeating the long internal name as a per-item prefix, so the real step text
+// is no longer truncated away.
+func TestSidebarSubAgentGroupHeaderNoPerItemPrefix(t *testing.T) {
+	internalName := "sub-call_00_XOioGGilxwf78s9sB1P"
+	items := []PlanItemView{
+		{ID: "auth-review", Step: "认证授权审计", Status: "in_progress", Depth: 0},
+		{ID: "s1", Step: "枚举登录接口与鉴权方式", Status: "in_progress", Depth: 1, AgentName: internalName},
+		{ID: "s2", Step: "测试越权访问路径", Status: "pending", Depth: 1, AgentName: internalName},
+		{ID: "s3", Step: "校验会话固定与令牌刷新", Status: "pending", Depth: 1, AgentName: internalName},
+	}
+	snap := SidebarSnapshot{PlanItems: items}
+	sidebar := NewSidebarModel()
+	sidebar.SetSize(50, 40)
+	sidebar.SetSnapshot(snap)
+
+	var sb strings.Builder
+	sidebar.renderTodoSection(&sb, 50)
+	rendered := sb.String()
+	t.Logf("\n=== Sub-agent group rendering ===\n%s", rendered)
+
+	if got := strings.Count(rendered, "↳ sub-call_00"); got != 1 {
+		t.Fatalf("expected friendly group header exactly once, got %d:\n%s", got, rendered)
+	}
+	if strings.Contains(rendered, internalName) {
+		t.Errorf("long internal sub-agent name leaked into sidebar:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "[sub-call_") {
+		t.Errorf("per-item agent prefix should be gone:\n%s", rendered)
+	}
+	for _, want := range []string{"枚举登录接口与鉴权方式", "测试越权访问路径", "校验会话固定与令牌刷新"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("expected sub-agent step %q visible (not truncated):\n%s", want, rendered)
+		}
+	}
+}
+
 }

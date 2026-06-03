@@ -272,6 +272,43 @@ func subtreeCompleted(items []PlanItemView, parentIdx int) (total, done int) {
 	return
 }
 
+// subAgentDisplayLabel shortens a child agent's internal unique name into a
+// readable label for the sidebar group header. The internal name embeds the
+// full spawning call_id to stay unique (sub-call_00_<rand>), which is too long
+// to show. Display only the stable prefix:
+//
+//	sub-call_00_<rand>  -> sub-call_00
+//	skill-<name>-<rand> -> skill-<name>
+//
+// Anything that doesn't match a known scheme is returned unchanged.
+func subAgentDisplayLabel(agentName string) string {
+	if strings.HasPrefix(agentName, "sub-") {
+		parts := strings.Split(agentName, "_")
+		if len(parts) >= 3 && isAllDigits(parts[1]) {
+			return parts[0] + "_" + parts[1]
+		}
+		return agentName
+	}
+	if strings.HasPrefix(agentName, "skill-") {
+		if i := strings.LastIndex(agentName, "-"); i > len("skill") {
+			return agentName[:i]
+		}
+	}
+	return agentName
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 	snap := m.snapshot
 	if len(snap.PlanItems) == 0 {
@@ -294,6 +331,7 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 	sb.WriteString("\n")
 
 	collapseAtDepth := -1
+	prevAgentName := ""
 	for i, item := range snap.PlanItems {
 		if collapseAtDepth >= 0 && item.Depth > collapseAtDepth {
 			continue
@@ -323,10 +361,13 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		indentSize := 2 + item.Depth*2
 		indent := strings.Repeat(" ", indentSize)
 
-		prefix := ""
-		if item.AgentName != "" {
-			prefix = "[" + item.AgentName + "] "
+		// A sub-agent's items render under a single short group header instead of
+		// repeating its (long, unique) internal name as a per-item prefix.
+		if item.AgentName != "" && item.AgentName != prevAgentName {
+			header := indent + "↳ " + subAgentDisplayLabel(item.AgentName)
+			sb.WriteString(sectionDimStyle.Render(header) + "\n")
 		}
+		prevAgentName = item.AgentName
 
 		suffix := ""
 		if collapsed {
@@ -335,11 +376,11 @@ func (m *SidebarModel) renderTodoSection(sb *strings.Builder, w int) {
 		}
 
 		iconW := runewidth.StringWidth(icon)
-		maxStep := w - indentSize - iconW - 1 - len(prefix) - len(suffix)
+		maxStep := w - indentSize - iconW - 1 - len(suffix)
 		if maxStep < 4 {
 			maxStep = 4
 		}
-		step := prefix + truncateDisplayWidth(item.Step, maxStep) + suffix
+		step := truncateDisplayWidth(item.Step, maxStep) + suffix
 		sb.WriteString(style.Render(indent+icon+" "+step) + "\n")
 	}
 	sb.WriteString("\n")
