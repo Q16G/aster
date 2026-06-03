@@ -1285,11 +1285,11 @@ func TestBuildSidebarSnapshot_ReplanDuplication_Rephrased(t *testing.T) {
 	}
 }
 
-// TestSubAgentPendingItemsPersistAfterRootCompletes verifies the hypothesis:
-// when root agent's plan is fully completed but a sub-agent terminated early
-// with pending steps, those pending steps still appear in the sidebar.
-// This is the most likely cause of the "6 pending steps after session ends" bug.
-func TestSubAgentPendingItemsPersistAfterRootCompletes(t *testing.T) {
+// TestSubAgentItemsReconciledAfterRootCompletes verifies the fix: when a
+// sub-agent terminates early with open steps and its parent step then completes,
+// those leftover steps are reconciled to "cancelled" instead of lingering as
+// pending items in the sidebar.
+func TestSubAgentItemsReconciledAfterRootCompletes(t *testing.T) {
 	m := NewModel(ModelDeps{
 		AgentCtx: &AgentExecContext{
 			Definition: react.AgentDefinition{Name: "pentest-agent"},
@@ -1344,11 +1344,13 @@ func TestSubAgentPendingItemsPersistAfterRootCompletes(t *testing.T) {
 	})
 
 	// 5. Sub-agent tool call completes (sub-agent returned early without
-	//    finishing all steps — model decided complete or errored out)
+	//    finishing all steps — model decided complete or errored out). is_agent
+	//    is set as the real runtime does, so the sub-agent card settles to a
+	//    terminal status and reconciliation is allowed to fire.
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type: react.EventTypeToolEnd, AgentName: "pentest-agent",
 		Payload: map[string]any{
-			"tool_name": "sub_agent", "call_id": "call_cred",
+			"tool_name": "sub_agent", "call_id": "call_cred", "is_agent": true,
 			"result": "认证测试完成，未获取到有效凭证",
 		},
 	})
@@ -1389,27 +1391,31 @@ func TestSubAgentPendingItemsPersistAfterRootCompletes(t *testing.T) {
 		t.Fatalf("expected 7 completed root steps, got %d", rootCompleted)
 	}
 
-	// Sub-agent's pending steps appear at depth 1
-	subPending := 0
-	subPendingIDs := []string{}
+	// After the fix, once the parent step (auth-review) completes, the sub-agent's
+	// leftover open items are reconciled to "cancelled" — none should remain
+	// pending/in_progress in the sidebar.
+	subOpen := 0
+	subCancelledIDs := []string{}
 	for _, item := range snap.PlanItems {
-		if item.Depth == 1 && item.Status == "pending" {
-			subPending++
-			subPendingIDs = append(subPendingIDs, item.ID)
+		if item.Depth != 1 {
+			continue
+		}
+		switch item.Status {
+		case "pending", "in_progress":
+			subOpen++
+		case "cancelled":
+			subCancelledIDs = append(subCancelledIDs, item.ID)
 		}
 	}
 
-	// THIS is the diagnosis: if subPending > 0, the sidebar shows sub-agent
-	// pending items even though the root plan is fully completed.
-	// This explains the user's screenshot.
-	t.Logf("sub-agent pending items visible in sidebar: %d — IDs: %v", subPending, subPendingIDs)
-	if subPending == 0 {
-		t.Fatal("expected sub-agent pending items to persist in sidebar — hypothesis invalidated")
+	t.Logf("sub-agent open items still visible: %d; cancelled: %v", subOpen, subCancelledIDs)
+	if subOpen != 0 {
+		t.Fatalf("expected sub-agent open items to be reconciled to cancelled, got %d still open", subOpen)
 	}
 
-	expectedPendingIDs := []string{"install-deps", "captcha-script", "try-passwords", "hashcat", "get-jwt", "save-token"}
-	if len(subPendingIDs) != len(expectedPendingIDs) {
-		t.Fatalf("expected %d sub-agent pending items, got %d: %v", len(expectedPendingIDs), len(subPendingIDs), subPendingIDs)
+	expectedCancelledIDs := []string{"install-deps", "captcha-script", "try-passwords", "hashcat", "get-jwt", "save-token"}
+	if len(subCancelledIDs) != len(expectedCancelledIDs) {
+		t.Fatalf("expected %d sub-agent cancelled items, got %d: %v", len(expectedCancelledIDs), len(subCancelledIDs), subCancelledIDs)
 	}
 
 	t.Log("CONFIRMED: sub-agent leftover items are cancelled once the parent step completes.")
@@ -1453,4 +1459,90 @@ func TestSidebarSubAgentGroupHeaderNoPerItemPrefix(t *testing.T) {
 	}
 }
 
+// TestToolEndCancelsSubAgentItemsWithNonJSONResult verifies the reliable-trigger
+// path: when a sub-agent tool ends with plain-text (non-JSON) output, the
+// agent_name result path can't parse it, so reconciliation must key off the
+// tool call_id and still cancel the child's leftover open items.
+func TestToolEndCancelsSubAgentItemsWithNonJSONResult(t *testing.T) {
+	m := NewModel(ModelDeps{})
+	m.chat.rootAgentName = "root"
+	m.chat.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "1", CallID: "call_aaa1234", SubScheme: true}
+
+	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "1", Step: "派 A", Status: "in_progress"}}}
+	childPlan := &PlanPart{AgentName: "sub-call_aaa", ParentAgent: "root", ParentStepID: "1", Items: []PlanItemView{
+		{ID: "a-1", Step: "定位", Status: "completed"},
+		{ID: "a-2", Step: "确认", Status: "pending"},
+		{ID: "a-3", Step: "复核", Status: "in_progress"},
+	}}
+	m.chat.parts = []DisplayPart{
+		{Type: PartTypePlan, Plan: rootPlan},
+		{Type: PartTypePlan, Plan: childPlan},
+	}
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeToolEnd,
+		AgentName: "root",
+		Payload: map[string]any{
+			"tool_name": "sub_agent",
+			"call_id":   "call_aaa1234",
+			"is_agent":  true,
+			"result":    "认证测试完成，未获取到有效凭证",
+		},
+	})
+
+	statusByID := map[string]string{}
+	for _, it := range childPlan.Items {
+		statusByID[it.ID] = it.Status
+	}
+	if statusByID["a-1"] != "completed" {
+		t.Errorf("completed item must stay completed, got %q", statusByID["a-1"])
+	}
+	if statusByID["a-2"] != "cancelled" || statusByID["a-3"] != "cancelled" {
+		t.Errorf("open items must be cancelled via call_id path, got a-2=%q a-3=%q", statusByID["a-2"], statusByID["a-3"])
+	}
+}
+
+// TestParentStepCompleteDoesNotCancelRunningBgSubAgent verifies the running
+// guard: when a parent step completes while a background sub-agent it dispatched
+// is still running, that sub-agent's open items must be left alone (its own
+// progress events stay authoritative), not prematurely flipped to cancelled.
+func TestParentStepCompleteDoesNotCancelRunningBgSubAgent(t *testing.T) {
+	m := NewModel(ModelDeps{})
+	m.chat.rootAgentName = "root"
+	m.chat.agentSpawnByCallID["call_bg1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "dispatch", CallID: "call_bg1234", SubScheme: true}
+
+	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "dispatch", Step: "派发后台任务", Status: "in_progress"}}}
+	childPlan := &PlanPart{AgentName: "sub-call_bg", ParentAgent: "root", ParentStepID: "dispatch", Items: []PlanItemView{
+		{ID: "b-1", Step: "采集", Status: "in_progress"},
+		{ID: "b-2", Step: "分析", Status: "pending"},
+	}}
+	m.chat.parts = []DisplayPart{
+		// Background sub-agent card is still "running".
+		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_bg1234", Status: "running"}},
+		{Type: PartTypePlan, Plan: rootPlan},
+		{Type: PartTypePlan, Plan: childPlan},
+	}
+
+	// Parent marks the dispatch step completed while the bg agent runs on.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeTaskItem,
+		AgentName: "root",
+		Payload:   map[string]any{"id": "dispatch", "status": "completed"},
+	})
+
+	for _, it := range childPlan.Items {
+		if it.Status == "cancelled" {
+			t.Errorf("running bg sub-agent item %q was wrongly cancelled", it.ID)
+		}
+	}
+
+	// Once the bg agent settles to a terminal state, the same parent-step
+	// reconciliation should then cancel its leftover open items.
+	m.chat.UpdateSubAgentByCallID("call_bg1234", func(sa *SubAgentPart) { sa.Status = "completed" })
+	m.chat.CancelSubAgentItemsForParentStep("root", "dispatch")
+	for _, it := range childPlan.Items {
+		if it.Status != "cancelled" {
+			t.Errorf("after bg agent settled, leftover item %q should be cancelled, got %q", it.ID, it.Status)
+		}
+	}
 }

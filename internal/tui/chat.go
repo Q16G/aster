@@ -701,6 +701,103 @@ func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart))
 	}
 }
 
+// cancelOpenItems flips a plan's still-open (pending/in_progress) items to
+// cancelled and reports whether anything changed.
+func cancelOpenItems(p *PlanPart) bool {
+	changed := false
+	for i := range p.Items {
+		switch p.Items[i].Status {
+		case "pending", "in_progress":
+			p.Items[i].Status = "cancelled"
+			changed = true
+		}
+	}
+	return changed
+}
+
+// CancelPendingItemsForCallID marks any still-open items in the plan(s) spawned
+// by the given tool call_id as cancelled. Keyed by call_id (not the result
+// payload), so it fires reliably even when a sub-agent returns non-JSON output
+// or is interrupted without emitting a terminal report. A sub-agent whose card
+// is still running is left untouched: a background sub-agent's launcher tool
+// ends the instant it dispatches, long before the child actually finishes.
+func (m *ChatModel) CancelPendingItemsForCallID(callID string) {
+	if callID == "" {
+		return
+	}
+	changed := false
+	for i := range m.parts {
+		if m.parts[i].Type != PartTypePlan || m.parts[i].Plan == nil {
+			continue
+		}
+		p := m.parts[i].Plan
+		if m.isRootAgentPlan(p) {
+			continue
+		}
+		if info, ok := m.lookupSpawnByChild(p.AgentName); !ok || info.CallID != callID {
+			continue
+		}
+		if m.isSubAgentRunning(callID) {
+			continue
+		}
+		if cancelOpenItems(p) {
+			changed = true
+		}
+	}
+	if changed {
+		m.refreshContent()
+	}
+}
+
+// isSubAgentRunning reports whether the sub-agent card for callID exists and has
+// not yet reached a terminal status. Used to avoid reconciling (cancelling) a
+// still-running background sub-agent's plan items.
+func (m *ChatModel) isSubAgentRunning(callID string) bool {
+	if callID == "" {
+		return false
+	}
+	for i := range m.parts {
+		if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
+			return !isTerminalSubAgentStatus(m.parts[i].SubAgent.Status)
+		}
+	}
+	return false
+}
+
+// CancelSubAgentItemsForParentStep marks open items in any sub-agent plan whose
+// parent step just completed as cancelled, so a finished parent step never
+// leaves dangling pending children visible in the sidebar. A sub-agent that is
+// still running (e.g. a background agent the parent dispatched and moved past)
+// is left untouched: its own progress events keep its items authoritative.
+func (m *ChatModel) CancelSubAgentItemsForParentStep(parentAgent, stepID string) {
+	if stepID == "" {
+		return
+	}
+	matchRoot := parentAgent == m.rootAgentName
+	changed := false
+	for i := range m.parts {
+		if m.parts[i].Type != PartTypePlan || m.parts[i].Plan == nil {
+			continue
+		}
+		p := m.parts[i].Plan
+		if p.ParentStepID != stepID {
+			continue
+		}
+		if p.ParentAgent != parentAgent && !(matchRoot && p.ParentAgent == "") {
+			continue
+		}
+		if info, ok := m.lookupSpawnByChild(p.AgentName); ok && m.isSubAgentRunning(info.CallID) {
+			continue
+		}
+		if cancelOpenItems(p) {
+			changed = true
+		}
+	}
+	if changed {
+		m.refreshContent()
+	}
+}
+
 func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		// In the in-place sub-agent transcript, navigation keys scroll the
