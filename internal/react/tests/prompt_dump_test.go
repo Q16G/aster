@@ -161,6 +161,12 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"step-3",
 		})
 
+		// 未注入 GoalUnderstanding（首次规划 / 重生成场景）→ 不渲染意图半径槽。
+		// 用闭合标签判别：原则 0.5 正文只提及开标签，闭合标签只出现在渲染出的槽里。
+		mustNotContain(t, "plan_no_gu", prompt, []string{
+			"</GOAL_UNDERSTANDING>",
+		})
+
 		// Plan with existing outcomes should include EXECUTION_LINE section
 		if len(snapshot.StepOutcomes) > 0 {
 			mustContainAll(t, "plan_execution_line", prompt, []string{
@@ -190,7 +196,10 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			WorkspaceRootDir:   "/repo/project",
 			WorkspaceNamespace: "audit",
 		})
-		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{
+			Input:             planInput,
+			GoalUnderstanding: "核心目标：审计 SQL 注入。范围边界：仅数据访问层，不做前端。",
+		})
 		if err != nil {
 			t.Fatalf("BuildPrompt replan failed: %v", err)
 		}
@@ -205,6 +214,9 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"new_surfaces",
 			"GORM Raw",
 			"replace_pending",
+			// 同意图回流（Case A / carry）→ 注入并渲染意图半径锚（闭合标签 + 内容确认真正渲染）
+			"</GOAL_UNDERSTANDING>",
+			"仅数据访问层，不做前端",
 		})
 	})
 
@@ -344,7 +356,11 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		}
 
 		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-			"current_goal": "对项目进行安全审计，识别所有 SQL 注入漏洞",
+			"current_goal":       "对项目进行安全审计，识别所有 SQL 注入漏洞",
+			"goal_understanding": "核心目标：审计 SQL 注入。范围边界：仅数据访问层，不做前端。",
+			"input_timeline": []*builtin_tools.TimelineInput{
+				{Content: "帮我审计这个项目的 SQL 注入", CreatedAt: time.Now()},
+			},
 			"current_step": map[string]any{
 				"id":     "step-2",
 				"step":   "逐文件检查 SQL 拼接和参数化查询",
@@ -387,6 +403,10 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"高危 SQL 注入",
 			"<CARRIED_DEPTH_GAPS>",
 			"middleware",
+			"<GOAL_UNDERSTANDING>",
+			"仅数据访问层",
+			"<INPUT_TIMELINE>",
+			"帮我审计这个项目的 SQL 注入",
 		})
 
 		// Verify file paths render
@@ -484,11 +504,12 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"input_timeline": []*builtin_tools.TimelineInput{
 				{Content: "请对 /repo/project 进行 SQL 注入审计", CreatedAt: time.Now().Add(-10 * time.Minute)},
 			},
-			"show_plan":     true,
-			"plan":          plan,
-			"plan_version":  1,
-			"step_outcomes": completedOutcomes,
-			"warnings":      []string{"user_repo.go 高危"},
+			"goal_understanding": "核心目标：SQL 注入审计。范围边界：仅后端数据层。",
+			"show_plan":          true,
+			"plan":               plan,
+			"plan_version":       1,
+			"step_outcomes":      completedOutcomes,
+			"warnings":           []string{"user_repo.go 高危"},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
@@ -499,6 +520,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"<STATUS>",
 			"<INPUT_TIMELINE>",
 			"SQL 注入审计",
+			"<GOAL_UNDERSTANDING>",
+			"仅后端数据层",
 			"<PLAN_VERSION>",
 			"<PLAN>",
 			"step-1",
