@@ -2,6 +2,8 @@
 *.md
 !README.md
 !skills/**/*.md
+!docs/skill-authoring.md
+!docs/skill-authoring/**
 .ace-tool/
 /aster
 .DS_Store
