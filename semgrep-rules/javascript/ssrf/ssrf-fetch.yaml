@@ -9,7 +9,7 @@ rules:
           - pattern: axios.delete($URL, ...)
           - pattern: axios.patch($URL, ...)
           - pattern: axios($URL, ...)
-          - pattern: axios({..., url: $URL, ...})
+          - pattern: "axios({..., url: $URL, ...})"
           - pattern: got($URL, ...)
           - pattern: got.get($URL, ...)
           - pattern: got.post($URL, ...)

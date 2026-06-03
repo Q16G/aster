@@ -5,8 +5,8 @@ rules:
           - pattern: require('js-yaml').load($INPUT)
           - pattern: jsyaml.load($INPUT)
           - pattern: yaml.load($INPUT)
-      - pattern-not: yaml.load($INPUT, { schema: yaml.SAFE_SCHEMA })
-      - pattern-not: yaml.load($INPUT, { schema: yaml.JSON_SCHEMA })
+      - pattern-not: "yaml.load($INPUT, { schema: yaml.SAFE_SCHEMA })"
+      - pattern-not: "yaml.load($INPUT, { schema: yaml.JSON_SCHEMA })"
       - pattern-not: yaml.safeLoad($INPUT)
     message: >
       js-yaml load() without safe schema. In js-yaml < 4.0, load() uses

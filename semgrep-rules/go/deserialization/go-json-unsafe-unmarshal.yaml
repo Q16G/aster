@@ -2,12 +2,19 @@ rules:
   - id: go-json-unsafe-unmarshal
     patterns:
       - pattern-either:
-          - pattern: json.Unmarshal($INPUT, &$TARGET)
-          - pattern: json.NewDecoder($READER).Decode(&$TARGET)
-      - metavariable-pattern:
-          metavariable: $TARGET
-          pattern: |
-            interface{}
+          - pattern: |
+              var $TARGET interface{}
+              ...
+              json.Unmarshal($INPUT, &$TARGET)
+          - pattern: |
+              var $TARGET interface{}
+              ...
+              json.NewDecoder($READER).Decode(&$TARGET)
+          - pattern: json.Unmarshal($INPUT, &map[string]interface{}{})
+          - pattern: |
+              $TARGET := map[string]interface{}{}
+              ...
+              json.Unmarshal($INPUT, &$TARGET)
     message: >
       JSON unmarshaling into interface{} from untrusted input. When the
       target type is interface{}, the decoder creates map[string]interface{}
