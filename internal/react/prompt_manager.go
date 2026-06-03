@@ -101,6 +101,7 @@ type StepOutcomesReducerPromptInput struct {
 
 type TaskPlannerPromptInput struct {
 	Input              string
+	GoalUnderstanding  string
 	SkillsContext      *SkillsPromptContext
 	MCPContext         *MCPPromptContext
 	HasSkillsTable     bool
@@ -342,13 +343,15 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.taskPlannerTmpl.Execute(buf, map[string]any{
-		"INPUT":                strings.TrimSpace(input.Input),
-		"SKILLS_CONTEXT":       input.SkillsContext,
-		"MCP_CONTEXT":          input.MCPContext,
-		"HAS_SKILLS_TABLE":     input.HasSkillsTable,
-		"HAS_MCP_TABLE":        input.HasMCPTable,
-		"SKILLS_OVERFLOW_PATH": strings.TrimSpace(input.SkillsOverflowPath),
-		"MCP_OVERFLOW_PATH":    strings.TrimSpace(input.MCPOverflowPath),
+		"INPUT":                  strings.TrimSpace(input.Input),
+		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"SKILLS_CONTEXT":         input.SkillsContext,
+		"MCP_CONTEXT":            input.MCPContext,
+		"HAS_SKILLS_TABLE":       input.HasSkillsTable,
+		"HAS_MCP_TABLE":          input.HasMCPTable,
+		"SKILLS_OVERFLOW_PATH":   strings.TrimSpace(input.SkillsOverflowPath),
+		"MCP_OVERFLOW_PATH":      strings.TrimSpace(input.MCPOverflowPath),
 	}); err != nil {
 		return "", err
 	}

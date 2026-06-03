@@ -217,6 +217,11 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 	mcpCtx := a.buildMCPPromptContext()
+
+	// regenGoal：用户改向（intent=replan）回流时强制重产意图半径——不注入旧 GU，
+	// 让 planner 基于当前输入重新生成；其余回流（step_replan 内部重规划、intent=carry）沿用旧 GU。
+	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
+
 	plannerInput := TaskPlannerPromptInput{
 		Input:          inputStr,
 		SkillsContext:  skillsCtx,
@@ -224,13 +229,17 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		HasSkillsTable: skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:    mcpCtx != nil && mcpCtx.HasTable(),
 	}
+	if !regenGoal {
+		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
+	}
 	a.applyPlannerOverflowHints(&plannerInput)
 
-	// 仅在「全新意图」首次规划时强制要求 goal_understanding：续写/重规划（含 ReplanContext、
-	// 已有 plan）以及从意图感知恢复的回合（snapshot 已带 goal_understanding）一律沿用既有理解，
-	// 不强制重做意图分析；planner 若提交了非空理解仍会覆盖（见 SetGoalUnderstanding）。
-	requireGoalUnderstanding := strings.TrimSpace(snapshot.GoalUnderstanding) == "" &&
-		snapshot.ReplanContext == nil && len(snapshot.Plan) == 0
+	// 仅在「全新意图」首次规划、或用户改向（regenGoal）时强制要求 goal_understanding：
+	// 续写/重规划（含 ReplanContext、已有 plan）以及从意图感知恢复的回合（snapshot 已带
+	// goal_understanding）一律沿用既有理解，不强制重做意图分析；planner 若提交了非空理解仍会
+	// 覆盖（见 SetGoalUnderstanding）。
+	requireGoalUnderstanding := (strings.TrimSpace(snapshot.GoalUnderstanding) == "" &&
+		snapshot.ReplanContext == nil && len(snapshot.Plan) == 0) || regenGoal
 
 	var res *builtin_tools.TaskPlannerResult
 	if promptBuilder, ok := planner.(PlannerPromptBuilder); ok {
