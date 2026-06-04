@@ -460,11 +460,11 @@ mcp_servers:
 |------|------|
 | **SAST** | `sast-scan` — Semgrep 多语言扫描（本地规则集） |
 | **数据流** | `dataflow-analysis` — SyntaxFlow topdef/bottomUse 追踪 |
-| **注入** | `SQL注入-多策略综合检测`, `command-injection`, `ssti-testing`, `xxe-testing`, `ssrf-testing`, `path-traversal-lfi`, `xss-testing` |
-| **访问控制** | `越权访问-IDOR检测`, `越权访问-垂直越权检测`, `越权访问-未授权访问检测`, `access-control`, `csrf-testing` |
-| **Web 安全** | `文件上传-多策略综合检测`, `CORS-配置错误检测`, `JWT-弱密钥与信息泄露检测`, `open-redirect-testing`, `race-condition`, `http-protocol-sec` |
-| **认证** | `认证安全综合检测`, `注册机制-批量注册检测`, `通知滥用-邮箱短信轰炸检测` |
-| **隐私** | `隐私保护-敏感信息未脱敏检测`, `secret-detection` |
+| **注入** | `sql-injection-comprehensive`, `command-injection`, `ssti-testing`, `xxe-testing`, `ssrf-testing`, `path-traversal-lfi`, `xss-testing` |
+| **访问控制** | `idor-detection`, `vertical-privilege-escalation`, `unauthorized-access`, `access-control`, `csrf-testing` |
+| **Web 安全** | `file-upload`, `cors-misconfiguration`, `jwt-weakness`, `open-redirect-testing`, `race-condition`, `http-protocol-sec` |
+| **认证** | `auth-comprehensive`, `registration-abuse`, `notification-abuse` |
+| **隐私** | `sensitive-info-exposure`, `secret-detection` |
 | **主机** | `baseline-check`, `intrusion-detection`, `malware-detect`, `emergency-response`, `log-analysis` |
 | **CTF** | `web-ctf` — Web 方向黑盒解题工作流与考点速查 |
 | **浏览器** | `agent-browser` — Web 安全浏览器自动化 |
@@ -515,9 +515,9 @@ instruction: |
 
 skill_names:                       # 填技能的 name（见「Skills 的使用」表，部分为中文）
   - sast-scan
-  - SQL注入-多策略综合检测
-  - 认证安全综合检测
-  - 越权访问-IDOR检测
+  - sql-injection-comprehensive
+  - auth-comprehensive
+  - idor-detection
 
 tool_names:
   - list_files
