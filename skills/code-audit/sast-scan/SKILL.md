@@ -275,3 +275,20 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout
 - 不要将多个 finding 合并为聚合计数（如"50 处任意文件下载 + 13 处路径穿越"），每个 finding 必须独占一行，包含 file:line
 - 不要用"等"、"..."、"（略）"、"（其余 N 条略）"等方式省略 finding 列表中的条目，所有发现必须完整枚举
 - 不要因为项目大就只扫了部分模块却宣称"完整审计已完成"；分批扫描时未扫到的模块必须显式列入"扫描缺口"
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条 finding/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/sast-scan.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"50 处任意文件下载"聚合计数、"等"/"略"）的根源。这与上方"每个 finding 必须独占一行"是同一要求的机器可核版本。
+
+一 finding 一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `sast-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
+- `(source, sink, entry_point)` 三元组任一不同即各自独立成行，禁止合并折叠。
+- `entry_point` 填该 sink 可达的 HTTP 入口点（method+URL）；无明确入口点的系统性命中填 `systemic`。`file_location` 填 `file:line`。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。

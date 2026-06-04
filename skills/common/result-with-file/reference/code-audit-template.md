@@ -2,6 +2,71 @@
 
 > 本报告是各子报告的**无损超集**。下方各汇总表仅作索引/概览，明细以详细发现节（§4-§7）与附录（§15）为准；不得用汇总表替代明细。子报告中的入口点清单、数据流路径、源码片段必须逐条原样保留。
 
+## 0. 模板专属机制（发现记录与派生 + fid 锚点 + 入口点台账）
+
+> 以下是 code-audit 模板在 SKILL 通用机制之上的专属绑定：定义本模板的发现记录 schema / status / 去重键、给出派生命令产出 SKILL 闸门消费的两个 id 清单，并规定 fid 打在哪里、补一份入口点覆盖台账。
+
+### 0.1 发现记录 schema（jsonl，每行一条）
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- **status 取值与桶映射**：
+  - `confirmed` → 进正文（**已确认**档，必附 POC）
+  - `needs_review` → 进正文（**待复核**档，POC 可选，归"待人工复核项汇总"）
+  - `false_positive` → 进排除项（"误报与排除项"章节）
+  - `not_vulnerable` → 仅作覆盖证明（入口点节标 `not_vulnerable`，不进发现集）
+  - `superseded` → 忽略（被更全的记录取代，不进任何章节）
+- **去重键** = `[source, sink, entry_point]` 三元组；三者任一不同即各自独立成行，**禁止跨三元组折叠**。
+- `id` 带源前缀（如 `sast-001`、`bla-003`），全局唯一。
+
+### 0.2 派生命令（SKILL step 1 执行，产出 3 件机器产物）
+
+```bash
+mkdir -p shared/coverage-ledger/findings
+merged=$(find shared/coverage-ledger/findings -name '*.jsonl' -exec cat {} +)
+
+# 去重键非空校验：三元组全空会让 unique_by 把多条不同发现误折成一条
+bad=$(printf '%s' "$merged" | jq -s 'map(select((.source==null or .source=="") and (.sink==null or .sink=="") and (.entry_point==null or .entry_point==""))) | length')
+[ "${bad:-0}" = "0" ] || echo "FAIL: 有 $bad 条 jsonl 三元组全空，去重键失效，必须补全 source/sink/entry_point 再跑"
+
+# 进正文桶（confirmed+needs_review，按去重键去重）
+incl=$(printf '%s' "$merged" | jq -s 'unique_by([.source,.sink,.entry_point]) | map(select(.status=="confirmed" or .status=="needs_review"))')
+{
+  echo "# Findings Index（jq 机械派生，禁止手写）"; echo
+  echo "| id | title | severity | source→sink | entry_point | status | source_report |"
+  echo "|----|-------|----------|-------------|-------------|--------|---------------|"
+  printf '%s' "$incl" | jq -r '.[] | "| \(.id) | \(.title) | \(.severity) | \(.source)→\(.sink) | \(.entry_point) | \(.status) | \(.source_report) |"'
+} > shared/findings-index.md
+printf '%s' "$incl"   | jq -r '.[].id'                                  | sort -u > shared/coverage-ledger/index-ids.txt
+printf '%s' "$merged" | jq -r 'select(.status=="false_positive") | .id' | sort -u > shared/coverage-ledger/exclude-ids.txt
+```
+
+### 0.3 fid 锚点位置
+
+每条进入正文的发现，在其卡片标题行或表格行**行末**附 `<!-- fid:<该发现 jsonl 的 id> -->`：
+
+- §4 每张 `#### F-xx` 发现卡片的标题行
+- §5 每张 `### SYS-xx` 系统性发现卡片的标题行
+- §8 配置/架构类发现表的**每一行**（行末追加，紧跟 `|` 之后）
+- §11 误报与排除项表的每一行（核到 `exclude-ids.txt`）
+
+`### EP-xx` 入口点节标题**不打 fid**——它是组织单元、不是发现；无发现的 `not_vulnerable` 入口点节同理不打 fid。
+
+### 0.4 入口点台账与覆盖断言
+
+把攻击面盘点枚举出的入口点写入 `shared/coverage-ledger/entry-points.jsonl`（每入口点一行：`{"method","url","handler","source_report"}`）。无发现的入口点不产生发现行，必须靠此台账核到覆盖面。在 SKILL step 6 fid 闸门之后追加执行：
+
+```bash
+REPORT=shared/<project>-security-report.md
+ep_total=$(jq -s 'length' shared/coverage-ledger/entry-points.jsonl 2>/dev/null || echo 0)
+rep_ep=$(grep -cE '^### EP-' "$REPORT")   # 入口点节数
+[ "$rep_ep" -ge "${ep_total:-0}" ] || echo "FAIL: 入口点节数 $rep_ep < 枚举入口点 $ep_total —— 有入口点未在 §4 成节（含应标 not_vulnerable 的）"
+```
+
+每个枚举入口点都须在 §4 成节（含标 `not_vulnerable` 的）；枚举到却缺席即失败。
+
 ## 1. 审计概览
 
 | 项目 | 内容 |
@@ -44,7 +109,7 @@
 
 > 该入口点下发现按严重度降序。无发现时写：`not_vulnerable`（已审计，未发现漏洞）。
 
-#### F-01: {CWE-xxx 漏洞类型}
+#### F-01: {CWE-xxx 漏洞类型} <!-- fid:{该发现 jsonl 的 id} -->
 
 | 属性 | 值 |
 |------|-----|
@@ -92,7 +157,7 @@ Content-Type: {从代码推导的类型}
 > 沿用 §4 的发现卡片格式（漏洞类型/严重度/Source/Sink/文件位置/POC/影响/修复），按主题分组，每条独立成节，禁止折叠（见 SKILL "通用规范 → 禁止折叠话术"）。
 > 仅有配置/基线缺陷、无 source/sink、不需 POC 的项归 §8，不要放这里。
 
-### SYS-01: {主题，如"硬编码加密密钥"} — {具体发现}
+### SYS-01: {主题，如"硬编码加密密钥"} — {具体发现} <!-- fid:{该发现 jsonl 的 id} -->
 
 （卡片字段同 §4 的 F 卡片；入口点字段可填"系统性/多入口点复用"）
 
@@ -125,7 +190,7 @@ Content-Type: {从代码推导的类型}
 
 | 漏洞类型 | 严重度 | 描述 | 验证状态 | 置信度 | 修复建议 |
 |---------|-------|------|---------|-------|---------|
-| {type} | {sev} | {desc} | {status} | {conf} | {fix} |
+| {type} | {sev} | {desc} | {status} | {conf} | {fix} | <!-- fid:{该发现 jsonl 的 id} --> |
 
 ## 9. 修复建议汇总
 
@@ -150,7 +215,7 @@ Content-Type: {从代码推导的类型}
 
 | 编号 | 初始判定 | 排除原因 |
 |------|---------|---------|
-| FP-01 | {初始判定} | {为什么排除} |
+| FP-01 | {初始判定} | {为什么排除} | <!-- fid:{该 false_positive 发现 jsonl 的 id} --> |
 
 ## 12. 已验证安全的维度
 
@@ -210,7 +275,7 @@ Content-Type: {从代码推导的类型}
 
 ## 16. 附录：源报告覆盖表
 
-> 对账 `shared/findings-index.md` 与各源报告，逐份登记其贡献的发现是否全部纳入本报告。
+> 对账依据为 `shared/coverage-ledger/findings/*.jsonl`（jq 去重后的发现真值源）及其派生视图 `shared/findings-index.md`：逐份源报告登记其贡献的发现是否全部纳入本报告。
 > "部分纳入"必须注明未纳入条目去向（落入 §11 误报与排除项 / §13 评估局限性）。
 
 | 源报告文件 | 贡献的发现编号 | 是否全部纳入 | 未纳入项说明 |

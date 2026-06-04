@@ -331,3 +331,20 @@ alert $topdef for { message: "TopDef($x)", level: info };
 - 不要把“SSA 不可用”当成结束条件
 - 不要只围绕已有扫描命中追踪，必须补 owner/auth/session 这三类固定主题
 - 禁止编写 `*.* #-> ...` / `*.* #> ...` 这种全局 wildcard TopDef 规则；必须先收敛 anchor 或设置 depth
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条数据流发现/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/dataflow-analysis.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"等 N 处同理"、计数替代枚举）的根源。
+
+一发现一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `df-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
+- `source` / `sink` 来自数据流事实；`entry_point` 填该流可达的 HTTP 入口点（method+URL）。
+- `(source, sink, entry_point)` 三元组任一不同即各自独立成行——同一 sink 被多个入口点到达时每个入口点各一行，禁止合并折叠。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。
