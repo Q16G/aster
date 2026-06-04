@@ -39,10 +39,10 @@ arguments:
 
 如白盒已明确候选类型，再按需加载专项 skill，不要一次性全加载：
 
-- 注入类：`SQL注入-多策略综合检测`、`xss-testing`、`ssti-testing`、`command-injection`
-- 访问控制：`越权访问-IDOR检测`、`越权访问-垂直越权检测`、`越权访问-未授权访问检测`
-- 文件/路径：`文件上传-多策略综合检测`、`path-traversal-lfi`
-- 协议/配置：`ssrf-testing`、`CORS-配置错误检测`、`JWT-弱密钥与信息泄露检测`
+- 注入类：`sql-injection-comprehensive`、`xss-testing`、`ssti-testing`、`command-injection`
+- 访问控制：`idor-detection`、`vertical-privilege-escalation`、`unauthorized-access`
+- 文件/路径：`file-upload`、`path-traversal-lfi`
+- 协议/配置：`ssrf-testing`、`cors-misconfiguration`、`jwt-weakness`
 
 ## 黑盒阶段的最小动作
 

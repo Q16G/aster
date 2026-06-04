@@ -9,7 +9,6 @@ argument-hint: "[target_url] [flag_format]"
 arguments:
   - target_url
   - flag_format
-trigger_keywords: CTF,夺旗,flag,web题,靶机,getflag,拿flag
 ---
 
 # Web CTF 解题

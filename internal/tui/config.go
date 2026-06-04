@@ -379,31 +379,31 @@ skill_names:
   - agent-browser
   - recon-methodology
   - injection-testing
-  - SQL注入-多策略综合检测
+  - sql-injection-comprehensive
   - xss-testing
   - command-injection
   - ssrf-testing
   - xxe-testing
   - ssti-testing
   - access-control
-  - 认证安全综合检测
-  - 越权访问-IDOR检测
-  - 越权访问-垂直越权检测
-  - 越权访问-未授权访问检测
+  - auth-comprehensive
+  - idor-detection
+  - vertical-privilege-escalation
+  - unauthorized-access
   - csrf-testing
   - file-and-path-sec
-  - 文件上传-多策略综合检测
+  - file-upload
   - path-traversal-lfi
   - http-protocol-sec
   - open-redirect-testing
   - api-token-sec
-  - CORS-配置错误检测
-  - JWT-弱密钥与信息泄露检测
+  - cors-misconfiguration
+  - jwt-weakness
   - business-logic-testing
-  - 通知滥用-邮箱短信轰炸检测
-  - 注册机制-批量注册检测
+  - notification-abuse
+  - registration-abuse
   - race-condition
-  - 隐私保护-敏感信息未脱敏检测
+  - sensitive-info-exposure
 preload_skills:
   - web-security-testing
 tool_names:
