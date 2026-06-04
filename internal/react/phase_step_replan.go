@@ -88,9 +88,15 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		}
 	}
 
+	workspaceSharedDir := ""
+	if a.workspaceRuntime != nil {
+		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	}
+
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":             snapshot.CurrentGoal,
 		"goal_understanding":       snapshot.GoalUnderstanding,
+		"workspace_shared_dir":     workspaceSharedDir,
 		"input_timeline":           snapshot.InputTimeline,
 		"current_step":             current,
 		"step_outcome":             enrichedCurrent,

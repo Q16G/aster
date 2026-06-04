@@ -136,6 +136,9 @@
 5. **复核承载项（强制）**：按**原则 7** 复核 `<WARNINGS>` 与三组按轴滚下来的承载项 `<CARRIED_INCOMPLETE_ITEMS>` / `<CARRIED_DEPTH_GAPS>` / `<CARRIED_NEW_SURFACES>`，对每一条做「可行动→升进对应轴 / 不可解→留 `warnings`」归置。
 6. **补充调查**：在强制核验基础上，仍有不确定点时再用其它工具按需验证。
 7. **做出决策**：综合三轴输出 replan decision JSON（原则 2.1）。
+{{- if .WORKSPACE_SHARED_DIR}}
+8. **纳入贯穿事实板（参与重规划，只读）**：读取 `{{.WORKSPACE_SHARED_DIR}}/task_context.md`（贯穿全程已确认的关键操作事实）。把其中事实纳入本轮判断——覆盖评估时据已知事实判断哪些已坐实、哪些仍缺，形成 next_goal 时复用这些具体值而非重新发现。本步只读不写（写入由 step 执行阶段与 planner 校正负责），不改变三轴判定底线，仅让既有事实参与决策。
+{{- end}}
 
 ## 决策原则
 

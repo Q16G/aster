@@ -281,6 +281,7 @@ type ReplanContext struct {
 	Warnings        []string `json:"warnings,omitempty"`
 	ReplacePending  bool     `json:"replace_pending,omitempty"`
 	RegenerateGoal  bool     `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
+	UserInitiated   bool     `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
 }
 
 // ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。

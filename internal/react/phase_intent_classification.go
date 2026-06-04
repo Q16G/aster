@@ -165,6 +165,7 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 				Reason:         reason,
 				NextGoal:       latest,
 				ReplacePending: false,
+				UserInitiated:  true,
 			})
 		}
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
@@ -176,6 +177,7 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 			NextGoal:       latest,
 			ReplacePending: true,
 			RegenerateGoal: true,
+			UserInitiated:  true,
 		})
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 
