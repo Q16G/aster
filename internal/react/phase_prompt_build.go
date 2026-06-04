@@ -22,6 +22,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
 		CurrentGoal:            payload["current_goal"],
 		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
+		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
 		InputTimeline:          payload["input_timeline"],
 		CurrentStep:            payload["current_step"],
 		StepOutcome:            payload["step_outcome"],

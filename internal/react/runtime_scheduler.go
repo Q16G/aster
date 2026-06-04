@@ -229,6 +229,13 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		HasSkillsTable: skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:    mcpCtx != nil && mcpCtx.HasTable(),
 	}
+	if a.workspaceRuntime != nil {
+		plannerInput.WorkspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	}
+	// userInputTurn：本回合由用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
+	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
+	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner.prompt 原则 0.7）。
+	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
 	}

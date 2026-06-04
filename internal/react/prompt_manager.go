@@ -49,6 +49,7 @@ type StepReplanPromptInput struct {
 	AgentInstruction       string
 	CurrentGoal            any
 	GoalUnderstanding      string
+	WorkspaceSharedDir     string
 	InputTimeline          any
 	CurrentStep            any
 	StepOutcome            any
@@ -102,6 +103,8 @@ type StepOutcomesReducerPromptInput struct {
 type TaskPlannerPromptInput struct {
 	Input              string
 	GoalUnderstanding  string
+	WorkspaceSharedDir string
+	UserInputTurn      bool
 	SkillsContext      *SkillsPromptContext
 	MCPContext         *MCPPromptContext
 	HasSkillsTable     bool
@@ -265,6 +268,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"CURRENT_GOAL":                 fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
+		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
 		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
 		"CURRENT_STEP":                 prettyJSON(input.CurrentStep),
 		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
@@ -346,6 +350,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"INPUT":                  strings.TrimSpace(input.Input),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
+		"USER_INPUT_TURN":        input.UserInputTurn,
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,
 		"HAS_SKILLS_TABLE":       input.HasSkillsTable,
