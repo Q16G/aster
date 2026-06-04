@@ -170,3 +170,20 @@ IDOR 验证协议第 1 步"枚举端点"的输出直接作为结论的入口点�
 - 本 skill 负责补业务语义、权限边界与 ownership 审查
 
 本 skill 负责认证授权维度的深度复核，由 `security-code-analysis` 审计清单中 B 类任务项触发加载。
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条越权/访问控制发现/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/business-logic-auth-review.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（"90+ 端点"、"19 处导出"、区间行、计数替代枚举）的根源。
+
+一发现一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `bla-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
+- 每个 (入口点, 越权类型) 独立成行：同一缺陷影响 N 个端点就落 N 行，禁止"1 条 + 还有 N-1 个同理"。
+- **端点授权矩阵 B3 每一行也落一条 jsonl**（status 据其是否构成越权取 confirmed / not_vulnerable），保证整张矩阵可被下游计数闸门逐行核到。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。

@@ -57,3 +57,20 @@ user-invocable: true
 - 文件位置和行号
 - 置信度评估（high/medium/low）
 - 处置建议和优先级
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条发现/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/secret-detection.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"等 N 处"、计数替代枚举）的根源。
+
+一发现一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `secret-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
+- `(source, sink, entry_point)` 三元组任一不同即各自独立成行，禁止合并折叠。
+- 本类多为无 HTTP 入口点的系统性发现：`entry_point` 填 `systemic`，`source` 填密钥类型，`sink` 填泄露位置（file:line）。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。

@@ -61,3 +61,19 @@ trivy fs --scanners vuln --format json <target_path>
 - 按严重程度排序的漏洞列表
 - 每个漏洞包含：CVE、受影响组件、当前版本、修复版本、升级命令
 - 风险评估和优先修复建议
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条漏洞/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/dependency-audit.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"等 N 个 CVE"、计数替代枚举）的根源。
+
+一漏洞一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `dep-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
+- 本类为无 HTTP 入口点的系统性发现：`entry_point` 填 `systemic`，`source` 填 CVE/依赖坐标，`sink` 填受影响组件；同一组件多个 CVE 各自独立成行。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。

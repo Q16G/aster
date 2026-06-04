@@ -1,8 +1,7 @@
 ---
-name: 存储型XSS-专项链路检测
-description: 检测存储型 XSS 风险；当用户输入会先进入数据库、缓存、对象存储或文件系统，再在页面、后台预览、富文本、Markdown、邮件模板等场景中二次展示时触发；适用于代码审计、SAST 结果复核与上传/内容渲染链路分析。
+name: stored-xss-detection
+description: 存储型 XSS 专项链路检测 — 当用户输入先进入数据库/缓存/对象存储/文件系统，再在页面、后台预览、富文本、Markdown、邮件模板等场景二次展示时；适用于代码审计、SAST 结果复核与上传/内容渲染链路分析。
 tags: xss,stored-xss,persistent-xss,code-audit,dataflow,render
-trigger_keywords: 存储型XSS,stored xss,persistent xss,富文本XSS,评论XSS,markdown预览,svg上传,html预览,二次展示XSS
 when-to-use: 当需要专门分析“用户输入 -> 持久化 -> 二次展示”链路，或者普通 XSS sink 规则不足以确认高危 XSS 时
 allowed-tools: read_file,list_files,rg,bash,list_skills,load_skills
 user-invocable: true
@@ -233,3 +232,20 @@ rg -n "Create\\(|Save\\(|Update\\(|Insert\\(|Exec\\(|PutObject|Upload|WriteFile|
 - 只是在找普通反射型 XSS、DOM XSS，且已经有明显直接 sink
 - 目标没有持久化链路，只是一次性回显
 - 用户只需要快速跑一遍通用 XSS 规则，而不是确认存储型风险
+
+## 发现即落行（coverage-ledger/findings）
+
+每确认一条存储型 XSS 链路/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/stored-xss-detection.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"等 N 处回显"、计数替代枚举）的根源。
+
+一发现一行，**绝不写区间/计数/抽样**，字段：
+
+```json
+{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+```
+
+- `id` 带前缀全局唯一（如 `xss-001`）。
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`（与本 skill 的 `suspected` 对应 `needs_review`）。
+- `source` 填存储写入点、`sink` 填回显点、`entry_point` 填回显页面的 HTTP 入口点（method+URL）。
+- 同一存储字段在多个页面回显时，每个回显入口点各自独立成行，禁止合并折叠。
+
+下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。
