@@ -103,6 +103,21 @@ func cellToRuneIndex(runes []rune, cellPos int) int {
 	return len(runes)
 }
 
+// cellToRuneIndexInclusive 返回一个 rune 上界（exclusive），使得覆盖 cellPos 这一
+// cell 的字符被完整包含。用于选区末列：当末 cell 落在全角字符的任一半上时，整个
+// 字符都应被复制，避免 cellToRuneIndex(endCellCol+1) 在宽字符首格上把它整体丢掉。
+func cellToRuneIndexInclusive(runes []rune, cellPos int) int {
+	cells := 0
+	for i, r := range runes {
+		w := runewidth.RuneWidth(r)
+		if cells+w > cellPos {
+			return i + 1
+		}
+		cells += w
+	}
+	return len(runes)
+}
+
 func runesToCellWidth(runes []rune, start, end int) int {
 	w := 0
 	for i := start; i < end && i < len(runes); i++ {
@@ -158,7 +173,8 @@ func (s *SelectionModel) SelectLine(contentLine int, lines []string) {
 	s.start = CellPos{X: 1, Y: s.lastClickPos.Y}
 	s.end = CellPos{X: ansi.StringWidth(plain) + 1, Y: s.lastClickPos.Y}
 	s.state = SelectionDone
-	s.text = plain
+	// 与拖选保持一致：整行选择也要剥掉装饰性左边框 gutter。
+	s.text = stripLeftGutter(plain)
 }
 
 func ApplySelectionHighlight(viewLines []string, sel *SelectionModel) []string {
@@ -233,7 +249,7 @@ func ExtractSelectedText(lines []string, startLine, startCellCol, endLine, endCe
 			runeStart = cellToRuneIndex(runes, startCellCol)
 		}
 		if i == endLine {
-			runeEnd = cellToRuneIndex(runes, endCellCol+1)
+			runeEnd = cellToRuneIndexInclusive(runes, endCellCol)
 		}
 		if runeStart < 0 {
 			runeStart = 0
@@ -259,11 +275,13 @@ func ExtractSelectedText(lines []string, startLine, startCellCol, endLine, endCe
 // copied text; they are never meaningful content, so drop them. The ASCII pipe
 // "|" used by Markdown tables is left untouched.
 func stripLeftGutter(segment string) string {
-	rest := strings.TrimLeft(segment, " ")
 	glyph := lipgloss.NormalBorder().Left
-	if glyph == "" || !strings.HasPrefix(rest, glyph) {
+	if glyph == "" || !strings.HasPrefix(segment, glyph) {
+		// 没有边框 glyph（选区始于正文中段）时原样返回，绝不吞掉正文缩进。
 		return segment
 	}
-	rest = rest[len(glyph):]
+	rest := segment[len(glyph):]
+	// 仅剥除紧随 glyph 的单个 padding 空格（BorderLeft + PaddingLeft(1)），
+	// 其余前导空格属于正文缩进，保留。
 	return strings.TrimPrefix(rest, " ")
 }
