@@ -83,6 +83,7 @@ type FinalAnswerPromptInput struct {
 	CarriedIncompleteItems any
 	CarriedDepthGaps       any
 	CarriedNewSurfaces     any
+	WorkspaceSharedDir     string
 }
 
 type HistoryCompactionPromptInput struct {
@@ -321,6 +322,7 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"CARRIED_DEPTH_GAPS":           prettyJSON(input.CarriedDepthGaps),
 		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
 		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
+		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
 	}); err != nil {
 		return "", err
 	}

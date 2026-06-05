@@ -32,7 +32,6 @@ type FinalAnswerModelOutput struct {
 }
 
 func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.ChatClient) (builtin_tools.StateSnapshot, error) {
-	_ = iter
 	_ = a.state.SetPhase(builtin_tools.AgentPhaseFinalAnswer)
 	snapshot := a.state.Snapshot()
 	a.emitter.EmitStateChange(snapshot)
@@ -50,8 +49,10 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	externalInterrupt := builtin_tools.CloneExternalInterrupt(snapshot.ExternalInterrupt)
 
 	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, snapshot.StepOutcomes)
+	workspaceSharedDir := ""
 	if a.workspaceRuntime != nil {
 		sharedDir := a.workspaceRuntime.SharedDir()
+		workspaceSharedDir = strings.TrimSpace(sharedDir)
 		for i := range stepOutcomeViews {
 			stepID := stepOutcomeViews[i].StepID
 			if stepID != "" && stepTimelineExists(sharedDir, stepID) {
@@ -77,6 +78,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
 		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
 		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
+		"workspace_shared_dir":     workspaceSharedDir,
 	}
 
 	var modelOut FinalAnswerModelOutput
@@ -128,58 +130,106 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				"phase":              "final_answer",
 				"raw_request_length": len(prompt),
 			})
-			var retryResult structuredoutput.Result[FinalAnswerModelOutput]
-			retryResult, runErr := runStructuredOutputWithRetry(a, ctx, snapshot, runClient, "final_answer", prompt, func(raw string) (FinalAnswerModelOutput, error) {
-				return parseFinalAnswerOutput(raw)
-			})
-			if runErr == nil {
-				rawResponse = strings.TrimSpace(retryResult.RawResponse)
-				runtimelog.LogJSON("info", map[string]any{
-					"event":               "final_answer_model_raw_response",
-					"phase":               "final_answer",
-					"mode":                "success",
-					"raw_response_length": len(rawResponse),
-				})
-				modelOut = retryResult.Value
-			} else {
-				rawResponse = strings.TrimSpace(structuredoutput.LastResponse(runErr))
-				if rawResponse != "" {
-					runtimelog.LogJSON("warning", map[string]any{
-						"event":               "final_answer_model_raw_response",
-						"phase":               "final_answer",
-						"mode":                "fallback_text",
-						"error":               strings.TrimSpace(runErr.Error()),
-						"raw_response_length": len(rawResponse),
-					})
-					a.emitRuntimeLog("warning", "final answer model fell back to plain text", snapshot, map[string]any{
-						"event":           "final_answer_model_fallback_text",
-						"response_length": len(rawResponse),
-						"error":           strings.TrimSpace(runErr.Error()),
-					})
-					modelOut = FinalAnswerModelOutput{
-						IsComplete:   true,
-						Status:       string(builtin_tools.TaskStatusCompleted),
-						Reason:       "模型输出未能满足 assessment JSON schema，重试已耗尽，已回退为直接交付文本。",
-						ShouldReplan: false,
-						NextGoal:     "",
-						UserMessage:  rawResponse,
-						References:   []string{},
+
+			fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseFinalAnswer)
+			fnTools = append(fnTools, buildSubmitFinalAnswerFunctionTool())
+
+			const maxSubmitRetries = 3
+			submitRetries := 0
+			gotModelOut := false
+			fallbackMode := ""
+
+			for round := 0; ; round++ {
+				if ctx != nil && ctx.Err() != nil {
+					return snapshot, ctx.Err()
+				}
+				if round > 0 {
+					a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
+						fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够交付最终答复？如果足够，请立即调用 submit_final_answer 提交。", round+1, round),
+					))
+				}
+
+				faCtx, faCancel := context.WithCancel(ctx)
+				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, "", fnTools...)
+				faCancel()
+				if callErr != nil {
+					return snapshot, fmt.Errorf("final_answer AICallProxy failed: %w", callErr)
+				}
+
+				// 空响应：plaintext 兜底（不 return，必须落到 L189 后处理产出可交付终报）。
+				if len(callResult.ToolCalls) == 0 {
+					modelOut = finalAnswerPlaintextFallback(callResult.AssistantText)
+					rawResponse = strings.TrimSpace(callResult.AssistantText)
+					fallbackMode = "fallback_text"
+					gotModelOut = true
+					break
+				}
+
+				anyUsefulTool := false
+				for _, tc := range callResult.ToolCalls {
+					if ctx != nil && ctx.Err() != nil {
+						break
 					}
-				} else {
-					runtimelog.LogJSON("error", map[string]any{
-						"event":               "final_answer_model_raw_response",
-						"phase":               "final_answer",
-						"mode":                "parse_failed",
-						"error":               strings.TrimSpace(runErr.Error()),
-						"raw_response_length": len(rawResponse),
-					})
-					a.emitRuntimeLog("error", "final answer model json parse failed", snapshot, map[string]any{
-						"event": "final_answer_model_parse_failed",
-						"error": strings.TrimSpace(runErr.Error()),
-					})
-					return snapshot, fmt.Errorf("final_answer structured output retry exhausted: %w", runErr)
+					if tc == nil || tc.Function == nil {
+						continue
+					}
+					if tc.Function.Name == submitFinalAnswerToolName {
+						parsed, parseErr := parseSubmitFinalAnswerArgs(tc.Function.Arguments)
+						if parseErr != nil {
+							submitRetries++
+							if submitRetries > maxSubmitRetries {
+								return snapshot, fmt.Errorf("submit_final_answer failed after %d retries: %w", maxSubmitRetries, parseErr)
+							}
+							a.AICallProxyWriteToolResult(
+								strings.TrimSpace(tc.Id), submitFinalAnswerToolName,
+								"", nil, "",
+								fmt.Sprintf("submit_final_answer 参数校验失败: %s\n请修正后重新调用 submit_final_answer。", parseErr.Error()),
+								false,
+							)
+							anyUsefulTool = true
+							continue
+						}
+						modelOut = parsed
+						gotModelOut = true
+						break
+					}
+					if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
+						anyUsefulTool = true
+						if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+							return snapshot, err
+						}
+					} else {
+						a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+					}
+				}
+				if gotModelOut {
+					break
+				}
+				// 只产出文本/无可用工具：plaintext 兜底。
+				if !anyUsefulTool {
+					modelOut = finalAnswerPlaintextFallback(callResult.AssistantText)
+					rawResponse = strings.TrimSpace(callResult.AssistantText)
+					fallbackMode = "fallback_text"
+					gotModelOut = true
+					break
 				}
 			}
+
+			logMode := "submit"
+			if fallbackMode != "" {
+				logMode = fallbackMode
+				a.emitRuntimeLog("warning", "final answer fell back to plain text", snapshot, map[string]any{
+					"event":           "final_answer_model_fallback_text",
+					"mode":            fallbackMode,
+					"response_length": len(rawResponse),
+				})
+			}
+			runtimelog.LogJSON("info", map[string]any{
+				"event":               "final_answer_model_raw_response",
+				"phase":               "final_answer",
+				"mode":                logMode,
+				"raw_response_length": len(rawResponse),
+			})
 		}
 	}
 
@@ -307,6 +357,57 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"status":         decision.status,
 	})
 	return snapshot, nil
+}
+
+const submitFinalAnswerToolName = builtin_tools.SubmitFinalAnswerToolName
+
+// finalAnswerPlaintextFallback 在模型未通过 submit_final_answer 提交结构化决策时，
+// 把其纯文本输出兜底为一个可交付的 completed 终报，保留旧路径「fallback-to-plaintext」语义。
+func finalAnswerPlaintextFallback(text string) FinalAnswerModelOutput {
+	msg := strings.TrimSpace(text)
+	if msg == "" {
+		msg = "任务已完成。"
+	}
+	return FinalAnswerModelOutput{
+		IsComplete:   true,
+		Status:       string(builtin_tools.TaskStatusCompleted),
+		Reason:       "模型未通过 submit_final_answer 提交结构化决策，已回退为直接交付文本。",
+		ShouldReplan: false,
+		NextGoal:     "",
+		UserMessage:  msg,
+		References:   []string{},
+	}
+}
+
+// buildSubmitFinalAnswerFunctionTool 从 builtin_tools.SubmitFinalAnswerTool 取契约
+// （名称 / 功能描述 / JSON-SCHEMA 参数），构造供模型调用的 function tool。
+func buildSubmitFinalAnswerFunctionTool() *ai.FunctionTool {
+	tool := builtin_tools.NewSubmitFinalAnswerTool()
+	return &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        tool.Name(),
+			Description: tool.Description(),
+			Parameters:  tool.Parameters(),
+		},
+	}
+}
+
+func parseSubmitFinalAnswerArgs(args any) (FinalAnswerModelOutput, error) {
+	var raw string
+	switch v := args.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return FinalAnswerModelOutput{}, fmt.Errorf("submit_final_answer: marshal args failed: %w", err)
+		}
+		raw = string(data)
+	}
+	return parseFinalAnswerOutput(raw)
 }
 
 func parseFinalAnswerOutput(raw string) (FinalAnswerModelOutput, error) {

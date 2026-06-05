@@ -1120,7 +1120,8 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 			return true
 		}
 	case builtin_tools.AgentPhasePlan,
-		builtin_tools.AgentPhaseStepReplan:
+		builtin_tools.AgentPhaseStepReplan,
+		builtin_tools.AgentPhaseFinalAnswer:
 		switch toolName {
 		case builtin_tools.ReadFileToolName,
 			builtin_tools.ListFilesToolName,
