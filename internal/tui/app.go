@@ -285,11 +285,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
-			if !copyOnSelect && m.selection.HasSelection() {
-				cmd := m.copySelectionCmd()
-				m.selection.Clear()
-				return m, cmd
-			}
 			m.selection.Clear()
 			if m.agentRunning && m.agentCtx != nil {
 				m.agentCtx.CancelTurn()
