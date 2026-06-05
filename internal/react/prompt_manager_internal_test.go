@@ -69,7 +69,7 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build think_act (has shared) failed: %v", err)
 	}
-	for _, needle := range []string{"5.1e", shared + "/task_context.md", "读取", "追加", "执行中补充"} {
+	for _, needle := range []string{"5.1e", shared + "/task_context.md", "读取", "重写", "执行中补充"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act with shared dir must render 5.1e fact board (missing %q), got:\n%s", needle, with)
 		}
