@@ -1,16 +1,32 @@
 package tui
 
 import (
-	"runtime"
+	"encoding/base64"
+	"io"
+	"os"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
-
-var copyOnSelect = runtime.GOOS != "windows"
 
 type clipboardCopiedMsg struct {
 	text string
+}
+
+// focusInput points keyboard focus at the input and re-focuses the textarea so
+// typing works right after a mouse click. Setting m.focus alone only fixes key
+// routing; a textarea blurred by a prior setFocus (Tab/sub-agent/esc) would still
+// drop every keystroke, so we go through setFocus to re-enable and re-focus it.
+// No-op only while the agent is running or a modal dialog is open — the two
+// states where the main input is intentionally disabled — so a click never
+// re-enables typing then. Returns the cursor-blink cmd when focus was taken.
+func (m *Model) focusInput() tea.Cmd {
+	if m.agentRunning || !m.dialogStack.IsEmpty() {
+		return nil
+	}
+	m.setFocus(FocusInput)
+	return m.input.Focus()
 }
 
 func (m Model) handleLeftClick(me tea.MouseEvent) (tea.Model, tea.Cmd) {
@@ -19,7 +35,7 @@ func (m Model) handleLeftClick(me tea.MouseEvent) (tea.Model, tea.Cmd) {
 	switch me.Action {
 	case tea.MouseActionPress:
 		if hit.Panel == PanelChat {
-			m.focus = FocusChat
+			focusCmd := m.focusInput()
 			m.selection.startYOffset = m.chat.ContentYOffset()
 			m.selection.DetectMultiClick(me.X, me.Y)
 			switch m.selection.clickCount {
@@ -28,24 +44,24 @@ func (m Model) handleLeftClick(me tea.MouseEvent) (tea.Model, tea.Cmd) {
 			case 2:
 				lines := m.chat.AllContentLines()
 				m.selection.SelectWord(hit.ContentLine, hit.ContentCol, lines)
-				if copyOnSelect && m.selection.HasSelection() {
-					return m, m.copySelectionCmd()
+				if m.selection.HasSelection() {
+					return m, tea.Batch(focusCmd, m.copySelectionCmd())
 				}
 			case 3:
 				lines := m.chat.AllContentLines()
 				m.selection.SelectLine(hit.ContentLine, lines)
-				if copyOnSelect && m.selection.HasSelection() {
-					return m, m.copySelectionCmd()
+				if m.selection.HasSelection() {
+					return m, tea.Batch(focusCmd, m.copySelectionCmd())
 				}
 			}
-		} else {
-			m.selection.Clear()
-			switch hit.Panel {
-			case PanelInput:
-				m.focus = FocusInput
-			case PanelSidebar:
-				m.focus = FocusSidebar
-			}
+			return m, focusCmd
+		}
+		m.selection.Clear()
+		switch hit.Panel {
+		case PanelInput:
+			return m, m.focusInput()
+		case PanelSidebar:
+			m.focus = FocusSidebar
 		}
 
 	case tea.MouseActionMotion:
@@ -58,7 +74,7 @@ func (m Model) handleLeftClick(me tea.MouseEvent) (tea.Model, tea.Cmd) {
 			m.selection.Finish(me.X, me.Y)
 			if m.selection.state == SelectionDone {
 				m.extractAndSetSelectionText()
-				if copyOnSelect && m.selection.HasSelection() {
+				if m.selection.HasSelection() {
 					return m, m.copySelectionCmd()
 				}
 			}
@@ -112,9 +128,13 @@ func (m *Model) copySelectionCmd() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		if err := clipboard.WriteAll(text); err != nil {
-			return clipboardCopiedMsg{}
-		}
+		// OSC52 让终端把内容写入系统剪贴板，跨平台且能透传到 SSH / 容器外的本地
+		// 终端（Windows Terminal、iTerm2、kitty 等），不再受本地剪贴板库的平台限制。
+		b64 := base64.StdEncoding.EncodeToString([]byte(text))
+		seq := ansi.SetClipboard(ansi.SystemClipboard, b64)
+		_, _ = io.WriteString(os.Stdout, seq)
+		// 本地剪贴板库作为 best-effort 回退，兼顾不支持 OSC52 的终端；失败忽略。
+		_ = clipboard.WriteAll(text)
 		return clipboardCopiedMsg{text: text}
 	}
 }
