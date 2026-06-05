@@ -6,6 +6,7 @@ const (
 	TaskStatusQueryToolName   = "task_status"
 	TaskPlannerToolName       = "task_planner"
 	HumanConfirmToolName      = "human_confirm"
+	SubmitFinalAnswerToolName = "submit_final_answer"
 
 	ListFilesToolName      = "list_files"
 	ReadFileToolName       = "read_file"
