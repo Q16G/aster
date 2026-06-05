@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
@@ -80,12 +81,7 @@ func (m InputModel) DesiredHeight() int {
 	lines := strings.Split(val, "\n")
 	visual := 0
 	for _, line := range lines {
-		lw := runewidth.StringWidth(line)
-		if lw <= w {
-			visual++
-		} else {
-			visual += (lw + w - 1) / w
-		}
+		visual += countWrappedRows(line, w)
 	}
 	if visual < minInputLines {
 		visual = minInputLines
@@ -94,6 +90,52 @@ func (m InputModel) DesiredHeight() int {
 		visual = maxInputLines
 	}
 	return visual
+}
+
+// countWrappedRows 忠实复刻 bubbles textarea v1.0.0 的内部换行 wrap()，返回单个逻辑
+// 行（不含 '\n'）在给定换行宽度下占用的可视行数。textarea 按词换行，且当末段宽度
+// >= width 时会额外补一行；早先用 ceil(lw/w) 估算会在"整数倍宽"和词换行场景下少算
+// 一行，导致输入框自带 viewport 下滚、首行被顶掉。这里与 wrap() 同算法只计行数。
+func countWrappedRows(line string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	rows := 1
+	curWidth := 0 // 当前行已占宽度
+	curLen := 0   // 当前行已含 rune 数（对应 wrap 里 len(lines[row]) > 0 判定）
+	var wordWidth, wordLen, spaces int
+	for _, r := range line {
+		if unicode.IsSpace(r) {
+			spaces++
+		} else {
+			wordWidth += runewidth.RuneWidth(r)
+			wordLen++
+		}
+		if spaces > 0 {
+			if curWidth+wordWidth+spaces > width {
+				rows++
+				curWidth = wordWidth + spaces
+				curLen = wordLen + spaces
+			} else {
+				curWidth += wordWidth + spaces
+				curLen += wordLen + spaces
+			}
+			spaces, wordWidth, wordLen = 0, 0, 0
+		} else if wordWidth+runewidth.RuneWidth(r) > width {
+			// 单个词已填满整行：若当前行已有内容则换行，再把词放到（新）行上。
+			if curLen > 0 {
+				rows++
+				curWidth, curLen = 0, 0
+			}
+			curWidth += wordWidth
+			curLen += wordLen
+			wordWidth, wordLen = 0, 0
+		}
+	}
+	if curWidth+wordWidth+spaces >= width {
+		rows++
+	}
+	return rows
 }
 
 func (m *InputModel) recalcHeight() {
