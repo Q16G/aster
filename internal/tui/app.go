@@ -334,7 +334,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.commandPicker = nil
 				m.input.Clear()
-				m.syncInputLayout()
+				m.updateLayout()
 				return m, m.input.Focus()
 			default:
 				var cmd tea.Cmd
@@ -346,6 +346,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				val := m.input.Value()
 				if val == "" || !strings.HasPrefix(val, "/") {
 					m.commandPicker = nil
+					m.updateLayout()
 				} else {
 					m.commandPicker.SetFilter(val)
 				}
@@ -364,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.filePicker = nil
 				m.input.Clear()
-				m.syncInputLayout()
+				m.updateLayout()
 				return m, m.input.Focus()
 			default:
 				var cmd tea.Cmd
@@ -376,6 +377,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				val := m.input.Value()
 				if val == "" || !strings.HasPrefix(val, "@") {
 					m.filePicker = nil
+					m.updateLayout()
 				} else {
 					m.filePicker.SetFilter(val)
 				}
@@ -840,20 +842,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case CommandPickerRequestMsg:
 		m.commandPicker = tuiui.NewCommandPickerModel(slashCommands, m.width)
+		m.updateLayout()
 		return m, nil
 
 	case tuiui.CommandPickerResultMsg:
 		m.commandPicker = nil
 		if !msg.Cancelled && msg.Command != "" {
 			m.input.Clear()
-			m.syncInputLayout()
+			m.updateLayout()
 			return m.handleSlashCommand(msg.Command)
 		}
+		m.updateLayout()
 		return m, m.input.Focus()
 
 	case FilePickerRequestMsg:
 		wd, _ := os.Getwd()
 		m.filePicker = tuiui.NewFilePickerModel(wd, m.width)
+		m.updateLayout()
 		return m, nil
 
 	case tuiui.FilePickerResultMsg:
@@ -863,7 +868,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.input.Clear()
 		}
-		m.syncInputLayout()
+		m.updateLayout()
 		return m, m.input.Focus()
 
 	case SlashCommandMsg:
@@ -1942,15 +1947,35 @@ func (m Model) View() string {
 	if m.toastManager != nil && !m.toastManager.IsEmpty() {
 		m.toastManager.SetWidth(m.width)
 		toastView := m.toastManager.View()
-		return lipgloss.NewStyle().
-			Width(m.width).
-			Height(m.height).
-			Render(lipgloss.JoinVertical(lipgloss.Left, mainArea, toastView, footerView))
+		return composeToastView(mainArea, toastView, footerView, m.width, m.height, mainHeight)
 	}
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Height(m.height).
+		MaxHeight(m.height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, mainArea, footerView))
+}
+
+// composeToastView 把 toast 叠加进底部时，从 main 区底部借出 toast 占用的行数，
+// 保证整屏渲染高度恰好等于终端高度。lipgloss 的 Height 只补白不截断，超高内容会
+// 把终端顶部行顶出可视区、令绝对鼠标坐标与 HitTest 布局错位（复制偏行）；这里用
+// MaxHeight 真正截断 main 区底部（保留顶部聊天区），并对整体再 MaxHeight 兜底。
+func composeToastView(mainArea, toastView, footerView string, width, height, mainHeight int) string {
+	toastH := lipgloss.Height(toastView)
+	mainBudget := mainHeight - toastH
+	if mainBudget < 1 {
+		mainBudget = 1
+	}
+	mainClamped := lipgloss.NewStyle().
+		Width(width).
+		Height(mainBudget).
+		MaxHeight(mainBudget).
+		Render(mainArea)
+	return lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		MaxHeight(height).
+		Render(lipgloss.JoinVertical(lipgloss.Left, mainClamped, toastView, footerView))
 }
 
 var fileRefPattern = regexp.MustCompile(`@([\w./_-]+[\w./_-])(?:#(\d+)(?:-(\d+))?)?`)

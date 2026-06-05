@@ -11,6 +11,8 @@ import (
 
 	tuicontext "aster/internal/tui/context"
 	tuiui "aster/internal/tui/ui"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func newViewTestModel() Model {
@@ -99,6 +101,45 @@ func TestViewPickerFitsWindowAndClearsAfterClose(t *testing.T) {
 	withoutPicker := m.View()
 	if strings.Contains(withoutPicker, "/agent") || strings.Contains(withoutPicker, "╭") || strings.Contains(withoutPicker, "╰") {
 		t.Fatalf("picker artifacts should be cleared after close, got %q", withoutPicker)
+	}
+}
+
+// TestClosingPickerRestoresLayout 驱动真实 Update 关闭路径：打开命令选择器会为其预留
+// 高度（缩小聊天区），删掉触发字符 `/` 关闭后必须把高度还回去——否则 View 底部会留下
+// 与 pickerHeight 等高的空白间隙（mainArea 按 mainHeight 补白）。锁定开/关对称不变式。
+func TestClosingPickerRestoresLayout(t *testing.T) {
+	m := newViewTestModel()
+	m.chat.AddPart(DisplayPart{
+		Type: PartTypeSystem,
+		Time: time.Now(),
+		System: &SystemPart{
+			Content: "hello",
+		},
+	})
+	m.updateLayout()
+	baseChatHeight := m.layoutChatHeight
+
+	// 打开命令选择器，并让输入框带上触发字符 `/`。
+	model, _ := m.Update(CommandPickerRequestMsg{})
+	m = model.(Model)
+	m.input.SetValue("/")
+	m.updateLayout()
+	if m.layoutChatHeight >= baseChatHeight {
+		t.Fatalf("opening picker should shrink chat: base=%d open=%d", baseChatHeight, m.layoutChatHeight)
+	}
+
+	// 删掉 `/`：真实走 commandPicker 的 default 关闭分支。
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = model.(Model)
+
+	if m.commandPicker != nil {
+		t.Fatalf("picker should be closed after deleting trigger char")
+	}
+	if m.layoutChatHeight != baseChatHeight {
+		t.Fatalf("chat height not restored after close: want %d got %d", baseChatHeight, m.layoutChatHeight)
+	}
+	if lines := strings.Count(m.View(), "\n") + 1; lines != m.height {
+		t.Fatalf("view leaves blank gap after close: got %d lines, want %d", lines, m.height)
 	}
 }
 
