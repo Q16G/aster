@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultSubAgentMaxIter = 1000
+	defaultSubAgentMaxIter = 0 // <=0 表示子 Agent 默认不限制迭代次数
 )
 
 type SubAgentTool struct {

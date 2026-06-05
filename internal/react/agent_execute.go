@@ -279,10 +279,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}
 	}
 
-	maxIterations := a.cfg.MaxIterations
-	if maxIterations <= 0 {
-		maxIterations = 1
-	}
+	maxIterations := a.cfg.MaxIterations // <=0 表示不限制迭代次数
 
 	// A reused agent should keep accumulated history, but each top-level Execute
 	// starts a fresh runtime state machine for the current turn.

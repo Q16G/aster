@@ -96,7 +96,7 @@ type Option func(*AgentConfig)
 
 func defaultAgentConfig(aiClient ai.ChatClient) *AgentConfig {
 	return &AgentConfig{
-		MaxIterations: 120,
+		MaxIterations: 0,
 		AIClient:      aiClient,
 		OnHandoffFunc: DefaultOnHandoffFunc,
 

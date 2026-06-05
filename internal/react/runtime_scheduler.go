@@ -19,8 +19,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// iterationAllowed 判断当前迭代是否可继续。maxIterations <= 0 表示不限制迭代次数，
+// 循环只受终态收尾与 ctx 取消控制；maxIterations > 0 时按 opt-in 上限收敛。
+func iterationAllowed(iter, maxIterations int) bool {
+	return maxIterations <= 0 || iter <= maxIterations
+}
+
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
-	for iter := 1; iter <= maxIterations; iter++ {
+	for iter := 1; iterationAllowed(iter, maxIterations); iter++ {
 		a.drainAsyncAgentNotifications()
 
 		if ctx != nil && ctx.Err() != nil {
