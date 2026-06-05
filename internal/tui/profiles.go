@@ -46,7 +46,7 @@ func (r *ProfileRegistry) Names() []string {
 
 func defaultPolicies() react.AgentPolicies {
 	return react.AgentPolicies{
-		MaxIterations: 1000,
+		MaxIterations: 0,
 		AllowBash:     true,
 		BashPermissionContext: &react.BashToolConfig{
 			PermCtx: &builtin_tools.BashPermissionContext{

@@ -384,7 +384,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		if isRoot {
 			current := payloadInt(event.Payload, "current")
 			max := payloadInt(event.Payload, "max")
-			iterText := fmt.Sprintf("iteration %d/%d", current, max)
+			iterText := fmt.Sprintf("iteration %d", current)
+			if max > 0 {
+				iterText = fmt.Sprintf("iteration %d/%d", current, max)
+			}
 			m.statusText = iterText
 			m.thinkingPanel.PushEntry("iteration", iterText)
 		}
