@@ -109,6 +109,13 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, `"task_context"`) {
 		t.Fatalf("task_planner must not contain the removed task_context schema field, got:\n%s", with)
 	}
+	// 原则 0.8 重定位为"以三轴为主的多源综合"，旧 co-equal "交叉分析" 框架须移除。
+	if !strings.Contains(with, "以三轴为主") {
+		t.Fatalf("task_planner 原则0.8 must render 三轴为主 multi-source framing, got:\n%s", with)
+	}
+	if strings.Contains(with, "交叉分析") {
+		t.Fatalf("task_planner must not retain the old co-equal 交叉分析 framing, got:\n%s", with)
+	}
 
 	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：即便有 shared dir 也不渲染。
 	inRun, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
@@ -149,12 +156,14 @@ func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build step_replan (has shared) failed: %v", err)
 	}
-	if !strings.Contains(with, "参与重规划") || !strings.Contains(with, shared+"/task_context.md") || !strings.Contains(with, "只读") {
-		t.Fatalf("step_replan with shared dir must render read-only participate block + path, got:\n%s", with)
+	for _, needle := range []string{"烘焙", shared + "/task_context.md", "只读", "内联"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan with shared dir must bake facts into the three axes (missing %q), got:\n%s", needle, with)
+		}
 	}
 	// Read-only: must not instruct writing back to the fact board.
 	if strings.Contains(with, "回写贯穿事实") {
-		t.Fatalf("step_replan participate block must be read-only (no writeback), got:\n%s", with)
+		t.Fatalf("step_replan bake block must be read-only (no writeback), got:\n%s", with)
 	}
 
 	without, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
@@ -163,8 +172,8 @@ func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build step_replan (no shared) failed: %v", err)
 	}
-	if strings.Contains(without, "参与重规划") {
-		t.Fatalf("step_replan without shared dir must not render participate block, got:\n%s", without)
+	if strings.Contains(without, "烘焙") {
+		t.Fatalf("step_replan without shared dir must not render bake block, got:\n%s", without)
 	}
 }
 
