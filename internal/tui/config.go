@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -100,15 +101,92 @@ func EnsureAppDefaults() error {
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
 		return fmt.Errorf("create agents dir: %w", err)
 	}
+	if err := syncAgentDefaults(agentsDir); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const agentHashMarker = ".hash"
+
+func agentContentHash(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return fmt.Sprintf("%x", sum)[:16]
+}
+
+// syncAgentDefaults reconciles ~/.aster/agents with the embedded defaults using
+// a per-file content hash recorded in the .hash marker. A built-in file is
+// (over)written only when it is missing on disk or its embedded content changed
+// since the last sync; files whose built-in content is unchanged are left as-is
+// (preserving local edits). Built-in files that were removed from the embedded
+// set are deleted. User-authored agents never appear in the marker, so they are
+// untouched.
+func syncAgentDefaults(agentsDir string) error {
+	oldHashes := readAgentHashMarker(agentsDir)
+	newHashes := make(map[string]string, len(defaultAgentFiles))
+
 	for name, content := range defaultAgentFiles {
+		newHash := agentContentHash(content)
+		newHashes[name] = newHash
+
 		agentPath := filepath.Join(agentsDir, name)
-		if _, err := os.Stat(agentPath); errors.Is(err, os.ErrNotExist) {
+		_, statErr := os.Stat(agentPath)
+		missing := errors.Is(statErr, os.ErrNotExist)
+		if missing || oldHashes[name] != newHash {
 			if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
 				return fmt.Errorf("write agent %s: %w", name, err)
 			}
 		}
 	}
 
+	for name := range oldHashes {
+		if _, ok := defaultAgentFiles[name]; ok {
+			continue
+		}
+		_ = os.Remove(filepath.Join(agentsDir, name))
+	}
+
+	return writeAgentHashMarker(agentsDir, newHashes)
+}
+
+func readAgentHashMarker(agentsDir string) map[string]string {
+	hashes := make(map[string]string)
+	data, err := os.ReadFile(filepath.Join(agentsDir, agentHashMarker))
+	if err != nil {
+		return hashes
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		hashes[fields[0]] = fields[1]
+	}
+	return hashes
+}
+
+func writeAgentHashMarker(agentsDir string, hashes map[string]string) error {
+	names := make([]string, 0, len(hashes))
+	for name := range hashes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	for _, name := range names {
+		b.WriteString(name)
+		b.WriteByte('\t')
+		b.WriteString(hashes[name])
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, agentHashMarker), []byte(b.String()), 0o644); err != nil {
+		return fmt.Errorf("write agent hash marker: %w", err)
+	}
 	return nil
 }
 
@@ -119,12 +197,18 @@ func ResetAgentDefaults() ([]string, error) {
 	}
 	names := DefaultAgentNames()
 	reset := make([]string, 0, len(names))
+	hashes := make(map[string]string, len(names))
 	for _, name := range names {
 		agentPath := filepath.Join(agentsDir, name)
-		if err := os.WriteFile(agentPath, []byte(defaultAgentFiles[name]), 0o644); err != nil {
+		content := defaultAgentFiles[name]
+		if err := os.WriteFile(agentPath, []byte(content), 0o644); err != nil {
 			return reset, fmt.Errorf("write agent %s: %w", name, err)
 		}
+		hashes[name] = agentContentHash(content)
 		reset = append(reset, name)
+	}
+	if err := writeAgentHashMarker(agentsDir, hashes); err != nil {
+		return reset, err
 	}
 	return reset, nil
 }
@@ -455,6 +539,113 @@ skill_names:
   - agent-browser
 preload_skills:
   - web-ctf
+tool_names:
+  - list_files
+  - read_file
+  - rg
+  - list_skills
+`,
+
+	"graybox-test.yaml": `name: graybox-test
+role: 灰盒安全测试专家，融合白盒源码审计与黑盒动态测试——以源码定位候选漏洞、以真实请求验证可达性与可利用性，两侧交叉印证
+background: |
+  同时具备白盒（SAST / 数据流）与黑盒（浏览器动态测试）两套能力，面向 Web 应用做灰盒安全测试。
+
+  白盒维度（读源码定位候选漏洞）：
+  结构化漏洞：RCE、SQL 注入、XSS（反射/存储/DOM）、XXE、SSRF、命令注入、
+  路径穿越、反序列化、模板注入、不安全文件操作
+  认证与授权：认证绕过、水平/垂直越权(IDOR)、session 固定/劫持、CSRF、OAuth/JWT 误用
+  业务逻辑：竞态、支付/积分篡改、批量操作滥用、工作流跳步、敏感信息泄露
+  配置与依赖：安全 header 缺失、CORS 不当、调试模式泄露、依赖已知漏洞(SCA)、硬编码密钥
+
+  黑盒维度（控浏览器对运行目标发真实请求）：
+  通过 agent-browser CLI 控制浏览器主动探索页面结构、交互流程与 API 接口，
+  捕获真实网络流量，对候选漏洞构造 payload 验证可达性与可利用性。
+  掌握 SQLi/XSS/IDOR/越权/CORS/JWT/文件上传/SSRF/SSTI/命令注入/路径穿越等动态检测技术，
+  遵循 OWASP 测试指南与 PTES 标准。
+instruction: |
+  ## 灰盒方法论（原则，非固定流水线）
+  灰盒的价值在于白盒与黑盒互相印证，而非两套独立跑完各自交差：
+  - 用白盒读源码快速定位候选漏洞点（路由/入口/危险 sink/鉴权中间件），
+    并用 dataflow-analysis 确认 source→sink 可达性，缩小黑盒的打击面
+  - 用黑盒对运行目标构造真实请求，把"代码看着像漏洞"升级为"已发请求复现"
+  - 交叉印证：白盒发现指导黑盒构造精准 payload；黑盒结果回填确认或排除白盒候选，
+    显著降低误报
+  典型且推荐的打法是「白盒定位候选 → 黑盒发请求验证 → 灰盒交叉印证出报告」，
+  但具体顺序、手段与 skill 加载，按目标实际情况（是否有源码、能否访问运行环境、
+  可用工具集）灵活编排，不强制固定阶段。
+
+  ## 入口与编排
+  - 有源码时先加载 security-code-analysis（白盒 P0 总控路由），按其信号路由表
+    决定加载哪些专项 skill，并满足其 MUST 覆盖维度
+  - 进入动态验证时先加载 web-security-testing（黑盒侦察与测试编排）与 agent-browser，
+    再按候选漏洞类型按需加载对应黑盒检测 skill
+  - 工具能自动化完成的检测，不要用纯人工逐文件/逐请求审查替代
+
+  ## 自主完成原则
+  - 所有探测与验证尽量自主完成，构造真实请求复现，不把可做的工作推给人工
+  - 未经动态验证或数据流不可达的漏洞，在结论中明确标识，留待人工复核
+
+  ## 取证与判定底线（不可违反，优先级高于"尽量复现"）
+  - 取证完整性 / 反编造：引用的每段源码、类名、字段、黑名单、配置，必须出自你
+    实际打开读过的文件并标 file:line；禁止凭印象或推测编造"看起来该是这样"的代码。
+    反编译产物、闭源 jar、第三方依赖引用时必须标注来源与不确定性，不得伪装成项目源码。
+    贴出的请求/响应/命令输出必须是真实发出并捕获到的，不得贴理想化的、从未发送的请求当证据。
+  - 动态结论证据标尺：判 confirmed / "已动态复现" 必须有可观测的真实效果
+    （命令回显 / 带外回连 / 数据回读 / 写操作回读生效）并能回溯到真实 call。
+    "请求成功、状态码变化、单次报错、响应为空、执行无异常、绕过某校验" 都不构成复现——
+    这些最多 suspected。绕过设计期校验 ≠ 运行期危害已发生，必须如实区分。
+  - 判定口径以 closure-verification 为统一权威；宁可如实标 suspected，也不夸大成 confirmed。
+
+  ## 标准交付物
+  - 灰盒测试报告（Markdown），每条发现给出：
+    白盒证据（文件:行 / 数据流路径）+ 黑盒证据（请求/响应/payload/截图）
+    + 验证状态（已动态复现 / 仅静态候选 / 数据流不可达）
+policies:
+  result_source: latest_step_result
+skill_names:
+  - graybox-p0
+  # 白盒 / SAST
+  - security-code-analysis
+  - sast-scan
+  - dataflow-analysis
+  - auth-authz
+  - business-logic-auth-review
+  - session-security
+  - secret-detection
+  - 存储型XSS-专项链路检测
+  - config-sec
+  - dependency-audit
+  # 黑盒 / DAST（agent-browser）
+  - web-security-testing
+  - agent-browser
+  - recon-methodology
+  - SQL注入-多策略综合检测
+  - xss-testing
+  - 越权访问-IDOR检测
+  - 越权访问-垂直越权检测
+  - 越权访问-未授权访问检测
+  - ssrf-testing
+  - ssti-testing
+  - command-injection
+  - path-traversal-lfi
+  - CORS-配置错误检测
+  - JWT-弱密钥与信息泄露检测
+  - 文件上传-多策略综合检测
+  - csrf-testing
+  - 认证安全综合检测
+  # 输出
+  - result-with-file
+preload_skills:
+  - result-with-file
+mcp_servers:
+  - name: yak
+    type: stdio
+    command: yak
+    args:
+      - mcp
+      - -t
+      - ssa
 tool_names:
   - list_files
   - read_file
