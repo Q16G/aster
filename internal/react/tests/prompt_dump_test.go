@@ -399,8 +399,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"<TASK_PLAN>",
 			"step-3",
 			"<STEP_OUTCOMES>",
-			"<WARNINGS>",
-			"高危 SQL 注入",
 			"<CARRIED_DEPTH_GAPS>",
 			"middleware",
 			"<GOAL_UNDERSTANDING>",
@@ -1418,8 +1416,6 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			"<STEP_OUTCOMES>",
 			"step-1",
 			"step-2",
-			"<WARNINGS>",
-			"数据流验证",
 			"<CARRIED_DEPTH_GAPS>",
 			"SSRF/XXE",
 		})

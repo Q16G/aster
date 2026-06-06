@@ -122,6 +122,10 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 		// step-2 replan: return a valid replan decision JSON.
 		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`)
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
+	case 6:
+		// final_answer: plain text fallback is sufficient for this isolation test.
+		msg := ai.NewAIMsgInfo("done")
+		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	default:
 		return []*ai.ChatChoices{{Message: ai.NewAIMsgInfo(""), FinishReason: "stop"}}, nil
 	}
@@ -130,16 +134,11 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, tools ...*ai.FunctionTool) (string, error) {
 	_ = ctx
 	_ = tools
-	// Check final_answer first: the final_answer prompt may legitimately mention
-	// "step_replan" (e.g. shared actionability criterion), so matching step_replan
-	// first would mis-route the final_answer turn.
-	if strings.Contains(text, "`final_answer`") {
-		return `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`, nil
-	}
-	if strings.Contains(text, "step_replan") || strings.Contains(text, "`step_replan`") {
+	if strings.Contains(text, "Step Replan Agent") || strings.Contains(text, "step_replan") {
 		return `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`, nil
 	}
-	return "", nil
+	// 其余 ChatText 路径按最终收尾纯文本处理，避免测试桩依赖具体 prompt 头部字样。
+	return "done", nil
 }
 
 func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T) {
@@ -172,8 +171,8 @@ func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T)
 	if runResult == nil || !runResult.Success || strings.TrimSpace(runResult.Result) != "done" {
 		t.Fatalf("unexpected run result: %#v", runResult)
 	}
-	if client.chatExCall != 5 {
-		t.Fatalf("expected 5 model calls (step1, step1, replan1, step2, replan2), got %d", client.chatExCall)
+	if client.chatExCall != 6 {
+		t.Fatalf("expected 6 model calls (step1, step1, replan1, step2, replan2, final_answer), got %d", client.chatExCall)
 	}
 
 	// Long-term history should only contain the skeleton; no tool or tool-call messages.

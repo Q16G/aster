@@ -471,7 +471,6 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 			"incomplete_items": normalizeStringSlice(result.IncompleteItems),
 			"depth_gaps":       normalizeStringSlice(result.DepthGaps),
 			"new_surfaces":     normalizeStringSlice(result.NewSurfaces),
-			"warnings":         normalizeStringSlice(result.Warnings),
 		},
 	})
 }

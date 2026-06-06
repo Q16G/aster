@@ -28,7 +28,6 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		StepOutcome:            payload["step_outcome"],
 		TaskPlan:               payload["task_plan"],
 		StepOutcomes:           payload["step_outcomes"],
-		Warnings:               payload["warnings"],
 		CarriedIncompleteItems: payload["carried_incomplete_items"],
 		CarriedDepthGaps:       payload["carried_depth_gaps"],
 		CarriedNewSurfaces:     payload["carried_new_surfaces"],

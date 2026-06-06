@@ -94,12 +94,27 @@ func (c *executeModelTestClient) Chat(ctx context.Context, info *ai.MsgInfo, too
 
 func (c *executeModelTestClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
 	reply := c.nextReply()
+	toolCalls := reply.toolCalls
+	content := reply.content
+	if len(toolCalls) == 0 && looksLikeFinalAnswerJSON(content) && hasFunctionTool(tools, builtin_tools.SubmitFinalAnswerToolName) {
+		toolCalls = []*ai.FunctionTool{
+			{
+				Id:   "call-submit-final-answer",
+				Type: "function",
+				Function: &ai.FunctionDetail{
+					Name:      builtin_tools.SubmitFinalAnswerToolName,
+					Arguments: content,
+				},
+			},
+		}
+		content = ""
+	}
 	return []*ai.ChatChoices{
 		{
 			Message: &ai.MsgInfo{
 				Role:      "assistant",
-				Content:   reply.content,
-				ToolCalls: reply.toolCalls,
+				Content:   content,
+				ToolCalls: toolCalls,
 			},
 		},
 	}, nil
@@ -111,6 +126,25 @@ func (c *executeModelTestClient) ChatText(ctx context.Context, text string, tool
 
 func (c *executeModelTestClient) ModelContextInfo() ai.ModelContextInfo {
 	return c.modelContext
+}
+
+func hasFunctionTool(tools []*ai.FunctionTool, name string) bool {
+	for _, tool := range tools {
+		if tool == nil || tool.Function == nil {
+			continue
+		}
+		if strings.TrimSpace(tool.Function.Name) == name {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeFinalAnswerJSON(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	return strings.HasPrefix(trimmed, "{") &&
+		strings.Contains(trimmed, `"is_complete"`) &&
+		strings.Contains(trimmed, `"user_message"`)
 }
 
 type executeModelTestFactory struct {
@@ -1319,19 +1353,29 @@ func TestExecute_WritesFinalAnswerRequestAndEmptyResponseLogs(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	if _, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude()); err == nil {
-		t.Fatalf("expected Execute to fail when final_answer model returns empty content")
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected Execute to complete via plaintext fallback, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "任务已完成。" {
+		t.Fatalf("expected empty final_answer fallback message, got %#v", runResult)
 	}
 
 	out := buf.String()
 	if !strings.Contains(out, "\"event\":\"final_answer_model_request\"") {
 		t.Fatalf("expected final_answer_model_request log, got %s", out)
 	}
+	if !strings.Contains(out, "\"event\":\"final_answer_model_fallback_text\"") {
+		t.Fatalf("expected final_answer_model_fallback_text log, got %s", out)
+	}
 	if !strings.Contains(out, "\"event\":\"final_answer_model_raw_response\"") {
 		t.Fatalf("expected final_answer_model_raw_response log, got %s", out)
 	}
-	if !strings.Contains(out, "\"mode\":\"parse_failed\"") {
-		t.Fatalf("expected parse_failed mode in raw response log, got %s", out)
+	if !strings.Contains(out, "\"mode\":\"fallback_text\"") {
+		t.Fatalf("expected fallback_text mode in raw response log, got %s", out)
 	}
 	if !strings.Contains(out, "\"raw_response_length\":0") {
 		t.Fatalf("expected raw_response_length=0 in raw response log, got %s", out)
@@ -1362,7 +1406,7 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 			{content: ``},
 			// final_answer phase
 			{
-				content: `{"is_complete":true,"status":"completed","reason":"done","user_message":"done","references":[]}`,
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"done","references":[]}`,
 			},
 		},
 	}
