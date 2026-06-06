@@ -331,7 +331,7 @@ alert $topdef for { message: "TopDef($x)", level: info };
 - 不要把“SSA 不可用”当成结束条件
 - 不要只围绕已有扫描命中追踪，必须补 owner/auth/session 这三类固定主题
 - 禁止编写 `*.* #-> ...` / `*.* #> ...` 这种全局 wildcard TopDef 规则；必须先收敛 anchor 或设置 depth
-- 污点传播 / sink 进入**无可读源码的自研/闭源依赖**（编译 jar/war/class、混淆代码）时，先走 `dependency-decompile` 反编译恢复源码再续追，不要因看不到实现就直接判 `unresolved_gaps`
+- 污点传播 / sink 进入**无可读源码依赖**（编译 jar/war/class、混淆代码）时，先走 `dependency-decompile`，由其 triage（重要性主闸门 + 归属调节 + (a) 安全/sink 决策在调用方 /(b) 决策在依赖内 豁免判据）决定反不反编译：落 (b) 的反编译恢复源码再续追，看不了则留显式缺口，不要因看不到实现就直接判 `unresolved_gaps`；落 (a)（如 JDBC 驱动，拼 SQL 决策在调用方）按已知语义续追、不留缺口
 
 ## 发现即落行（coverage-ledger/findings）
 
