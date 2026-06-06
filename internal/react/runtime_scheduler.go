@@ -1350,7 +1350,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		return nil
 	}
 
-	isAgent := IsAgentTool(tool)
+	isAgent := IsAgentToolForCall(ctx, tool, argsMap)
 	stackDepth := 0
 	if parentToolRuntime, ok := builtin_tools.GetToolRuntime(ctx); ok {
 		stackDepth = parentToolRuntime.StackDepth + 1

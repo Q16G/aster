@@ -42,6 +42,23 @@ func NewSkillTool(parent *Agent, factory *AgentFactory, lookup SkillLookup) *Ski
 func (t *SkillTool) Name() string  { return builtin_tools.SkillToolName }
 func (t *SkillTool) IsAgent() bool { return true }
 
+// IsAgentForArgs 仅当本次调用的 skill 为 fork 模式时才算子 Agent;
+// inline 模式只是把指令注入当前上下文,是一次普通工具调用。
+func (t *SkillTool) IsAgentForArgs(ctx context.Context, args map[string]any) bool {
+	if t == nil || t.lookup == nil {
+		return false
+	}
+	name, err := argx.RequiredText(args, "skill")
+	if err != nil {
+		return false
+	}
+	info, err := t.lookup.LookupSkill(ctx, name)
+	if err != nil || info == nil {
+		return false
+	}
+	return strings.EqualFold(info.Context, "fork")
+}
+
 func (t *SkillTool) Description() string {
 	return "调用一个 Skill。inline 模式下 Skill 内容注入当前上下文；fork 模式下在子 Agent 中独立执行。"
 }
