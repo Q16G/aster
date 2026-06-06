@@ -26,6 +26,8 @@ arguments:
 - Rust: `Cargo.lock`
 - Ruby: `Gemfile.lock`
 
+盘点时除查 CVE 外，顺带识别**自研 / 不常见、且无可读源码**的依赖（如 vendored 进来的闭源 jar、本地路径依赖、私服自研包），把它们列为**反编译候选**移交 `dependency-decompile` 恢复源码——这类依赖往往是 SCA 数据库覆盖不到、又最需要人工看清行为的盲区。
+
 ### 第二阶段：漏洞扫描
 根据可用工具选择扫描方式：
 

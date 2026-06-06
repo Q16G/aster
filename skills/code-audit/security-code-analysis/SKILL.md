@@ -3,7 +3,7 @@ name: security-code-analysis
 description: 代码安全审计 — 理解用户意图、识别攻击面、按分类 checklist 编排审计任务。
 tags: code-audit,security-review,attack-surface,authz,ownership
 when-to-use: 当需要做系统性的代码安全审计、安全评估或为 SAST/SSA 编排审计流程时，首先加载此 skill
-allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
+allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"
 arguments:
@@ -49,7 +49,7 @@ arguments:
 - `[-] n/a (原因)` — 不适用并说明原因
 - `[ ] skipped (原因)` — 用户限定方向时跳过
 
-对每项任务：评估适用条件 → 适用则 `load_skills({"names":["<skill_name>"]})` 加载并执行 → 标注结果。
+对每项任务：评估适用条件 → 适用则用 `skill({"skill":"<skill_name>"})` 加载并执行 → 标注结果。
 
 ### R. 项目框架与攻击面侦察（推荐先跑）
 
@@ -103,6 +103,8 @@ B3 端点授权矩阵要求：枚举所有 Controller 端点，逐端点输出�
 | # | 任务项 | skill | 适用条件 |
 |---|--------|-------|---------|
 | E1 | 依赖/供应链审计 | `dependency-audit` | 当存在依赖管理文件（package.json/go.mod/pom.xml 等）时 |
+
+> **无源码依赖反编译（按需兜底，非 MUST、非固定步骤）**：审计任一环节遇到**无可读源码的自研/闭源依赖**（编译 jar/war/class、混淆代码）阻碍分析时，可用 `skill` 工具加载 `dependency-decompile` 恢复可分析源码再继续。三个典型触发面：E1 SCA 盘点出自研/不常见依赖、攻击面/入口点与中间件逻辑封在闭源 jar 里、A2 数据流污点进入无源码依赖。先取官方源码、取不到再反编译，引用恢复代码须按取证完整性标注来源与不确定性。
 
 ## AI 补充检测面（规则无法覆盖的语义化任务）
 
