@@ -2,7 +2,7 @@
 name: graybox-p0
 description: 灰盒安全测试 P0 编排入口。用于同时拥有源码或运行目标时，将白盒候选定位与黑盒真实请求验证串成一个最小闭环。
 when-to-use: 当任务是灰盒安全测试，且需要一个最小可执行入口来决定先做白盒、黑盒还是交叉验证时，优先加载此 skill
-allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
+allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path] [target_url]"
 arguments:
