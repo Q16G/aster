@@ -255,6 +255,9 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.parentWorkspaceRoot = strings.TrimSpace(cfg.parentWorkspaceRoot)
 	if sharedDir := workspaceRuntime.SharedDir(); sharedDir != "" {
 		_ = os.MkdirAll(sharedDir, 0o755)
+		if seeder, ok := workspaceRuntime.(interface{ EnsureSharedScaffold() error }); ok {
+			_ = seeder.EnsureSharedScaffold()
+		}
 	}
 	ctx = structuredoutput.WithConfig(ctx, a.resolveStructuredOutputConfig(cfg))
 
