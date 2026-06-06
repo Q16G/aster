@@ -216,10 +216,10 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act 原则12b must route concurrent coverage via task_context (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Fix5: child open_items.md route pointer in上卷.
-	for _, needle := range []string{"open_items.md", "路由指针"} {
+	// Fix5: child rollup via 子 Agent 汇总表 (索引), open_items merged downstream by step_replan.
+	for _, needle := range []string{"子 Agent 汇总表", "关键内容索引", "读取路径"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act 上卷 must leave child open_items pointer (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act 上卷 must render 子 Agent 汇总表 index (missing %q), got:\n%s", needle, with)
 		}
 	}
 	// Fix4: result multi-key coexistence.
