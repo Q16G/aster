@@ -37,6 +37,7 @@ When constructing the summary, try to stick to this template:
 Requirements:
 - Merge the existing compaction summary with the new conversation excerpt into one coherent continuation summary.
 - Preserve concrete technical details: file paths, directory paths, function names, struct names, type names, commands, IDs, versions, thresholds, errors, and API field names.
+- If a `task_context.md` (贯穿事实板) path or its confirmed concrete values (地址/端口/凭据/端点/分支版本等) appear in the conversation, preserve the file-path pointer and prioritize keeping those confirmed values — the fact board is the authoritative fact base, do not drop it during compaction.
 - If an old tool result was cleared, mention only that the tool ran and its detailed output is no longer available.
 - Remove duplication, stale progress notes, and low-signal chatter.
 - Do not mention token limits or compaction mechanics unless they are directly relevant to the task itself.

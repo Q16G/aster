@@ -22,6 +22,6 @@ handoff_to（子 Agent 工具名）：
 - 具体的数值、ID、版本号
 - 请求/响应的关键字段
 - 错误信息、状态码
-- 工作区路径指针（parent_workspace_root、parent_step_contexts_path 等）必须原样保留。
+- 工作区路径指针（parent_workspace_root、parent_step_contexts_path、parent_plan_current_path、parent_task_context_path 等）必须原样保留。
 - "精简"指的是去除冗余描述和重复内容，而非删除具体的技术细节。
 - 字数建议 <= 800 字（如有大量关键信息可适当超出）。

@@ -119,7 +119,7 @@
 > 注意：部分 step 的 outcome 中包含 `timeline_file` 字段，指向该 step 的完整工具调用事件日志（jsonl 格式，逐条记录该 step 实际发生的全部工具调用）。`user_message` 中如需引用详细操作记录，可指向该文件路径。
 > **存疑时按需核实（信号驱动，非每次强制）**：当某已完成 step 的声称覆盖存疑——与其 summary 对不上、原则 11 逐项归置无把握、或含「全部/逐一/所有」等全量量词但证据不足——时，应 `read_file` 读其 `timeline_file` 逐条核实「声称做了 vs 实际做了」后再定 `is_complete`；当信息已充分、或属非执行型输入（见 5.1）时无需读取，避免过度调查。
 {{- if .WORKSPACE_SHARED_DIR}}
-> **贯穿事实板（按需读取）**：当 `{{.WORKSPACE_SHARED_DIR}}/task_context.md` 存在时，`read_file` 读取「贯穿全程关键事实板」（贯穿全程已确认的关键操作具体值：端点/凭据/地址/端口/分支版本等；其中 `## 执行中补充` 可能含指向子 Agent 事实板的自描述路由指针，必要时按指针 `read_file` 跟进）。把这些已确认具体值折进 `user_message` 的结论与 `references`，提升终报密度与可追溯性；只读不写，不编造未出现的事实。
+> **贯穿事实板（按需读取）**：当 `{{.WORKSPACE_SHARED_DIR}}/task_context.md` 存在时，`read_file` 读取「贯穿全程关键事实板」（如：端点/凭据/地址/端口/分支版本等贯穿全程已确认的关键操作具体值；其中 `## 执行中补充` 可能含指向子 Agent 事实板的自描述路由指针，必要时按指针 `read_file` 跟进）。把这些已确认具体值折进 `user_message` 的结论与 `references`，提升终报密度与可追溯性；只读不写，不编造未出现的事实。
 {{- end}}
 
 <STEP_OUTCOMES>

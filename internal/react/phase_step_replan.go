@@ -441,7 +441,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"incomplete_items": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴①完成度/存在性：本 step 目标内、相对 agent 职责与技能覆盖面根本没做的项；聚焦约束生效时仅限聚焦方向内。",
+						"description": "轴①存在性/完成度：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含'做了但不扎实'（属 depth_gaps），也不含本 step 之外的新维度/全集漏审（属 new_surfaces）。",
 					},
 					"depth_gaps": map[string]any{
 						"type":        "array",
@@ -451,12 +451,12 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"new_surfaces": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴③泛化扩面：对照整体任务目标的资产/攻击面全集（如 recon 全量模块/接口），找出尚未被任何已完成工作覆盖的攻击面或维度；范围是整个任务而非当前 step，既含全集里整体漏审的部分，也含基于已有发现可延伸的关联面。聚焦方向外的高危信号另填 warnings。",
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是审计覆盖而非攻击突破。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×资产) 对、前提未变、已扎实覆盖的重叠，同资产不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级落 warnings。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
 					},
 					"warnings": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "风险或注意事项，例如聚焦方向外发现的高危信号。",
+						"description": "仅承载确属不可解的局限（环境/权限/数据天然限制，无可行动补法），含原则7 降级沉回的项。高危/可行动项禁止落此（原则6 意图半径外/用户显式排除方向的高危提示除外）。",
 					},
 				},
 			},
