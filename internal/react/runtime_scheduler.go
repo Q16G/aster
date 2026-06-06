@@ -519,12 +519,6 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 			return nil, ctx.Err()
 		}
 
-		if round > 0 {
-			a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
-				fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够输出一个高效的执行计划？如果足够，请立即调用 submit_plan 提交计划。", round+1, round),
-			))
-		}
-
 		planCtx, planCancel := context.WithCancel(ctx)
 		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, prompt, "", fnTools...)
 		planCancel()

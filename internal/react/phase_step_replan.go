@@ -127,12 +127,6 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 			return ctx.Err()
 		}
 
-		if round > 0 {
-			a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
-				fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够做出重规划决策？如果足够，请立即调用 submit_plan 提交决策。", round+1, round),
-			))
-		}
-
 		replanCtx, replanCancel := context.WithCancel(ctx)
 		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, "", fnTools...)
 		replanCancel()

@@ -143,12 +143,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				if ctx != nil && ctx.Err() != nil {
 					return snapshot, ctx.Err()
 				}
-				if round > 0 {
-					a.stepHistory = append(a.stepHistory, ai.NewUserMsgInfo(
-						fmt.Sprintf("[Round %d] 你已经进行了 %d 轮工具调查。请评估：当前收集的信息是否足够交付最终答复？如果足够，请立即调用 submit_final_answer 提交。", round+1, round),
-					))
-				}
-
 				faCtx, faCancel := context.WithCancel(ctx)
 				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, "", fnTools...)
 				faCancel()
