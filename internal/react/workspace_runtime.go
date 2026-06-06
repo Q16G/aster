@@ -60,6 +60,42 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 	return filepath.Join(w.rootDir, "shared")
 }
 
+// 骨架内容须与 prompt 期望的标题逐字一致：task_planner.prompt 原则 0.7、
+// think_act.prompt 5.1e（task_context.md）与 step_replan.prompt 原则 7.1（open_items.md）。
+// 标题不一致会让模型新建重复标题。
+const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n"
+
+const openItemsScaffold = "## 未解决\n\n## 不可解局限\n\n## 已闭环\n"
+
+// EnsureSharedScaffold 在 shared 目录下为 task_context.md 与 open_items.md 预置骨架，
+// 保证两文件确定性存在（内容仍由模型按各 prompt 纪律覆盖写入）。仅当文件不存在时写入，
+// 已存在则原样跳过，绝不覆盖既有内容（保护 resume / 已写入场景）。
+func (w *localWorkspaceRuntime) EnsureSharedScaffold() error {
+	sharedDir := w.SharedDir()
+	if strings.TrimSpace(sharedDir) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
+		return err
+	}
+	scaffolds := map[string]string{
+		"task_context.md": taskContextScaffold,
+		"open_items.md":   openItemsScaffold,
+	}
+	for name, content := range scaffolds {
+		absPath := filepath.Join(sharedDir, name)
+		if _, err := os.Stat(absPath); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (w *localWorkspaceRuntime) ReadFileRel(relPath string) ([]byte, error) {
 	absPath, err := w.resolveAbsPath(relPath)
 	if err != nil {
