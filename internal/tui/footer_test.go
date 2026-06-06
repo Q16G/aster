@@ -12,7 +12,7 @@ import (
 func TestFooterViewStaysSingleLineAndTruncates(t *testing.T) {
 	var f FooterModel
 	f.SetWidth(40)
-	f.SetWorkdir("/Users/qinchenkai/projects/sastx/very/long/path")
+	f.SetWorkdir("/Users/user/projects/sastx/very/long/path")
 	f.SetStatus("simple reply path started with a very long status", "", "")
 
 	view := f.View(tuicontext.NewThemeProvider().Get())
@@ -138,7 +138,7 @@ func TestFooterWideTerminal(t *testing.T) {
 
 	var f FooterModel
 	f.SetWidth(100)
-	f.SetWorkdir("/Users/qinchenkai/go/sastx/internal/tui")
+	f.SetWorkdir("/Users/user/go/sastx/internal/tui")
 	f.SetStatus("ready", "", "")
 	f.SetModeIndicator("manual")
 	f.SetMCPStatus(3, 3)
