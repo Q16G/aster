@@ -49,6 +49,35 @@ func TestHandleAgentEventSubAgentBgEndIsIdempotent(t *testing.T) {
 	}
 }
 
+func subAgentCardDescription(m *Model, callID string) (string, bool) {
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
+			return p.SubAgent.Description, true
+		}
+	}
+	return "", false
+}
+
+func TestHandleAgentEventSubAgentBgStartPopulatesDescription(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	// 异步启动事件携带的 instruction 是纯文本（非 JSON），卡片须把它填进 Description，
+	// 这样展开卡片才会渲染 Task 行。回归此前纯文本被当 JSON 解析失败而丢弃的 bug。
+	const instr = "枚举所有 Controller 端点并输出授权矩阵"
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeSubAgentBgStart,
+		Payload: map[string]any{"agent_id": "sub-y", "instruction": instr},
+	})
+
+	got, ok := subAgentCardDescription(&m, "sub-y")
+	if !ok {
+		t.Fatalf("expected a sub-agent card for sub-y")
+	}
+	if got != instr {
+		t.Fatalf("expected Description %q, got %q", instr, got)
+	}
+}
+
 func TestHandleAgentEventLogDoesNotOverwriteStatus(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.statusText = "thinking..."
@@ -1544,5 +1573,28 @@ func TestParentStepCompleteDoesNotCancelRunningBgSubAgent(t *testing.T) {
 		if it.Status != "cancelled" {
 			t.Errorf("after bg agent settled, leftover item %q should be cancelled, got %q", it.ID, it.Status)
 		}
+	}
+}
+
+func TestSubAgentDescription(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     any
+		jsonStr string
+		want    string
+	}{
+		{"plain text instruction (async path)", "枚举所有 Controller 端点", "", "枚举所有 Controller 端点"},
+		{"json args blob string", `{"instruction":"审计认证"}`, "", "审计认证"},
+		{"map args", map[string]any{"task": "扫描注入"}, "", "扫描注入"},
+		{"json string args via jsonStr", nil, `{"goal":"复核授权"}`, "复核授权"},
+		{"json object without known field", `{"foo":"bar"}`, "", ""},
+		{"empty", "", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := subAgentDescription(tc.raw, tc.jsonStr); got != tc.want {
+				t.Errorf("subAgentDescription(%v, %q) = %q, want %q", tc.raw, tc.jsonStr, got, tc.want)
+			}
+		})
 	}
 }

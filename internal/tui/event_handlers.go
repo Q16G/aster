@@ -98,7 +98,15 @@ func subAgentDescription(raw any, jsonStr string) string {
 			return s
 		}
 	case string:
-		jsonStr = v
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			// 字符串 raw 可能是 JSON args blob，也可能是已抽取好的纯文本描述
+			//（如异步 instruction 负载）。先按 JSON 解析抽字段；解析失败说明是纯文本，整段即描述。
+			var mp map[string]any
+			if err := json.Unmarshal([]byte(trimmed), &mp); err == nil {
+				return pick(mp)
+			}
+			return trimmed
+		}
 	}
 	if jsonStr != "" {
 		var mp map[string]any
