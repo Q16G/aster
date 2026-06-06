@@ -14,7 +14,7 @@ type loadSkillsToolResult struct {
 	} `json:"skills"`
 }
 
-type deleteSkillToolResult struct {
+type ejectSkillToolResult struct {
 	Name string `json:"name"`
 }
 
@@ -25,14 +25,14 @@ func (a *Agent) handleSkillToolStateSync(toolName string, args map[string]any, o
 
 	var snapshot builtin_tools.StateSnapshot
 	switch strings.TrimSpace(toolName) {
-	case builtin_tools.LoadSkillsToolName, builtin_tools.SkillToolName:
+	case builtin_tools.SkillToolName:
 		names := parseLoadedSkillNames(out)
 		if len(names) == 0 {
 			return
 		}
 		snapshot = a.state.AddActiveSkillNames(names)
-	case builtin_tools.DeleteSkillToolName:
-		name := parseDeletedSkillName(args, out)
+	case builtin_tools.EjectSkillToolName:
+		name := parseEjectedSkillName(args, out)
 		if name == "" {
 			return
 		}
@@ -64,7 +64,7 @@ func parseLoadedSkillNames(out string) []string {
 	return normalizeSkillNames(names)
 }
 
-func parseDeletedSkillName(args map[string]any, out string) string {
+func parseEjectedSkillName(args map[string]any, out string) string {
 	if args != nil {
 		if raw, ok := args["name"].(string); ok {
 			if name := strings.TrimSpace(raw); name != "" {
@@ -76,7 +76,7 @@ func parseDeletedSkillName(args map[string]any, out string) string {
 	if out == "" {
 		return ""
 	}
-	var payload deleteSkillToolResult
+	var payload ejectSkillToolResult
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		return ""
 	}

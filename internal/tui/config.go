@@ -345,7 +345,6 @@ tool_names:
   - read_file
   - rg
   - list_skills
-  - load_skills
 `,
 
 	"pentest.yaml": `name: pentest
@@ -411,7 +410,6 @@ tool_names:
   - read_file
   - rg
   - list_skills
-  - load_skills
 `,
 
 	"host-defense.yaml": `name: host-defense
@@ -431,7 +429,6 @@ tool_names:
   - read_file
   - rg
   - list_skills
-  - load_skills
 `,
 
 	"ctf.yaml": `name: ctf
@@ -463,7 +460,6 @@ tool_names:
   - read_file
   - rg
   - list_skills
-  - load_skills
 `,
 }
 

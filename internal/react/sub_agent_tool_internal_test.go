@@ -616,9 +616,8 @@ func TestParentDomainToolNames_ExcludesInheritanceBlocked(t *testing.T) {
 		builtin_tools.TaskStatusQueryToolName,
 		builtin_tools.HumanConfirmToolName,
 		builtin_tools.SkillToolName,
-		builtin_tools.LoadSkillsToolName,
 		builtin_tools.ListSkillsToolName,
-		builtin_tools.DeleteSkillToolName,
+		builtin_tools.EjectSkillToolName,
 	} {
 		if slices.Contains(names, blocked) {
 			t.Errorf("parentDomainToolNames should not contain %q, got %v", blocked, names)

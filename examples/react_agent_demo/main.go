@@ -47,9 +47,6 @@ func main() {
 	registry.Register(builtin_tools.ListSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
 		return builtin_tools.NewListSkillsTool(skillService)
 	})
-	registry.Register(builtin_tools.LoadSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
-		return builtin_tools.NewLoadSkillsTool(skillService)
-	})
 
 	factory := react.NewAgentFactory(
 		react.WithFactoryDefaultAIClient(aiClient),
@@ -62,7 +59,7 @@ func main() {
 		Name:        "analysis-agent",
 		Role:        "你是一个项目分析 Agent，专注于理解项目结构和定位入口。",
 		Instruction: "优先使用现有上下文和工具完成定位，输出简洁的分析结论。",
-		ToolNames:   []string{"list_files", "read_file", "rg", "list_skills", "load_skills"},
+		ToolNames:   []string{"list_files", "read_file", "rg", "list_skills"},
 		Policies: react.AgentPolicies{
 			MaxIterations: 8,
 		},

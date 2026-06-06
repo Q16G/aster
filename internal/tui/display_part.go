@@ -159,9 +159,8 @@ var toolIcons = map[string]string{
 	"read_file":           "→",
 	"list_files":          "→",
 	"rg":                  "✱",
-	"load_skills":         "→",
 	"list_skills":         "⚙",
-	"delete_skill":        "✗",
+	"eject_skill":         "⏏",
 	"human_confirm":       "?",
 	"update_current_step": "⚙",
 }

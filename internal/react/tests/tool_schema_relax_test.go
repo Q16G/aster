@@ -254,9 +254,8 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 			builtin_tools.UpdateTaskStatusToolName,
 			builtin_tools.TaskStatusQueryToolName,
 			builtin_tools.TaskPlannerToolName,
-			builtin_tools.LoadSkillsToolName,
 			builtin_tools.ListSkillsToolName,
-			builtin_tools.DeleteSkillToolName,
+			builtin_tools.EjectSkillToolName,
 			"mcp_some_server_tool",
 			"custom_unknown_tool",
 		} {

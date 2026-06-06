@@ -73,7 +73,7 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 	}
 }
 
-func TestHandleSkillToolStateSync_LoadAndDeletePersistActiveSkillNames(t *testing.T) {
+func TestHandleSkillToolStateSync_LoadAndEjectPersistActiveSkillNames(t *testing.T) {
 	agent, err := NewReActAgent(
 		"skill-runtime-test",
 		&skillRuntimeStubChatClient{},
@@ -93,8 +93,8 @@ func TestHandleSkillToolStateSync_LoadAndDeletePersistActiveSkillNames(t *testin
 	agent.workspaceRootDir = rootDir
 
 	agent.handleSkillToolStateSync(
-		builtin_tools.LoadSkillsToolName,
-		map[string]any{"names": []any{"data-flow", "syntaxflow-syntax-guide"}},
+		builtin_tools.SkillToolName,
+		map[string]any{"skill": "data-flow"},
 		`{"ok":true,"count":2,"skills":[{"name":"data-flow"},{"name":"syntaxflow-syntax-guide"},{"name":"data-flow"}]}`,
 		"",
 	)
@@ -113,7 +113,7 @@ func TestHandleSkillToolStateSync_LoadAndDeletePersistActiveSkillNames(t *testin
 	}
 
 	agent.handleSkillToolStateSync(
-		builtin_tools.DeleteSkillToolName,
+		builtin_tools.EjectSkillToolName,
 		map[string]any{"name": "data-flow"},
 		`{"ok":true,"name":"data-flow"}`,
 		"",
@@ -121,15 +121,15 @@ func TestHandleSkillToolStateSync_LoadAndDeletePersistActiveSkillNames(t *testin
 
 	snapshot = agent.State()
 	if got := strings.Join(snapshot.ActiveSkillNames, ","); got != "syntaxflow-syntax-guide" {
-		t.Fatalf("unexpected active skills after delete: %q", got)
+		t.Fatalf("unexpected active skills after eject: %q", got)
 	}
 
 	workspaceState, err = runtime.LoadWorkspaceState()
 	if err != nil {
-		t.Fatalf("LoadWorkspaceState(after delete) failed: %v", err)
+		t.Fatalf("LoadWorkspaceState(after eject) failed: %v", err)
 	}
 	if got := strings.Join(workspaceState.ActiveSkillNames, ","); got != "syntaxflow-syntax-guide" {
-		t.Fatalf("unexpected persisted active skills after delete: %q", got)
+		t.Fatalf("unexpected persisted active skills after eject: %q", got)
 	}
 }
 

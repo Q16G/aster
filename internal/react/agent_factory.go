@@ -184,6 +184,9 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 		if err := agent.registerTool(NewSkillTool(agent, f, f.skillLookup)); err != nil {
 			return nil, fmt.Errorf("register skill tool for %q failed: %w", def.Name, err)
 		}
+		if err := agent.registerTool(builtin_tools.NewEjectSkillTool()); err != nil {
+			return nil, fmt.Errorf("register eject_skill tool for %q failed: %w", def.Name, err)
+		}
 	}
 
 	if f.mcpManager != nil {
