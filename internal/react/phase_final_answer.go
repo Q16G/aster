@@ -228,6 +228,15 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	}
 
 	decision := normalizeFinalAnswerDecision(modelOut)
+	runtimeForcedFail := snapshot.Status == builtin_tools.TaskStatusFailed && strings.TrimSpace(errText) != ""
+	if runtimeForcedFail && externalInterrupt == nil && decision.status == builtin_tools.TaskStatusCompleted {
+		decision.status = builtin_tools.TaskStatusFailed
+		decision.model.Status = string(builtin_tools.TaskStatusFailed)
+		decision.model.Reason = firstNonEmpty(strings.TrimSpace(errText), decision.model.Reason)
+		if strings.TrimSpace(decision.model.UserMessage) == "" || strings.TrimSpace(decision.model.UserMessage) == "任务已完成。" {
+			decision.model.UserMessage = firstNonEmpty(strings.TrimSpace(errText), decision.model.UserMessage)
+		}
+	}
 	if externalInterrupt != nil {
 		decision = applyExternalInterruptDecision(snapshot, decision, externalInterrupt)
 		if warning := externalInterruptWarning(externalInterrupt); warning != "" {
