@@ -3,7 +3,7 @@ name: auth-authz
 description: 认证授权子清单 — 逐项排查登录语义、Cookie/Session 鉴权、IDOR/ownership、会话安全。
 tags: code-audit,authn,authz,idor,session
 when-to-use: 当需要聚焦审计认证授权维度，或项目存在登录、会话管理、权限判断、角色分级、资源归属检查时
-allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
+allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"
 arguments:
@@ -19,7 +19,7 @@ arguments:
 | 1 | 业务逻辑认证授权复核 | `business-logic-auth-review` | 存在登录/鉴权/权限判断/角色分级/资源归属检查 |
 | 2 | 会话安全审计 | `session-security` | 存在 Session ID 生成、session 生命周期管理 |
 
-对每项：评估适用条件 → 适用则 `load_skills` 加载并执行 → 标注结果。
+对每项：评估适用条件 → 适用则用 `skill` 工具加载并执行 → 标注结果。
 
 ## 固定检查项
 

@@ -3,7 +3,7 @@ name: stored-xss-detection
 description: 存储型 XSS 专项链路检测 — 当用户输入先进入数据库/缓存/对象存储/文件系统，再在页面、后台预览、富文本、Markdown、邮件模板等场景二次展示时；适用于代码审计、SAST 结果复核与上传/内容渲染链路分析。
 tags: xss,stored-xss,persistent-xss,code-audit,dataflow,render
 when-to-use: 当需要专门分析“用户输入 -> 持久化 -> 二次展示”链路，或者普通 XSS sink 规则不足以确认高危 XSS 时
-allowed-tools: read_file,list_files,rg,bash,list_skills,load_skills
+allowed-tools: read_file,list_files,rg,bash,list_skills
 user-invocable: true
 argument-hint: "<target_path> [target_url]"
 arguments:

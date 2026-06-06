@@ -3,7 +3,7 @@ name: business-logic-auth-review
 description: 业务逻辑与认证授权专项复核 — 覆盖登录流程、session/cookie 鉴权、IDOR/ownership 权限边界、CSRF、敏感操作二次验证等规则引擎难以覆盖的语义安全检查。
 tags: code-audit,authn,authz,idor,ownership,business-logic
 when-to-use: 当项目存在登录、session、cookie、controller/service/mapper 链路，且需要补充业务逻辑与权限边界复核时
-allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
+allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"
 arguments:

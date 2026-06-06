@@ -3,7 +3,7 @@ name: vuln-reproduction
 description: 漏洞复现总控（P0 Router）— 消费漏洞报告，逐条复现并收集证据链
 tags: vuln-repro,reproduction,evidence,p0-router
 when-to-use: 当需要根据漏洞分析报告、SAST 结果或 finding 列表逐条复现漏洞时
-allowed-tools: bash,read_file,list_files,rg,list_skills,load_skills
+allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "<report_path_or_url>"
 arguments:
@@ -129,4 +129,4 @@ vuln-reproduction (P0 Router, 本文件)
 └── agent-browser              ← Web 交互与流量捕获（common skill）
 ```
 
-加载方式：使用 `list_skills` 查看可用 skill，使用 `load_skills` 按需加载。
+加载方式：使用 `list_skills` 查看可用 skill，使用 `skill` 工具按需加载。
