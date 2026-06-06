@@ -194,7 +194,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 			continue
 		}
 		slot.tool = tool
-		slot.isAgent = IsAgentTool(tool)
+		slot.isAgent = IsAgentToolForCall(ctx, tool, slot.argsMap)
 		if parentRuntime, ok := builtin_tools.GetToolRuntime(ctx); ok {
 			slot.stackDepth = parentRuntime.StackDepth + 1
 		}

@@ -36,6 +36,23 @@ func IsAgentTool(t Tool) bool {
 	return v.IsAgent()
 }
 
+// AgentToolForArgs 让工具按本次调用的参数动态决定是否表现为子 Agent。
+// skill 工具用它区分 fork(子 Agent)与 inline(普通工具)。
+type AgentToolForArgs interface {
+	IsAgentForArgs(ctx context.Context, args map[string]any) bool
+}
+
+// IsAgentToolForCall 优先用参数感知判定,回退到静态 IsAgentTool。
+func IsAgentToolForCall(ctx context.Context, t Tool, args map[string]any) bool {
+	if t == nil {
+		return false
+	}
+	if v, ok := t.(AgentToolForArgs); ok {
+		return v.IsAgentForArgs(ctx, args)
+	}
+	return IsAgentTool(t)
+}
+
 func ParseToolArguments(raw any) (map[string]any, error) {
 	if raw == nil {
 		return map[string]any{}, nil
