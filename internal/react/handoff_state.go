@@ -40,6 +40,7 @@ func (a *Agent) defaultOnHandoff(ctx context.Context, handoffTo string) string {
 			ns = "root"
 		}
 		wsPointers.WriteString("parent_plan_current_path: " + filepath.Join(rootDir, "artifacts", ns, "plan", "current.json") + "\n")
+		wsPointers.WriteString("parent_task_context_path: " + filepath.Join(rootDir, "shared", "task_context.md") + "\n")
 		next = next + wsPointers.String()
 	}
 
