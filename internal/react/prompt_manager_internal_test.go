@@ -74,6 +74,14 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 			t.Fatalf("think_act with shared dir must render 5.1e fact board (missing %q), got:\n%s", needle, with)
 		}
 	}
+	for _, needle := range []string{"后续阶段判断", "coverage_checklist", "referenced_prior_coverage", "uncovered"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act should render updated replan ownership + checklist contract (missing %q), got:\n%s", needle, with)
+		}
+	}
+	if strings.Contains(with, "由后续 `final_answer` phase 判断") {
+		t.Fatalf("think_act should not assign replanning to final_answer anymore, got:\n%s", with)
+	}
 
 	without, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
 		AgentInstruction: "你是测试代理",
@@ -116,6 +124,12 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, "交叉分析") {
 		t.Fatalf("task_planner must not retain the old co-equal 交叉分析 framing, got:\n%s", with)
 	}
+	if strings.Contains(with, "至少 3 步") {
+		t.Fatalf("task_planner must not retain the hard minimum 3-step rule, got:\n%s", with)
+	}
+	if !strings.Contains(with, "2-4 步") {
+		t.Fatalf("task_planner should align recon-first planning around 2-4 steps, got:\n%s", with)
+	}
 
 	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：即便有 shared dir 也不渲染。
 	inRun, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
@@ -156,7 +170,7 @@ func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build step_replan (has shared) failed: %v", err)
 	}
-	for _, needle := range []string{"烘焙", shared + "/task_context.md", "只读", "内联"} {
+	for _, needle := range []string{"烘焙", shared + "/task_context.md", "只读", "内联", "不是要机械原样回抛", "当前仍成立"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan with shared dir must bake facts into the three axes (missing %q), got:\n%s", needle, with)
 		}
@@ -174,6 +188,167 @@ func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
 	}
 	if strings.Contains(without, "烘焙") {
 		t.Fatalf("step_replan without shared dir must not render bake block, got:\n%s", without)
+	}
+}
+
+func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+
+	const shared = "/ws/shared"
+	with, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+		AgentInstruction:   "你是测试代理",
+		WorkspaceSharedDir: shared,
+		CanSpawnSubAgent:   true,
+	})
+	if err != nil {
+		t.Fatalf("build think_act (shared + spawn) failed: %v", err)
+	}
+	// Fix6: 原则 12b now drives concurrent coverage via task_context, no ledger.
+	for _, needle := range []string{
+		"按全集分区下发",
+		"覆盖对账",
+		"父汇合兜底对账",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act 原则12b must route concurrent coverage via task_context (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix5: child open_items.md route pointer in上卷.
+	for _, needle := range []string{"open_items.md", "路由指针"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act 上卷 must leave child open_items pointer (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix4: result multi-key coexistence.
+	if !strings.Contains(with, "多 key 共存") {
+		t.Fatalf("think_act must render result multi-key coexistence contract, got:\n%s", with)
+	}
+	// Fix6: no coverage-ledger residue.
+	for _, banned := range []string{"coverage-ledger", "coverage_ledger"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("think_act must not reference removed %q, got:\n%s", banned, with)
+		}
+	}
+}
+
+func TestBuildSubmitReplanFunctionTool_DropsWarningsField(t *testing.T) {
+	tool := buildSubmitReplanFunctionTool()
+	params, ok := tool.Function.Parameters.(map[string]any)
+	if !ok {
+		t.Fatalf("submit_plan parameters not a map: %T", tool.Function.Parameters)
+	}
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("submit_plan properties not a map: %T", params["properties"])
+	}
+	if _, exists := props["warnings"]; exists {
+		t.Fatalf("submit_plan must not define a warnings property anymore")
+	}
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatalf("submit_plan required not a []string: %T", params["required"])
+	}
+	for _, r := range required {
+		if r == "warnings" {
+			t.Fatalf("submit_plan required must not list warnings")
+		}
+	}
+}
+
+func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+
+	const shared = "/ws/shared"
+	with, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentInstruction:   "你是测试代理",
+		WorkspaceSharedDir: shared,
+	})
+	if err != nil {
+		t.Fatalf("build step_replan (has shared) failed: %v", err)
+	}
+	// Fix1: persistent ledger open_items.md with three sections + no-direct-delete discipline.
+	for _, needle := range []string{
+		shared + "/open_items.md",
+		"## 未解决",
+		"## 不可解局限",
+		"## 已闭环",
+		"禁止直接删",
+		"整段覆盖重写",
+		"原则 7.1",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan with shared must render open_items ledger (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix5: sub-agent open_items merge回流.
+	for _, needle := range []string{"子 agent", "合并进父账本"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render sub-agent open_items 回流 (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix2 (ungated): convergence limited to three axes; blocked-affects-future→three axes.
+	for _, needle := range []string{
+		"适用于三组承载项 / 三轴输出",
+		"受阻但影响后续执行的项必入三轴",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must scope convergence rules (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix7/Fix9: limitations routed to ledger (no meta-info about removed field).
+	if !strings.Contains(with, "不可解局限的唯一载体是账本") {
+		t.Fatalf("step_replan must route limitations to ledger (missing %q), got:\n%s", "不可解局限的唯一载体是账本", with)
+	}
+	// Fix7: the rendered submit_plan JSON schema must no longer require/define warnings.
+	if strings.Contains(with, "\"new_surfaces\", \"warnings\"]") {
+		t.Fatalf("step_replan submit_plan schema must drop warnings from required, got:\n%s", with)
+	}
+	if strings.Contains(with, "\"warnings\": {") {
+		t.Fatalf("step_replan submit_plan schema must drop the warnings property, got:\n%s", with)
+	}
+	// coverage_checklist consumption (原则 0.2, ungated): first-hand per-item signal feeds axes/warnings.
+	for _, needle := range []string{
+		"原则 0.2",
+		"coverage_checklist",
+		"referenced_prior_coverage",
+		"justified_skip",
+		"uncovered",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must consume think_act coverage_checklist (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Fix6: no coverage-ledger residue.
+	for _, banned := range []string{"coverage-ledger", "coverage_ledger"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("step_replan must not reference removed %q, got:\n%s", banned, with)
+		}
+	}
+	// Fix7 follow-up: <WARNINGS> injection removed from step_replan entirely.
+	if strings.Contains(with, "<WARNINGS>") {
+		t.Fatalf("step_replan must not inject <WARNINGS> after dropping warnings field, got:\n%s", with)
+	}
+
+	without, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentInstruction: "你是测试代理",
+	})
+	if err != nil {
+		t.Fatalf("build step_replan (no shared) failed: %v", err)
+	}
+	if strings.Contains(without, "open_items.md") {
+		t.Fatalf("step_replan without shared dir must not render open_items ledger, got:\n%s", without)
+	}
+	// Non-workspace fallback: in-memory carried items are the only truth, must完整回抛.
+	for _, needle := range []string{"无 workspace 退化", "完整回抛"} {
+		if !strings.Contains(without, needle) {
+			t.Fatalf("step_replan no-shared fallback must render completeness wording (missing %q), got:\n%s", needle, without)
+		}
 	}
 }
 

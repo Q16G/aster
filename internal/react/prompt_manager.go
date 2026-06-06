@@ -55,7 +55,6 @@ type StepReplanPromptInput struct {
 	StepOutcome            any
 	TaskPlan               any
 	StepOutcomes           any
-	Warnings               any
 	CarriedIncompleteItems any
 	CarriedDepthGaps       any
 	CarriedNewSurfaces     any
@@ -275,7 +274,6 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
 		"TASK_PLAN":                    prettyJSON(input.TaskPlan),
 		"STEP_OUTCOMES":                prettyJSON(input.StepOutcomes),
-		"WARNINGS":                     prettyJSON(input.Warnings),
 		"HAS_CARRIED_INCOMPLETE_ITEMS": anyHasItems(input.CarriedIncompleteItems),
 		"CARRIED_INCOMPLETE_ITEMS":     prettyJSON(input.CarriedIncompleteItems),
 		"HAS_CARRIED_DEPTH_GAPS":       anyHasItems(input.CarriedDepthGaps),

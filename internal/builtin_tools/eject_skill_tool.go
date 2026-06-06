@@ -17,8 +17,8 @@ func (t *EjectSkillTool) Name() string { return EjectSkillToolName }
 
 func (t *EjectSkillTool) Description() string {
 	return "卸载一个已加载的 skill：停止在后续轮次向上下文注入其指令，回收上下文空间。" +
-		"当某个先前通过 `skill` 工具加载的 skill 已完成使命、与当前及后续 step 不再相关时调用。" +
-		"非破坏性操作——不删除 skill 文件或 catalog，需要时可再次用 `skill` 工具重新加载。"
+		"每个 step 收尾时都应主动评估已注入的 skill 是否仍相关——某个先前通过 `skill` 工具加载的 skill 一旦其指令对当前 step 已无进一步用处（产出已落盘/已回写），就立即卸载，避免其指令在后续每一轮被重复注入、持续占用上下文。" +
+		"非破坏性操作——不删除 skill 文件或 catalog，卸载后该 skill 回到可用状态，后续真正需要时可再次用 `skill` 工具重新加载；误卸代价远低于持续堆积。"
 }
 
 func (t *EjectSkillTool) Parameters() any {

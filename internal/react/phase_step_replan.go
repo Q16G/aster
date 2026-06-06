@@ -22,7 +22,6 @@ type stepReplanModelOutput struct {
 	DepthGaps []string `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化扩面：对照整体任务目标的资产/攻击面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
 	NewSurfaces []string `json:"new_surfaces"`
-	Warnings    []string `json:"warnings"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -102,7 +101,6 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"step_outcome":             enrichedCurrent,
 		"task_plan":                snapshot.Plan,
 		"step_outcomes":            enrichedOutcomes,
-		"warnings":                 snapshot.Warnings,
 		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
 		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
 		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
@@ -194,7 +192,6 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 			IncompleteItems: normalizeStringSlice(decision.IncompleteItems),
 			DepthGaps:       normalizeStringSlice(decision.DepthGaps),
 			NewSurfaces:     normalizeStringSlice(decision.NewSurfaces),
-			Warnings:        normalizeStringSlice(decision.Warnings),
 			ReplacePending:  true,
 		}
 	}
@@ -418,7 +415,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 			Description: "当你完成评估、准备好输出重规划决策时，调用此工具提交。参数即为决策的结构化内容。",
 			Parameters: map[string]any{
 				"type":     "object",
-				"required": []string{"should_replan", "replan_reason", "next_goal", "incomplete_items", "depth_gaps", "new_surfaces", "warnings"},
+				"required": []string{"should_replan", "replan_reason", "next_goal", "incomplete_items", "depth_gaps", "new_surfaces"},
 				"properties": map[string]any{
 					"should_replan": map[string]any{
 						"type":        "boolean",
@@ -445,12 +442,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"new_surfaces": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是审计覆盖而非攻击突破。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×资产) 对、前提未变、已扎实覆盖的重叠，同资产不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级落 warnings。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
-					},
-					"warnings": map[string]any{
-						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "仅承载确属不可解的局限（环境/权限/数据天然限制，无可行动补法），含原则7 降级沉回的项。高危/可行动项禁止落此（原则6 意图半径外/用户显式排除方向的高危提示除外）。",
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是审计覆盖而非攻击突破。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×资产) 对、前提未变、已扎实覆盖的重叠，同资产不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级沉回 open_items.md 的 `## 不可解局限` 区。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
 					},
 				},
 			},
