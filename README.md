@@ -475,12 +475,16 @@ mcp_servers:
 ```
 Agent YAML skill_names → 构建可用列表
                           ↓
-运行时: Agent 调用 load_skills → 技能指令注入 prompt
+运行时: Agent 调用 skill 工具 → 技能指令注入 prompt
                           ↓
 执行模式:
   - inline: 注入当前 Agent 上下文
   - fork:   启动子 Agent 独立执行
+                          ↓
+eject_skill: 技能使命完成后从上下文卸载，回收空间（非破坏性）
 ```
+
+> `skill` / `eject_skill` 为每个 Agent 自动注册的内建工具，无需在 `tool_names` 中声明。
 
 ### 运行时管理
 
@@ -525,7 +529,6 @@ tool_names:
   - rg
   - bash
   - list_skills
-  - load_skills
 
 policies:
   max_iterations: 500

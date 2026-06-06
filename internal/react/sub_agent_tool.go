@@ -345,6 +345,7 @@ var policyManagedTools = map[string]bool{
 	builtin_tools.AwaitSubAgentsToolName:    true,
 	builtin_tools.BashToolName:              true,
 	builtin_tools.SkillToolName:             true,
+	builtin_tools.EjectSkillToolName:        true,
 }
 
 // excludeFromInheritance is the full set of platform / orchestration tools
@@ -367,9 +368,8 @@ var excludeFromInheritance = map[string]bool{
 	builtin_tools.AwaitSubAgentsToolName:    true,
 	builtin_tools.BashToolName:              true,
 	builtin_tools.SkillToolName:             true,
-	builtin_tools.LoadSkillsToolName:        true,
 	builtin_tools.ListSkillsToolName:        true,
-	builtin_tools.DeleteSkillToolName:       true,
+	builtin_tools.EjectSkillToolName:        true,
 }
 
 func (t *SubAgentTool) parentDomainToolNames() []string {

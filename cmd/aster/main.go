@@ -182,15 +182,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	registry.Register(builtin_tools.ListSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
 		return builtin_tools.NewListSkillsTool(skillService)
 	})
-	registry.Register(builtin_tools.LoadSkillsToolName, func(_ builtin_tools.ToolContext) react.Tool {
-		return builtin_tools.NewLoadSkillsTool(skillService)
-	})
 
 	factory := react.NewAgentFactory(
 		react.WithFactoryDefaultAIClient(aiClient),
 		react.WithFactoryAIClientFactory(clientFactory),
 		react.WithFactoryToolRegistry(registry),
 		react.WithFactorySkillsCatalog(skillService),
+		react.WithFactorySkillLookup(skillServiceLookup{svc: skillService}),
 		react.WithFactoryEmitterFunc(bridge.EmitterFunc()),
 		react.WithFactoryOnHumanInput(humanBridge.OnHumanInput),
 		react.WithFactoryMCPManager(mcpManager),
@@ -439,4 +437,34 @@ func newAnthropicClient(ps *tui.ProviderState, modelOverride string, maxTokens i
 		opts = append(opts, anthropic.WithTimeout(time.Duration(*ps.Timeout)*time.Second))
 	}
 	return anthropic.NewClient(opts...)
+}
+
+// skillServiceLookup adapts SkillService to react.SkillLookup so the `skill`
+// tool can resolve a skill's instructions by name at runtime.
+type skillServiceLookup struct {
+	svc *service.SkillService
+}
+
+func (l skillServiceLookup) LookupSkill(ctx context.Context, name string) (*react.SkillInfo, error) {
+	skills, err := l.svc.LoadSkills(ctx, []string{name})
+	if err != nil {
+		return nil, err
+	}
+	if len(skills) == 0 || skills[0] == nil {
+		return nil, fmt.Errorf("skill %q not found", name)
+	}
+	s := skills[0]
+	return &react.SkillInfo{
+		Name:          s.Name,
+		Description:   s.Description,
+		Instructions:  s.Instructions,
+		Agent:         s.Agent,
+		WhenToUse:     s.WhenToUse,
+		Arguments:     s.Arguments,
+		AllowedTools:  s.AllowedTools,
+		MCP:           s.MCP,
+		Context:       s.Context,
+		SkillDir:      s.SkillDir,
+		UserInvocable: s.UserInvocable,
+	}, nil
 }
