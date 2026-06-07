@@ -61,7 +61,8 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 }
 
 // 骨架内容须与 prompt 期望的标题逐字一致：task_planner.prompt 原则 0.7、
-// think_act.prompt 5.1e（task_context.md）与 step_replan.prompt 原则 7.1（open_items.md）。
+// think_act.prompt 5.1e（task_context.md）；open_items.md 由 think_act.prompt 5.1f（step 入口）
+// 与 step_replan.prompt 原则 7.1（消费/补合成）双写者共同维护。
 // 标题不一致会让模型新建重复标题。
 const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n"
 
