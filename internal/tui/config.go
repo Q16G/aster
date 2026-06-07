@@ -487,6 +487,8 @@ skill_names:
   - registration-abuse
   - race-condition
   - sensitive-info-exposure
+  - vuln-reproduction
+  - result-with-file
 preload_skills:
   - web-security-testing
 tool_names:
@@ -634,6 +636,8 @@ skill_names:
   - 文件上传-多策略综合检测
   - csrf-testing
   - 认证安全综合检测
+  # 复现
+  - vuln-reproduction
   # 输出
   - result-with-file
 preload_skills:

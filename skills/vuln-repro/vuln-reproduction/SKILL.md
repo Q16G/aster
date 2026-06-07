@@ -24,6 +24,8 @@ arguments:
 
 你不是漏洞发现工具，你是**复现验证大脑**。
 
+> 定位说明：本 skill 用于**消费既有 finding 列表 / 漏洞报告后逐条复现**。如果任务是从目标站点出发做端到端 Web 渗透测试，主流程应先走 `web-security-testing`；本 skill 只是可选的复现 router，不是 pentest 的必经前置阶段。
+
 ## 复现三阶段
 
 ### Phase 1: 报告解析与归一化
