@@ -13,8 +13,8 @@
 ```
 
 - **status 取值与桶映射**：
-  - `confirmed` → 进正文（**已确认**档，必附 POC）
-  - `needs_review` → 进正文（**待复核**档，POC 可选，归"待人工复核项汇总"）
+  - `confirmed` → 进正文（**已确认**档，必附 POC；**仅 pure code-audit 报告**可由静态可达性 + 静态 PoC 支撑。若同一任务存在可运行目标并产出 graybox / pentest 报告，总结论里的 `confirmed` 仍需运行时效果证据）
+  - `needs_review` → 进正文（**待复核**档，归"待人工复核项汇总"；做过验证动作的必附 PoC，未做任何验证的可不附——以 result-with-file"完整性要求"为准）
   - `false_positive` → 进排除项（"误报与排除项"章节）
   - `not_vulnerable` → 仅作覆盖证明（入口点节标 `not_vulnerable`，不进发现集）
   - `superseded` → 忽略（被更全的记录取代，不进任何章节）
@@ -142,6 +142,8 @@ Content-Type: {从代码推导的类型}
 {参数名}={漏洞类型对应的 payload}
 # 基于代码分析构造，未经运行时验证
 ```
+
+> 该静态 POC 只用于 **pure code-audit** 报告；若同一任务有可运行目标并输出 graybox / pentest 结论，`confirmed` 仍必须由运行时可观测效果支撑，本段静态 POC 仅作白盒佐证。
 
 **影响**: {攻击者可以做什么，最大损失评估}
 

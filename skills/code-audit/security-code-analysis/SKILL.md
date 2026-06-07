@@ -65,10 +65,18 @@ R0 产出的入口点骨架、过滤器/中间件映射（含信任边界）、�
 | # | 任务项 | skill | 适用条件 |
 |---|--------|-------|---------|
 | A1 | SAST 多介质扫描（源码+配置+模板） | `sast-scan` | 全量审计时必须 |
-| A2 | 数据流验证 | `dataflow-analysis` | 当 A1 产出 `needs_dataflow_confirmation` 标记时 |
+| A2 | 数据流验证 | `dataflow-analysis` | 结构型候选落终态前的**默认闭环关口**（见下） |
 | A3 | 存储型 XSS 检测 | `stored-xss-detection` | 当发现数据写入后读出并渲染的流程时 |
 
 全量审计时，sast-scan 应至少运行一次，覆盖所有介质（源码 + XML + 配置）。read_file 逐文件审查不能替代 SAST 的模式匹配。若用户明确指定只做某个方向的审计（如"只看认证授权"），sast-scan 不是必须的。
+
+**A2 是结构型候选（注入 / RCE / 路径穿越 / 反序列化等有明确 source→sink 形态的发现）的默认闭环关口，不再只在 A1 标 `needs_dataflow_confirmation` 时才触发。** 当任务是 **pure code-audit**，且**无可运行目标**或**动态验证明确不可行动**时，它的默认验证路径就是 A2；若同一任务还存在可行动的运行目标（graybox / pentest / 联调环境），A2 的产出只构成**白盒证据**，不得直接拿去充当动态场景的 `confirmed`。按 `common/closure-verification.md` 的三档判据裁决：
+
+- **数据流可达性可做却没做** → 该候选**未闭环**，在 `coverage_checklist` 落 `uncovered`（触发 replan 补 A2），不得直接落 `needs_review` 交差。"SAST/read_file 标出了 sink 但没反查 source→sink 是否真正可达"即属此档。
+- **仅当当前任务确属 pure code-audit，且不存在可行动的运行时验证路径时**，`source→sink` 可达性已确认成立 + 能从源码推导出静态 PoC → 判 `confirmed`（**静态档**：落 `confirmed` 桶，但 PoC 必须带"基于代码分析构造，未经运行时验证"尾注，规则见 `result-with-file`）。这是 **pure code-audit** 场景下合法的 confirmed 路径。
+- **若同一任务存在可行动的运行目标/动态验证路径** → 上述可达性分析只能写成"白盒可达性已确认 / 静态可达候选"供 graybox / pentest 消费；**未走动态路径前，总闭环仍属 `uncovered`，不得在最终报告里直接落 `confirmed`**。
+- **已做可达性分析但数据流证明 source 到不了 sink** → 判 `not_vulnerable`（数据流不可达，覆盖证明档）。
+- **可达性分析做了但卡在能力边界**（如跨闭源依赖断链、需运行期才能定的动态分派；或动态路径已由外层 graybox/pentest 尝试但受环境/权限限制无法继续）→ 才落合法 `needs_review`，注明断在哪、缺什么。
 
 ### B. 认证与授权（MUST）— 聚焦入口: `auth-authz`
 
@@ -213,6 +221,8 @@ SAST 规则覆盖结构化漏洞模式。以下是规则无法覆盖的语义化
 攻击面盘点阶段枚举的每个入口点，都必须在结论中出现。如果某入口点经审计无发现，标注 `not_vulnerable` 以证明覆盖范围。
 
 同一个 sink 被多个入口点到达时，每个入口点下都要独立列出该 sink 的风险。入口点内的多条发现按风险等级降序排列（confirmed > needs_review > not_vulnerable）。
+
+> `needs_review` 是排序桶，不是结构型候选的默认归宿。结构型候选要落 `needs_review`，必须先过 A2 闭环关口（见上）：可达性可做没做的候选属"未闭环"应升 `uncovered` 推回去验证；**只有 pure code-audit 且无可行动动态路径**时，可达且 PoC 可构造的才应升 `confirmed`（静态档）；若同一任务存在可运行目标，它仍只是白盒证据，须交给动态验证决定总闭环。只有"可达性已做但卡在能力边界"才合法停 `needs_review`。
 
 结论必须覆盖以下检查面（体现在各入口点的发现中）：
 

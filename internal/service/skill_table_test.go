@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	skillspkg "aster/skills"
 )
 
 func TestBuildSkillsTableWithStatus(t *testing.T) {
@@ -295,6 +297,88 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 	}
 	if !foundSAST || !foundGraybox {
 		t.Fatalf("expected embedded imports to include sast-scan and graybox-p0, got %+v", skills)
+	}
+}
+
+func TestImportEmbeddedSkills_SecuritySemanticsGuardrails(t *testing.T) {
+	svc := NewSkillServiceWithMemory()
+	_, err := svc.ImportEmbeddedSkills(context.Background())
+	if err != nil {
+		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
+	}
+
+	skills, err := svc.LoadSkills(context.Background(), []string{
+		"security-code-analysis",
+		"graybox-p0",
+		"result-with-file",
+	})
+	if err != nil {
+		t.Fatalf("LoadSkills failed: %v", err)
+	}
+	if len(skills) != 3 {
+		t.Fatalf("expected 3 skills, got %d", len(skills))
+	}
+
+	byName := make(map[string]*Skill, len(skills))
+	for _, skill := range skills {
+		byName[skill.Name] = skill
+	}
+
+	audit := byName["security-code-analysis"]
+	if audit == nil {
+		t.Fatal("security-code-analysis not loaded")
+	}
+	for _, needle := range []string{
+		"当前任务确属 pure code-audit",
+		"存在可行动的运行目标",
+		"不得在最终报告里直接落 `confirmed`",
+	} {
+		if !strings.Contains(audit.Instructions, needle) {
+			t.Fatalf("security-code-analysis must keep pure-static confirmed guardrail %q, got:\n%s", needle, audit.Instructions)
+		}
+	}
+
+	graybox := byName["graybox-p0"]
+	if graybox == nil {
+		t.Fatal("graybox-p0 not loaded")
+	}
+	for _, needle := range []string{
+		"白盒可达性已确认（纯静态证据，不等于动态 `confirmed`）",
+		"不得直接照抄成报告 `confirmed`",
+		"尚无动态可观测效果",
+	} {
+		if !strings.Contains(graybox.Instructions, needle) {
+			t.Fatalf("graybox-p0 must keep dynamic confirmed guardrail %q, got:\n%s", needle, graybox.Instructions)
+		}
+	}
+
+	resultWithFile := byName["result-with-file"]
+	if resultWithFile == nil {
+		t.Fatal("result-with-file not loaded")
+	}
+	for _, needle := range []string{
+		"仅适用于 pure code-audit 报告",
+		"graybox / pentest / 有可运行目标的报告里，`confirmed` 仍要求运行时效果证据",
+		"只能用于 pure code-audit 报告",
+	} {
+		if !strings.Contains(resultWithFile.Instructions, needle) {
+			t.Fatalf("result-with-file must keep static confirmed scope guardrail %q, got:\n%s", needle, resultWithFile.Instructions)
+		}
+	}
+
+	templateBytes, err := skillspkg.EmbeddedSkills.ReadFile("common/result-with-file/reference/code-audit-template.md")
+	if err != nil {
+		t.Fatalf("read code-audit template failed: %v", err)
+	}
+	template := string(templateBytes)
+	for _, needle := range []string{
+		"仅 pure code-audit 报告",
+		"总结论里的 `confirmed` 仍需运行时效果证据",
+		"静态 POC 仅作白盒佐证",
+	} {
+		if !strings.Contains(template, needle) {
+			t.Fatalf("code-audit template must keep static confirmed scope guardrail %q, got:\n%s", needle, template)
+		}
 	}
 }
 
