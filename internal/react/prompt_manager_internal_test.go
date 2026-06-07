@@ -216,10 +216,33 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act 原则12b must route concurrent coverage via task_context (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Fix5: child rollup via 子 Agent 汇总表 (索引), open_items merged downstream by step_replan.
+	// Fix5: child rollup via 子 Agent 汇总表 (索引); open_items 子合并已下沉到本 step 入口 (5.1f).
 	for _, needle := range []string{"子 Agent 汇总表", "关键内容索引", "读取路径"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act 上卷 must render 子 Agent 汇总表 index (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 双写者分职：open_items 入口维护 (5.1f) + 子账本合并下沉到 step 收尾.
+	for _, needle := range []string{
+		"5.1f",
+		shared + "/open_items.md",
+		"## 未解决",
+		"## 不可解局限",
+		"## 已闭环",
+		"整段覆盖重写",
+		"禁止直接删",
+		"入口/第一手写者",
+		"合并进父",
+		"原样搬进",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act must render open_items entry maintenance 5.1f (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 收窄：step 入口不自判不可解局限（裁决交 step_replan），自己只写 ## 未解决 + 闭环.
+	for _, needle := range []string{"不自行判定", "待 replan 裁决"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act 5.1f must keep limitation adjudication out of step entry (missing %q), got:\n%s", needle, with)
 		}
 	}
 	// Fix4: result multi-key coexistence.
@@ -286,10 +309,31 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 			t.Fatalf("step_replan with shared must render open_items ledger (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Fix5: sub-agent open_items merge回流.
-	for _, needle := range []string{"子 agent", "合并进父账本"} {
+	// 双写者分职：step_replan 仍消费子 task_context 喂三轴，但 open_items 子合并已下沉到 think_act 5.1f。
+	if !strings.Contains(with, "子 agent task_context 喂三轴") {
+		t.Fatalf("step_replan must still consume 子 task_context 喂三轴, got:\n%s", with)
+	}
+	if strings.Contains(with, "合并进父账本") {
+		t.Fatalf("step_replan must NOT render open_items 子合并 (moved to think_act 5.1f), got:\n%s", with)
+	}
+	// 消费者分职：补合成四类标记 + 数据流反转措辞。
+	for _, needle := range []string{
+		"step_replan 消费为主 + 补写独有合成",
+		"双写者分工",
+		"先有账本再有三轴",
+	} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must render sub-agent open_items 回流 (missing %q), got:\n%s", needle, with)
+			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// Issue A bridge: actionable carried items land in ledger first, axes are projection (workspace only).
+	for _, needle := range []string{
+		"落账本 `## 未解决`",
+		"由步骤 4 投影成轴",
+		"轴是账本的本轮投影、不是独立落点",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
 		}
 	}
 	// Fix2 (ungated): convergence limited to three axes; blocked-affects-future→three axes.
@@ -350,6 +394,13 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 			t.Fatalf("step_replan no-shared fallback must render completeness wording (missing %q), got:\n%s", needle, without)
 		}
 	}
+	// Issue A bridge is workspace-gated: else branch stays axis-centric, no ledger-projection wording.
+	if strings.Contains(without, "轴是账本的本轮投影、不是独立落点") {
+		t.Fatalf("step_replan no-shared must NOT render the ledger-projection bridge, got:\n%s", without)
+	}
+	if !strings.Contains(without, "升进对应轴") {
+		t.Fatalf("step_replan no-shared must keep axis-centric routing (missing %q), got:\n%s", "升进对应轴", without)
+	}
 }
 
 func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
@@ -374,6 +425,12 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 	} {
 		if !strings.Contains(withSubAgent, needle) {
 			t.Fatalf("think_act prompt (can spawn) missing guidance %q\nprompt:\n%s", needle, withSubAgent)
+		}
+	}
+	// 无 workspace 时不渲染 open_items 入口段 (5.1f gated by WORKSPACE_SHARED_DIR).
+	for _, absent := range []string{"5.1f", "open_items.md"} {
+		if strings.Contains(withSubAgent, absent) {
+			t.Fatalf("think_act prompt without shared dir must not render open_items entry %q\nprompt:\n%s", absent, withSubAgent)
 		}
 	}
 
