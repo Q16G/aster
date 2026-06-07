@@ -35,7 +35,7 @@ tags: <逗号分隔，如 auth,idor,access-control>
 4. <写操作回读 / 复验>
 
 ## 闭环验证要求（必须遵守）
-通用闭环口径见同根目录 `common/closure-verification.md`（技能表 path 列同一抽取根下，需要时 read_file 读取）。核心：结论须形成「输入 → 处理 → 真实危害 → 可复核证据」完整证据链；仅凭中间信号最多判 `suspected`，<填本漏洞「证明什么才算 confirmed」>。
+通用闭环口径见同根目录 `common/closure-verification.md`（技能表 path 列同一抽取根下，需要时 read_file 读取）。核心：结论须形成「输入 → 处理 → 真实危害 → 可复核证据」完整证据链；仅凭中间信号最多判 `suspected`，<填本漏洞「证明什么才算 confirmed」>。**默认按动态 / 可运行场景理解**；若本 skill 属于 pure static 路线并允许静态 `confirmed`，必须在此显式写明：仅适用于**无 runnable target / 动态验证不可行动**的前提，且**有可用动态路径却未走 = `uncovered` / 未闭环**，不得借静态规则外溢到 graybox / pentest。
 
 ## 判定标准
 

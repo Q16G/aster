@@ -19,7 +19,7 @@ arguments:
 - 只有源码，没有可访问目标：
   - 加载 `security-code-analysis`
   - 按其路由继续深入
-  - 结论标记为“静态候选”或“数据流已确认”
+  - 结论标记为“静态候选”或“白盒可达性已确认（纯静态证据，不等于动态 `confirmed`）”
 
 - 只有目标，没有源码：
   - 加载 `web-security-testing`
@@ -50,9 +50,9 @@ arguments:
 - 用 `web-security-testing` 建立侦察和测试顺序
 - 需要真实页面操作、抓取请求或截图时，加载 `agent-browser`
 - 先捕获真实请求，再基于真实参数、Cookie、Header、路由去构造 payload
-- 每个验证结果都要回填到白盒候选上，标记下列状态之一。**状态判定口径统一以 `common/closure-verification.md` 为准**（read_file 读取后据其分级），下列标签与其 confirmed/suspected 语义一一对齐。**括号内是写入报告 jsonl `status` 字段时必须落成的取值**——报告模板不认识 `suspected` 这个词，直接写它会被静默丢条；`suspected` 一律落为 `needs_review`（进正文待复核，绝不丢条）：
+- 每个验证结果都要回填到白盒候选上，标记下列状态之一。**状态判定口径统一以 `common/closure-verification.md` 为准**（read_file 读取后据其分级），下列标签与其 confirmed/suspected 语义一一对齐。**括号内是写入报告 jsonl `status` 字段时必须落成的取值**——报告模板不认识 `suspected` 这个词，直接写它会被静默丢条；`suspected` 一律落为 `needs_review`（进正文待复核，绝不丢条）。**注意：graybox 下 `security-code-analysis` 产出的 pure-static `confirmed` /“数据流已确认”只表示白盒证据更强，回填到本阶段时一律按下列动态口径重新裁决，不得直接照抄成报告 `confirmed`。**
   - `已动态复现`（status=`confirmed`）—— 等同 closure-verification 的 `confirmed`：必须有**可观测的真实效果**（命令回显/带外回连/数据回读/写操作回读生效等）并能在流量或日志中回溯。**"请求成功、状态码变化、单次报错、响应为空、执行无异常"都不构成复现**——这些只到 `suspected`。
-  - `仅静态候选`（status=`needs_review`）—— 只有白盒代码线索，未发请求或未拿到可观测效果，语义上对应 `suspected`。
+  - `仅静态候选`（status=`needs_review`）—— 只有白盒代码线索，或虽已做到"白盒可达性已确认"但**尚无动态可观测效果**，语义上对应 `suspected`。**但这不是默认终态**：按 closure-verification 三档判据，只有当**没有可用验证路径**（黑盒目标不可达、白盒数据流可达性也已做到能力边界）时才合法停在此。**只要还有没走的验证路径——有可达目标却没发真实请求、或静态可达性还没确认——该候选就是"未闭环"，必须在 `coverage_checklist` 落 `uncovered` 推回去验证，不得直接落 `仅静态候选` 交差。**
   - `数据流不可达`（status=`not_vulnerable`）—— 数据流分析证明 source 到不了 sink，对应 `not vulnerable`。
   - `黑盒未命中，待人工复核`（status=`needs_review`）—— 发了请求但既未复现也未排除，语义上对应 `suspected`，须注明缺失的验证环节。
 
