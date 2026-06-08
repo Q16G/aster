@@ -249,6 +249,12 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 				WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 				WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
 				WorkspaceSharedDir: sharedDir,
+				SourceWorkingDir:   strings.TrimSpace(a.runtimeRepoContext.SourceWorkingDir),
+				RepoRootDir:        strings.TrimSpace(a.runtimeRepoContext.RepoRootDir),
+				IsGitRepo:          a.runtimeRepoContext.IsGitRepo,
+				GitBranch:          strings.TrimSpace(a.runtimeRepoContext.Branch),
+				GitRepoURL:         strings.TrimSpace(a.runtimeRepoContext.RemoteURL),
+				IsGitWorktree:      a.runtimeRepoContext.IsWorktree,
 				CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
 			})
 

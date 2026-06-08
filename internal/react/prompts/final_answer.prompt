@@ -45,6 +45,19 @@
 ## 5. 判定步骤 (Decision Procedure)
 请严格按以下顺序进行判断：
 
+{{- if .HAS_REPO_CONTEXT}}
+### 5.0 代码仓库上下文
+- source working dir: `{{.SOURCE_WORKING_DIR}}`
+{{- if .REPO_ROOT_DIR}}
+- repo root: `{{.REPO_ROOT_DIR}}`
+{{- end}}
+- is git repo: `{{.IS_GIT_REPO}}`
+{{- if .CURRENT_BRANCH}}
+- current branch: `{{.CURRENT_BRANCH}}`
+{{- end}}
+- is git worktree: `{{.IS_GIT_WORKTREE}}`
+{{- end}}
+
 1. 从 `INPUT_TIMELINE` 提炼当前有效用户诉求。
 2. 判断该诉求是否已被 `STEP_OUTCOMES` 与候选 `user_message` 充分响应。**若前序存在可枚举清单，按原则 11 逐项核对归置并主动消费 `<WARNINGS>` 与三组承载项（`<CARRIED_INCOMPLETE_ITEMS>`/`<CARRIED_DEPTH_GAPS>`/`<CARRIED_NEW_SURFACES>`）；仍有「可行动但未归置」项即视为未充分响应。**
 3. 若未被满足，判断缺口属于哪一类：

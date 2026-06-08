@@ -156,6 +156,140 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	}
 }
 
+func TestPromptManager_ThinkActRepoContextSection(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	prompt, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+		AgentInstruction: "你是测试代理",
+		RuntimeRepoContext: RuntimeRepoContext{
+			SourceWorkingDir: "/repo/worktree",
+			RepoRootDir:      "/repo/worktree",
+			IsGitRepo:        true,
+			Branch:           "feature/demo",
+			IsWorktree:       true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build think_act failed: %v", err)
+	}
+	for _, needle := range []string{
+		"### 5.1ba 代码仓库上下文",
+		"source working dir: /repo/worktree",
+		"repo root: /repo/worktree",
+		"is git repo: true",
+		"current branch: feature/demo",
+		"is git worktree: true",
+	} {
+		if !strings.Contains(prompt, needle) {
+			t.Fatalf("expected think_act repo section to contain %q, got:\n%s", needle, prompt)
+		}
+	}
+}
+
+func TestPromptManager_TaskPlannerRepoContextSection(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	prompt, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input: "测试输入",
+		RuntimeRepoContext: RuntimeRepoContext{
+			SourceWorkingDir: "/repo/worktree",
+			RepoRootDir:      "/repo/worktree",
+			IsGitRepo:        true,
+			Branch:           "feature/demo",
+			IsWorktree:       true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build task_planner failed: %v", err)
+	}
+	for _, needle := range []string{
+		"## 1.6 代码仓库上下文",
+		"source working dir: `/repo/worktree`",
+		"repo root: `/repo/worktree`",
+		"is git repo: `true`",
+		"current branch: `feature/demo`",
+		"is git worktree: `true`",
+	} {
+		if !strings.Contains(prompt, needle) {
+			t.Fatalf("expected task_planner repo section to contain %q, got:\n%s", needle, prompt)
+		}
+	}
+	if strings.Contains(prompt, "github.com") || strings.Contains(prompt, "gitRepoUrl") {
+		t.Fatalf("task_planner prompt must not expose remote url by default, got:\n%s", prompt)
+	}
+}
+
+func TestPromptManager_StepReplanRepoContextSection(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	prompt, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentInstruction: "你是测试代理",
+		RuntimeRepoContext: RuntimeRepoContext{
+			SourceWorkingDir: "/repo/worktree",
+			RepoRootDir:      "/repo/worktree",
+			IsGitRepo:        true,
+			Branch:           "feature/demo",
+			IsWorktree:       true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build step_replan failed: %v", err)
+	}
+	for _, needle := range []string{
+		"### 代码仓库上下文",
+		"source working dir: `/repo/worktree`",
+		"repo root: `/repo/worktree`",
+		"is git repo: `true`",
+		"current branch: `feature/demo`",
+		"is git worktree: `true`",
+	} {
+		if !strings.Contains(prompt, needle) {
+			t.Fatalf("expected step_replan repo section to contain %q, got:\n%s", needle, prompt)
+		}
+	}
+}
+
+func TestPromptManager_FinalAnswerRepoContextSection(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	prompt, err := manager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
+		AgentInstruction: "你是测试代理",
+		RuntimeRepoContext: RuntimeRepoContext{
+			SourceWorkingDir: "/repo/worktree",
+			RepoRootDir:      "/repo/worktree",
+			IsGitRepo:        true,
+			Branch:           "feature/demo",
+			IsWorktree:       true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build final_answer failed: %v", err)
+	}
+	for _, needle := range []string{
+		"### 5.0 代码仓库上下文",
+		"source working dir: `/repo/worktree`",
+		"repo root: `/repo/worktree`",
+		"is git repo: `true`",
+		"current branch: `feature/demo`",
+		"is git worktree: `true`",
+	} {
+		if !strings.Contains(prompt, needle) {
+			t.Fatalf("expected final_answer repo section to contain %q, got:\n%s", needle, prompt)
+		}
+	}
+	if strings.Contains(prompt, "git@github.com") || strings.Contains(prompt, "gitRepoUrl") {
+		t.Fatalf("final_answer prompt must not expose remote url by default, got:\n%s", prompt)
+	}
+}
+
 func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {

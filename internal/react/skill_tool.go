@@ -171,6 +171,7 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 
 	result, err := childAgent.Execute(ctx, body,
 		WithWorkspaceRuntime(childRuntime),
+		WithSourceWorkingDir(t.parentAgent.sourceWorkingDir),
 		WithResultSource(ResultSourceLatestStepResult),
 		WithSkipIntentPrelude(),
 	)

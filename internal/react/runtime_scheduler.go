@@ -229,11 +229,12 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
 
 	plannerInput := TaskPlannerPromptInput{
-		Input:          inputStr,
-		SkillsContext:  skillsCtx,
-		MCPContext:     mcpCtx,
-		HasSkillsTable: skillsCtx != nil && skillsCtx.HasTable(),
-		HasMCPTable:    mcpCtx != nil && mcpCtx.HasTable(),
+		Input:              inputStr,
+		SkillsContext:      skillsCtx,
+		MCPContext:         mcpCtx,
+		HasSkillsTable:     skillsCtx != nil && skillsCtx.HasTable(),
+		HasMCPTable:        mcpCtx != nil && mcpCtx.HasTable(),
+		RuntimeRepoContext: a.runtimeRepoContext,
 	}
 	if a.workspaceRuntime != nil {
 		plannerInput.WorkspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
@@ -1597,6 +1598,12 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
 		WorkspaceSharedDir: sharedDir,
+		SourceWorkingDir:   strings.TrimSpace(a.runtimeRepoContext.SourceWorkingDir),
+		RepoRootDir:        strings.TrimSpace(a.runtimeRepoContext.RepoRootDir),
+		IsGitRepo:          a.runtimeRepoContext.IsGitRepo,
+		GitBranch:          strings.TrimSpace(a.runtimeRepoContext.Branch),
+		GitRepoURL:         strings.TrimSpace(a.runtimeRepoContext.RemoteURL),
+		IsGitWorktree:      a.runtimeRepoContext.IsWorktree,
 		CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
 	})
 

@@ -162,6 +162,14 @@ func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
 		t.Fatalf("new parent: %v", err)
 	}
 	parent.workspaceRootDir = t.TempDir()
+	parent.sourceWorkingDir = "/repo/source"
+	parent.runtimeRepoContext = RuntimeRepoContext{
+		SourceWorkingDir: "/repo/source",
+		RepoRootDir:      "/repo/source",
+		IsGitRepo:        true,
+		Branch:           "feature/root",
+		IsWorktree:       true,
+	}
 
 	factory := NewAgentFactory(
 		WithFactoryDefaultAIClient(&stubClient{}),
@@ -187,6 +195,18 @@ func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
 	}
 	if !strings.HasPrefix(setupA.childName, "sub-") {
 		t.Fatalf("expected sub- prefix, got %q", setupA.childName)
+	}
+	if len(setupA.execOpts) == 0 {
+		t.Fatalf("expected child exec options to be populated")
+	}
+	cfg := &ExecuteConfig{}
+	for _, opt := range setupA.execOpts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+	if cfg.sourceWorkingDir != "/repo/source" {
+		t.Fatalf("expected child to inherit source working dir, got %q", cfg.sourceWorkingDir)
 	}
 }
 

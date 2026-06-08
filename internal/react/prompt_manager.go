@@ -27,6 +27,7 @@ type ThinkActPromptInput struct {
 	WorkspaceRootDir        string
 	WorkspaceNamespace      string
 	WorkspaceSharedDir      string
+	RuntimeRepoContext      RuntimeRepoContext
 	SkillsContext           *SkillsPromptContext
 	CurrentStep             any
 	DependencyStepSummaries any
@@ -50,6 +51,7 @@ type StepReplanPromptInput struct {
 	CurrentGoal            any
 	GoalUnderstanding      string
 	WorkspaceSharedDir     string
+	RuntimeRepoContext     RuntimeRepoContext
 	InputTimeline          any
 	CurrentStep            any
 	StepOutcome            any
@@ -83,6 +85,7 @@ type FinalAnswerPromptInput struct {
 	CarriedDepthGaps       any
 	CarriedNewSurfaces     any
 	WorkspaceSharedDir     string
+	RuntimeRepoContext     RuntimeRepoContext
 }
 
 type HistoryCompactionPromptInput struct {
@@ -104,6 +107,7 @@ type TaskPlannerPromptInput struct {
 	Input              string
 	GoalUnderstanding  string
 	WorkspaceSharedDir string
+	RuntimeRepoContext RuntimeRepoContext
 	UserInputTurn      bool
 	SkillsContext      *SkillsPromptContext
 	MCPContext         *MCPPromptContext
@@ -213,6 +217,7 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		return "", fmt.Errorf("think_act template is nil")
 	}
 	hasWorkspaceContext := strings.TrimSpace(input.WorkspaceRootDir) != "" || strings.TrimSpace(input.WorkspaceNamespace) != "" || strings.TrimSpace(input.WorkspaceSharedDir) != ""
+	hasRepoContext := strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo
 
 	var taskContextEntries []TaskContextEntry
 	if input.TaskContext != nil {
@@ -231,6 +236,12 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"WORKSPACE_ROOT_DIR":            strings.TrimSpace(input.WorkspaceRootDir),
 		"WORKSPACE_NAMESPACE":           strings.TrimSpace(input.WorkspaceNamespace),
 		"WORKSPACE_SHARED_DIR":          strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":              hasRepoContext,
+		"SOURCE_WORKING_DIR":            strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":                 strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":                   input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":                strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"IS_GIT_WORKTREE":               input.RuntimeRepoContext.IsWorktree,
 		"HAS_TASK_CONTEXT":              len(taskContextEntries) > 0,
 		"TASK_CONTEXT_ENTRIES":          taskContextEntries,
 		"SKILLS_CONTEXT":                input.SkillsContext,
@@ -269,6 +280,12 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
 		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":             strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
+		"SOURCE_WORKING_DIR":           strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":                strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":                  input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":               strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"IS_GIT_WORKTREE":              input.RuntimeRepoContext.IsWorktree,
 		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
 		"CURRENT_STEP":                 prettyJSON(input.CurrentStep),
 		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
@@ -321,6 +338,12 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
 		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
 		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":             strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
+		"SOURCE_WORKING_DIR":           strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":                strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":                  input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":               strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"IS_GIT_WORKTREE":              input.RuntimeRepoContext.IsWorktree,
 	}); err != nil {
 		return "", err
 	}
@@ -351,6 +374,12 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":       strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
+		"SOURCE_WORKING_DIR":     strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":          strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":            input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":         strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"IS_GIT_WORKTREE":        input.RuntimeRepoContext.IsWorktree,
 		"USER_INPUT_TURN":        input.UserInputTurn,
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,

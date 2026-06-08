@@ -34,6 +34,7 @@ type ExecuteConfig struct {
 	interruptCancel            *interruptCancel
 	resultSource               ResultSource
 	parentWorkspaceRoot        string
+	sourceWorkingDir           string
 	skipIntentClassification   bool
 }
 
@@ -207,6 +208,15 @@ func WithParentWorkspace(rootDir string) ExecuteOption {
 	}
 }
 
+func WithSourceWorkingDir(dir string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.sourceWorkingDir = normalizeSourceWorkingDir(dir)
+	}
+}
+
 // Execute 执行 Agent
 func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
 	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
@@ -253,6 +263,14 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.workspaceRootDir = normalizeWorkspaceRootDir(workspaceRuntime.RootDir())
 	a.workspaceNamespace = builtin_tools.NormalizeWorkspaceNamespace(workspaceRuntime.Namespace())
 	a.parentWorkspaceRoot = strings.TrimSpace(cfg.parentWorkspaceRoot)
+	sourceWorkingDir := normalizeSourceWorkingDir(cfg.sourceWorkingDir)
+	if sourceWorkingDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			sourceWorkingDir = normalizeSourceWorkingDir(wd)
+		}
+	}
+	a.sourceWorkingDir = sourceWorkingDir
+	a.runtimeRepoContext = detectRuntimeRepoContext(ctx, sourceWorkingDir)
 	if sharedDir := workspaceRuntime.SharedDir(); sharedDir != "" {
 		_ = os.MkdirAll(sharedDir, 0o755)
 		if seeder, ok := workspaceRuntime.(interface{ EnsureSharedScaffold() error }); ok {

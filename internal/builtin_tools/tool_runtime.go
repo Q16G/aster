@@ -22,6 +22,12 @@ type ToolRuntimeInfo struct {
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
 	WorkspaceSharedDir string
+	SourceWorkingDir   string
+	RepoRootDir        string
+	IsGitRepo          bool
+	GitBranch          string
+	GitRepoURL         string
+	IsGitWorktree      bool
 	CurrentStepID      string
 }
 
@@ -36,6 +42,10 @@ func WithToolRuntime(ctx context.Context, info ToolRuntimeInfo) context.Context 
 	info.WorkspaceRootDir = strings.TrimSpace(info.WorkspaceRootDir)
 	info.WorkspaceNamespace = strings.TrimSpace(info.WorkspaceNamespace)
 	info.WorkspaceSharedDir = strings.TrimSpace(info.WorkspaceSharedDir)
+	info.SourceWorkingDir = strings.TrimSpace(info.SourceWorkingDir)
+	info.RepoRootDir = strings.TrimSpace(info.RepoRootDir)
+	info.GitBranch = strings.TrimSpace(info.GitBranch)
+	info.GitRepoURL = strings.TrimSpace(info.GitRepoURL)
 	info.CurrentStepID = strings.TrimSpace(info.CurrentStepID)
 	return context.WithValue(ctx, toolRuntimeContextKey{}, info)
 }

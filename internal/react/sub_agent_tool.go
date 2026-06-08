@@ -146,6 +146,7 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	execOpts := []ExecuteOption{
 		WithWorkspaceRuntime(childRuntime),
 		WithParentWorkspace(t.parentAgent.workspaceRootDir),
+		WithSourceWorkingDir(t.parentAgent.sourceWorkingDir),
 		WithSkipIntentPrelude(),
 	}
 	if tc := childDef.BuildTaskContext(); tc != nil {

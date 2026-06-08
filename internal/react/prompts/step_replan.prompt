@@ -43,6 +43,19 @@
 
 ### 已注入的上下文
 
+{{- if .HAS_REPO_CONTEXT}}
+### 代码仓库上下文
+- source working dir: `{{.SOURCE_WORKING_DIR}}`
+{{- if .REPO_ROOT_DIR}}
+- repo root: `{{.REPO_ROOT_DIR}}`
+{{- end}}
+- is git repo: `{{.IS_GIT_REPO}}`
+{{- if .CURRENT_BRANCH}}
+- current branch: `{{.CURRENT_BRANCH}}`
+{{- end}}
+- is git worktree: `{{.IS_GIT_WORKTREE}}`
+{{- end}}
+
 <CURRENT_GOAL>
 {{.CURRENT_GOAL}}
 </CURRENT_GOAL>

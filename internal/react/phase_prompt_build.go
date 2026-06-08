@@ -23,6 +23,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		CurrentGoal:            payload["current_goal"],
 		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
 		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
+		RuntimeRepoContext:     a.runtimeRepoContext,
 		InputTimeline:          payload["input_timeline"],
 		CurrentStep:            payload["current_step"],
 		StepOutcome:            payload["step_outcome"],
@@ -69,6 +70,7 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 		CarriedDepthGaps:       payload["carried_depth_gaps"],
 		CarriedNewSurfaces:     payload["carried_new_surfaces"],
 		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
+		RuntimeRepoContext:     a.runtimeRepoContext,
 	})
 }
 

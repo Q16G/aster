@@ -52,6 +52,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		WorkspaceRootDir:        a.workspaceRootDir,
 		WorkspaceNamespace:      a.workspaceNamespace,
 		WorkspaceSharedDir:      workspaceSharedDir,
+		RuntimeRepoContext:      a.runtimeRepoContext,
 		SkillsContext:           skillsContext,
 		CurrentStep:             currentStep,
 		DependencyStepSummaries: dependencySummaries,
