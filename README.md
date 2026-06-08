@@ -116,6 +116,24 @@ git clone https://github.com/Q16G/aster.git && cd aster
 make build    # 输出 ./aster 二进制
 ```
 
+### 一键安装脚本（远程，推荐）
+
+无需 git clone、无需 Go——脚本自动识别平台，从 GitHub Releases 下载预编译二进制，安装到用户目录并写入 PATH：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Q16G/aster/main/scripts/install.sh | bash
+```
+
+- 自动识别 macOS / Linux 与 amd64 / arm64，拉取最新 Release（Windows 请用上方 Releases 表格手动下载）。
+- 默认安装到 `~/.local/bin`，并按当前 Shell 自动写入 `~/.zshrc` / `~/.bashrc` 的 PATH（已在 PATH 中则跳过）。
+- 可重复运行，不会重复追加 PATH。安装完成后执行 `source ~/.zshrc` 或新开终端使 PATH 生效。
+- 自定义安装目录或版本：
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Q16G/aster/main/scripts/install.sh \
+    | ASTER_INSTALL_DIR=/usr/local/bin ASTER_VERSION=v0.1.0-alpha-8 bash
+  ```
+
 ---
 
 ## 模型配置
