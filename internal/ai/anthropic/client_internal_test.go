@@ -7,6 +7,80 @@ import (
 	"aster/internal/ai"
 )
 
+func makeTools(names ...string) []*ai.FunctionTool {
+	tools := make([]*ai.FunctionTool, 0, len(names))
+	for _, n := range names {
+		tools = append(tools, &ai.FunctionTool{
+			Type:     "function",
+			Function: &ai.FunctionDetail{Name: n, Description: n + " desc"},
+		})
+	}
+	return tools
+}
+
+func countBodyCacheControls(body map[string]any) (system int, tools int, lastToolHas bool) {
+	if blocks, ok := body["system"].([]anthropicTextBlock); ok {
+		for _, b := range blocks {
+			if b.CacheControl != nil {
+				system++
+			}
+		}
+	}
+	if defs, ok := body["tools"].([]anthropicTool); ok {
+		for i, d := range defs {
+			if d.CacheControl != nil {
+				tools++
+				if i == len(defs)-1 {
+					lastToolHas = true
+				}
+			}
+		}
+	}
+	return
+}
+
+func TestBuildRequestBody_CacheControlBreakpointsWithinLimit(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "stable system prefix\n<CURRENT_STEP>dynamic suffix"},
+		{Role: "user", Content: "go"},
+	}
+	tools := makeTools("read_file", "list_files", "rg", "bash", "submit_plan", "request_clarification")
+	opts := &ai.RequestOptions{PromptFamily: "think_act", PromptCacheEnabled: true}
+
+	body := c.buildRequestBody(infos, tools, opts)
+
+	system, toolCC, lastToolHas := countBodyCacheControls(body)
+	total := system + toolCC
+	if total > maxCacheControlBreakpoints {
+		t.Fatalf("expected <= %d cache_control blocks, got %d (system=%d tools=%d)",
+			maxCacheControlBreakpoints, total, system, toolCC)
+	}
+	if toolCC != 1 || !lastToolHas {
+		t.Fatalf("expected exactly 1 tool cache_control on the last tool, got toolCC=%d lastToolHas=%v", toolCC, lastToolHas)
+	}
+	if system != 1 {
+		t.Fatalf("expected 1 system cache_control on stable prefix, got %d", system)
+	}
+}
+
+func TestBuildRequestBody_NoCacheControlWhenDisabled(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "stable system prefix\n<CURRENT_STEP>dynamic suffix"},
+		{Role: "user", Content: "go"},
+	}
+	tools := makeTools("read_file", "bash")
+	opts := &ai.RequestOptions{PromptFamily: "think_act", PromptCacheEnabled: false}
+
+	body := c.buildRequestBody(infos, tools, opts)
+
+	system, toolCC, _ := countBodyCacheControls(body)
+	if system != 0 || toolCC != 0 {
+		t.Fatalf("expected no cache_control when disabled, got system=%d tools=%d", system, toolCC)
+	}
+}
+
 func TestAnyToText_ChatContextTextAndImage(t *testing.T) {
 	contexts := []*ai.ChatContext{
 		{Type: "text", Text: "hello"},

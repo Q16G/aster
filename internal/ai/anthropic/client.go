@@ -285,16 +285,46 @@ func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool,
 				Description: strings.TrimSpace(tool.Function.Description),
 				InputSchema: tool.Function.Parameters,
 			}
-			if options != nil && options.PromptCacheEnabled {
-				def.CacheControl = buildCacheControl(options)
-			}
 			toolDefs = append(toolDefs, def)
 		}
 		if len(toolDefs) > 0 {
+			// cache_control 是缓存断点而非逐项开关,只在最后一个工具上打一个断点即可
+			// 缓存其之前的全部工具,避免触发 Anthropic 单请求最多 4 个断点的限制。
+			if options != nil && options.PromptCacheEnabled {
+				toolDefs[len(toolDefs)-1].CacheControl = buildCacheControl(options)
+			}
+			capCacheControlBreakpoints(systemBlocks, toolDefs)
 			body["tools"] = toolDefs
 		}
 	}
 	return body
+}
+
+// maxCacheControlBreakpoints 是 Anthropic 单请求允许的 cache_control 断点上限。
+const maxCacheControlBreakpoints = 4
+
+// capCacheControlBreakpoints 兜底:按请求顺序(system 在前、tools 在后)保留前
+// maxCacheControlBreakpoints 个断点,清除多余的,防止任何路径误加断点触发 400。
+func capCacheControlBreakpoints(systemBlocks []anthropicTextBlock, toolDefs []anthropicTool) {
+	count := 0
+	for i := range systemBlocks {
+		if systemBlocks[i].CacheControl == nil {
+			continue
+		}
+		count++
+		if count > maxCacheControlBreakpoints {
+			systemBlocks[i].CacheControl = nil
+		}
+	}
+	for i := range toolDefs {
+		if toolDefs[i].CacheControl == nil {
+			continue
+		}
+		count++
+		if count > maxCacheControlBreakpoints {
+			toolDefs[i].CacheControl = nil
+		}
+	}
 }
 
 func splitMessages(infos []*ai.MsgInfo, options *ai.RequestOptions) ([]anthropicTextBlock, []map[string]any) {
