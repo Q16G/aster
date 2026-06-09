@@ -7,12 +7,12 @@ func buildFinalAnswerRawJSON(omit string) string {
 	fields := map[string]string{
 		"is_complete":      `false`,
 		"status":           `"running"`,
-		"reason":           `"仍有未追源的 sink 与整体漏审模块"`,
+		"reason":           `"仍有链条断裂与整体遗漏模块"`,
 		"should_replan":    `true`,
-		"next_goal":        `"深挖数据流并补审剩余模块"`,
+		"next_goal":        `"深挖分析链路并补齐剩余模块"`,
 		"incomplete_items": `["登出接口未测"]`,
-		"depth_gaps":       `["sink A 已定位但未追到 source","越权判断停在 static_only"]`,
-		"new_surfaces":     `["admin 分包整体未审计"]`,
+		"depth_gaps":       `["终点 A 已定位但未追到触发点","浅层判断停在 shallow_only"]`,
+		"new_surfaces":     `["admin 分包整体未覆盖"]`,
 		"warnings":         `[]`,
 		"user_message":     `"总结"`,
 		"references":       `[]`,
@@ -45,7 +45,7 @@ func TestParseFinalAnswerOutput_DepthGaps(t *testing.T) {
 	if len(out.DepthGaps) != 2 {
 		t.Fatalf("expected 2 depth_gaps, got %d: %v", len(out.DepthGaps), out.DepthGaps)
 	}
-	if out.DepthGaps[0] != "sink A 已定位但未追到 source" {
+	if out.DepthGaps[0] != "终点 A 已定位但未追到触发点" {
 		t.Fatalf("unexpected first depth_gap: %q", out.DepthGaps[0])
 	}
 }
@@ -70,7 +70,7 @@ func TestNormalizeFinalAnswerDecision_DepthGapsPreserved(t *testing.T) {
 	}
 	foundDepth := false
 	for _, m := range decision.model.DepthGaps {
-		if m == "sink A 已定位但未追到 source" {
+		if m == "终点 A 已定位但未追到触发点" {
 			foundDepth = true
 			break
 		}

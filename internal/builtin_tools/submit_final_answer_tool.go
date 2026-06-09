@@ -60,12 +60,12 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			"depth_gaps": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项（static_only 未确认 / sink 未追到 source / 悬而未决判断 / 水货占位 / 抽样冒充全量）。即使轴①为空也须独立判定。",
+				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 悬而未决判断 / 低价值项占位 / 抽样冒充全量）。即使轴①为空也须独立判定。",
 			},
 			"new_surfaces": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（审计覆盖视角；范围是整个任务而非某个 step）。意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan。",
+				"description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（任务覆盖完整性视角；范围是整个任务而非某个 step）。意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan。",
 			},
 			"warnings": map[string]any{
 				"type":        "array",

@@ -18,9 +18,9 @@ type stepReplanModelOutput struct {
 	NextGoal     string `json:"next_goal"`
 	// IncompleteItems 轴①完成度/存在性：本 step 自身声明目标内、根本没做的项，驱动补齐 replan。
 	IncompleteItems []string `json:"incomplete_items"`
-	// DepthGaps 轴②深度/质量：做了但不扎实的项（static_only 未确认、sink 未追源、水货占位等），驱动深挖 replan。
+	// DepthGaps 轴②深度/质量：做了但不扎实的项（shallow_only 未深度确认、分析链条断裂、低价值项占位等），驱动深挖 replan。
 	DepthGaps []string `json:"depth_gaps"`
-	// NewSurfaces 轴③泛化扩面：对照整体任务目标的资产/攻击面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
+	// NewSurfaces 轴③泛化扩面：对照整体任务目标的任务覆盖面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
 	NewSurfaces []string `json:"new_surfaces"`
 }
 
@@ -433,17 +433,17 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"incomplete_items": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴①存在性/完成度：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含'做了但不扎实'（属 depth_gaps），也不含本 step 之外的新维度/全集漏审（属 new_surfaces）。",
+						"description": "轴①存在性/完成度：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含'做了但不扎实'（属 depth_gaps），也不含本 step 之外的新维度/全集遗漏（属 new_surfaces）。",
 					},
 					"depth_gaps": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴②深度/质量：做了但不扎实的项（static_only 未确认 / sink 未追到 source / 悬而未决判断 / 水货占位 / 抽样冒充全量）。",
+						"description": "轴②深度/质量：做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 悬而未决判断 / 低价值项占位 / 抽样冒充全量）。",
 					},
 					"new_surfaces": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是审计覆盖而非攻击突破。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×资产) 对、前提未变、已扎实覆盖的重叠，同资产不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级沉回 open_items.md 的 `## 不可解局限` 区。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的任务覆盖面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是任务覆盖完整性而非单点深挖。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×工作项) 对、前提未变、已扎实覆盖的重叠，同工作项不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级沉回 open_items.md 的 `## 不可解局限` 区。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
 					},
 				},
 			},

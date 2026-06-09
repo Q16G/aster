@@ -9,11 +9,11 @@ import (
 func TestParseSubmitReplanArgs_DepthGaps(t *testing.T) {
 	args := map[string]any{
 		"should_replan":    true,
-		"replan_reason":    "存在未追源的 sink 与整体漏审模块",
-		"next_goal":        "深挖数据流并补审剩余模块",
-		"incomplete_items": []string{"鉴权模块的登出接口未测"},
-		"depth_gaps":       []string{"sink A 已定位但未追到 source", "越权判断停在 static_only"},
-		"new_surfaces":     []string{"admin 分包整体未审计"},
+		"replan_reason":    "存在链条断裂与整体遗漏模块",
+		"next_goal":        "深挖分析链路并补齐剩余模块",
+		"incomplete_items": []string{"认证模块的登出接口未测"},
+		"depth_gaps":       []string{"终点 A 已定位但未追到触发点", "浅层判断停在 shallow_only"},
+		"new_surfaces":     []string{"admin 分包整体未覆盖"},
 		"warnings":         []string{},
 	}
 	decision, err := parseSubmitReplanArgs(args)
@@ -26,7 +26,7 @@ func TestParseSubmitReplanArgs_DepthGaps(t *testing.T) {
 	if len(decision.DepthGaps) != 2 {
 		t.Fatalf("expected 2 depth_gaps, got %d: %v", len(decision.DepthGaps), decision.DepthGaps)
 	}
-	if decision.DepthGaps[0] != "sink A 已定位但未追到 source" {
+	if decision.DepthGaps[0] != "终点 A 已定位但未追到触发点" {
 		t.Fatalf("unexpected first depth_gap: %q", decision.DepthGaps[0])
 	}
 }
