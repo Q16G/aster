@@ -66,7 +66,11 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 // 标题不一致会让模型新建重复标题。
 const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n"
 
-const openItemsScaffold = "## 未解决\n\n## 不可解局限\n\n## 已闭环\n"
+// 活跃账本只留两区（未解决 / 不可解局限）；已闭环滚动归档到 open_items_archive.md，
+// 让每轮重读的活跃账本不随闭环量无界膨胀。两文件标题须与 prompt 逐字一致。
+const openItemsScaffold = "## 未解决\n\n## 不可解局限\n"
+
+const openItemsArchiveScaffold = "## 已闭环\n"
 
 // EnsureSharedScaffold 在 shared 目录下为 task_context.md 与 open_items.md 预置骨架，
 // 保证两文件确定性存在（内容仍由模型按各 prompt 纪律覆盖写入）。仅当文件不存在时写入，
@@ -80,8 +84,9 @@ func (w *localWorkspaceRuntime) EnsureSharedScaffold() error {
 		return err
 	}
 	scaffolds := map[string]string{
-		"task_context.md": taskContextScaffold,
-		"open_items.md":   openItemsScaffold,
+		"task_context.md":       taskContextScaffold,
+		"open_items.md":         openItemsScaffold,
+		"open_items_archive.md": openItemsArchiveScaffold,
 	}
 	for name, content := range scaffolds {
 		absPath := filepath.Join(sharedDir, name)
