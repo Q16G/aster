@@ -185,12 +185,23 @@ func TestSoftResetWithContext_GoalUnderstandingRestored(t *testing.T) {
 	}
 
 	const wantGU = "**核心目标**：对项目执行深度全量安全审计"
+	const wantGoal = "深度分析 /test/MCMS 全量安全审计"
 	rtState := builtin_tools.StateSnapshot{
 		StepOutcomes: []*builtin_tools.StepOutcome{
 			{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "recon"},
 		},
 		InputTimeline:     []*builtin_tools.TimelineInput{{Content: "深度分析", CreatedAt: time.Now()}},
 		GoalUnderstanding: wantGU,
+		CurrentGoal:       wantGoal,
+		CurrentStepID:     "s2",
+		PlanVersion:       3,
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "s1", Step: "recon", Status: builtin_tools.PlanStepCompleted},
+			{ID: "s2", Step: "decompile", Status: builtin_tools.PlanStepPending},
+		},
+		// 瞬态字段：应在恢复时被重置，不得 carry 过来
+		ReplanContext: &builtin_tools.ReplanContext{Reason: "stale"},
+		Error:         "stale error",
 	}
 	rtRaw, _ := json.Marshal(rtState)
 	rtRef, err := store.WriteBlob(rtRaw)
@@ -212,11 +223,36 @@ func TestSoftResetWithContext_GoalUnderstandingRestored(t *testing.T) {
 	if state.GoalUnderstanding != wantGU {
 		t.Errorf("GoalUnderstanding = %q, want %q", state.GoalUnderstanding, wantGU)
 	}
+	if state.CurrentGoal != wantGoal {
+		t.Errorf("CurrentGoal = %q, want %q", state.CurrentGoal, wantGoal)
+	}
+	if state.CurrentStepID != "s2" {
+		t.Errorf("CurrentStepID = %q, want s2", state.CurrentStepID)
+	}
+	if state.PlanVersion != 3 {
+		t.Errorf("PlanVersion = %d, want 3", state.PlanVersion)
+	}
+	if len(state.Plan) != 2 {
+		t.Errorf("Plan len = %d, want 2", len(state.Plan))
+	}
 	if len(state.StepOutcomes) != 1 {
 		t.Errorf("StepOutcomes len = %d, want 1", len(state.StepOutcomes))
 	}
 	if len(state.InputTimeline) != 1 {
 		t.Errorf("InputTimeline len = %d, want 1", len(state.InputTimeline))
+	}
+	// 瞬态字段必须被重置
+	if state.ReplanContext != nil {
+		t.Errorf("ReplanContext = %+v, want nil (transient reset)", state.ReplanContext)
+	}
+	if state.Error != "" {
+		t.Errorf("Error = %q, want empty (transient reset)", state.Error)
+	}
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if state.Status != builtin_tools.TaskStatusPreparing {
+		t.Errorf("Status = %q, want preparing", state.Status)
 	}
 }
 

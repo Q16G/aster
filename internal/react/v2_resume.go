@@ -83,9 +83,8 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 		return
 	}
 
-	var outcomes []*builtin_tools.StepOutcome
-	var timeline []*builtin_tools.TimelineInput
-	var goalUnderstanding string
+	var st builtin_tools.StateSnapshot
+	var haveState bool
 
 	if ref := strings.TrimSpace(snap.RuntimeStateBlobRef); ref != "" {
 		raw, err := store.ReadBlob(ref)
@@ -95,17 +94,17 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 			return
 		}
 		if len(raw) > 0 {
-			var st builtin_tools.StateSnapshot
 			if err := json.Unmarshal(raw, &st); err != nil {
 				runtimelog.LogJSON("warn", map[string]any{"msg": "softResetWithContext: unmarshal runtime_state", "error": err.Error()})
 				a.state.SoftReset(nil, nil)
 				return
 			}
-			outcomes = st.StepOutcomes
-			timeline = st.InputTimeline
-			goalUnderstanding = strings.TrimSpace(st.GoalUnderstanding)
+			haveState = true
 		}
 	}
+
+	outcomes := st.StepOutcomes
+	timeline := st.InputTimeline
 
 	if len(outcomes) > 0 && client != nil {
 		reduced, err := a.reduceStepOutcomesIfNeeded(ctx, client, outcomes)
@@ -116,12 +115,13 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 		}
 	}
 
-	a.state.SoftReset(outcomes, timeline)
-
-	// 跨会话 carry/replan 恢复时，把持久化的 goal_understanding 还原进 state——否则
-	// SoftReset 清零后注入空 GU，planner 会把补充输入当全新意图整体重写（漂移）。
-	if goalUnderstanding != "" {
-		a.state.SetGoalUnderstanding(goalUnderstanding)
+	// 跨会话 carry/replan 恢复时，从持久化 snapshot 继承续写上下文（goal_understanding /
+	// CurrentGoal / Plan 等）——否则清零后 planner 会把补充输入当全新意图整体重写（漂移）。
+	// blob 缺失/为空时退化为清空式 SoftReset，等价 Reset。
+	if haveState {
+		a.state.SoftResetFrom(st, outcomes, timeline)
+	} else {
+		a.state.SoftReset(outcomes, timeline)
 	}
 
 	if ref := strings.TrimSpace(snap.ConversationHistoryBlobRef); ref != "" {

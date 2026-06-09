@@ -772,6 +772,34 @@ func (t *StateTracker) SoftReset(outcomes []*builtin_tools.StepOutcome, timeline
 	}
 }
 
+// SoftResetFrom 从持久化 snapshot 继承续写上下文（goal_understanding / CurrentGoal /
+// Plan / PlanVersion / CurrentStepID / UnresolvedAxes / Active*），同时把相位与瞬态执行
+// 字段重置到"待规划"起点。用于跨会话 carry/replan 恢复，避免丢弃原意图与原计划导致漂移。
+// outcomes/timeline 由调用方（经 reducer 压缩后）显式传入。
+func (t *StateTracker) SoftResetFrom(
+	st builtin_tools.StateSnapshot,
+	outcomes []*builtin_tools.StepOutcome,
+	timeline []*builtin_tools.TimelineInput,
+) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state = &builtin_tools.StateSnapshot{
+		Phase:             builtin_tools.AgentPhasePlan,
+		Status:            builtin_tools.TaskStatusPreparing,
+		GoalUnderstanding: strings.TrimSpace(st.GoalUnderstanding),
+		CurrentGoal:       strings.TrimSpace(st.CurrentGoal),
+		CurrentStepID:     strings.TrimSpace(st.CurrentStepID),
+		Plan:              st.Plan,
+		PlanVersion:       st.PlanVersion,
+		UnresolvedAxes:    st.UnresolvedAxes,
+		ActiveSkillNames:  st.ActiveSkillNames,
+		ActiveMCPServers:  st.ActiveMCPServers,
+		StepOutcomes:      outcomes,
+		InputTimeline:     timeline,
+		UpdatedAt:         time.Now(),
+	}
+}
+
 // ReplaceStepOutcomes 原子替换 state 中的 StepOutcomes（用于 reducer 写回压缩结果）。
 func (t *StateTracker) ReplaceStepOutcomes(outcomes []*builtin_tools.StepOutcome) {
 	t.mu.Lock()
