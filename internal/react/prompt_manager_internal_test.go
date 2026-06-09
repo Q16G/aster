@@ -450,9 +450,9 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 	if strings.Contains(with, "合并进父账本") {
 		t.Fatalf("step_replan must NOT render open_items 子合并 (moved to think_act 5.1f), got:\n%s", with)
 	}
-	// 消费者分职：补合成四类标记 + 数据流反转措辞。
+	// 消费者分职：补合成四类 + 多源兜底补全 + 数据流反转措辞。
 	for _, needle := range []string{
-		"step_replan 消费为主 + 补写独有合成",
+		"step_replan 消费为主 + 合成补写 + 多源兜底补全",
 		"双写者分工",
 		"先有账本再有三轴",
 	} {
@@ -460,11 +460,13 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Issue A bridge: actionable carried items land in ledger first, axes are projection (workspace only).
+	// Issue A bridge + multi-source co-determination: actionable carried items land in ledger first;
+	// the ledger is a complete superset co-determined by task_context + step context, axes project from it (workspace only).
 	for _, needle := range []string{
 		"落账本 `## 未解决`",
 		"由步骤 4 投影成轴",
-		"轴是账本的本轮投影、不是独立落点",
+		"账本是完整超集与持久落点",
+		"多源兜底补全",
 	} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
@@ -529,7 +531,7 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 		}
 	}
 	// Issue A bridge is workspace-gated: else branch stays axis-centric, no ledger-projection wording.
-	if strings.Contains(without, "轴是账本的本轮投影、不是独立落点") {
+	if strings.Contains(without, "账本是完整超集与持久落点") {
 		t.Fatalf("step_replan no-shared must NOT render the ledger-projection bridge, got:\n%s", without)
 	}
 	if !strings.Contains(without, "升进对应轴") {
