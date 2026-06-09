@@ -3,6 +3,7 @@ package react
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"aster/internal/ai"
@@ -15,6 +16,8 @@ type intentClassificationModelOutput struct {
 	Reason string `json:"reason"`
 }
 
+const submitIntentToolName = builtin_tools.SubmitIntentToolName
+
 func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
 	_ = a.state.SetPhase(builtin_tools.AgentPhaseIntentClassification)
 	snapshot := a.state.Snapshot()
@@ -24,38 +27,120 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	})
 
 	input := buildIntentClassificationInput(snapshot)
+	if a.workspaceRuntime != nil {
+		input.WorkspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	}
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		a.emitRuntimeLog("warn", "build intent classification prompt failed, fallback to carry", snapshot, map[string]any{
 			"error": err.Error(),
 		})
-		return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry"})
+		return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "build prompt fallback"})
 	}
 
-	callCtx, callCancel := context.WithCancel(ctx)
-	callResult, err := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition)
-	callCancel()
-	if err != nil {
-		a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{
-			"error": err.Error(),
-		})
-		return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry"})
+	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseIntentClassification)
+	fnTools = append(fnTools, buildSubmitIntentFunctionTool())
+
+	const maxSubmitRetries = 3
+	const maxRounds = 8
+	submitRetries := 0
+
+	for round := 0; round < maxRounds; round++ {
+		if ctx != nil && ctx.Err() != nil {
+			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "context canceled fallback"})
+		}
+		callCtx, callCancel := context.WithCancel(ctx)
+		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition, fnTools...)
+		callCancel()
+		if callErr != nil {
+			a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{
+				"error": callErr.Error(),
+			})
+			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "ai call fallback"})
+		}
+
+		// 无工具调用：尝试从文本兜底解析，再不行降级 carry。
+		if len(callResult.ToolCalls) == 0 {
+			result := parseIntentClassificationOutput(strings.TrimSpace(callResult.AssistantText))
+			a.emitIntentClassified(snapshot, result)
+			return a.applyIntentClassification(snapshot, result)
+		}
+
+		anyUsefulTool := false
+		for _, tc := range callResult.ToolCalls {
+			if ctx != nil && ctx.Err() != nil {
+				break
+			}
+			if tc == nil || tc.Function == nil {
+				continue
+			}
+			if tc.Function.Name == submitIntentToolName {
+				parsed, parseErr := parseSubmitIntentArgs(tc.Function.Arguments)
+				if parseErr != nil {
+					submitRetries++
+					if submitRetries > maxSubmitRetries {
+						a.emitRuntimeLog("warn", "submit_intent retries exhausted, fallback to carry", snapshot, map[string]any{
+							"error": parseErr.Error(),
+						})
+						return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "submit retry fallback"})
+					}
+					a.AICallProxyWriteToolResult(
+						strings.TrimSpace(tc.Id), submitIntentToolName,
+						"", nil, "",
+						fmt.Sprintf("submit_intent 参数校验失败: %s\n请修正后重新调用 submit_intent。", parseErr.Error()),
+						false,
+					)
+					anyUsefulTool = true
+					continue
+				}
+				a.emitIntentClassified(snapshot, parsed)
+				return a.applyIntentClassification(snapshot, parsed)
+			}
+			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
+				anyUsefulTool = true
+				if execErr := a.executeToolCall(ctx, iter, tc, allowedTools); execErr != nil {
+					a.emitRuntimeLog("warn", "intent classification tool exec failed, fallback to carry", snapshot, map[string]any{
+						"tool":  strings.TrimSpace(tc.Function.Name),
+						"error": execErr.Error(),
+					})
+					return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "tool exec fallback"})
+				}
+			} else {
+				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+			}
+		}
+
+		// 本轮只产出文本/无可用工具：文本兜底解析后收尾。
+		if !anyUsefulTool {
+			result := parseIntentClassificationOutput(strings.TrimSpace(callResult.AssistantText))
+			a.emitIntentClassified(snapshot, result)
+			return a.applyIntentClassification(snapshot, result)
+		}
 	}
 
-	result := parseIntentClassificationOutput(strings.TrimSpace(callResult.AssistantText))
+	// 超出最大轮次仍未提交：安全降级 carry，不中断 resume。
+	a.emitRuntimeLog("warn", "intent classification max rounds reached, fallback to carry", snapshot, map[string]any{
+		"event": "intent_max_rounds",
+	})
+	return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "max rounds fallback"})
+}
 
+func (a *Agent) emitIntentClassified(snapshot builtin_tools.StateSnapshot, result intentClassificationModelOutput) {
 	a.emitRuntimeLog("info", "intent classification result", snapshot, map[string]any{
 		"event":  "intent_classified",
 		"action": result.Action,
 		"reason": result.Reason,
 	})
-
-	return a.applyIntentClassification(snapshot, result)
 }
 
 func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) IntentClassificationPromptInput {
 	input := IntentClassificationPromptInput{
-		PreviousGoal: strings.TrimSpace(snapshot.CurrentGoal),
+		GoalUnderstanding: strings.TrimSpace(snapshot.GoalUnderstanding),
+		PreviousGoal:      strings.TrimSpace(snapshot.CurrentGoal),
+		Status:            string(snapshot.Status),
+		HasFinalAnswer:    snapshot.FinalAnswer != nil,
+		Interrupted:       snapshot.ExternalInterrupt != nil,
+		LatestInput:       latestInputContent(snapshot),
 	}
 
 	for _, item := range snapshot.Plan {
@@ -113,6 +198,51 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 	}
 
 	return input
+}
+
+// buildSubmitIntentFunctionTool 从 builtin_tools.SubmitIntentTool 取契约（名称 / 描述 /
+// JSON-SCHEMA 参数），构造供模型调用的 function tool。
+func buildSubmitIntentFunctionTool() *ai.FunctionTool {
+	tool := builtin_tools.NewSubmitIntentTool()
+	return &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        tool.Name(),
+			Description: tool.Description(),
+			Parameters:  tool.Parameters(),
+		},
+	}
+}
+
+func parseSubmitIntentArgs(args any) (intentClassificationModelOutput, error) {
+	var raw string
+	switch v := args.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return intentClassificationModelOutput{}, fmt.Errorf("submit_intent: marshal args failed: %w", err)
+		}
+		raw = string(data)
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return intentClassificationModelOutput{}, fmt.Errorf("submit_intent: empty arguments")
+	}
+
+	var out intentClassificationModelOutput
+	if err := json.Unmarshal([]byte(raw), &out); err == nil && isValidIntentAction(out.Action) {
+		return out, nil
+	}
+	for _, candidate := range jsonextractor.ExtractObjectsOnly(raw) {
+		if err := json.Unmarshal([]byte(candidate), &out); err == nil && isValidIntentAction(out.Action) {
+			return out, nil
+		}
+	}
+	return intentClassificationModelOutput{}, fmt.Errorf("submit_intent: invalid or missing action in %q", raw)
 }
 
 func parseIntentClassificationOutput(raw string) intentClassificationModelOutput {

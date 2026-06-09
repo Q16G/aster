@@ -118,12 +118,18 @@ type TaskPlannerPromptInput struct {
 }
 
 type IntentClassificationPromptInput struct {
-	PreviousGoal   string
-	CompletedCount int
-	TotalCount     int
-	RecentOutcomes []IntentOutcomeSummary
-	PendingSteps   []IntentPendingStep
-	InputTimeline  []IntentTimelineEntry
+	GoalUnderstanding  string
+	PreviousGoal       string
+	Status             string
+	HasFinalAnswer     bool
+	Interrupted        bool
+	CompletedCount     int
+	TotalCount         int
+	RecentOutcomes     []IntentOutcomeSummary
+	PendingSteps       []IntentPendingStep
+	InputTimeline      []IntentTimelineEntry
+	LatestInput        string
+	WorkspaceSharedDir string
 }
 
 type IntentPendingStep struct {
@@ -427,14 +433,22 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.intentClassificationTmpl.Execute(buf, map[string]any{
-		"PREVIOUS_GOAL":       strings.TrimSpace(input.PreviousGoal),
-		"COMPLETED_COUNT":     input.CompletedCount,
-		"TOTAL_COUNT":         input.TotalCount,
-		"HAS_RECENT_OUTCOMES": len(input.RecentOutcomes) > 0,
-		"RECENT_OUTCOMES":     input.RecentOutcomes,
-		"HAS_PENDING_STEPS":   len(input.PendingSteps) > 0,
-		"PENDING_STEPS":       input.PendingSteps,
-		"INPUT_TIMELINE":      input.InputTimeline,
+		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"PREVIOUS_GOAL":          strings.TrimSpace(input.PreviousGoal),
+		"STATUS":                 strings.TrimSpace(input.Status),
+		"HAS_FINAL_ANSWER":       input.HasFinalAnswer,
+		"INTERRUPTED":            input.Interrupted,
+		"COMPLETED_COUNT":        input.CompletedCount,
+		"TOTAL_COUNT":            input.TotalCount,
+		"HAS_RECENT_OUTCOMES":    len(input.RecentOutcomes) > 0,
+		"RECENT_OUTCOMES":        input.RecentOutcomes,
+		"HAS_PENDING_STEPS":      len(input.PendingSteps) > 0,
+		"PENDING_STEPS":          input.PendingSteps,
+		"INPUT_TIMELINE":         input.InputTimeline,
+		"LATEST_INPUT":           strings.TrimSpace(input.LatestInput),
+		"HAS_WORKSPACE_DIR":      strings.TrimSpace(input.WorkspaceSharedDir) != "",
+		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
 	}); err != nil {
 		return "", err
 	}
