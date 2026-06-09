@@ -821,15 +821,17 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			m.syncAutoFollowFromViewport()
 			return m, nil
 		case "down", "j":
-			for j := m.cursor + 1; j < len(m.parts); j++ {
+			// 一键滑到最底部：把光标对齐到最后一个主时间线可见 part，
+			// 使后续 up/enter/space 仍连贯，并重新开启自动跟随底部。
+			for j := len(m.parts) - 1; j >= 0; j-- {
 				if m.mainVisible(j) {
 					m.cursor = j
 					break
 				}
 			}
 			m.refreshContent()
-			m.scrollToCursor()
-			m.syncAutoFollowFromViewport()
+			m.viewport.GotoBottom()
+			m.autoFollowBottom = true
 			return m, nil
 		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.parts) {
