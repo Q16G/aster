@@ -44,6 +44,15 @@ type ThinkActPromptInput struct {
 	CanSpawnSubAgent        bool
 }
 
+// AvailableToolInfo is a render-friendly view of a tool that is actually
+// available to the agent in a given phase, used to render the prompt's tool
+// list dynamically instead of hard-coding it (so the advertised set always
+// matches the registered set).
+type AvailableToolInfo struct {
+	Name        string
+	Description string
+}
+
 type StepReplanPromptInput struct {
 	AgentRole              string
 	AgentBackground        string
@@ -66,6 +75,8 @@ type StepReplanPromptInput struct {
 	StepTimelinePath       string
 	SkillsContext          *SkillsPromptContext
 	HasSkillsTable         bool
+	AvailableTools         []AvailableToolInfo
+	HasAvailableTools      bool
 }
 
 type FinalAnswerPromptInput struct {
@@ -115,6 +126,8 @@ type TaskPlannerPromptInput struct {
 	HasMCPTable        bool
 	SkillsOverflowPath string
 	MCPOverflowPath    string
+	AvailableTools     []AvailableToolInfo
+	HasAvailableTools  bool
 }
 
 type IntentClassificationPromptInput struct {
@@ -309,6 +322,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_TIMELINE_PATH":           input.StepTimelinePath,
 		"SKILLS_CONTEXT":               input.SkillsContext,
 		"HAS_SKILLS_TABLE":             input.HasSkillsTable,
+		"AVAILABLE_TOOLS":              input.AvailableTools,
+		"HAS_AVAILABLE_TOOLS":          input.HasAvailableTools,
 	}); err != nil {
 		return "", err
 	}
@@ -393,6 +408,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"HAS_MCP_TABLE":          input.HasMCPTable,
 		"SKILLS_OVERFLOW_PATH":   strings.TrimSpace(input.SkillsOverflowPath),
 		"MCP_OVERFLOW_PATH":      strings.TrimSpace(input.MCPOverflowPath),
+		"AVAILABLE_TOOLS":        input.AvailableTools,
+		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools,
 	}); err != nil {
 		return "", err
 	}

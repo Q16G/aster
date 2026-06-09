@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -503,17 +504,22 @@ func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.Function
 }
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
+	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
+
+	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
+	input.HasAvailableTools = len(input.AvailableTools) > 0
+
 	prompt, err := promptBuilder.BuildPrompt(input)
 	if err != nil {
 		return nil, fmt.Errorf("build task planner prompt failed: %w", err)
 	}
 
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
-
 	const maxSubmitRetries = 3
+	const maxNoUsefulPlanRounds = 2
 	submitRetries := 0
 	clarificationRounds := 0
+	noUsefulRounds := 0
 
 	for round := 0; ; round++ {
 		if ctx.Err() != nil {
@@ -601,13 +607,63 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					return nil, err
 				}
 			} else {
-				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "",
+					fmt.Sprintf("工具 %q 在当前 plan 阶段不可用。本阶段可用工具：%s。若已具备规划所需信息，请直接调用 submit_plan 提交计划。",
+						strings.TrimSpace(tc.Function.Name), strings.Join(sortedToolNames(allowedTools, submitPlanToolName, requestClarificationToolName), ", ")),
+					false)
 			}
 		}
 		if !anyUsefulTool {
-			return nil, fmt.Errorf("planner produced no plan and no usable tool calls")
+			noUsefulRounds++
+			if noUsefulRounds > maxNoUsefulPlanRounds {
+				return nil, fmt.Errorf("planner produced no plan and no usable tool calls")
+			}
 		}
 	}
+}
+
+func functionToolsToAvailableInfo(fnTools []*ai.FunctionTool) []AvailableToolInfo {
+	infos := make([]AvailableToolInfo, 0, len(fnTools))
+	for _, ft := range fnTools {
+		if ft == nil || ft.Function == nil {
+			continue
+		}
+		name := strings.TrimSpace(ft.Function.Name)
+		if name == "" {
+			continue
+		}
+		infos = append(infos, AvailableToolInfo{
+			Name:        name,
+			Description: strings.TrimSpace(ft.Function.Description),
+		})
+	}
+	return infos
+}
+
+// sortedToolNames returns a stable, de-duplicated list of tool names from the
+// allowed set plus any extra names, for use in operator-facing feedback.
+func sortedToolNames(allowed map[string]struct{}, extra ...string) []string {
+	seen := make(map[string]struct{}, len(allowed)+len(extra))
+	names := make([]string, 0, len(allowed)+len(extra))
+	add := func(n string) {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			return
+		}
+		if _, ok := seen[n]; ok {
+			return
+		}
+		seen[n] = struct{}{}
+		names = append(names, n)
+	}
+	for n := range allowed {
+		add(n)
+	}
+	for _, n := range extra {
+		add(n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func buildSubmitPlanFunctionTool() *ai.FunctionTool {

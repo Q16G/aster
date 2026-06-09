@@ -92,6 +92,9 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
 	}
 
+	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
+	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
+
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":             snapshot.CurrentGoal,
 		"goal_understanding":       snapshot.GoalUnderstanding,
@@ -109,13 +112,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"step_transcript_path":     stepTranscriptPath,
 		"step_timeline_path":       stepTimelinePath,
 		"skills_context":           skillsCtx,
+		"available_tools":          functionToolsToAvailableInfo(fnTools),
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
 	}
-
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
-	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
 
 	const maxSubmitRetries = 3
 	submitRetries := 0

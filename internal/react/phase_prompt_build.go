@@ -16,6 +16,10 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 	if sc, ok := payload["skills_context"].(*SkillsPromptContext); ok {
 		skillsCtx = sc
 	}
+	var availableTools []AvailableToolInfo
+	if at, ok := payload["available_tools"].([]AvailableToolInfo); ok {
+		availableTools = at
+	}
 	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
 		AgentRole:              strings.TrimSpace(a.cfg.Role),
 		AgentBackground:        strings.TrimSpace(a.cfg.Background),
@@ -38,6 +42,8 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
 		StepTimelinePath:       stringFromPayload(payload, "step_timeline_path"),
 		SkillsContext:          skillsCtx,
 		HasSkillsTable:         skillsCtx != nil && skillsCtx.HasTable(),
+		AvailableTools:         availableTools,
+		HasAvailableTools:      len(availableTools) > 0,
 	})
 }
 
