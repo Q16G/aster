@@ -533,6 +533,15 @@ func maxInt(a int, b int) int {
 	return b
 }
 
+// sanitizeOutboundForVision 在模型不支持视觉时剥离出站消息中的 image_url。
+// 非破坏式：返回剥离后的副本，原 msgs / stepHistory 不受影响。
+func sanitizeOutboundForVision(client ai.ChatClient, msgs []*ai.MsgInfo) []*ai.MsgInfo {
+	if ModelSupportsVision(client) {
+		return msgs
+	}
+	return stripImagesFromExcerpt(msgs)
+}
+
 func stripImagesFromExcerpt(msgs []*ai.MsgInfo) []*ai.MsgInfo {
 	out := make([]*ai.MsgInfo, 0, len(msgs))
 	for _, msg := range msgs {

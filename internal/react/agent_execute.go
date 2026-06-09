@@ -1272,6 +1272,10 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		}
 	}
 
+	// 非视觉模型：发送前剥离 image_url，避免 DeepSeek 等返回 HTTP 400。
+	// 仅作用于出站副本，a.stepHistory 中的原图保留，切回视觉模型可恢复。
+	msgs = sanitizeOutboundForVision(runClient, msgs)
+
 	const emptyResponseMaxRetries = 5
 
 	for attempt := 0; attempt <= emptyResponseMaxRetries; attempt++ {

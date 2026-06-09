@@ -427,3 +427,55 @@ func TestStripImagesFromExcerpt_EmptyChatContext(t *testing.T) {
 		t.Fatalf("unexpected: %q", s)
 	}
 }
+
+func sanitizeVisionTestMsgs() []*ai.MsgInfo {
+	return []*ai.MsgInfo{
+		ai.NewSystemMsgInfo("system"),
+		{
+			Role: "user",
+			Content: []*ai.ChatContext{
+				{Type: "text", Text: "see image"},
+				{Type: "image_url", ImageURL: map[string]any{"url": "data:image/png;base64,AAAA"}},
+			},
+		},
+	}
+}
+
+func msgsContainImageURL(msgs []*ai.MsgInfo) bool {
+	for _, msg := range msgs {
+		contexts, ok := msg.Content.([]*ai.ChatContext)
+		if !ok {
+			continue
+		}
+		for _, ctx := range contexts {
+			if ctx != nil && ctx.Type == "image_url" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestSanitizeOutboundForVision_NonVisionStrips(t *testing.T) {
+	client := &stepHistoryCompactionTestClient{modelName: "deepseek-chat"}
+	if ModelSupportsVision(client) {
+		t.Fatalf("precondition: deepseek-chat must resolve to no vision support")
+	}
+
+	result := sanitizeOutboundForVision(client, sanitizeVisionTestMsgs())
+	if msgsContainImageURL(result) {
+		t.Fatalf("expected image_url to be stripped for non-vision model")
+	}
+}
+
+func TestSanitizeOutboundForVision_VisionPreserves(t *testing.T) {
+	client := &stepHistoryCompactionTestClient{modelName: "gpt-4o"}
+	if !ModelSupportsVision(client) {
+		t.Fatalf("precondition: gpt-4o must resolve to vision support")
+	}
+
+	result := sanitizeOutboundForVision(client, sanitizeVisionTestMsgs())
+	if !msgsContainImageURL(result) {
+		t.Fatalf("expected image_url to be preserved for vision model")
+	}
+}
