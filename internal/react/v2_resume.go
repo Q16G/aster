@@ -85,6 +85,7 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 
 	var outcomes []*builtin_tools.StepOutcome
 	var timeline []*builtin_tools.TimelineInput
+	var goalUnderstanding string
 
 	if ref := strings.TrimSpace(snap.RuntimeStateBlobRef); ref != "" {
 		raw, err := store.ReadBlob(ref)
@@ -102,6 +103,7 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 			}
 			outcomes = st.StepOutcomes
 			timeline = st.InputTimeline
+			goalUnderstanding = strings.TrimSpace(st.GoalUnderstanding)
 		}
 	}
 
@@ -115,6 +117,12 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 	}
 
 	a.state.SoftReset(outcomes, timeline)
+
+	// 跨会话 carry/replan 恢复时，把持久化的 goal_understanding 还原进 state——否则
+	// SoftReset 清零后注入空 GU，planner 会把补充输入当全新意图整体重写（漂移）。
+	if goalUnderstanding != "" {
+		a.state.SetGoalUnderstanding(goalUnderstanding)
+	}
 
 	if ref := strings.TrimSpace(snap.ConversationHistoryBlobRef); ref != "" {
 		raw, err := store.ReadBlob(ref)
