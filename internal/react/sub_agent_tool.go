@@ -310,8 +310,8 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 }
 
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
+	var result []string
 	if len(requested) > 0 {
-		var result []string
 		for _, name := range requested {
 			name = strings.TrimSpace(name)
 			if name == "" {
@@ -328,9 +328,46 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 				result = append(result, name)
 			}
 		}
-		return result
+	} else {
+		result = t.parentDomainToolNames()
 	}
-	return t.parentDomainToolNames()
+	// Always guarantee the read-only builtin domain tools regardless of what the
+	// parent requested. plan/replan/final phases structurally rely on them (their
+	// prompts advertise read_file/list_files/rg), so a child must have them even
+	// when the parent passed an unrelated or policy-only tools list (e.g.
+	// tools:["bash"] strips down to empty and previously dropped these entirely).
+	return t.withBaselineDomainTools(result)
+}
+
+// withBaselineDomainTools unions the read-only builtin domain tools into names,
+// guarded by registry.Has and de-duplicated, preserving the original order.
+func (t *SubAgentTool) withBaselineDomainTools(names []string) []string {
+	seen := make(map[string]struct{}, len(names)+len(baselineDomainToolNames))
+	for _, name := range names {
+		seen[name] = struct{}{}
+	}
+	for _, name := range baselineDomainToolNames {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if t.factory == nil || t.factory.toolRegistry == nil || !t.factory.toolRegistry.Has(name) {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+// baselineDomainToolNames are the read-only builtin domain tools every agent
+// (including sub-agents) must always have. They are registry-resident "common
+// utilities" (see NewDefaultToolRegistry) and plan/replan/final prompts assume
+// their presence, so they are unioned into every child's ToolNames regardless
+// of what the parent requested.
+var baselineDomainToolNames = []string{
+	builtin_tools.ReadFileToolName,
+	builtin_tools.ListFilesToolName,
+	builtin_tools.RgToolName,
 }
 
 // policyManagedTools lists tools hard-wired by NewReActAgent / AgentFactory.Build
