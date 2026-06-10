@@ -92,7 +92,7 @@ func hasAnyCheckpoint(planCurrent *planCurrentCheckpoint, workspaceState *builti
 	if finalAssessment != nil {
 		return true
 	}
-	if planCurrent != nil && len(planCurrent.Plan) > 0 {
+	if planCurrent != nil && planCurrent.PlanVersion > 0 {
 		return true
 	}
 	if workspaceState != nil && (len(workspaceState.LatestStepOutcomes) > 0 || workspaceState.LatestFinalSeq > 0) {
@@ -186,7 +186,17 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		UpdatedAt: now,
 	}
 
-	// 1) final_assessment.assessed_state (strongest payload for plan/outcomes)
+	// 0) workspace/planner.jsonl —— plan 唯一真相源（step 终态即时 append，比任何
+	//    checkpoint 快照都新）。journal 缺失（旧 session）时回退 assessed_state。
+	if writer != nil {
+		if items, version, err := builtin_tools.LoadPlannerJournal(writer.sessionRoot); err == nil && len(items) > 0 {
+			snapshot.Plan = items
+			snapshot.PlanVersion = version
+		}
+	}
+
+	// 1) final_assessment.assessed_state (strongest payload for outcomes; plan 仅作
+	//    journal 缺失时的回退来源)
 	if finalAssessment != nil {
 		payload := finalAssessment.AssessedState
 		if strings.TrimSpace(string(payload.Status)) != "" {
@@ -195,8 +205,10 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		snapshot.Error = strings.TrimSpace(payload.StateError)
 		snapshot.InputTimeline = payload.InputTimeline
 		snapshot.NeedsPlanning = payload.NeedsPlanning
-		snapshot.Plan = payload.Plan
-		snapshot.PlanVersion = payload.PlanVersion
+		if len(snapshot.Plan) == 0 {
+			snapshot.Plan = payload.Plan
+			snapshot.PlanVersion = payload.PlanVersion
+		}
 		snapshot.StepOutcomes = payload.StepOutcomes
 		snapshot.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(payload.ExternalInterrupt)
 		snapshot.Warnings = payload.Warnings
@@ -237,9 +249,6 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 			if planCurrent.Phase != "" {
 				snapshot.Phase = planCurrent.Phase
 			}
-		}
-		if len(snapshot.Plan) == 0 && len(planCurrent.Plan) > 0 {
-			snapshot.Plan = planCurrent.Plan
 		}
 		if snapshot.PlanVersion <= 0 && planCurrent.PlanVersion > 0 {
 			snapshot.PlanVersion = planCurrent.PlanVersion

@@ -306,7 +306,6 @@ func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID 
 		Status:            snapshot.Status,
 		UpdatedAt:         time.Now(),
 		Explanation:       strings.TrimSpace(explanation),
-		Plan:              snapshot.Plan,
 		Warnings:          snapshot.Warnings,
 		UnresolvedAxes:    builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes),
 		ReplanContext:     builtin_tools.CloneReplanContext(snapshot.ReplanContext),

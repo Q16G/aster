@@ -27,6 +27,7 @@ func (a *Agent) restoreRuntimeFromV2Snapshot(store *persistv2.Store, snap *persi
 			if err := json.Unmarshal(raw, &st); err != nil {
 				return fmt.Errorf("unmarshal runtime_state: %w", err)
 			}
+			a.alignPlanWithJournal(&st)
 			a.state.Replace(st)
 		}
 	}
@@ -70,6 +71,26 @@ func (a *Agent) restoreRuntimeFromV2Snapshot(store *persistv2.Store, snap *persi
 		a.stepHistoryPlanVer = st.PlanVersion
 	}
 	return nil
+}
+
+// alignPlanWithJournal 用 planner.jsonl（plan 真相源，step 终态即时 append）校准恢复
+// 出的 plan：journal 非空且版本不落后时以重放结果为准——blob 在 turn 边界落盘，崩溃
+// 窗口内的 step 终态只有 journal 持有。journal 缺失（旧 session）时保持 blob 原样。
+func (a *Agent) alignPlanWithJournal(st *builtin_tools.StateSnapshot) {
+	if a == nil || a.workspaceRuntime == nil || st == nil {
+		return
+	}
+	items, version, err := builtin_tools.LoadPlannerJournal(a.workspaceRuntime.RootDir())
+	if err != nil {
+		runtimelog.LogJSON("warn", map[string]any{"msg": "alignPlanWithJournal: load planner journal", "error": err.Error()})
+		return
+	}
+	if len(items) == 0 || version < st.PlanVersion {
+		return
+	}
+	st.Plan = items
+	st.PlanVersion = version
+	builtin_tools.HydratePlanRelations(st.Plan)
 }
 
 // softResetWithContext 从 V2 snapshot 读取前序上下文（StepOutcomes + InputTimeline +
@@ -119,6 +140,7 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 	// CurrentGoal / Plan 等）——否则清零后 planner 会把补充输入当全新意图整体重写（漂移）。
 	// blob 缺失/为空时退化为清空式 SoftReset，等价 Reset。
 	if haveState {
+		a.alignPlanWithJournal(&st)
 		a.state.SoftResetFrom(st, outcomes, timeline)
 	} else {
 		a.state.SoftReset(outcomes, timeline)

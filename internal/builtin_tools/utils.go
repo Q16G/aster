@@ -191,6 +191,21 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 			Step:      step,
 			Status:    status,
 			DependsOn: CloneStringSlice(item.DependsOn),
+
+			// 产出与指针字段随归一化保留：重规划保留 completed 项、journal 重放
+			// 等路径都经过这里，丢失即破坏 plan 真相源的烘焙数据。
+			ShortSummary:    strings.TrimSpace(item.ShortSummary),
+			KeyFacts:        CloneStringSlice(item.KeyFacts),
+			ToolCallsDigest: CloneStringSlice(item.ToolCallsDigest),
+			OpenItemIDs:     CloneStringSlice(item.OpenItemIDs),
+			StepFile:        strings.TrimSpace(item.StepFile),
+			ResultFile:      strings.TrimSpace(item.ResultFile),
+			TimelineFile:    strings.TrimSpace(item.TimelineFile),
+			CoverageFile:    strings.TrimSpace(item.CoverageFile),
+			References:      CloneStringSlice(item.References),
+		}
+		if len(item.CoverageChecklist) > 0 {
+			norm.CoverageChecklist = append([]CoverageChecklistItem(nil), item.CoverageChecklist...)
 		}
 		out = append(out, norm)
 		if _, exists := stepToID[step]; !exists {
