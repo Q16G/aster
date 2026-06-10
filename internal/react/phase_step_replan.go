@@ -238,6 +238,14 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 
+	// tool_calls_digest 以 runtime 对 timeline 的规则归约为权威来源；模型自报仅在
+	// timeline 缺失（如无任何工具调用）时作兜底。
+	if rawOutcome != nil && a.workspaceRuntime != nil {
+		if reduced := reduceStepTimelineToolCallsDigest(a.workspaceRuntime.SharedDir(), stepID); len(reduced) > 0 {
+			rawOutcome.ToolCallsDigest = reduced
+		}
+	}
+
 	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
 
 	var timelineFile string

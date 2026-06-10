@@ -1676,7 +1676,9 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	}
 	defer cancelTimeout()
 
+	toolStart := time.Now()
 	out, err := tool.Execute(execCtx, argsMap)
+	toolDuration := time.Since(toolStart)
 	if err != nil && !isAgent && execCtx.Err() == context.DeadlineExceeded {
 		err = fmt.Errorf("tool %q timed out after %s: %w", toolName, toolTimeout, err)
 	}
@@ -1685,8 +1687,9 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 		errText = err.Error()
 	}
 	var outTruncated, errTruncated bool
-	out, outTruncated = TruncateToolOutput(toolName, out, a.workspaceRootDir)
-	errText, errTruncated = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
+	var outFullPath string
+	out, outTruncated, outFullPath = TruncateToolOutput(toolName, out, a.workspaceRootDir)
+	errText, errTruncated, _ = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
 	if outTruncated || errTruncated {
 		a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{
 			"event":         "tool_output_truncated",
@@ -1706,21 +1709,11 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
 	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
-		payload := map[string]any{
-			"tool":   toolName,
-			"args":   argsMap,
-			"result": out,
-			"error":  errText,
-		}
+		event := newToolCallTimelineEvent(callID, toolName, argsMap, out, errText, outFullPath, toolDuration)
 		if len(render.Media) > 0 {
-			payload["media"] = render.Media
+			event.Payload = map[string]any{"media": render.Media}
 		}
-		_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
-			TS:      time.Now().UTC(),
-			Type:    "tool_call",
-			Key:     callID,
-			Payload: payload,
-		})
+		_ = appendStepTimeline(sharedDir, stepID, event)
 	}
 
 	a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
