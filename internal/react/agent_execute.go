@@ -1211,7 +1211,7 @@ type aiCallProxyResult struct {
 	Compaction    *HistoryCompactionResult
 }
 
-func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, prompt string, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, parts PromptParts, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if a == nil || a.cfg == nil {
 		return nil, fmt.Errorf("agent not initialized")
 	}
@@ -1226,13 +1226,10 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		promptFamily = promptFamilyThinkAct
 	}
 
-	systemMsg := ai.NewSystemMsgInfo(prompt)
-	// State-first: model input is system + in-phase transcript only.
+	// State-first: model input is system(+first user) + in-phase transcript only.
 	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
-	msgs := make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
-	msgs = append(msgs, systemMsg)
-	msgs = append(msgs, a.stepHistory...)
-	requestOptions := a.buildPromptRequestOptions(promptFamily, prompt, true, tools...)
+	msgs := buildOutboundMsgs(parts, a.stepHistory)
+	requestOptions := a.buildPromptRequestOptions(promptFamily, parts, true, tools...)
 
 	// StepHistory compaction: only when approaching the input token budget.
 	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.
@@ -1252,16 +1249,14 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		if estimateHistoryTokens(msgs) >= triggerTokens {
 			// Persist the full transcript snapshot before any in-memory compaction.
 			a.persistStepTranscriptBlob()
-			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, prompt, a.stepHistory)
+			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, parts.Joined(), a.stepHistory)
 			if err != nil {
 				return nil, err
 			}
 			if compacted != nil && len(compacted.StepHistory) > 0 {
 				a.stepHistory = NormalizeHistoryMsgInfos(compacted.StepHistory)
 				a.persistInFlightStepHistory()
-				msgs = make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
-				msgs = append(msgs, systemMsg)
-				msgs = append(msgs, a.stepHistory...)
+				msgs = buildOutboundMsgs(parts, a.stepHistory)
 			}
 			if compacted != nil && !compacted.CanContinue {
 				return nil, &CompactionTerminatedError{

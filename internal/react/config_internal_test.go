@@ -105,7 +105,7 @@ func TestBuildPromptRequestOptions_NilConfig_CacheEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
-	opts := agent.buildPromptRequestOptions("think_act", "test prompt", true)
+	opts := agent.buildPromptRequestOptions("think_act", PromptParts{SystemRules: "test prompt"}, true)
 	if opts == nil || !opts.PromptCacheEnabled {
 		t.Fatal("expected cache enabled when PromptCacheConfig is nil")
 	}
@@ -119,7 +119,7 @@ func TestBuildPromptRequestOptions_ExplicitDisable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
-	opts := agent.buildPromptRequestOptions("think_act", "test prompt", true)
+	opts := agent.buildPromptRequestOptions("think_act", PromptParts{SystemRules: "test prompt"}, true)
 	if opts != nil && opts.PromptCacheEnabled {
 		t.Fatal("expected cache disabled when PromptCacheConfig.Enabled is false")
 	}
@@ -133,7 +133,7 @@ func TestBuildPromptRequestOptions_TTLInjected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
-	opts := agent.buildPromptRequestOptions("think_act", "test prompt", true)
+	opts := agent.buildPromptRequestOptions("think_act", PromptParts{SystemRules: "test prompt"}, true)
 	if opts == nil {
 		t.Fatal("expected non-nil options")
 	}

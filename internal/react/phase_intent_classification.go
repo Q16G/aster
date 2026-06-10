@@ -50,7 +50,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "context canceled fallback"})
 		}
 		callCtx, callCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition, fnTools...)
+		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyIntentRecognition, fnTools...)
 		callCancel()
 		if callErr != nil {
 			a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{

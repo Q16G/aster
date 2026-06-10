@@ -529,7 +529,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 		}
 
 		planCtx, planCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, prompt, "", fnTools...)
+		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyTaskPlanner, fnTools...)
 		planCancel()
 		if callErr != nil {
 			return nil, fmt.Errorf("plan phase AICallProxy failed: %w", callErr)
@@ -1139,7 +1139,7 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	thinkCtx, thinkCancel := context.WithCancel(ctx)
 	defer thinkCancel()
-	callResult, err := a.AICallProxy(thinkCtx, iter, runClient, prompt, "", fnTools...)
+	callResult, err := a.AICallProxy(thinkCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyThinkAct, fnTools...)
 	if err != nil {
 		return err
 	}

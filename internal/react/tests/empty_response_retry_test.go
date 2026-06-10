@@ -95,7 +95,7 @@ func TestAICallProxy_NormalResponse_NotRetried(t *testing.T) {
 	client := &emptyRetryClient{content: "hello world"}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestAICallProxy_NormalToolCall_NotRetried(t *testing.T) {
 	client := &emptyRetryClient{toolCalls: []*ai.FunctionTool{tc}}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestAICallProxy_TextOnlyNoToolCalls_NotRetried(t *testing.T) {
 	client := &emptyRetryClient{content: "thinking out loud..."}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestAICallProxy_APIError_NotRetried(t *testing.T) {
 	}
 	agent := newTestAgent(t, client)
 
-	_, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	_, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -172,7 +172,7 @@ func TestAICallProxy_EmptyResponse_RetriesAndSucceeds(t *testing.T) {
 	}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestAICallProxy_EmptyResponse_RetriesAndSucceedsWithToolCall(t *testing.T) 
 	}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestAICallProxy_EmptyResponse_ExhaustsRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
-	result, err := agent.AICallProxy(ctx, 1, client, "prompt", "")
+	result, err := agent.AICallProxy(ctx, 1, client, PromptParts{SystemRules: "prompt"}, "")
 
 	// Should either return empty result (if some attempts completed)
 	// or context error (if timeout hit during retry wait)
@@ -251,7 +251,7 @@ func TestAICallProxy_EmptyResponse_ContextCancelledDuringRetry(t *testing.T) {
 		cancel()
 	}()
 
-	_, err := agent.AICallProxy(ctx, 1, client, "prompt", "")
+	_, err := agent.AICallProxy(ctx, 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err == nil {
 		t.Fatal("expected context cancelled error, got nil")
 	}
@@ -270,7 +270,7 @@ func TestAICallProxy_NilChoices_Retried(t *testing.T) {
 	// We simulate this by setting emptyCount=1 (returns empty content msg)
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestAICallProxy_StreamingEmptyResponse_RetriesAndSucceeds(t *testing.T) {
 	}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestAICallProxy_StreamingNormalResponse_NotRetried(t *testing.T) {
 	}
 	agent := newTestAgent(t, client)
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestAICallProxy_EmptyResponse_EmitsWarningLog(t *testing.T) {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
 
-	result, errCall := agent.AICallProxy(context.Background(), 1, client, "prompt", "")
+	result, errCall := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "prompt"}, "")
 	if errCall != nil {
 		t.Fatalf("unexpected error: %v", errCall)
 	}
