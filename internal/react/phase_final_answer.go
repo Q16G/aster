@@ -31,6 +31,14 @@ type FinalAnswerModelOutput struct {
 	References  []string `json:"references"`
 }
 
+// axisLen 取 sticky 三轴某一轴的条目数；nil 安全（仅日志计数用）。
+func axisLen(axes *builtin_tools.ReplanAxes, pick func(*builtin_tools.ReplanAxes) []*builtin_tools.AxisItem) int {
+	if axes == nil {
+		return 0
+	}
+	return len(pick(axes))
+}
+
 func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.ChatClient) (builtin_tools.StateSnapshot, error) {
 	_ = a.state.SetPhase(builtin_tools.AgentPhaseFinalAnswer)
 	snapshot := a.state.Snapshot()
@@ -89,9 +97,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			"reason_code":            strings.TrimSpace(externalInterrupt.ReasonCode),
 			"retryable":              externalInterrupt.Retryable,
 			"warnings_count":         len(snapshot.Warnings),
-			"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
-			"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
-			"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
+			"incomplete_items_count": axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.IncompleteItems }),
+			"depth_gaps_count":       axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.DepthGaps }),
+			"new_surfaces_count":     axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.NewSurfaces }),
 		})
 		modelOut = buildExternalInterruptModelOutput(snapshot, externalInterrupt)
 	} else {
@@ -121,9 +129,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				"plan_version":           snapshot.PlanVersion,
 				"step_outcomes_count":    len(snapshot.StepOutcomes),
 				"warnings_count":         len(snapshot.Warnings),
-				"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
-				"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
-				"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
+				"incomplete_items_count": axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.IncompleteItems }),
+				"depth_gaps_count":       axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.DepthGaps }),
+				"new_surfaces_count":     axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.NewSurfaces }),
 			})
 			runtimelog.LogJSON("info", map[string]any{
 				"event":              "final_answer_model_request",

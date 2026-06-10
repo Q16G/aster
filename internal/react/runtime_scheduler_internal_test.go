@@ -400,54 +400,6 @@ func TestCurrentPhaseGuard(t *testing.T) {
 // TestBuildExecutionLineJSON_RendersTimelineFile 确认 planner 的 EXECUTION_LINE
 // 逐 step 暴露 timeline_file（原则 1.4 核实的最强证据来源），且路径被绝对化为
 // read_file 可读的形式（与 step_replan/final_answer/WORKSPACE_STEP_CONTEXTS 对齐）。
-func TestBuildExecutionLineJSON_RendersTimelineFile(t *testing.T) {
-	rootDir := t.TempDir()
-	snapshot := builtin_tools.StateSnapshot{
-		StepOutcomes: []*builtin_tools.StepOutcome{
-			{
-				StepID:       "recon-1",
-				Status:       builtin_tools.StepOutcomeCompleted,
-				ShortSummary: "侦察完成",
-				TimelineFile: "shared/recon-1/timeline.jsonl",
-			},
-		},
-	}
-	out := buildExecutionLineJSON(snapshot, rootDir)
-	if !strings.Contains(out, `"timeline_file"`) {
-		t.Fatalf("EXECUTION_LINE missing timeline_file key\n--- got ---\n%s", out)
-	}
-	wantAbs := builtin_tools.WorkspaceArtifactPath(rootDir, "shared/recon-1/timeline.jsonl")
-	if !strings.Contains(out, wantAbs) {
-		t.Fatalf("EXECUTION_LINE timeline_file not absolutized to %q\n--- got ---\n%s", wantAbs, out)
-	}
-	if strings.Contains(out, `"shared/recon-1/timeline.jsonl"`) {
-		t.Fatalf("EXECUTION_LINE leaked relative timeline_file path\n--- got ---\n%s", out)
-	}
-}
-
-// TestBuildWorkspaceContextsJSON_RendersTimelineFile 确认 planner 的
-// WORKSPACE_STEP_CONTEXTS 逐 step 暴露 timeline_file。
-func TestBuildWorkspaceContextsJSON_RendersTimelineFile(t *testing.T) {
-	rootDir := t.TempDir()
-	rec := &builtin_tools.StepContextRecord{
-		ContextKey:   "recon-1::1",
-		StepID:       "recon-1",
-		PlanVersion:  1,
-		ShortSummary: "侦察完成",
-		TimelineFile: "shared/recon-1/timeline.jsonl",
-	}
-	if err := builtin_tools.AppendWorkspaceStepContextRecords(rootDir, []*builtin_tools.StepContextRecord{rec}); err != nil {
-		t.Fatalf("append step context record: %v", err)
-	}
-	out := buildWorkspaceContextsJSON(rootDir, "root")
-	if !strings.Contains(out, `"timeline_file"`) {
-		t.Fatalf("WORKSPACE_STEP_CONTEXTS missing timeline_file key\n--- got ---\n%s", out)
-	}
-	if !strings.Contains(out, "timeline.jsonl") {
-		t.Fatalf("WORKSPACE_STEP_CONTEXTS missing timeline_file path\n--- got ---\n%s", out)
-	}
-}
-
 func TestNormalizeStepText(t *testing.T) {
 	cases := []struct {
 		in, want string

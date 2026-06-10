@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"aster/internal/builtin_tools"
 )
 
 func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
@@ -70,33 +68,6 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 		WorkspaceSharedDir: stringFromPayload(payload, "workspace_shared_dir"),
 		RuntimeRepoContext: a.runtimeRepoContext,
 	})
-}
-
-// axisKind 标识三轴未决盘点的某一轴，用于从 sticky 状态取对应承载项。
-type axisKind int
-
-const (
-	axisIncomplete axisKind = iota
-	axisDepth
-	axisNewSurfaces
-)
-
-// carriedAxisItems 从 sticky 三轴状态取出指定轴的承载项（投影为人类可读字符串：
-// item + 证据附注，旧 prompt 注入与计数沿用字符串形态）；nil 安全。
-func carriedAxisItems(axes *builtin_tools.ReplanAxes, kind axisKind) []string {
-	if axes == nil {
-		return nil
-	}
-	switch kind {
-	case axisIncomplete:
-		return builtin_tools.AxisItemStrings(axes.IncompleteItems)
-	case axisDepth:
-		return builtin_tools.AxisItemStrings(axes.DepthGaps)
-	case axisNewSurfaces:
-		return builtin_tools.AxisItemStrings(axes.NewSurfaces)
-	default:
-		return nil
-	}
 }
 
 func prettyJSON(value any) string {

@@ -7,18 +7,6 @@ import (
 	"text/template"
 )
 
-// anyHasItems 判断模板入参（通常是 []string）是否非空，用于三轴 CARRIED_* 段的渲染门控。
-func anyHasItems(v any) bool {
-	switch items := v.(type) {
-	case []string:
-		return len(items) > 0
-	case nil:
-		return false
-	default:
-		return false
-	}
-}
-
 type ThinkActPromptInput struct {
 	AgentRole          string
 	AgentBackground    string

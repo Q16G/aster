@@ -495,7 +495,6 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	}
 
 	update.ArtifactDir = strings.TrimSpace(update.ArtifactDir)
-	update.SummaryFile = strings.TrimSpace(update.SummaryFile)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
 	update.TimelineFile = strings.TrimSpace(update.TimelineFile)
 	update.CoverageFile = strings.TrimSpace(update.CoverageFile)
@@ -516,7 +515,6 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 			continue
 		}
 		outcome.ArtifactDir = update.ArtifactDir
-		outcome.SummaryFile = update.SummaryFile
 		outcome.ResultFile = update.ResultFile
 		outcome.TimelineFile = update.TimelineFile
 		outcome.CoverageFile = update.CoverageFile
@@ -567,7 +565,6 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 
 type stepReplanUpdate struct {
 	ArtifactDir  string
-	SummaryFile  string
 	ResultFile   string
 	TimelineFile string
 	StepFile     string

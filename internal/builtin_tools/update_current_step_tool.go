@@ -183,7 +183,7 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		return "", fmt.Errorf("current step is empty, wait for runtime planning first")
 	}
 
-	artifactDir, summaryFile, resultFile := resolveStepArtifactPaths(prev.PlanVersion, strings.TrimSpace(target.ID))
+	artifactDir := resolveStepArtifactDir(prev.PlanVersion, strings.TrimSpace(target.ID))
 
 	snapshot := t.ctx.UpdateCurrentStep(CurrentStepUpdate{
 		Status:          status,
@@ -229,8 +229,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		"error":           errText,
 		"references":      references,
 		"artifact_dir":    artifactDir,
-		"summary_file":    summaryFile,
-		"result_file":     resultFile,
 		"phase":           snapshot.Phase,
 		"current_step_id": snapshot.CurrentStepID,
 		"progress":        snapshot.Progress,
@@ -244,8 +242,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		"status":          status,
 		"current_step_id": snapshot.CurrentStepID,
 		"artifact_dir":    artifactDir,
-		"summary_file":    summaryFile,
-		"result_file":     resultFile,
 	})
 	return string(out), nil
 }
@@ -281,11 +277,11 @@ func normalizeCoverageChecklist(value any) ([]CoverageChecklistItem, error) {
 	return out, nil
 }
 
-func resolveStepArtifactPaths(planVersion int, stepID string) (artifactDir string, summaryFile string, resultFile string) {
-	stepID = strings.TrimSpace(stepID)
-	if planVersion <= 0 || stepID == "" {
-		return "", "", ""
+// resolveStepArtifactDir 返回 step 产物目录；summary_file 双写已废弃（产出并入
+// shared/<stepID>/step.md，指针走 plan_item.step_file）。
+func resolveStepArtifactDir(planVersion int, stepID string) string {
+	if planVersion <= 0 || strings.TrimSpace(stepID) == "" {
+		return ""
 	}
-	artifactDir = "shared/step_artifacts"
-	return artifactDir, summaryFile, resultFile
+	return "shared/step_artifacts"
 }
