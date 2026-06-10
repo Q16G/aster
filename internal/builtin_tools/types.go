@@ -88,13 +88,28 @@ const (
 	PlanStepSkipped    PlanStepStatus = "skipped"
 )
 
-// PlanItem 计划项
+// PlanItem 计划项。
+// 规划字段由 task_planner 产出；产出字段在 step 终态时由 runtime 从 StepOutcome 烘焙写回，
+// 并随 planner.jsonl 落地（plan 提交全量 append + step 终态增量 append）。
 type PlanItem struct {
 	ID                string         `json:"id,omitempty"`
 	Step              string         `json:"step"`
 	Status            PlanStepStatus `json:"status,omitempty"`
 	DependsOn         []string       `json:"depends_on,omitempty"`
 	ResolvedDependsOn []*PlanItem    `json:"-"`
+
+	// ==================== 产出字段（默认注入 prompt 的内联小字段） ====================
+	ShortSummary    string   `json:"short_summary,omitempty"`
+	KeyFacts        []string `json:"key_facts,omitempty"`
+	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
+	OpenItemIDs     []string `json:"open_item_ids,omitempty"`
+
+	// ==================== 指针字段（按需解引用，need_expand 协议） ====================
+	StepFile     string   `json:"step_file,omitempty"`
+	ResultFile   string   `json:"result_file,omitempty"`
+	TimelineFile string   `json:"timeline_file,omitempty"`
+	CoverageFile string   `json:"coverage_file,omitempty"`
+	References   []string `json:"references,omitempty"`
 }
 
 func (p *PlanItem) DependencyIDs() []string {
