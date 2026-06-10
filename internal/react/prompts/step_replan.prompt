@@ -14,7 +14,6 @@
 - **digest 默认，timeline 按需**：核验「本 step 实际做了什么」默认依据注入的 `tool_calls_digest` + `coverage_checklist` / `key_facts` / `open_questions`。仅当 digest 为空或稀疏、与自报结论矛盾、或需要某次调用的实际输出时，才 `read_file` 回读 timeline 文件（无损兜底）。
 - **回读有界（探索预算）**：回读以轮为预算，超限即基于已有信息裁决：无法核验的项按 digest-only 保守判定（拿不准偏放行进对应轴），并用 `ledger_add` 落账本待复核，不静默丢弃。
 - **证据优先**：核验基于工具调用证据而非自报；冲突时以更晚、更直接的执行证据为准。
-- **效率**：信息足够判断时直接调用 `submit_plan`。
 
 ### 3.2 轴① 存在性/完成度（incomplete_items）
 - **A1**：仅针对本 step 自身声明目标，判断是否根本没做或悬而未决；「做了不扎实」属轴②，「step 外全集遗漏」属轴③。
