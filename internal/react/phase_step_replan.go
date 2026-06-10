@@ -47,6 +47,17 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		return fmt.Errorf("step_replan phase missing step outcome step_id=%s", stepID)
 	}
 
+	// 简单分支直通（设计 2.1）：simple 单步任务完成后跳过三轴 LLM 判定直达验收；
+	// 机械落盘（digest 归约 / plan_item 烘焙 / journal / step_contexts）由
+	// applyReplanResult 保留执行，final_answer 仍持有 should_replan 回流兜底。
+	if snapshot.SimpleTask && len(snapshot.Plan) == 1 {
+		a.emitRuntimeLog("info", "simple task bypasses step replan", snapshot, map[string]any{
+			"event":   "step_replan_bypassed_simple",
+			"step_id": stepID,
+		})
+		return a.applyReplanResult(stepID, nil, nil, snapshot, "")
+	}
+
 	// Scheme A: always run the StepReplan LLM loop.
 	//
 	// Rationale: the old fast-path skip logic only relied on self-reported signals like

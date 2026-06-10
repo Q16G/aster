@@ -388,6 +388,8 @@ type StateSnapshot struct {
 	InputTimeline []*TimelineInput `json:"input_timeline,omitempty"`
 	// GoalUnderstanding 是 planner 对原始输入的结构化理解，贯穿下游用于锚定原始意图。
 	GoalUnderstanding string `json:"goal_understanding,omitempty"`
+	// SimpleTask 标记简单单步任务：step 完成后跳过 step_replan 直达 final_answer。
+	SimpleTask bool `json:"simple_task,omitempty"`
 
 	Plan          []*PlanItem    `json:"plan,omitempty"`
 	PlanVersion   int            `json:"plan_version,omitempty"`

@@ -47,6 +47,9 @@ type TaskPlannerResult struct {
 	Plan           []*PlanItem `json:"plan,omitempty"`
 	Explanation    string      `json:"explanation,omitempty"`
 	DirectResponse string      `json:"direct_response,omitempty"`
+	// Simple 标记简单任务（单步即可完成）：该步完成后跳过 step_replan 三轴判定
+	// 直达 final_answer 验收（验收仍保留 should_replan 回流兜底）。
+	Simple bool `json:"simple,omitempty"`
 	// GoalUnderstanding 是 planner 对用户输入的结构化复述（核心目标/范围边界/约束/
 	// 交付物与验收/显式聚焦/隐含假设/未决歧义）。它随 plan 一起落盘，并注入 step_replan，
 	// 作为多轮重规划时锚定原始意图的准绳。

@@ -338,6 +338,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	if res != nil {
 		a.SetGoalUnderstanding(res.GoalUnderstanding)
+		a.state.SetSimpleTask(res.Simple && len(items) == 1)
 	}
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
 	if res != nil && len(items) > 0 {
@@ -709,6 +710,10 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 					"goal_understanding": map[string]any{
 						"type":        "string",
 						"description": "对用户输入的结构化复述，建议覆盖固定小标题：核心目标 / 范围边界 / 约束 / 交付物与验收 / 显式聚焦 / 隐含需求与假设 / 未决歧义。needs_planning=true 时必填。",
+					},
+					"simple": map[string]any{
+						"type":        "boolean",
+						"description": "可选：简单任务标记。needs_planning=true 且计划为单步、该步完成即可交付时置 true；该步完成后将跳过三轴判定直达验收（验收仍保留回流兜底）。多步计划或开放式诉求不要置 true。",
 					},
 					"direct_response": map[string]any{
 						"type":        "string",

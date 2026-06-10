@@ -810,6 +810,15 @@ func (t *StateTracker) SoftResetFrom(
 	}
 }
 
+// SetSimpleTask 标记/复位简单单步任务（step 完成后跳过 step_replan 直达 final_answer）。
+// 每次 plan 提交都重设：重规划提交（simple 缺省 false）自然复位直通。
+func (t *StateTracker) SetSimpleTask(simple bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.SimpleTask = simple
+	t.touchLocked()
+}
+
 // ReplaceStepOutcomes 原子替换 state 中的 StepOutcomes（用于 reducer 写回压缩结果）。
 func (t *StateTracker) ReplaceStepOutcomes(outcomes []*builtin_tools.StepOutcome) {
 	t.mu.Lock()
