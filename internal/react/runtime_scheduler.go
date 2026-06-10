@@ -856,7 +856,7 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	// TASK_ITEMS：plan 真相源投影（烘焙产出小字段 + 指针；digest 截断，指针转绝对路径）。
 	// 取代旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入（copy→pointer）。
 	if len(snapshot.Plan) > 0 {
-		data.TaskItemsJSON = prettyJSON(projectPlanItemsForPlanner(snapshot.Plan, opts.WorkspaceRootDir))
+		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCards(snapshot.Plan, opts.WorkspaceRootDir))
 	}
 
 	// REPLAN_CONTEXT

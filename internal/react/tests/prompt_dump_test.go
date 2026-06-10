@@ -508,6 +508,10 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			{ID: "step-3", Step: "汇总报告", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-2"}},
 		}
 
+		// 烘焙形态：产出随 plan_item 卡片注入。
+		for i, o := range completedOutcomes {
+			plan[i].BakeOutcome(o)
+		}
 		prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":      builtin_tools.TaskStatusRunning,
 			"state_error": "",
@@ -515,10 +519,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 				{Content: "请对 /repo/project 进行 SQL 注入审计", CreatedAt: time.Now().Add(-10 * time.Minute)},
 			},
 			"goal_understanding": "核心目标：SQL 注入审计。范围边界：仅后端数据层。",
-			"show_plan":          true,
-			"plan":               plan,
-			"plan_version":       1,
-			"step_outcomes":      completedOutcomes,
+			"plan_items":         ProjectPlanItemCards(plan, ""),
+			"open_items_ledger":  "# 未闭环账本\nnext_id: 2\n\n## 未解决\n\n## 不可解局限\n- [OI-001] middleware 校验未确认（待 replan 裁决）\n\n## 待复核（子agent）\n",
 			"warnings":           []string{"user_repo.go 高危"},
 		})
 		if err != nil {
@@ -532,27 +534,26 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"SQL 注入审计",
 			"<GOAL_UNDERSTANDING>",
 			"仅后端数据层",
-			"<PLAN_VERSION>",
-			"<PLAN>",
+			"<PLAN_ITEMS>",
 			"step-1",
 			"step-2",
 			"step-3",
-			"<STEP_OUTCOMES>",
 			"已收集项目结构",
 			"发现 3 处 SQL 注入漏洞",
 			"报告已生成",
+			"<OPEN_ITEMS_LEDGER>",
+			"[OI-001] middleware 校验未确认",
 			"<WARNINGS>",
 			"高危",
 		})
 
-		// Verify step outcomes contain key_facts and tool_calls_digest
+		// 卡片应携带 key_facts 与 references。
 		mustContainAll(t, "final_answer_detail", prompt, []string{
 			"user_repo.go:45",
 			"audit_report.md",
 		})
 
-		assertValidJSON(t, "final_answer", "STEP_OUTCOMES", prompt)
-		assertValidJSON(t, "final_answer", "PLAN", prompt)
+		assertValidJSON(t, "final_answer", "PLAN_ITEMS", prompt)
 		assertValidJSON(t, "final_answer", "INPUT_TIMELINE", prompt)
 
 		// STATUS is now a plain string (not JSON-quoted), verify it renders cleanly
@@ -625,20 +626,13 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"input_timeline": []*builtin_tools.TimelineInput{
 				{Content: "请审计代码", CreatedAt: time.Now()},
 			},
-			"show_plan":    true,
-			"plan":         []*builtin_tools.PlanItem{{ID: "step-1", Step: "审计", Status: builtin_tools.PlanStepFailed}},
-			"plan_version": 1,
-			"step_outcomes": []*builtin_tools.StepOutcome{
-				{
-					StepID:       "step-1",
-					Status:       builtin_tools.StepOutcomeFailed,
-					ShortSummary: "超时失败",
-					Error:        "context deadline exceeded",
-					UpdatedAt:    time.Now(),
-				},
-			},
-			"warnings":                 []string{"执行超时"},
-			"carried_incomplete_items": []string{"审计未完成"},
+			"plan_items": []any{map[string]any{
+				"id":            "step-1",
+				"step":          "审计",
+				"status":        "failed",
+				"short_summary": "超时失败",
+			}},
+			"warnings": []string{"执行超时"},
 		})
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt error state failed: %v", err)
@@ -899,10 +893,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"status":         builtin_tools.TaskStatusRunning,
 			"state_error":    "",
 			"input_timeline": []*builtin_tools.TimelineInput{{Content: "test", CreatedAt: time.Now()}},
-			"show_plan":      false,
-			"plan":           []*builtin_tools.PlanItem{},
-			"plan_version":   1,
-			"step_outcomes":  []*builtin_tools.StepOutcome{sharedOutcome},
+			"plan_items":     []any{sharedOutcome},
 			"warnings":       []string{},
 		})
 		if err != nil {

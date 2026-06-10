@@ -56,25 +56,19 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
 	if a == nil || a.promptManager == nil {
 		return "", fmt.Errorf("final answer prompt manager is nil")
 	}
-	showPlanSection, _ := payload["show_plan"].(bool)
 	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentRole:              strings.TrimSpace(a.cfg.Role),
-		AgentBackground:        strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
-		Status:                 payload["status"],
-		StateError:             payload["state_error"],
-		InputTimeline:          payload["input_timeline"],
-		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
-		ShowPlanSection:        showPlanSection,
-		Plan:                   payload["plan"],
-		PlanVersion:            payload["plan_version"],
-		StepOutcomes:           payload["step_outcomes"],
-		Warnings:               payload["warnings"],
-		CarriedIncompleteItems: payload["carried_incomplete_items"],
-		CarriedDepthGaps:       payload["carried_depth_gaps"],
-		CarriedNewSurfaces:     payload["carried_new_surfaces"],
-		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
-		RuntimeRepoContext:     a.runtimeRepoContext,
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
+		Status:             payload["status"],
+		StateError:         payload["state_error"],
+		InputTimeline:      payload["input_timeline"],
+		GoalUnderstanding:  stringFromPayload(payload, "goal_understanding"),
+		PlanItems:          payload["plan_items"],
+		OpenItemsLedger:    stringFromPayload(payload, "open_items_ledger"),
+		Warnings:           payload["warnings"],
+		WorkspaceSharedDir: stringFromPayload(payload, "workspace_shared_dir"),
+		RuntimeRepoContext: a.runtimeRepoContext,
 	})
 }
 

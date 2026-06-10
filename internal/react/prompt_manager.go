@@ -82,23 +82,20 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
-	AgentRole              string
-	AgentBackground        string
-	AgentInstruction       string
-	Status                 any
-	StateError             any
-	InputTimeline          any
-	GoalUnderstanding      string
-	ShowPlanSection        bool
-	Plan                   any
-	PlanVersion            any
-	StepOutcomes           any
-	Warnings               any
-	CarriedIncompleteItems any
-	CarriedDepthGaps       any
-	CarriedNewSurfaces     any
-	WorkspaceSharedDir     string
-	RuntimeRepoContext     RuntimeRepoContext
+	AgentRole         string
+	AgentBackground   string
+	AgentInstruction  string
+	Status            any
+	StateError        any
+	InputTimeline     any
+	GoalUnderstanding string
+	// PlanItems 是 plan 真相源投影卡片（内联小字段 + 文件指针），替代旧
+	// PLAN/STEP_OUTCOMES/CARRIED_* 全量注入；OpenItemsLedger 是账本全文（F6 归置对象）。
+	PlanItems          any
+	OpenItemsLedger    string
+	Warnings           any
+	WorkspaceSharedDir string
+	RuntimeRepoContext RuntimeRepoContext
 }
 
 type HistoryCompactionPromptInput struct {
@@ -338,29 +335,20 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
 		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
-		"STATUS":                       fmt.Sprint(input.Status),
-		"STATE_ERROR":                  fmt.Sprint(input.StateError),
-		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
-		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
-		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
-		"SHOW_PLAN_SECTION":            input.ShowPlanSection,
-		"PLAN":                         prettyJSON(input.Plan),
-		"PLAN_VERSION":                 prettyJSON(input.PlanVersion),
-		"STEP_OUTCOMES":                prettyJSON(input.StepOutcomes),
-		"WARNINGS":                     prettyJSON(input.Warnings),
-		"HAS_CARRIED_INCOMPLETE_ITEMS": anyHasItems(input.CarriedIncompleteItems),
-		"CARRIED_INCOMPLETE_ITEMS":     prettyJSON(input.CarriedIncompleteItems),
-		"HAS_CARRIED_DEPTH_GAPS":       anyHasItems(input.CarriedDepthGaps),
-		"CARRIED_DEPTH_GAPS":           prettyJSON(input.CarriedDepthGaps),
-		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
-		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
-		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":             strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
-		"SOURCE_WORKING_DIR":           strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":                strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":                  input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":               strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"IS_GIT_WORKTREE":              input.RuntimeRepoContext.IsWorktree,
+		"STATUS":                 fmt.Sprint(input.Status),
+		"STATE_ERROR":            fmt.Sprint(input.StateError),
+		"INPUT_TIMELINE":         prettyJSON(input.InputTimeline),
+		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"PLAN_ITEMS":             prettyJSON(input.PlanItems),
+		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
+		"WARNINGS":               prettyJSON(input.Warnings),
+		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":       strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
+		"SOURCE_WORKING_DIR":     strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":          strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":            input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":         strings.TrimSpace(input.RuntimeRepoContext.Branch),
 	}); err != nil {
 		return "", err
 	}

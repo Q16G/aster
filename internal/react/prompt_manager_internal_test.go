@@ -268,12 +268,11 @@ func TestPromptManager_FinalAnswerRepoContextSection(t *testing.T) {
 		t.Fatalf("build final_answer failed: %v", err)
 	}
 	for _, needle := range []string{
-		"### 5.0 代码仓库上下文",
+		"### 6.2 代码仓库上下文",
 		"source working dir: `/repo/worktree`",
 		"repo root: `/repo/worktree`",
 		"is git repo: `true`",
 		"current branch: `feature/demo`",
-		"is git worktree: `true`",
 	} {
 		if !strings.Contains(prompt, needle) {
 			t.Fatalf("expected final_answer repo section to contain %q, got:\n%s", needle, prompt)

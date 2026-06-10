@@ -62,23 +62,23 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	}
 
 	payload := map[string]any{
-		"status":                   stateStatus,
-		"state_error":              strings.TrimSpace(snapshot.Error),
-		"input_timeline":           snapshot.InputTimeline,
-		"goal_understanding":       snapshot.GoalUnderstanding,
-		"needs_planning":           snapshot.NeedsPlanning,
-		"show_plan":                snapshot.NeedsPlanning,
-		"plan":                     snapshot.Plan,
-		"plan_version":             snapshot.PlanVersion,
-		"step_outcomes":            stepOutcomeViews,
-		"external_interrupt":       externalInterrupt,
-		"replan_context":           snapshot.ReplanContext,
-		"active_skill_names":       snapshot.ActiveSkillNames,
-		"warnings":                 snapshot.Warnings,
-		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
-		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
-		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
-		"workspace_shared_dir":     workspaceSharedDir,
+		"status":             stateStatus,
+		"state_error":        strings.TrimSpace(snapshot.Error),
+		"input_timeline":     snapshot.InputTimeline,
+		"goal_understanding": snapshot.GoalUnderstanding,
+		"needs_planning":     snapshot.NeedsPlanning,
+		// plan/plan_version/step_outcomes 保留供 assessed_state 持久化（resume 回退源）；
+		// prompt 注入改走 plan_items 卡片 + 账本全文（CARRIED_* 已由账本吸收）。
+		"plan":                 snapshot.Plan,
+		"plan_version":         snapshot.PlanVersion,
+		"step_outcomes":        stepOutcomeViews,
+		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),
+		"open_items_ledger":    readSharedFileForPrompt(workspaceSharedDir, openItemsFileName),
+		"external_interrupt":   externalInterrupt,
+		"replan_context":       snapshot.ReplanContext,
+		"active_skill_names":   snapshot.ActiveSkillNames,
+		"warnings":             snapshot.Warnings,
+		"workspace_shared_dir": workspaceSharedDir,
 	}
 
 	var modelOut FinalAnswerModelOutput

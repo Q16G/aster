@@ -182,8 +182,8 @@ func planItemCard(item *builtin_tools.PlanItem, workspaceRootDir string) *depend
 	}
 }
 
-// projectPlanItemsForPlanner 把全量 plan 投影为 planner 的 TASK_ITEMS 注入视图。
-func projectPlanItemsForPlanner(plan []*builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
+// ProjectPlanItemCards 把全量 plan 投影为 planner 的 TASK_ITEMS 注入视图。
+func ProjectPlanItemCards(plan []*builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
 	out := make([]dependencyPlanItemCard, 0, len(plan))
 	for _, item := range plan {
 		if card := planItemCard(item, workspaceRootDir); card != nil {
