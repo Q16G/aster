@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -243,6 +244,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
+	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
 
 	planVersion := snapshot.PlanVersion
 	if planVersion <= 0 {
@@ -253,6 +255,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		ArtifactDir:       artifactDir,
 		ContextKey:        contextKey,
 		TimelineFile:      timelineFile,
+		CoverageFile:      coverageFile,
 		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
 		PlanVersion:       planVersion,
 		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
@@ -265,6 +268,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	a.lastStepTranscriptBlobRef = ""
 
 	a.appendStepContextRecord(stepID, snapshot)
+	a.appendPlannerJournalStepRecord(stepID, snapshot)
 
 	a.emitter.EmitStateChange(snapshot)
 
@@ -348,6 +352,74 @@ func (a *Agent) appendStepContextRecord(stepID string, snapshot builtin_tools.St
 	); err != nil {
 		a.emitRuntimeLog("warn", "append step context record failed", snapshot, map[string]any{
 			"event":   "step_context_append_failed",
+			"step_id": stepID,
+			"error":   err.Error(),
+		})
+	}
+}
+
+const (
+	coverageChecklistInlineMaxItems = 30
+	coverageChecklistInlineMaxBytes = 2048
+)
+
+// persistCoverageChecklist 在覆盖清单超阈值时落地 shared/<stepID>/coverage.json 并返回相对路径；
+// 未超阈值或无清单时返回空（保持内联）。落盘失败只记日志，不阻塞 step 收尾。
+func (a *Agent) persistCoverageChecklist(stepID string, outcome *builtin_tools.StepOutcome) string {
+	if a.workspaceRuntime == nil || outcome == nil || len(outcome.CoverageChecklist) == 0 {
+		return ""
+	}
+	data, err := json.MarshalIndent(outcome.CoverageChecklist, "", "  ")
+	if err != nil {
+		return ""
+	}
+	if len(outcome.CoverageChecklist) <= coverageChecklistInlineMaxItems && len(data) <= coverageChecklistInlineMaxBytes {
+		return ""
+	}
+	dir := filepath.Join(a.workspaceRuntime.SharedDir(), stepID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
+			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
+		})
+		return ""
+	}
+	if err := os.WriteFile(filepath.Join(dir, "coverage.json"), data, 0o644); err != nil {
+		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
+			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
+		})
+		return ""
+	}
+	return fmt.Sprintf("shared/%s/coverage.json", stepID)
+}
+
+// appendPlannerJournalStepRecord 在 step 终态产出烘焙完成后，把该 plan_item 增量 append 到
+// planner.jsonl（plan 真相源；同 id 最后一条胜出）。
+func (a *Agent) appendPlannerJournalStepRecord(stepID string, snapshot builtin_tools.StateSnapshot) {
+	if a.workspaceRuntime == nil {
+		return
+	}
+	var item *builtin_tools.PlanItem
+	for _, it := range snapshot.Plan {
+		if it != nil && strings.TrimSpace(it.ID) == stepID {
+			item = it
+			break
+		}
+	}
+	if item == nil {
+		return
+	}
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	// 浅拷贝 + 克隆会被路径归一化原地改写的 slice，避免 append 时把 state 内的相对路径改成绝对路径。
+	clone := *item
+	clone.References = builtin_tools.CloneStringSlice(item.References)
+	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), []*builtin_tools.PlannerJournalRecord{
+		{Kind: builtin_tools.PlannerJournalKindStep, PlanVersion: planVersion, Item: &clone},
+	}); err != nil {
+		a.emitRuntimeLog("warn", "append planner journal step record failed", snapshot, map[string]any{
+			"event":   "planner_journal_step_append_failed",
 			"step_id": stepID,
 			"error":   err.Error(),
 		})

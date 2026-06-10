@@ -498,6 +498,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.SummaryFile = strings.TrimSpace(update.SummaryFile)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
 	update.TimelineFile = strings.TrimSpace(update.TimelineFile)
+	update.CoverageFile = strings.TrimSpace(update.CoverageFile)
 	update.ContextKey = strings.TrimSpace(update.ContextKey)
 	update.Namespace = strings.TrimSpace(update.Namespace)
 	update.CurrentGoal = strings.TrimSpace(update.CurrentGoal)
@@ -506,6 +507,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.UnresolvedAxes = normalizeReplanAxes(update.UnresolvedAxes)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
+	var backfilled *builtin_tools.StepOutcome
 	for _, outcome := range t.state.StepOutcomes {
 		if outcome == nil {
 			continue
@@ -517,6 +519,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		outcome.SummaryFile = update.SummaryFile
 		outcome.ResultFile = update.ResultFile
 		outcome.TimelineFile = update.TimelineFile
+		outcome.CoverageFile = update.CoverageFile
 		outcome.ContextKey = update.ContextKey
 		outcome.Namespace = update.Namespace
 		outcome.PlanVersion = update.PlanVersion
@@ -525,7 +528,13 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		outcome.InheritedRefIDs = builtin_tools.CloneStringSlice(update.InheritedRefIDs)
 		outcome.References = normalizeReferences(append(outcome.References, update.References...))
 		outcome.UpdatedAt = time.Now()
+		backfilled = outcome
 		break
+	}
+
+	// 终态烘焙：把 outcome 产出写回 plan_item，使 plan 真相源（planner.jsonl）携带完整产出与指针。
+	if item := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: stepID}).CurrentStep(); item != nil {
+		item.BakeOutcome(backfilled)
 	}
 
 	// step replan 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
@@ -557,6 +566,7 @@ type stepReplanUpdate struct {
 	SummaryFile  string
 	ResultFile   string
 	TimelineFile string
+	CoverageFile string
 	ContextKey   string
 	References   []string
 
@@ -880,6 +890,8 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.KeyFacts = update.KeyFacts
 		outcome.OpenQuestions = update.OpenQuestions
 		outcome.ToolCallsDigest = update.ToolCallsDigest
+		outcome.CoverageChecklist = update.CoverageChecklist
+		outcome.OpenItemIDs = update.OpenItemIDs
 		outcome.UpdatedAt = time.Now()
 		return
 	}
@@ -892,13 +904,15 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		Result:          update.Result,
 		Error:           update.Error,
 		References:      update.References,
-		StatusSummary:   update.StatusSummary,
-		ShortSummary:    update.ShortSummary,
-		LongSummary:     update.LongSummary,
-		KeyFacts:        update.KeyFacts,
-		OpenQuestions:   update.OpenQuestions,
-		ToolCallsDigest: update.ToolCallsDigest,
-		UpdatedAt:       time.Now(),
+		StatusSummary:     update.StatusSummary,
+		ShortSummary:      update.ShortSummary,
+		LongSummary:       update.LongSummary,
+		KeyFacts:          update.KeyFacts,
+		OpenQuestions:     update.OpenQuestions,
+		ToolCallsDigest:   update.ToolCallsDigest,
+		CoverageChecklist: update.CoverageChecklist,
+		OpenItemIDs:       update.OpenItemIDs,
+		UpdatedAt:         time.Now(),
 	})
 }
 

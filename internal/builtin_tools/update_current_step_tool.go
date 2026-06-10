@@ -94,6 +94,41 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 					"type": "string",
 				},
 			},
+			"coverage_checklist": map[string]any{
+				"type":        "array",
+				"description": "覆盖对账清单。当 step 声明目标含全量量词或存在可枚举清单时必填：执行现场逐项物化对账，每项给出状态与依据",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"item": map[string]any{
+							"type":        "string",
+							"description": "对账工作项",
+						},
+						"status": map[string]any{
+							"type":        "string",
+							"enum":        []any{"verified", "uncovered", "justified_skip", "referenced_prior_coverage"},
+							"description": "覆盖状态",
+						},
+						"evidence": map[string]any{
+							"type":        "string",
+							"description": "status=verified 时的工具调用证据要点",
+						},
+						"reason": map[string]any{
+							"type":        "string",
+							"description": "status=justified_skip/uncovered 时的原因",
+						},
+					},
+					"required":             []string{"item", "status"},
+					"additionalProperties": false,
+				},
+			},
+			"open_item_ids": map[string]any{
+				"type":        "array",
+				"description": "可选：本 step 写入 open_items.md 账本的新条目 OI-id 列表，供后续对账",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
 		},
 		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts", "open_questions", "tool_calls_digest"},
 		"additionalProperties": false,
@@ -136,6 +171,11 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	keyFacts := normalizeToolStringSlice(args["key_facts"])
 	openQuestions := normalizeToolStringSlice(args["open_questions"])
 	toolCallsDigest := normalizeToolStringSlice(args["tool_calls_digest"])
+	coverageChecklist, err := normalizeCoverageChecklist(args["coverage_checklist"])
+	if err != nil {
+		return "", err
+	}
+	openItemIDs := normalizeToolStringSlice(args["open_item_ids"])
 
 	prev := t.ctx.Snapshot()
 	target := prev.CurrentStep()
@@ -152,12 +192,14 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		Result:          result,
 		Error:           errText,
 		References:      references,
-		StatusSummary:   statusSummary,
-		ShortSummary:    shortSummary,
-		LongSummary:     longSummary,
-		KeyFacts:        keyFacts,
-		OpenQuestions:   openQuestions,
-		ToolCallsDigest: toolCallsDigest,
+		StatusSummary:     statusSummary,
+		ShortSummary:      shortSummary,
+		LongSummary:       longSummary,
+		KeyFacts:          keyFacts,
+		OpenQuestions:     openQuestions,
+		ToolCallsDigest:   toolCallsDigest,
+		CoverageChecklist: coverageChecklist,
+		OpenItemIDs:       openItemIDs,
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
 	EmitToolRuntimeInfo(ctx, "step result ready", map[string]any{
@@ -210,6 +252,33 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 
 func normalizeToolStringSlice(value any) []string {
 	return argx.StringSlice(value)
+}
+
+func normalizeCoverageChecklist(value any) ([]CoverageChecklistItem, error) {
+	if value == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal coverage_checklist failed: %w", err)
+	}
+	var items []CoverageChecklistItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("invalid coverage_checklist: %w", err)
+	}
+	out := items[:0]
+	for _, item := range items {
+		item.Item = strings.TrimSpace(item.Item)
+		item.Status = strings.TrimSpace(item.Status)
+		if item.Item == "" || item.Status == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 func resolveStepArtifactPaths(planVersion int, stepID string) (artifactDir string, summaryFile string, resultFile string) {

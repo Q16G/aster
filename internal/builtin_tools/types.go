@@ -99,10 +99,11 @@ type PlanItem struct {
 	ResolvedDependsOn []*PlanItem    `json:"-"`
 
 	// ==================== 产出字段（默认注入 prompt 的内联小字段） ====================
-	ShortSummary    string   `json:"short_summary,omitempty"`
-	KeyFacts        []string `json:"key_facts,omitempty"`
-	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
-	OpenItemIDs     []string `json:"open_item_ids,omitempty"`
+	ShortSummary      string                  `json:"short_summary,omitempty"`
+	KeyFacts          []string                `json:"key_facts,omitempty"`
+	ToolCallsDigest   []string                `json:"tool_calls_digest,omitempty"`
+	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
+	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
 
 	// ==================== 指针字段（按需解引用，need_expand 协议） ====================
 	StepFile     string   `json:"step_file,omitempty"`
@@ -161,6 +162,36 @@ func (p *PlanItem) DependencyItems() []*PlanItem {
 	return out
 }
 
+// CoverageChecklistItem 是 think_act 在执行现场逐项物化的覆盖对账条目，
+// 由 step_replan / final_answer 按 status 归置消费。
+type CoverageChecklistItem struct {
+	Item     string `json:"item"`
+	Status   string `json:"status"` // verified | uncovered | justified_skip | referenced_prior_coverage
+	Evidence string `json:"evidence,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// BakeOutcome 在 step 终态时把 StepOutcome 的产出烘焙进计划项（plan_item 作为 plan 真相源的载体）。
+// 覆盖清单超阈值落 coverage_file 时由调用方先填 CoverageFile 再烘焙，此处保持互斥：有文件指针则不内联。
+func (p *PlanItem) BakeOutcome(o *StepOutcome) {
+	if p == nil || o == nil {
+		return
+	}
+	p.ShortSummary = strings.TrimSpace(o.ShortSummary)
+	p.KeyFacts = CloneStringSlice(o.KeyFacts)
+	p.ToolCallsDigest = CloneStringSlice(o.ToolCallsDigest)
+	p.OpenItemIDs = CloneStringSlice(o.OpenItemIDs)
+	p.References = CloneStringSlice(o.References)
+	p.ResultFile = strings.TrimSpace(o.ResultFile)
+	p.TimelineFile = strings.TrimSpace(o.TimelineFile)
+	p.CoverageFile = strings.TrimSpace(o.CoverageFile)
+	if p.CoverageFile == "" && len(o.CoverageChecklist) > 0 {
+		p.CoverageChecklist = append([]CoverageChecklistItem(nil), o.CoverageChecklist...)
+	} else {
+		p.CoverageChecklist = nil
+	}
+}
+
 type StepOutcomeStatus string
 
 const (
@@ -186,17 +217,20 @@ type StepOutcome struct {
 	References []string `json:"references,omitempty"`
 
 	// ==================== B. Summary 生成层（update_current_step 工具提交，必填） ====================
-	StatusSummary   string   `json:"status_summary,omitempty"`
-	ShortSummary    string   `json:"short_summary,omitempty"`
-	LongSummary     string   `json:"long_summary,omitempty"`
-	KeyFacts        []string `json:"key_facts,omitempty"`
-	OpenQuestions   []string `json:"open_questions,omitempty"`
-	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
+	StatusSummary     string                  `json:"status_summary,omitempty"`
+	ShortSummary      string                  `json:"short_summary,omitempty"`
+	LongSummary       string                  `json:"long_summary,omitempty"`
+	KeyFacts          []string                `json:"key_facts,omitempty"`
+	OpenQuestions     []string                `json:"open_questions,omitempty"`
+	ToolCallsDigest   []string                `json:"tool_calls_digest,omitempty"`
+	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
+	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 
 	// ==================== C. Artifact 索引层（artifact writer 回填） ====================
-	ArtifactDir string `json:"artifact_dir,omitempty"`
-	SummaryFile string `json:"summary_file,omitempty"`
-	ResultFile  string `json:"result_file,omitempty"`
+	ArtifactDir  string `json:"artifact_dir,omitempty"`
+	SummaryFile  string `json:"summary_file,omitempty"`
+	ResultFile   string `json:"result_file,omitempty"`
+	CoverageFile string `json:"coverage_file,omitempty"`
 
 	// ContextKey: execution lineage 的稳定锚点（写入 workspace/step_contexts.jsonl）
 	ContextKey string `json:"context_key,omitempty"`
@@ -278,12 +312,14 @@ type CurrentStepUpdate struct {
 	Error         string         `json:"error,omitempty"`
 	References    []string       `json:"references,omitempty"`
 
-	StatusSummary   string   `json:"status_summary"`
-	ShortSummary    string   `json:"short_summary"`
-	LongSummary     string   `json:"long_summary"`
-	KeyFacts        []string `json:"key_facts"`
-	OpenQuestions   []string `json:"open_questions"`
-	ToolCallsDigest []string `json:"tool_calls_digest"`
+	StatusSummary     string                  `json:"status_summary"`
+	ShortSummary      string                  `json:"short_summary"`
+	LongSummary       string                  `json:"long_summary"`
+	KeyFacts          []string                `json:"key_facts"`
+	OpenQuestions     []string                `json:"open_questions"`
+	ToolCallsDigest   []string                `json:"tool_calls_digest"`
+	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
+	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 }
 
 type ReplanContext struct {
