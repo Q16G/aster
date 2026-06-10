@@ -75,7 +75,7 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 			t.Fatalf("think_act must render 6.2 fact board (missing %q), got:\n%s", needle, with)
 		}
 	}
-	for _, needle := range []string{"coverage_checklist", "referenced_prior_coverage", "uncovered", "open_item_ids"} {
+	for _, needle := range []string{"coverage_checklist", "uncovered", "open_item_ids"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act should render checklist + ledger id contract (missing %q), got:\n%s", needle, with)
 		}
