@@ -468,9 +468,9 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 			"should_replan":    result.ShouldReplan,
 			"replan_reason":    strings.TrimSpace(result.ReplanReason),
 			"next_goal":        strings.TrimSpace(result.NextGoal),
-			"incomplete_items": normalizeStringSlice(result.IncompleteItems),
-			"depth_gaps":       normalizeStringSlice(result.DepthGaps),
-			"new_surfaces":     normalizeStringSlice(result.NewSurfaces),
+			"incomplete_items": builtin_tools.AxisItemStrings(result.IncompleteItems),
+			"depth_gaps":       builtin_tools.AxisItemStrings(result.DepthGaps),
+			"new_surfaces":     builtin_tools.AxisItemStrings(result.NewSurfaces),
 		},
 	})
 }

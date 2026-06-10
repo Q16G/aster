@@ -21,21 +21,19 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	}
 
 	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":             "继续推进",
-		"current_step":             map[string]any{"id": "step-1", "step": "执行"},
-		"step_outcome":             map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":                []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
-		"step_outcomes":            []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":                 []string{"warn-1"},
-		"carried_incomplete_items": []string{"missing-1"},
-		"step_result_path":         "/tmp/test/result.json",
-		"step_contexts_path":       "/tmp/test/step_contexts.jsonl",
+		"current_goal":       "继续推进",
+		"current_step_card":  map[string]any{"id": "step-1", "step": "执行", "status": "completed", "short_summary": "done"},
+		"plan_overview":      []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
+		"open_items_ledger":  "## 未解决\n\n## 不可解局限\n",
+		"task_context_board": "# 贯穿全程关键事实\n",
+		"step_result_path":   "/tmp/test/result.json",
+		"step_contexts_path": "/tmp/test/step_contexts.jsonl",
 	})
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
 
-	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP", "TASK_PLAN", "STEP_OUTCOME"} {
+	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "PLAN_OVERVIEW", "OPEN_ITEMS_LEDGER", "TASK_CONTEXT_BOARD"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got:\n%s", marker, prompt)
 		}
@@ -50,15 +48,14 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 
 	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal": "分析代码",
-		"current_step": map[string]any{"id": "step-1", "step": "执行分析"},
-		"step_outcome": map[string]any{
+		"current_step_card": map[string]any{
+			"id":            "step-1",
+			"step":          "执行分析",
 			"status":        "completed",
 			"short_summary": "分析完成",
 			"key_facts":     []string{"fact-a", "fact-b"},
 		},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
+		"plan_overview":      []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
 		"step_result_path":   "/workspace/steps/step-1/result.json",
 		"step_contexts_path": "/workspace/step_contexts.jsonl",
 		"step_timeline_path": "/workspace/shared/step-1/timeline.jsonl",
@@ -67,15 +64,15 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
 
-	// STEP_OUTCOME should contain a proper JSON object, not a double-quoted string like "{\"status\":...}"
+	// 卡片应为未转义 JSON 对象，不得二次序列化为字符串。
 	if strings.Contains(prompt, `"{\"`) || strings.Contains(prompt, `\"}"`) {
-		t.Fatalf("STEP_OUTCOME appears double-serialized (escaped quotes inside string):\n%s", prompt)
+		t.Fatalf("CURRENT_STEP_CARD appears double-serialized (escaped quotes inside string):\n%s", prompt)
 	}
 	if !strings.Contains(prompt, `"status"`) {
-		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"status\", got:\n%s", prompt)
+		t.Fatalf("CURRENT_STEP_CARD should contain unescaped JSON key \"status\", got:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, `"short_summary"`) {
-		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
+		t.Fatalf("CURRENT_STEP_CARD should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
 	}
 
 	// Step result path and step contexts path should render
@@ -98,11 +95,8 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 
 	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "侦察完成",
-		"current_step":       map[string]any{"id": "step-1", "step": "侦察"},
-		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
+		"current_step_card":  map[string]any{"id": "step-1", "step": "侦察", "status": "completed", "short_summary": "done"},
+		"plan_overview":      []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
 		"step_result_path":   "",
 		"step_contexts_path": "",
 		"skills_context": &SkillsPromptContext{

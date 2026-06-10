@@ -3,6 +3,8 @@ package react
 import (
 	"encoding/json"
 	"testing"
+
+	"aster/internal/builtin_tools"
 )
 
 // TestParseSubmitReplanArgs_DepthGaps 校验轴②深度字段能从 submit_plan 参数正确解析。
@@ -26,14 +28,14 @@ func TestParseSubmitReplanArgs_DepthGaps(t *testing.T) {
 	if len(decision.DepthGaps) != 2 {
 		t.Fatalf("expected 2 depth_gaps, got %d: %v", len(decision.DepthGaps), decision.DepthGaps)
 	}
-	if decision.DepthGaps[0] != "终点 A 已定位但未追到触发点" {
+	if decision.DepthGaps[0].Item != "终点 A 已定位但未追到触发点" {
 		t.Fatalf("unexpected first depth_gap: %q", decision.DepthGaps[0])
 	}
 }
 
 // TestStepReplanModelOutput_DepthGapsJSONTag 校验结构体 json tag 为 depth_gaps。
 func TestStepReplanModelOutput_DepthGapsJSONTag(t *testing.T) {
-	out := stepReplanModelOutput{DepthGaps: []string{"x"}}
+	out := stepReplanModelOutput{DepthGaps: builtin_tools.NewAxisItems([]string{"x"})}
 	raw, err := json.Marshal(out)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)

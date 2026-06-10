@@ -368,29 +368,31 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			UpdatedAt:   time.Now(),
 		}
 
+		card := map[string]any{
+			"id":                "step-2",
+			"step":              "逐文件检查 SQL 拼接和参数化查询",
+			"status":            string(outcome.Status),
+			"short_summary":     outcome.ShortSummary,
+			"key_facts":         outcome.KeyFacts,
+			"tool_calls_digest": outcome.ToolCallsDigest,
+			"open_questions":    outcome.OpenQuestions,
+			"references":        outcome.References,
+			"result_file":       "/workspace/steps/step-2/attempts/001/result.json",
+		}
 		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal":       "对项目进行安全审计，识别所有 SQL 注入漏洞",
 			"goal_understanding": "核心目标：审计 SQL 注入。范围边界：仅数据访问层，不做前端。",
 			"input_timeline": []*builtin_tools.TimelineInput{
 				{Content: "帮我审计这个项目的 SQL 注入", CreatedAt: time.Now()},
 			},
-			"current_step": map[string]any{
-				"id":     "step-2",
-				"step":   "逐文件检查 SQL 拼接和参数化查询",
-				"status": "completed",
+			"current_step_card": card,
+			"plan_overview": []map[string]any{
+				{"id": "step-1", "step": "收集项目结构", "status": "completed"},
+				{"id": "step-2", "step": "逐文件检查 SQL", "status": "completed", "depends_on": []string{"step-1"}},
+				{"id": "step-3", "step": "汇总报告", "status": "pending", "depends_on": []string{"step-2"}},
 			},
-			"step_outcome": outcome,
-			"task_plan": []*builtin_tools.PlanItem{
-				{ID: "step-1", Step: "收集项目结构", Status: builtin_tools.PlanStepCompleted},
-				{ID: "step-2", Step: "逐文件检查 SQL", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
-				{ID: "step-3", Step: "汇总报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-2"}},
-			},
-			"step_outcomes": []*builtin_tools.StepOutcome{
-				snapshot.StepOutcomes[0],
-				outcome,
-			},
-			"warnings":           []string{"user_repo.go 存在高危 SQL 注入"},
-			"carried_depth_gaps": []string{"middleware 层输入校验未确认"},
+			"open_items_ledger":  "# 未闭环账本\nnext_id: 4\n\n## 未解决\n- [OI-002] middleware 层输入校验未确认（来源: step-2）\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+			"task_context_board": "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: /repo/project\n\n## 执行中补充\n- GORM v2，5 个 db.Raw 文件\n",
 			"step_result_path":   "/workspace/steps/step-2/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
 		})
@@ -403,17 +405,17 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		mustContainAll(t, "step_replan", prompt, []string{
 			"<CURRENT_GOAL>",
 			"SQL 注入漏洞",
-			"<CURRENT_STEP>",
+			"<CURRENT_STEP_CARD>",
 			"step-2",
-			"<STEP_OUTCOME>",
 			"已检查 8 个 db.Raw",
 			"user_repo.go:45",
 			`rg(\"db.Raw\")`,
-			"<TASK_PLAN>",
+			"<PLAN_OVERVIEW>",
 			"step-3",
-			"<STEP_OUTCOMES>",
-			"<CARRIED_DEPTH_GAPS>",
-			"middleware",
+			"<OPEN_ITEMS_LEDGER>",
+			"[OI-002] middleware 层输入校验未确认",
+			"<TASK_CONTEXT_BOARD>",
+			"GORM v2，5 个 db.Raw 文件",
 			"<GOAL_UNDERSTANDING>",
 			"仅数据访问层",
 			"<INPUT_TIMELINE>",
@@ -426,18 +428,15 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"/workspace/step_contexts.jsonl",
 		})
 
-		// Verify STEP_OUTCOME is valid JSON, not double-serialized
-		assertValidJSON(t, "step_replan", "STEP_OUTCOME", prompt)
+		// Verify card is valid JSON, not double-serialized
+		assertValidJSON(t, "step_replan", "CURRENT_STEP_CARD", prompt)
 		mustNotContain(t, "step_replan_no_double_serialize", prompt, []string{
 			`"{\"`,
 			`\"}"`,
 		})
 
-		// Verify STEP_OUTCOMES is valid JSON
-		assertValidJSON(t, "step_replan", "STEP_OUTCOMES", prompt)
-
-		// Verify TASK_PLAN is valid JSON
-		assertValidJSON(t, "step_replan", "TASK_PLAN", prompt)
+		// Verify PLAN_OVERVIEW is valid JSON
+		assertValidJSON(t, "step_replan", "PLAN_OVERVIEW", prompt)
 	})
 
 	// ───────────────────────────────────────────────
@@ -683,17 +682,14 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		basePayload := map[string]any{
 			"current_goal":       "test goal",
-			"current_step":       map[string]any{"id": "step-1", "step": "test step"},
-			"task_plan":          []any{},
-			"step_outcomes":      []any{},
-			"warnings":           []string{},
+			"plan_overview":      []any{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		}
 
 		// Test with struct
 		p1 := copyPayload(basePayload)
-		p1["step_outcome"] = structOutcome
+		p1["current_step_card"] = structOutcome
 		prompt1, err := agent.BuildStepReplanPrompt(p1)
 		if err != nil {
 			t.Fatalf("struct outcome prompt failed: %v", err)
@@ -702,7 +698,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		// Test with map
 		p2 := copyPayload(basePayload)
-		p2["step_outcome"] = mapOutcome
+		p2["current_step_card"] = mapOutcome
 		prompt2, err := agent.BuildStepReplanPrompt(p2)
 		if err != nil {
 			t.Fatalf("map outcome prompt failed: %v", err)
@@ -710,8 +706,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		dumpPrompt(t, dumpDir, "09b_step_replan_map_outcome", prompt2)
 
 		// Both should produce valid JSON in STEP_OUTCOME
-		assertValidJSON(t, "struct_outcome", "STEP_OUTCOME", prompt1)
-		assertValidJSON(t, "map_outcome", "STEP_OUTCOME", prompt2)
+		assertValidJSON(t, "struct_outcome", "CURRENT_STEP_CARD", prompt1)
+		assertValidJSON(t, "map_outcome", "CURRENT_STEP_CARD", prompt2)
 
 		mustContainAll(t, "struct_outcome", prompt1, []string{"struct outcome summary", "fact-from-struct"})
 		mustContainAll(t, "map_outcome", prompt2, []string{"map outcome summary", "fact-from-map"})
@@ -737,13 +733,11 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal": "",
-			"current_step": map[string]any{"id": "step-1", "step": ""},
-			"step_outcome": map[string]any{
+			"current_step_card": map[string]any{
+				"id":     "step-1",
 				"status": "completed",
 			},
-			"task_plan":          []any{},
-			"step_outcomes":      []any{},
-			"warnings":           []string{},
+			"plan_overview":      []any{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		})
@@ -755,8 +749,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		// Should still render all sections, just with empty/null data
 		mustContainAll(t, "replan_empty", prompt, []string{
 			"<CURRENT_GOAL>",
-			"<STEP_OUTCOME>",
-			"<TASK_PLAN>",
+			"<CURRENT_STEP_CARD>",
+			"<PLAN_OVERVIEW>",
 		})
 
 		// Empty paths: "可主动读取的文件" section should NOT render
@@ -891,11 +885,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		// step_replan prompt
 		replanPrompt, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal":       "consistency",
-			"current_step":       map[string]any{"id": "step-X", "step": "一致性测试"},
-			"step_outcome":       sharedOutcome,
-			"task_plan":          []any{},
-			"step_outcomes":      []*builtin_tools.StepOutcome{sharedOutcome},
-			"warnings":           []string{},
+			"current_step_card":  sharedOutcome,
+			"plan_overview":      []any{},
 			"step_result_path":   "",
 			"step_contexts_path": "",
 		})
@@ -1425,16 +1416,17 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 
 		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal": "对目标项目进行全量安全审计",
-			"current_step": map[string]any{
-				"id":     "step-3",
-				"step":   "执行 SAST 规则扫描（委派子 Agent）",
-				"status": "completed",
+			"current_step_card": map[string]any{
+				"id":                "step-3",
+				"step":              "执行 SAST 规则扫描（委派子 Agent）",
+				"status":            "completed",
+				"short_summary":     step3Outcome.ShortSummary,
+				"key_facts":         step3Outcome.KeyFacts,
+				"tool_calls_digest": step3Outcome.ToolCallsDigest,
 			},
-			"step_outcome":       step3Outcome,
-			"task_plan":          parentSnapshot.Plan,
-			"step_outcomes":      parentSnapshot.StepOutcomes,
-			"warnings":           []string{"High 告警 5 条需要数据流验证"},
-			"carried_depth_gaps": []string{"SSRF/XXE 的 Medium 告警是否为误报"},
+			"plan_overview":      parentSnapshot.Plan,
+			"open_items_ledger":  "## 未解决\n- [OI-004] SSRF/XXE 的 Medium 告警是否为误报（来源: step-3）\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+			"task_context_board": "# 贯穿全程关键事实\n\n## 执行中补充\n- High 告警 5 条需要数据流验证\n",
 			"step_result_path":   "/workspace/steps/step-3/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
 		})
@@ -1446,22 +1438,18 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		mustContainAll(t, "parent_step_replan", prompt, []string{
 			"<CURRENT_GOAL>",
 			"全量安全审计",
-			"<CURRENT_STEP>",
+			"<CURRENT_STEP_CARD>",
 			"step-3",
 			"委派子 Agent",
-			"<STEP_OUTCOME>",
 			"SAST 扫描完成",
 			"sub-a1b2c3d4",
 			"15 条告警",
 			"3x SQLi",
-			"<TASK_PLAN>",
+			"<PLAN_OVERVIEW>",
 			"step-4",
 			"step-5",
 			"step-6",
-			"<STEP_OUTCOMES>",
-			"step-1",
-			"step-2",
-			"<CARRIED_DEPTH_GAPS>",
+			"<OPEN_ITEMS_LEDGER>",
 			"SSRF/XXE",
 		})
 
@@ -1470,9 +1458,8 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			"/workspace/step_contexts.jsonl",
 		})
 
-		assertValidJSON(t, "parent_step_replan", "STEP_OUTCOME", prompt)
-		assertValidJSON(t, "parent_step_replan", "TASK_PLAN", prompt)
-		assertValidJSON(t, "parent_step_replan", "STEP_OUTCOMES", prompt)
+		assertValidJSON(t, "parent_step_replan", "CURRENT_STEP_CARD", prompt)
+		assertValidJSON(t, "parent_step_replan", "PLAN_OVERVIEW", prompt)
 
 		t.Logf("prompt dumped to: %s/scenario_03c_parent_step_replan_after_sub_agent.prompt.txt (%d bytes)", dumpDir, len(prompt))
 	})

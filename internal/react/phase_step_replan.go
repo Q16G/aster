@@ -17,12 +17,14 @@ type stepReplanModelOutput struct {
 	ShouldReplan bool   `json:"should_replan"`
 	ReplanReason string `json:"replan_reason"`
 	NextGoal     string `json:"next_goal"`
+	// 三轴为结构化条目（item/dimension/evidence/ledger_id/produces/consumes）；
+	// AxisItem.UnmarshalJSON 兼容字符串形态，旧持久化无缝解析。
 	// IncompleteItems 轴①完成度/存在性：本 step 自身声明目标内、根本没做的项，驱动补齐 replan。
-	IncompleteItems []string `json:"incomplete_items"`
+	IncompleteItems []*builtin_tools.AxisItem `json:"incomplete_items"`
 	// DepthGaps 轴②深度/质量：做了但不扎实的项（shallow_only 未深度确认、分析链条断裂、低价值项占位等），驱动深挖 replan。
-	DepthGaps []string `json:"depth_gaps"`
+	DepthGaps []*builtin_tools.AxisItem `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化扩面：对照整体任务目标的任务覆盖面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
-	NewSurfaces []string `json:"new_surfaces"`
+	NewSurfaces []*builtin_tools.AxisItem `json:"new_surfaces"`
 	// MaintenanceDirectives 落盘维护指令：核验发现的落盘缺漏（归档/账本增改/事实烘焙），
 	// 由 runtime 维护执行器在进入下一节点之前机械执行（设计 3.4）。
 	MaintenanceDirectives []*builtin_tools.MaintenanceDirective `json:"maintenance_directives,omitempty"`
@@ -64,6 +66,17 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// open_questions/warnings/unresolved, which can be under-reported and cause replan to
 	// "never trigger". We intentionally trade cost for correctness here.
 
+	workspaceSharedDir := ""
+	if a.workspaceRuntime != nil {
+		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	}
+
+	// digest 归约前移：判定 prompt 必须看到 runtime 权威 digest（applyReplanResult 处
+	// 的归约保持兜底，二次归约幂等）。
+	if reduced := reduceStepTimelineToolCallsDigest(workspaceSharedDir, stepID); len(reduced) > 0 {
+		rawOutcome.ToolCallsDigest = reduced
+	}
+
 	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
 	stepContextsPath := a.resolveStepContextsPath()
 	stepTranscriptPath := ""
@@ -71,63 +84,35 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		stepTranscriptPath = a.v2Store.BlobPath(ref)
 	}
 	stepTimelinePath := ""
-	if a.workspaceRuntime != nil {
-		sd := a.workspaceRuntime.SharedDir()
-		if stepTimelineExists(sd, stepID) {
-			stepTimelinePath = filepath.Join(sd, stepID, "timeline.jsonl")
-		}
+	if stepTimelineExists(workspaceSharedDir, stepID) {
+		stepTimelinePath = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
+	}
+	archivePath := ""
+	if workspaceSharedDir != "" {
+		archivePath = filepath.Join(workspaceSharedDir, openItemsArchiveFileName)
 	}
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
-
-	// 注入 prompt 前，为各 step outcome 补上绝对路径的 timeline_file（对齐 final_answer）。
-	// 仅增强注入投影，不改 state（state 的回填仍由 applyReplanResult 用相对路径完成）。
-	enrichedOutcomes := snapshot.StepOutcomes
-	enrichedCurrent := rawOutcome
-	if a.workspaceRuntime != nil {
-		sharedDir := a.workspaceRuntime.SharedDir()
-		enrichedOutcomes = make([]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
-		for i, o := range snapshot.StepOutcomes {
-			if o == nil {
-				continue
-			}
-			clone := *o // 浅拷贝：只写标量 TimelineFile，不触碰 slice 字段
-			if clone.StepID != "" && stepTimelineExists(sharedDir, clone.StepID) {
-				clone.TimelineFile = filepath.Join(sharedDir, clone.StepID, "timeline.jsonl")
-			}
-			enrichedOutcomes[i] = &clone
-		}
-		if c := findOutcome(enrichedOutcomes, stepID); c != nil {
-			enrichedCurrent = c
-		}
-	}
-
-	workspaceSharedDir := ""
-	if a.workspaceRuntime != nil {
-		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
-	}
 
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
 	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":             snapshot.CurrentGoal,
-		"goal_understanding":       snapshot.GoalUnderstanding,
-		"workspace_shared_dir":     workspaceSharedDir,
-		"input_timeline":           snapshot.InputTimeline,
-		"current_step":             current,
-		"step_outcome":             enrichedCurrent,
-		"task_plan":                snapshot.Plan,
-		"step_outcomes":            enrichedOutcomes,
-		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
-		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
-		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
-		"step_result_path":         stepResultPath,
-		"step_contexts_path":       stepContextsPath,
-		"step_transcript_path":     stepTranscriptPath,
-		"step_timeline_path":       stepTimelinePath,
-		"skills_context":           skillsCtx,
-		"available_tools":          functionToolsToAvailableInfo(fnTools),
+		"current_goal":            snapshot.CurrentGoal,
+		"goal_understanding":      snapshot.GoalUnderstanding,
+		"input_timeline":          snapshot.InputTimeline,
+		"current_step_card":       buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath),
+		"plan_overview":           buildPlanOverview(snapshot.Plan),
+		"open_items_ledger":       readSharedFileForPrompt(workspaceSharedDir, openItemsFileName),
+		"task_context_board":      readSharedFileForPrompt(workspaceSharedDir, taskContextFileName),
+		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
+		"step_result_path":        stepResultPath,
+		"step_contexts_path":      stepContextsPath,
+		"step_transcript_path":    stepTranscriptPath,
+		"step_timeline_path":      stepTimelinePath,
+		"open_items_archive_path": archivePath,
+		"skills_context":          skillsCtx,
+		"available_tools":         functionToolsToAvailableInfo(fnTools),
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
@@ -236,9 +221,9 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 			SourceStepID:    stepID,
 			Reason:          strings.TrimSpace(decision.ReplanReason),
 			NextGoal:        nextGoal,
-			IncompleteItems: builtin_tools.NewAxisItems(normalizeStringSlice(decision.IncompleteItems)),
-			DepthGaps:       builtin_tools.NewAxisItems(normalizeStringSlice(decision.DepthGaps)),
-			NewSurfaces:     builtin_tools.NewAxisItems(normalizeStringSlice(decision.NewSurfaces)),
+			IncompleteItems: builtin_tools.NormalizeAxisItems(decision.IncompleteItems),
+			DepthGaps:       builtin_tools.NormalizeAxisItems(decision.DepthGaps),
+			NewSurfaces:     builtin_tools.NormalizeAxisItems(decision.NewSurfaces),
 			ReplacePending:  true,
 		}
 	}
@@ -546,6 +531,100 @@ func normalizeStringSlice(in []string) []string {
 	return out
 }
 
+// replanStepCard 是当前 step 产出的判定视图（plan_item 卡片形态：内联小字段 + 指针），
+// 替代旧的 STEP_OUTCOME 全量注入。
+type replanStepCard struct {
+	ID                string                                `json:"id"`
+	Step              string                                `json:"step"`
+	Status            string                                `json:"status"`
+	StatusSummary     string                                `json:"status_summary,omitempty"`
+	ShortSummary      string                                `json:"short_summary,omitempty"`
+	KeyFacts          []string                              `json:"key_facts,omitempty"`
+	OpenQuestions     []string                              `json:"open_questions,omitempty"`
+	ToolCallsDigest   []string                              `json:"tool_calls_digest,omitempty"`
+	CoverageChecklist []builtin_tools.CoverageChecklistItem `json:"coverage_checklist,omitempty"`
+	OpenItemIDs       []string                              `json:"open_item_ids,omitempty"`
+	References        []string                              `json:"references,omitempty"`
+	Error             string                                `json:"error,omitempty"`
+	ResultFile        string                                `json:"result_file,omitempty"`
+	TimelineFile      string                                `json:"timeline_file,omitempty"`
+}
+
+func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, sharedDir, resultPath string) *replanStepCard {
+	if current == nil || outcome == nil {
+		return nil
+	}
+	card := &replanStepCard{
+		ID:                strings.TrimSpace(current.ID),
+		Step:              strings.TrimSpace(current.Step),
+		Status:            strings.TrimSpace(string(outcome.Status)),
+		StatusSummary:     strings.TrimSpace(outcome.StatusSummary),
+		ShortSummary:      strings.TrimSpace(outcome.ShortSummary),
+		KeyFacts:          outcome.KeyFacts,
+		OpenQuestions:     outcome.OpenQuestions,
+		ToolCallsDigest:   outcome.ToolCallsDigest,
+		CoverageChecklist: outcome.CoverageChecklist,
+		OpenItemIDs:       outcome.OpenItemIDs,
+		References:        outcome.References,
+		Error:             strings.TrimSpace(outcome.Error),
+		ResultFile:        strings.TrimSpace(resultPath),
+	}
+	if stepTimelineExists(sharedDir, card.ID) {
+		card.TimelineFile = filepath.Join(sharedDir, card.ID, "timeline.jsonl")
+	}
+	return card
+}
+
+type planOverviewEntry struct {
+	ID        string   `json:"id"`
+	Step      string   `json:"step"`
+	Status    string   `json:"status"`
+	DependsOn []string `json:"depends_on,omitempty"`
+}
+
+func buildPlanOverview(plan []*builtin_tools.PlanItem) []planOverviewEntry {
+	out := make([]planOverviewEntry, 0, len(plan))
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		out = append(out, planOverviewEntry{
+			ID:        strings.TrimSpace(item.ID),
+			Step:      strings.TrimSpace(item.Step),
+			Status:    strings.TrimSpace(string(item.Status)),
+			DependsOn: item.DependsOn,
+		})
+	}
+	return out
+}
+
+// readSharedFileForPrompt 读取共享区文件全文用于注入；缺失时返回占位说明（不报错）。
+func readSharedFileForPrompt(sharedDir, name string) string {
+	if sharedDir == "" {
+		return "(共享区不可用)"
+	}
+	data, err := os.ReadFile(filepath.Join(sharedDir, name))
+	if err != nil {
+		return "(文件尚不存在)"
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return "(文件为空)"
+	}
+	return content
+}
+
+func readSharedStepFileForPrompt(sharedDir, stepID string) string {
+	if !stepSharedFileExists(sharedDir, stepID, "step.md") {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "step.md"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 	return &ai.FunctionTool{
 		Type: "function",
@@ -570,18 +649,18 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					},
 					"incomplete_items": map[string]any{
 						"type":        "array",
-						"items":       map[string]any{"type": "string"},
+						"items":       submitReplanAxisItemSchema(),
 						"description": "轴①存在性/完成度：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含'做了但不扎实'（属 depth_gaps），也不含本 step 之外的新维度/全集遗漏（属 new_surfaces）。",
 					},
 					"depth_gaps": map[string]any{
 						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "轴②深度/质量：做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 悬而未决判断 / 低价值项占位 / 抽样冒充全量）。",
+						"items":       submitReplanAxisItemSchema(),
+						"description": "轴②深度/质量：做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 悬而未决判断 / 低价值项占位 / 抽样冒充全量），驱动深挖。即使轴①为空也须独立判定。",
 					},
 					"new_surfaces": map[string]any{
 						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的任务覆盖面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是任务覆盖完整性而非单点深挖。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×工作项) 对、前提未变、已扎实覆盖的重叠，同工作项不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级沉回 open_items.md 的 `## 不可解局限` 区。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
+						"items":       submitReplanAxisItemSchema(),
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内的任务覆盖面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列前按原则 C3 轻量去重（默认偏放行：仅剔除同 (维度×工作项) 对且前提未变且已扎实覆盖的重叠，新项/新维度/前提变化复测/拿不准一律保留，禁止整方向折叠）；已覆盖但浅的转 depth_gaps。受意图半径约束（原则 D1 恒生效），意图外项不计入、改用 maintenance_directives 的 ledger_add 降级落账本不可解局限区。含原则 C5 逐项未覆盖的清单项与原则 L2 升进的可行动项。",
 					},
 					"maintenance_directives": map[string]any{
 						"type":        "array",
@@ -604,6 +683,43 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 				},
 			},
 		},
+	}
+}
+
+// submitReplanAxisItemSchema 是三轴结构化条目的 function-calling schema（附录 A.2）。
+// evidence 必填承载 evidence-grounded 判据；ledger_id 是与账本的对账键。
+func submitReplanAxisItemSchema() map[string]any {
+	return map[string]any{
+		"type":     "object",
+		"required": []string{"item", "evidence"},
+		"properties": map[string]any{
+			"item": map[string]any{
+				"type":        "string",
+				"description": "工作项描述；引用了事实板已确认具体值的对象时把值内联进文本本身（原则 L4），下游无需重新发现。",
+			},
+			"evidence": map[string]any{
+				"type":        "string",
+				"description": "触发该条目的观测事实锚点：digest 行 / 账本 OI-id / 事实板条目 / 清单项 / 角色职责维度。无观测锚点的纯类比扩散不得入轴（原则 C2）。",
+			},
+			"dimension": map[string]any{
+				"type":        "string",
+				"description": "可选：检查维度标签，供跨 step 去重的 (维度×工作项) 对照（原则 C3）。",
+			},
+			"ledger_id": map[string]any{
+				"type":        "string",
+				"description": "可选：对应账本条目的 OI-id（对账键）；本轮 ledger_add 新增且未取号的可留空。",
+			},
+			"produces": map[string]any{
+				"type":        "string",
+				"description": "可选：该项预期产物描述，供 planner 产物-消费依赖排序。",
+			},
+			"consumes": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "可选：该项依赖的前置产物列表。",
+			},
+		},
+		"additionalProperties": false,
 	}
 }
 

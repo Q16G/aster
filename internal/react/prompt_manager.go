@@ -55,29 +55,30 @@ type AvailableToolInfo struct {
 }
 
 type StepReplanPromptInput struct {
-	AgentRole              string
-	AgentBackground        string
-	AgentInstruction       string
-	CurrentGoal            any
-	GoalUnderstanding      string
-	WorkspaceSharedDir     string
-	RuntimeRepoContext     RuntimeRepoContext
-	InputTimeline          any
-	CurrentStep            any
-	StepOutcome            any
-	TaskPlan               any
-	StepOutcomes           any
-	CarriedIncompleteItems any
-	CarriedDepthGaps       any
-	CarriedNewSurfaces     any
-	StepResultPath         string
-	StepContextsPath       string
-	StepTranscriptPath     string
-	StepTimelinePath       string
-	SkillsContext          *SkillsPromptContext
-	HasSkillsTable         bool
-	AvailableTools         []AvailableToolInfo
-	HasAvailableTools      bool
+	AgentRole          string
+	AgentBackground    string
+	AgentInstruction   string
+	CurrentGoal        any
+	GoalUnderstanding  string
+	RuntimeRepoContext RuntimeRepoContext
+	InputTimeline      any
+	// CurrentStepCard 是当前 step 产出的 plan_item 卡片投影（替代旧 STEP_OUTCOME/
+	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 id/step/status/depends_on
+	//（替代旧 TASK_PLAN/STEP_OUTCOMES）。账本与事实板全文默认注入（设计 3.1）。
+	CurrentStepCard      any
+	PlanOverview         any
+	OpenItemsLedger      string
+	TaskContextBoard     string
+	StepFileContent      string
+	StepResultPath       string
+	StepContextsPath     string
+	StepTranscriptPath   string
+	StepTimelinePath     string
+	OpenItemsArchivePath string
+	SkillsContext        *SkillsPromptContext
+	HasSkillsTable       bool
+	AvailableTools       []AvailableToolInfo
+	HasAvailableTools    bool
 }
 
 type FinalAnswerPromptInput struct {
@@ -286,41 +287,36 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":                   strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":            strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
-		"CURRENT_GOAL":                 fmt.Sprint(input.CurrentGoal),
-		"GOAL_UNDERSTANDING":           strings.TrimSpace(input.GoalUnderstanding),
-		"HAS_GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding) != "",
-		"WORKSPACE_SHARED_DIR":         strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":             strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
-		"SOURCE_WORKING_DIR":           strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":                strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":                  input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":               strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"IS_GIT_WORKTREE":              input.RuntimeRepoContext.IsWorktree,
-		"INPUT_TIMELINE":               prettyJSON(input.InputTimeline),
-		"CURRENT_STEP":                 prettyJSON(input.CurrentStep),
-		"STEP_OUTCOME":                 prettyJSON(input.StepOutcome),
-		"TASK_PLAN":                    prettyJSON(input.TaskPlan),
-		"STEP_OUTCOMES":                prettyJSON(input.StepOutcomes),
-		"HAS_CARRIED_INCOMPLETE_ITEMS": anyHasItems(input.CarriedIncompleteItems),
-		"CARRIED_INCOMPLETE_ITEMS":     prettyJSON(input.CarriedIncompleteItems),
-		"HAS_CARRIED_DEPTH_GAPS":       anyHasItems(input.CarriedDepthGaps),
-		"CARRIED_DEPTH_GAPS":           prettyJSON(input.CarriedDepthGaps),
-		"HAS_CARRIED_NEW_SURFACES":     anyHasItems(input.CarriedNewSurfaces),
-		"CARRIED_NEW_SURFACES":         prettyJSON(input.CarriedNewSurfaces),
-		"STEP_RESULT_PATH":             input.StepResultPath,
-		"STEP_CONTEXTS_PATH":           input.StepContextsPath,
-		"STEP_TRANSCRIPT_PATH":         input.StepTranscriptPath,
-		"STEP_TIMELINE_PATH":           input.StepTimelinePath,
-		"SKILLS_CONTEXT":               input.SkillsContext,
-		"HAS_SKILLS_TABLE":             input.HasSkillsTable,
-		"AVAILABLE_TOOLS":              input.AvailableTools,
-		"HAS_AVAILABLE_TOOLS":          input.HasAvailableTools,
+		"AGENT_ROLE":              strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":        strings.TrimSpace(input.AgentBackground),
+		"AGENT_INSTRUCTION":       strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":          strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":    strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":   strings.TrimSpace(input.AgentInstruction) != "",
+		"CURRENT_GOAL":            fmt.Sprint(input.CurrentGoal),
+		"GOAL_UNDERSTANDING":      strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING":  strings.TrimSpace(input.GoalUnderstanding) != "",
+		"HAS_REPO_CONTEXT":        strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
+		"SOURCE_WORKING_DIR":      strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":           strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":             input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":          strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"INPUT_TIMELINE":          prettyJSON(input.InputTimeline),
+		"CURRENT_STEP_CARD":       prettyJSON(input.CurrentStepCard),
+		"PLAN_OVERVIEW":           prettyJSON(input.PlanOverview),
+		"OPEN_ITEMS_LEDGER":       strings.TrimSpace(input.OpenItemsLedger),
+		"TASK_CONTEXT_BOARD":      strings.TrimSpace(input.TaskContextBoard),
+		"STEP_FILE_CONTENT":       strings.TrimSpace(input.StepFileContent),
+		"HAS_STEP_FILE_CONTENT":   strings.TrimSpace(input.StepFileContent) != "",
+		"STEP_RESULT_PATH":        input.StepResultPath,
+		"STEP_CONTEXTS_PATH":      input.StepContextsPath,
+		"STEP_TRANSCRIPT_PATH":    input.StepTranscriptPath,
+		"STEP_TIMELINE_PATH":      input.StepTimelinePath,
+		"OPEN_ITEMS_ARCHIVE_PATH": input.OpenItemsArchivePath,
+		"SKILLS_CONTEXT":          input.SkillsContext,
+		"HAS_SKILLS_TABLE":        input.HasSkillsTable,
+		"AVAILABLE_TOOLS":         input.AvailableTools,
+		"HAS_AVAILABLE_TOOLS":     input.HasAvailableTools,
 	}); err != nil {
 		return "", err
 	}

@@ -234,12 +234,11 @@ func TestPromptManager_StepReplanRepoContextSection(t *testing.T) {
 		t.Fatalf("build step_replan failed: %v", err)
 	}
 	for _, needle := range []string{
-		"### 代码仓库上下文",
+		"### 6.3 代码仓库上下文",
 		"source working dir: `/repo/worktree`",
 		"repo root: `/repo/worktree`",
 		"is git repo: `true`",
 		"current branch: `feature/demo`",
-		"is git worktree: `true`",
 	} {
 		if !strings.Contains(prompt, needle) {
 			t.Fatalf("expected step_replan repo section to contain %q, got:\n%s", needle, prompt)
@@ -282,38 +281,43 @@ func TestPromptManager_FinalAnswerRepoContextSection(t *testing.T) {
 	}
 }
 
-func TestPromptManager_StepReplanTaskContextParticipateGate(t *testing.T) {
+func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
 	with, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction:   "你是测试代理",
-		WorkspaceSharedDir: shared,
+		AgentInstruction: "你是测试代理",
+		OpenItemsLedger:  "# 未闭环账本\nnext_id: 2\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 地址: 10.0.0.1\n\n## 执行中补充\n",
 	})
 	if err != nil {
-		t.Fatalf("build step_replan (has shared) failed: %v", err)
+		t.Fatalf("build step_replan failed: %v", err)
 	}
-	for _, needle := range []string{"烘焙", shared + "/task_context.md", "只读", "内联", "不是要机械原样回抛", "当前仍成立"} {
+	// 事实烘焙（L4）：只读 + 具体值内联进条目；账本与事实板全文注入。
+	for _, needle := range []string{"烘焙", "<TASK_CONTEXT_BOARD>", "只读", "内联", "<OPEN_ITEMS_LEDGER>", "[OI-001] x", "地址: 10.0.0.1"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan with shared dir must bake facts into the three axes (missing %q), got:\n%s", needle, with)
+			t.Fatalf("step_replan must inject ledger + fact board with bake contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Read-only: must not instruct writing back to the fact board.
-	if strings.Contains(with, "回写贯穿事实") {
-		t.Fatalf("step_replan bake block must be read-only (no writeback), got:\n%s", with)
+	// 不直接写文件：维护经 maintenance_directives；收敛显式可审计。
+	for _, needle := range []string{"maintenance_directives", "不直接写", "ledger_add", "archive_item", "context_bake", "禁止静默消失"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must route maintenance via directives (missing %q), got:\n%s", needle, with)
+		}
 	}
-
-	without, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction: "你是测试代理",
-	})
-	if err != nil {
-		t.Fatalf("build step_replan (no shared) failed: %v", err)
+	// 旧注入点与 heredoc 写盘指令残留禁入。
+	for _, banned := range []string{"CARRIED_INCOMPLETE_ITEMS", "CARRIED_DEPTH_GAPS", "CARRIED_NEW_SURFACES", "<STEP_OUTCOME>", "<TASK_PLAN>", "<STEP_OUTCOMES>", "heredoc"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("step_replan must not retain removed injection/instruction %q, got:\n%s", banned, with)
+		}
 	}
-	if strings.Contains(without, "烘焙") {
-		t.Fatalf("step_replan without shared dir must not render bake block, got:\n%s", without)
+	// evidence-grounded：三轴条目要求 evidence 锚点。
+	for _, needle := range []string{"evidence", "观测事实", "ledger_id"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must require evidence-grounded axis items (missing %q), got:\n%s", needle, with)
+		}
 	}
 }
 
@@ -408,121 +412,53 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
 	with, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction:   "你是测试代理",
-		WorkspaceSharedDir: shared,
-	})
-	if err != nil {
-		t.Fatalf("build step_replan (has shared) failed: %v", err)
-	}
-	// Fix1: persistent ledger open_items.md with three sections + no-direct-delete discipline.
-	for _, needle := range []string{
-		shared + "/open_items.md",
-		"## 未解决",
-		"## 不可解局限",
-		"## 已闭环",
-		"禁止直接删",
-		"整段覆盖重写",
-		"原则 7.1",
-	} {
-		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan with shared must render open_items ledger (missing %q), got:\n%s", needle, with)
-		}
-	}
-	// 双写者分职：step_replan 仍消费子 task_context 喂三轴，但 open_items 子合并已下沉到 think_act 5.1f。
-	if !strings.Contains(with, "子 agent task_context 喂三轴") {
-		t.Fatalf("step_replan must still consume 子 task_context 喂三轴, got:\n%s", with)
-	}
-	if strings.Contains(with, "合并进父账本") {
-		t.Fatalf("step_replan must NOT render open_items 子合并 (moved to think_act 5.1f), got:\n%s", with)
-	}
-	// 消费者分职：补合成四类 + 多源兜底补全 + 数据流反转措辞。
-	for _, needle := range []string{
-		"step_replan 消费为主 + 合成补写 + 多源兜底补全",
-		"双写者分工",
-		"先有账本再有三轴",
-	} {
-		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
-		}
-	}
-	// Issue A bridge + multi-source co-determination: actionable carried items land in ledger first;
-	// the ledger is a complete superset co-determined by task_context + step context, axes project from it (workspace only).
-	for _, needle := range []string{
-		"落账本 `## 未解决`",
-		"由步骤 4 投影成轴",
-		"账本是完整超集与持久落点",
-		"多源兜底补全",
-	} {
-		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must render consumer+inversion framing (missing %q), got:\n%s", needle, with)
-		}
-	}
-	// Fix2 (ungated): convergence limited to three axes; blocked-affects-future→three axes.
-	for _, needle := range []string{
-		"适用于三组承载项 / 三轴输出",
-		"受阻但影响后续执行的项必入三轴",
-	} {
-		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must scope convergence rules (missing %q), got:\n%s", needle, with)
-		}
-	}
-	// Fix7/Fix9: limitations routed to ledger (no meta-info about removed field).
-	if !strings.Contains(with, "不可解局限的唯一载体是账本") {
-		t.Fatalf("step_replan must route limitations to ledger (missing %q), got:\n%s", "不可解局限的唯一载体是账本", with)
-	}
-	// Fix7: the rendered submit_plan JSON schema must no longer require/define warnings.
-	if strings.Contains(with, "\"new_surfaces\", \"warnings\"]") {
-		t.Fatalf("step_replan submit_plan schema must drop warnings from required, got:\n%s", with)
-	}
-	if strings.Contains(with, "\"warnings\": {") {
-		t.Fatalf("step_replan submit_plan schema must drop the warnings property, got:\n%s", with)
-	}
-	// coverage_checklist consumption (原则 0.2, ungated): first-hand per-item signal feeds axes/warnings.
-	for _, needle := range []string{
-		"原则 0.2",
-		"coverage_checklist",
-		"referenced_prior_coverage",
-		"justified_skip",
-		"uncovered",
-	} {
-		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must consume think_act coverage_checklist (missing %q), got:\n%s", needle, with)
-		}
-	}
-	// Fix6: no coverage-ledger residue.
-	for _, banned := range []string{"coverage-ledger", "coverage_ledger"} {
-		if strings.Contains(with, banned) {
-			t.Fatalf("step_replan must not reference removed %q, got:\n%s", banned, with)
-		}
-	}
-	// Fix7 follow-up: <WARNINGS> injection removed from step_replan entirely.
-	if strings.Contains(with, "<WARNINGS>") {
-		t.Fatalf("step_replan must not inject <WARNINGS> after dropping warnings field, got:\n%s", with)
-	}
-
-	without, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
 		AgentInstruction: "你是测试代理",
+		OpenItemsLedger:  "## 未解决\n- [OI-003] 模块 Y 未深测\n\n## 不可解局限\n\n## 待复核（子agent）\n",
 	})
 	if err != nil {
-		t.Fatalf("build step_replan (no shared) failed: %v", err)
+		t.Fatalf("build step_replan failed: %v", err)
 	}
-	if strings.Contains(without, "open_items.md") {
-		t.Fatalf("step_replan without shared dir must not render open_items ledger, got:\n%s", without)
-	}
-	// Non-workspace fallback: in-memory carried items are the only truth, must完整回抛.
-	for _, needle := range []string{"无 workspace 退化", "完整回抛"} {
-		if !strings.Contains(without, needle) {
-			t.Fatalf("step_replan no-shared fallback must render completeness wording (missing %q), got:\n%s", needle, without)
+	// 账本=完整超集，多源共判先账本后三轴；每条轴项以 ledger_id 对账。
+	for _, needle := range []string{
+		"完整超集",
+		"多源共判",
+		"投影",
+		"[OI-003] 模块 Y 未深测",
+		"ledger_id",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render superset+projection contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Issue A bridge is workspace-gated: else branch stays axis-centric, no ledger-projection wording.
-	if strings.Contains(without, "账本是完整超集与持久落点") {
-		t.Fatalf("step_replan no-shared must NOT render the ledger-projection bridge, got:\n%s", without)
+	// 账本条目逐条复核与归置：受阻影响后续必入轴、高优先级不沉账本、防死循环开闸。
+	for _, needle := range []string{
+		"受阻且影响后续执行",
+		"高优先级项天然可行动",
+		"事实开闸",
+		"方法开闸",
+	} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render ledger adjudication rules (missing %q), got:\n%s", needle, with)
+		}
 	}
-	if !strings.Contains(without, "升进对应轴") {
-		t.Fatalf("step_replan no-shared must keep axis-centric routing (missing %q), got:\n%s", "升进对应轴", without)
+	// coverage_checklist 第一手信号消费（原则 A3）。
+	for _, needle := range []string{"coverage_checklist", "referenced_prior_coverage", "justified_skip", "uncovered"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must consume coverage_checklist (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// digest 默认 + timeline 按需 + 探索预算降级（B3 协议入 prompt）。
+	for _, needle := range []string{"tool_calls_digest", "timeline", "探索预算", "digest-only"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render bounded verification contract (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 无 workspace 退化分支已删（workspace 恒存在）。
+	for _, banned := range []string{"无 workspace 退化", "<WARNINGS>", "完整回抛"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("step_replan must not retain workspace-less fallback %q, got:\n%s", banned, with)
+		}
 	}
 }
 
