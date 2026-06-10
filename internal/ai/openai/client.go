@@ -235,7 +235,34 @@ func (c *Client) reportRetryAttempt(event RetryEvent, err error) {
 	)
 }
 
+// mergeLeadingSystemMsgs 把头部连续多条 string 内容的 system 消息合并为一条。
+// 调用方用多条 system MsgInfo 表达 Anthropic 的多 system block;OpenAI 官方接受
+// 多条 system,但 DeepSeek 等兼容端不保证,统一合并兜底。
+func mergeLeadingSystemMsgs(infos []*ai.MsgInfo) []*ai.MsgInfo {
+	var systemTexts []string
+	rest := 0
+	for _, info := range infos {
+		if info == nil || info.Role != "system" {
+			break
+		}
+		text, ok := info.Content.(string)
+		if !ok {
+			break
+		}
+		systemTexts = append(systemTexts, text)
+		rest++
+	}
+	if len(systemTexts) < 2 {
+		return infos
+	}
+	merged := make([]*ai.MsgInfo, 0, len(infos)-rest+1)
+	merged = append(merged, ai.NewSystemMsgInfo(strings.Join(systemTexts, "\n\n")))
+	merged = append(merged, infos[rest:]...)
+	return merged
+}
+
 func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool, options *ai.RequestOptions) map[string]any {
+	infos = mergeLeadingSystemMsgs(infos)
 	messages := make([]map[string]any, 0, len(infos))
 	for _, info := range infos {
 		msg := map[string]any{

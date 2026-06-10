@@ -260,6 +260,9 @@ func (c *Client) MaxRetries() int {
 func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool, options *ai.RequestOptions) map[string]any {
 	options = ai.NormalizeRequestOptions(options)
 	systemBlocks, messages := splitMessages(infos, options)
+	if options != nil && options.PromptCacheEnabled {
+		applyMessageCacheBreakpoint(messages, options)
+	}
 	body := map[string]any{
 		"model":      strings.TrimSpace(c.config.Model),
 		"max_tokens": c.config.MaxTokens,
@@ -274,8 +277,9 @@ func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool,
 	if c.config.TopP != nil {
 		body["top_p"] = *c.config.TopP
 	}
+	var toolDefs []anthropicTool
 	if len(tools) > 0 {
-		toolDefs := make([]anthropicTool, 0, len(tools))
+		toolDefs = make([]anthropicTool, 0, len(tools))
 		for _, tool := range tools {
 			if tool == nil || tool.Function == nil {
 				continue
@@ -293,20 +297,58 @@ func (c *Client) buildRequestBody(infos []*ai.MsgInfo, tools []*ai.FunctionTool,
 			if options != nil && options.PromptCacheEnabled {
 				toolDefs[len(toolDefs)-1].CacheControl = buildCacheControl(options)
 			}
-			capCacheControlBreakpoints(systemBlocks, toolDefs)
 			body["tools"] = toolDefs
 		}
 	}
+	capCacheControlBreakpoints(toolDefs, systemBlocks, messages)
 	return body
+}
+
+// applyMessageCacheBreakpoint 在最后一条 message 的末个可缓存 content block 上打移动断点,
+// 使多轮工具循环的消息前缀可被增量缓存。
+func applyMessageCacheBreakpoint(messages []map[string]any, options *ai.RequestOptions) {
+	cacheControl := buildCacheControl(options)
+	if cacheControl == nil {
+		return
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		blocks, ok := messages[i]["content"].([]map[string]any)
+		if !ok {
+			continue
+		}
+		for j := len(blocks) - 1; j >= 0; j-- {
+			block := blocks[j]
+			if block == nil {
+				continue
+			}
+			// 空文本块不可作为断点载体,向前回退。
+			if blockType, _ := block["type"].(string); blockType == "text" {
+				if text, _ := block["text"].(string); strings.TrimSpace(text) == "" {
+					continue
+				}
+			}
+			block["cache_control"] = cacheControl
+			return
+		}
+	}
 }
 
 // maxCacheControlBreakpoints 是 Anthropic 单请求允许的 cache_control 断点上限。
 const maxCacheControlBreakpoints = 4
 
-// capCacheControlBreakpoints 兜底:按请求顺序(system 在前、tools 在后)保留前
-// maxCacheControlBreakpoints 个断点,清除多余的,防止任何路径误加断点触发 400。
-func capCacheControlBreakpoints(systemBlocks []anthropicTextBlock, toolDefs []anthropicTool) {
+// capCacheControlBreakpoints 兜底:按 Anthropic 缓存层级顺序(tools → system → messages)
+// 保留前 maxCacheControlBreakpoints 个断点,清除多余的,防止任何路径误加断点触发 400。
+func capCacheControlBreakpoints(toolDefs []anthropicTool, systemBlocks []anthropicTextBlock, messages []map[string]any) {
 	count := 0
+	for i := range toolDefs {
+		if toolDefs[i].CacheControl == nil {
+			continue
+		}
+		count++
+		if count > maxCacheControlBreakpoints {
+			toolDefs[i].CacheControl = nil
+		}
+	}
 	for i := range systemBlocks {
 		if systemBlocks[i].CacheControl == nil {
 			continue
@@ -316,13 +358,19 @@ func capCacheControlBreakpoints(systemBlocks []anthropicTextBlock, toolDefs []an
 			systemBlocks[i].CacheControl = nil
 		}
 	}
-	for i := range toolDefs {
-		if toolDefs[i].CacheControl == nil {
+	for _, msg := range messages {
+		blocks, ok := msg["content"].([]map[string]any)
+		if !ok {
 			continue
 		}
-		count++
-		if count > maxCacheControlBreakpoints {
-			toolDefs[i].CacheControl = nil
+		for _, block := range blocks {
+			if block == nil || block["cache_control"] == nil {
+				continue
+			}
+			count++
+			if count > maxCacheControlBreakpoints {
+				delete(block, "cache_control")
+			}
 		}
 	}
 }
@@ -343,27 +391,12 @@ func splitMessages(infos []*ai.MsgInfo, options *ai.RequestOptions) ([]anthropic
 			if text == "" {
 				continue
 			}
-			if options != nil && options.PromptCacheEnabled {
-				stablePrefix := extractStableSystemPrefix(options.PromptFamily, text)
-				dynamicSuffix := strings.TrimSpace(strings.TrimPrefix(text, stablePrefix))
-				if stablePrefix != "" {
-					systemBlocks = append(systemBlocks, anthropicTextBlock{
-						Type:         "text",
-						Text:         stablePrefix,
-						CacheControl: buildCacheControl(options),
-					})
-				}
-				if dynamicSuffix != "" {
-					systemBlocks = append(systemBlocks, anthropicTextBlock{
-						Type: "text",
-						Text: dynamicSuffix,
-					})
-				}
-				continue
-			}
+			// 每条 system MsgInfo 对应一个 block:调用方按稳定性分块
+			// (block1=通用规则、block2=身份+env),各块末尾即缓存断点。
 			systemBlocks = append(systemBlocks, anthropicTextBlock{
-				Type: "text",
-				Text: text,
+				Type:         "text",
+				Text:         text,
+				CacheControl: buildCacheControl(options),
 			})
 		case "tool":
 			messages = append(messages, map[string]any{
@@ -473,26 +506,6 @@ func normalizeAnthropicRole(role string) string {
 	default:
 		return "user"
 	}
-}
-
-func extractStableSystemPrefix(promptFamily string, text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	if strings.TrimSpace(promptFamily) != "think_act" {
-		return text
-	}
-	for _, marker := range []string{
-		"<CURRENT_STEP>",
-		"<DEPENDENCY_STEP_SUMMARIES>",
-		"<EXECUTION_CONTEXTS>",
-	} {
-		if idx := strings.Index(text, marker); idx >= 0 {
-			return strings.TrimSpace(text[:idx])
-		}
-	}
-	return text
 }
 
 func buildCacheControl(options *ai.RequestOptions) *anthropicCacheControl {
