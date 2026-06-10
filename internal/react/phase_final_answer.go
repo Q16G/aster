@@ -255,9 +255,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		if nextGoal == "" {
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
-		incompleteItems := normalizeStringSlice(decision.model.IncompleteItems)
-		depthGaps := normalizeStringSlice(decision.model.DepthGaps)
-		newSurfaces := normalizeStringSlice(decision.model.NewSurfaces)
+		incompleteItems := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.IncompleteItems))
+		depthGaps := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.DepthGaps))
+		newSurfaces := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.NewSurfaces))
 		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 			NextPhase:     builtin_tools.AgentPhasePlan,
 			Status:        builtin_tools.TaskStatusRunning,

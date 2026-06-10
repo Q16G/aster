@@ -135,7 +135,7 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 			SourceStepID:    "step-1",
 			Reason:          "旧计划未覆盖新增缺口",
 			NextGoal:        "围绕新缺口重排计划",
-			IncompleteItems: []string{"missing-1"},
+			IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
 			Warnings:        []string{"warn-1"},
 			ReplacePending:  true,
 		},

@@ -75,9 +75,9 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.SourceStepID = strings.TrimSpace(in.SourceStepID)
 	out.Reason = strings.TrimSpace(in.Reason)
 	out.NextGoal = strings.TrimSpace(in.NextGoal)
-	out.IncompleteItems = CloneStringSlice(in.IncompleteItems)
-	out.DepthGaps = CloneStringSlice(in.DepthGaps)
-	out.NewSurfaces = CloneStringSlice(in.NewSurfaces)
+	out.IncompleteItems = CloneAxisItems(in.IncompleteItems)
+	out.DepthGaps = CloneAxisItems(in.DepthGaps)
+	out.NewSurfaces = CloneAxisItems(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
 	return &out
 }
@@ -95,9 +95,9 @@ func CloneReplanAxes(in *ReplanAxes) *ReplanAxes {
 		return nil
 	}
 	return &ReplanAxes{
-		IncompleteItems: CloneStringSlice(in.IncompleteItems),
-		DepthGaps:       CloneStringSlice(in.DepthGaps),
-		NewSurfaces:     CloneStringSlice(in.NewSurfaces),
+		IncompleteItems: CloneAxisItems(in.IncompleteItems),
+		DepthGaps:       CloneAxisItems(in.DepthGaps),
+		NewSurfaces:     CloneAxisItems(in.NewSurfaces),
 	}
 }
 

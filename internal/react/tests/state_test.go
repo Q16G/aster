@@ -102,7 +102,7 @@ func TestStateTracker_UpdatePlan_ClearsReplanContext(t *testing.T) {
 		ReplanContext: &builtin_tools.ReplanContext{
 			SourceStepID:    "step-1",
 			NextGoal:        "新目标",
-			IncompleteItems: []string{"missing-1"},
+			IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
 			Warnings:        []string{"warn-1"},
 			ReplacePending:  true,
 		},

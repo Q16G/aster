@@ -89,18 +89,19 @@ const (
 	axisNewSurfaces
 )
 
-// carriedAxisItems 从 sticky 三轴状态取出指定轴的承载项；nil 安全。
+// carriedAxisItems 从 sticky 三轴状态取出指定轴的承载项（投影为人类可读字符串：
+// item + 证据附注，旧 prompt 注入与计数沿用字符串形态）；nil 安全。
 func carriedAxisItems(axes *builtin_tools.ReplanAxes, kind axisKind) []string {
 	if axes == nil {
 		return nil
 	}
 	switch kind {
 	case axisIncomplete:
-		return axes.IncompleteItems
+		return builtin_tools.AxisItemStrings(axes.IncompleteItems)
 	case axisDepth:
-		return axes.DepthGaps
+		return builtin_tools.AxisItemStrings(axes.DepthGaps)
 	case axisNewSurfaces:
-		return axes.NewSurfaces
+		return builtin_tools.AxisItemStrings(axes.NewSurfaces)
 	default:
 		return nil
 	}

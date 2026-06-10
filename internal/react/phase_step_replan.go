@@ -191,9 +191,9 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 			SourceStepID:    stepID,
 			Reason:          strings.TrimSpace(decision.ReplanReason),
 			NextGoal:        nextGoal,
-			IncompleteItems: normalizeStringSlice(decision.IncompleteItems),
-			DepthGaps:       normalizeStringSlice(decision.DepthGaps),
-			NewSurfaces:     normalizeStringSlice(decision.NewSurfaces),
+			IncompleteItems: builtin_tools.NewAxisItems(normalizeStringSlice(decision.IncompleteItems)),
+			DepthGaps:       builtin_tools.NewAxisItems(normalizeStringSlice(decision.DepthGaps)),
+			NewSurfaces:     builtin_tools.NewAxisItems(normalizeStringSlice(decision.NewSurfaces)),
 			ReplacePending:  true,
 		}
 	}

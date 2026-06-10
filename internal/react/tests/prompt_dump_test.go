@@ -67,7 +67,7 @@ func buildRealisticSnapshot() builtin_tools.StateSnapshot {
 		},
 		Warnings: []string{"repository/user_repo.go 中存在未经过滤的用户输入直接拼接到 SQL"},
 		UnresolvedAxes: &builtin_tools.ReplanAxes{
-			DepthGaps: []string{"需要确认 middleware 层是否有统一的输入校验"},
+			DepthGaps: builtin_tools.NewAxisItems([]string{"需要确认 middleware 层是否有统一的输入校验"}),
 		},
 	}
 }
@@ -184,8 +184,8 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			SourceStepID:    "step-2",
 			Reason:          "step-2 发现新的攻击面需要额外检查",
 			NextGoal:        "补充检查 ORM 层的 raw query 风险",
-			IncompleteItems: []string{"step-2 自身的 SQL 拼接点尚未逐一验证"},
-			NewSurfaces:     []string{"GORM Raw 调用点未全部覆盖"},
+			IncompleteItems: builtin_tools.NewAxisItems([]string{"step-2 自身的 SQL 拼接点尚未逐一验证"}),
+			NewSurfaces:     builtin_tools.NewAxisItems([]string{"GORM Raw 调用点未全部覆盖"}),
 			Warnings:        []string{"部分 handler 使用 string format 构造查询"},
 			ReplacePending:  true,
 		}
@@ -1276,7 +1276,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			SourceStepID:   "step-3",
 			Reason:         "step-3 SAST 扫描完成，需要基于扫描结果规划后续分析步骤",
 			NextGoal:       "基于 SAST 扫描的 15 条告警，进行数据流验证和误报排除",
-			NewSurfaces:    []string{"数据流验证尚未开始", "误报排除尚未开始"},
+			NewSurfaces:    builtin_tools.NewAxisItems([]string{"数据流验证尚未开始", "误报排除尚未开始"}),
 			ReplacePending: true,
 		},
 	}

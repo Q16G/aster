@@ -323,24 +323,25 @@ type CurrentStepUpdate struct {
 }
 
 type ReplanContext struct {
-	SourceStepID    string   `json:"source_step_id,omitempty"`
-	Reason          string   `json:"reason,omitempty"`
-	NextGoal        string   `json:"next_goal,omitempty"`
-	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性：源 step 自身声明范围内、根本没做的项
-	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度：源 step 做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 低价值项占位等）
-	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集、尚未被任何已完成工作覆盖的面
-	Warnings        []string `json:"warnings,omitempty"`
-	ReplacePending  bool     `json:"replace_pending,omitempty"`
-	RegenerateGoal  bool     `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
-	UserInitiated   bool     `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
+	SourceStepID    string      `json:"source_step_id,omitempty"`
+	Reason          string      `json:"reason,omitempty"`
+	NextGoal        string      `json:"next_goal,omitempty"`
+	IncompleteItems []*AxisItem `json:"incomplete_items,omitempty"` // 轴①存在性：源 step 自身声明范围内、根本没做的项
+	DepthGaps       []*AxisItem `json:"depth_gaps,omitempty"`       // 轴②深度：源 step 做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 低价值项占位等）
+	NewSurfaces     []*AxisItem `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集、尚未被任何已完成工作覆盖的面
+	Warnings        []string    `json:"warnings,omitempty"`
+	ReplacePending  bool        `json:"replace_pending,omitempty"`
+	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
+	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
 }
 
 // ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。
 // 轴①存在性 / 轴②深度 / 轴③泛化，语义与 ReplanContext 同名字段一致。
+// 条目为结构化 AxisItem（字符串形态经 AxisItem.UnmarshalJSON 兼容解析）。
 type ReplanAxes struct {
-	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性：声明范围内、根本没做的项
-	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度：做了但不扎实（shallow_only 未深度确认 / 分析链条断裂 / 低价值项占位等）
-	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集尚未被覆盖的面
+	IncompleteItems []*AxisItem `json:"incomplete_items,omitempty"` // 轴①存在性：声明范围内、根本没做的项
+	DepthGaps       []*AxisItem `json:"depth_gaps,omitempty"`       // 轴②深度：做了但不扎实（shallow_only 未深度确认 / 分析链条断裂 / 低价值项占位等）
+	NewSurfaces     []*AxisItem `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集尚未被覆盖的面
 }
 
 // ToolCall 工具调用

@@ -105,9 +105,9 @@ func normalizeReplanAxes(in *builtin_tools.ReplanAxes) *builtin_tools.ReplanAxes
 		return nil
 	}
 	return &builtin_tools.ReplanAxes{
-		IncompleteItems: normalizeReferences(in.IncompleteItems),
-		DepthGaps:       normalizeReferences(in.DepthGaps),
-		NewSurfaces:     normalizeReferences(in.NewSurfaces),
+		IncompleteItems: builtin_tools.NormalizeAxisItems(in.IncompleteItems),
+		DepthGaps:       builtin_tools.NormalizeAxisItems(in.DepthGaps),
+		NewSurfaces:     builtin_tools.NormalizeAxisItems(in.NewSurfaces),
 	}
 }
 
