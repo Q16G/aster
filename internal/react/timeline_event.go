@@ -164,10 +164,14 @@ func stepTimelineRelPath(stepID string) string {
 }
 
 func stepTimelineExists(sharedDir, stepID string) bool {
-	if sharedDir == "" || stepID == "" {
+	return stepSharedFileExists(sharedDir, stepID, "timeline.jsonl")
+}
+
+// stepSharedFileExists 检查 shared/<stepID>/<name> 是否存在且非空。
+func stepSharedFileExists(sharedDir, stepID, name string) bool {
+	if sharedDir == "" || stepID == "" || name == "" {
 		return false
 	}
-	p := filepath.Join(sharedDir, stepID, "timeline.jsonl")
-	info, err := os.Stat(p)
+	info, err := os.Stat(filepath.Join(sharedDir, stepID, name))
 	return err == nil && info.Size() > 0
 }

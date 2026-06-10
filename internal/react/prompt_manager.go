@@ -20,28 +20,29 @@ func anyHasItems(v any) bool {
 }
 
 type ThinkActPromptInput struct {
-	AgentRole               string
-	AgentBackground         string
-	AgentInstruction        string
-	TaskContext             *TaskContextData
-	WorkspaceRootDir        string
-	WorkspaceNamespace      string
-	WorkspaceSharedDir      string
-	RuntimeRepoContext      RuntimeRepoContext
-	SkillsContext           *SkillsPromptContext
-	CurrentStep             any
-	DependencyStepSummaries any
-	ExecutionContexts       any
-	HasCurrentStep          bool
-	HasDependencySummaries  bool
-	HasExecutionContexts    bool
-	HasSkillsTable          bool
-	HasInjectedSkills       bool
-	MCPContext              *MCPPromptContext
-	HasMCPTable             bool
-	ExtraContext            string
-	SupportsVision          bool
-	CanSpawnSubAgent        bool
+	AgentRole          string
+	AgentBackground    string
+	AgentInstruction   string
+	GoalUnderstanding  string
+	TaskContext        *TaskContextData
+	WorkspaceRootDir   string
+	WorkspaceNamespace string
+	WorkspaceSharedDir string
+	RuntimeRepoContext RuntimeRepoContext
+	SkillsContext      *SkillsPromptContext
+	CurrentStep        any
+	// DependencyPlanItems 是前置依赖步骤的 plan_item 产出卡片（内联小字段 + 文件指针），
+	// 替代旧的 DEPENDENCY_STEP_SUMMARIES / EXECUTION_CONTEXTS 全量注入。
+	DependencyPlanItems    any
+	HasCurrentStep         bool
+	HasDependencyPlanItems bool
+	HasSkillsTable         bool
+	HasInjectedSkills      bool
+	MCPContext             *MCPPromptContext
+	HasMCPTable            bool
+	ExtraContext           string
+	SupportsVision         bool
+	CanSpawnSubAgent       bool
 }
 
 // AvailableToolInfo is a render-friendly view of a tool that is actually
@@ -235,7 +236,6 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 	if m == nil || m.thinkActTmpl == nil {
 		return "", fmt.Errorf("think_act template is nil")
 	}
-	hasWorkspaceContext := strings.TrimSpace(input.WorkspaceRootDir) != "" || strings.TrimSpace(input.WorkspaceNamespace) != "" || strings.TrimSpace(input.WorkspaceSharedDir) != ""
 	hasRepoContext := strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo
 
 	var taskContextEntries []TaskContextEntry
@@ -245,38 +245,35 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 
 	buf := bytes.NewBuffer(nil)
 	if err := m.thinkActTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":                    strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":              strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":             strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":                strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":          strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction) != "",
-		"HAS_WORKSPACE_CONTEXT":         hasWorkspaceContext,
-		"WORKSPACE_ROOT_DIR":            strings.TrimSpace(input.WorkspaceRootDir),
-		"WORKSPACE_NAMESPACE":           strings.TrimSpace(input.WorkspaceNamespace),
-		"WORKSPACE_SHARED_DIR":          strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":              hasRepoContext,
-		"SOURCE_WORKING_DIR":            strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":                 strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":                   input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":                strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"IS_GIT_WORKTREE":               input.RuntimeRepoContext.IsWorktree,
-		"HAS_TASK_CONTEXT":              len(taskContextEntries) > 0,
-		"TASK_CONTEXT_ENTRIES":          taskContextEntries,
-		"SKILLS_CONTEXT":                input.SkillsContext,
-		"CURRENT_STEP":                  prettyJSON(input.CurrentStep),
-		"DEPENDENCY_STEP_SUMMARIES":     prettyJSON(input.DependencyStepSummaries),
-		"EXECUTION_CONTEXTS":            prettyJSON(input.ExecutionContexts),
-		"HAS_CURRENT_STEP":              input.HasCurrentStep,
-		"HAS_DEPENDENCY_STEP_SUMMARIES": input.HasDependencySummaries,
-		"HAS_EXECUTION_CONTEXTS":        input.HasExecutionContexts,
-		"HAS_SKILLS_TABLE":              input.HasSkillsTable,
-		"HAS_INJECTED_SKILLS":           input.HasInjectedSkills,
-		"MCP_CONTEXT":                   input.MCPContext,
-		"HAS_MCP_TABLE":                 input.HasMCPTable,
-		"EXTRA_CONTEXT":                 strings.TrimSpace(input.ExtraContext),
-		"SUPPORTS_VISION":               input.SupportsVision,
-		"CAN_SPAWN_SUBAGENT":            input.CanSpawnSubAgent,
+		"AGENT_ROLE":                strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":          strings.TrimSpace(input.AgentBackground),
+		"AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":            strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction) != "",
+		"GOAL_UNDERSTANDING":        strings.TrimSpace(input.GoalUnderstanding),
+		"WORKSPACE_ROOT_DIR":        strings.TrimSpace(input.WorkspaceRootDir),
+		"WORKSPACE_NAMESPACE":       strings.TrimSpace(input.WorkspaceNamespace),
+		"WORKSPACE_SHARED_DIR":      strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":          hasRepoContext,
+		"SOURCE_WORKING_DIR":        strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":             strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":               input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":            strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"HAS_TASK_CONTEXT":          len(taskContextEntries) > 0,
+		"TASK_CONTEXT_ENTRIES":      taskContextEntries,
+		"SKILLS_CONTEXT":            input.SkillsContext,
+		"CURRENT_STEP":              prettyJSON(input.CurrentStep),
+		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
+		"HAS_CURRENT_STEP":          input.HasCurrentStep,
+		"HAS_DEPENDENCY_PLAN_ITEMS": input.HasDependencyPlanItems,
+		"HAS_SKILLS_TABLE":          input.HasSkillsTable,
+		"HAS_INJECTED_SKILLS":       input.HasInjectedSkills,
+		"MCP_CONTEXT":               input.MCPContext,
+		"HAS_MCP_TABLE":             input.HasMCPTable,
+		"EXTRA_CONTEXT":             strings.TrimSpace(input.ExtraContext),
+		"SUPPORTS_VISION":           input.SupportsVision,
+		"CAN_SPAWN_SUBAGENT":        input.CanSpawnSubAgent,
 	}); err != nil {
 		return "", err
 	}

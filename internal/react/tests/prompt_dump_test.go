@@ -26,9 +26,22 @@ func buildRealisticSnapshot() builtin_tools.StateSnapshot {
 		},
 		Plan: []*builtin_tools.PlanItem{
 			{
-				ID:     "step-1",
-				Step:   "收集项目结构和入口文件",
-				Status: builtin_tools.PlanStepCompleted,
+				ID:           "step-1",
+				Step:         "收集项目结构和入口文件",
+				Status:       builtin_tools.PlanStepCompleted,
+				ShortSummary: "已收集项目结构，发现 12 个 handler 文件和 5 个 repository 文件",
+				KeyFacts: []string{
+					"项目使用 Gin 框架",
+					"数据库层使用 GORM",
+					"存在 3 个直接拼接 SQL 的 repository 文件",
+				},
+				ToolCallsDigest: []string{
+					"list_files(/repo/project) → 发现 45 个 .go 文件",
+					"rg(\"db.Raw|db.Exec\") → 在 5 个文件中发现 8 处匹配",
+				},
+				References:   []string{"shared/step_artifacts/step-1.result.json"},
+				ResultFile:   "shared/step_artifacts/step-1.result.json",
+				TimelineFile: "shared/step-1/timeline.jsonl",
 			},
 			{
 				ID:        "step-2",
@@ -248,7 +261,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"安全审计 Agent",
 			"<CURRENT_STEP>",
 			"step-2",
-			"<DEPENDENCY_STEP_SUMMARIES>",
+			"<DEPENDENCY_PLAN_ITEMS>",
 			"step-1",
 			"已收集项目结构",
 			"项目使用 Gin 框架",
@@ -313,7 +326,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		// No dependency summaries for first step
 		mustNotContain(t, "first_step_no_deps", prompt, []string{
-			"<DEPENDENCY_STEP_SUMMARIES>",
+			"<DEPENDENCY_PLAN_ITEMS>",
 		})
 	})
 
@@ -1143,7 +1156,21 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 				{Content: subAgentInstruction, CreatedAt: now},
 			},
 			Plan: []*builtin_tools.PlanItem{
-				{ID: "step-1", Step: "加载 go-security-audit-v3 规则集并验证规则文件", Status: builtin_tools.PlanStepCompleted},
+				{
+					ID:           "step-1",
+					Step:         "加载 go-security-audit-v3 规则集并验证规则文件",
+					Status:       builtin_tools.PlanStepCompleted,
+					ShortSummary: "规则集加载成功，共 42 条规则（SQLi: 15, CMDi: 12, PathTraversal: 8, 其他: 7）",
+					KeyFacts: []string{
+						"规则集: go-security-audit-v3",
+						"SQLi 规则 15 条",
+						"CMDi 规则 12 条",
+						"PathTraversal 规则 8 条",
+					},
+					ToolCallsDigest: []string{
+						"bash(semgrep --config go-security-audit-v3 --validate) → 42 rules valid",
+					},
+				},
 				{ID: "step-2", Step: "执行 semgrep 扫描，收集 SQLi/CMDi/PathTraversal 告警", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-1"}},
 				{ID: "step-3", Step: "按 severity 分类整理扫描结果，输出 result.json", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-2"}},
 			},
@@ -1179,7 +1206,7 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 			"<CURRENT_STEP>",
 			"step-2",
 			"semgrep 扫描",
-			"<DEPENDENCY_STEP_SUMMARIES>",
+			"<DEPENDENCY_PLAN_ITEMS>",
 			"step-1",
 			"规则集加载成功",
 			"SQLi 规则 15 条",
@@ -1219,7 +1246,25 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		Plan: []*builtin_tools.PlanItem{
 			{ID: "step-1", Step: "加载项目结构与技术栈识别", Status: builtin_tools.PlanStepCompleted},
 			{ID: "step-2", Step: "加载审计任务清单，确定审计维度", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
-			{ID: "step-3", Step: "执行 SAST 规则扫描（委派子 Agent）", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-2"}},
+			{
+				ID:           "step-3",
+				Step:         "执行 SAST 规则扫描（委派子 Agent）",
+				Status:       builtin_tools.PlanStepCompleted,
+				DependsOn:    []string{"step-2"},
+				ShortSummary: "SAST 扫描完成（由子 Agent sub-a1b2c3d4 执行），发现 15 条告警",
+				KeyFacts: []string{
+					"semgrep 规则命中 15 条",
+					"High: 5 (3x SQLi, 1x CMDi, 1x PathTraversal)",
+					"Medium: 7 (4x SSRF, 2x XXE, 1x Hardcoded Secret)",
+					"Low: 3 (弱哈希算法)",
+					"子 Agent: sub-a1b2c3d4, workspace: /workspace/sub_agents/sub-a1b2c3d4",
+				},
+				ToolCallsDigest: []string{
+					"sub_agent(instruction='SAST 扫描专家...') → 15 条告警",
+				},
+				References: []string{"shared/step_artifacts/step-3.result.json"},
+				ResultFile: "shared/step_artifacts/step-3.result.json",
+			},
 			{ID: "step-4", Step: "AI 语义分析：数据流追踪", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-3"}},
 			{ID: "step-5", Step: "交叉验证与误报排除", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-4"}},
 			{ID: "step-6", Step: "生成结构化审计报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-5"}},
@@ -1351,7 +1396,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			"<CURRENT_STEP>",
 			"step-4",
 			"数据流追踪",
-			"<DEPENDENCY_STEP_SUMMARIES>",
+			"<DEPENDENCY_PLAN_ITEMS>",
 			"step-1",
 			"step-2",
 			"step-3",

@@ -304,6 +304,11 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
+	// step 过程文件（think_act 按 6.4 模板维护）：存在才填指针。
+	var stepFile string
+	if a.workspaceRuntime != nil && stepSharedFileExists(a.workspaceRuntime.SharedDir(), stepID, "step.md") {
+		stepFile = fmt.Sprintf("shared/%s/step.md", stepID)
+	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
 
 	planVersion := snapshot.PlanVersion
@@ -315,6 +320,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		ArtifactDir:       artifactDir,
 		ContextKey:        contextKey,
 		TimelineFile:      timelineFile,
+		StepFile:          stepFile,
 		CoverageFile:      coverageFile,
 		Namespace:         builtin_tools.NormalizeWorkspaceNamespace(a.workspaceNamespace),
 		PlanVersion:       planVersion,

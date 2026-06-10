@@ -63,8 +63,7 @@ func extractStablePromptPrefix(promptFamily string, prompt string) string {
 	}
 	for _, marker := range []string{
 		"<CURRENT_STEP>",
-		"<DEPENDENCY_STEP_SUMMARIES>",
-		"<EXECUTION_CONTEXTS>",
+		"<DEPENDENCY_PLAN_ITEMS>",
 	} {
 		if idx := strings.Index(prompt, marker); idx >= 0 {
 			return strings.TrimSpace(prompt[:idx])

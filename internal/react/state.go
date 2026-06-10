@@ -535,6 +535,10 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	// 终态烘焙：把 outcome 产出写回 plan_item，使 plan 真相源（planner.jsonl）携带完整产出与指针。
 	if item := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: stepID}).CurrentStep(); item != nil {
 		item.BakeOutcome(backfilled)
+		// step 过程文件指针不经 outcome（StepOutcome 无该字段），由 runtime 探测后直填。
+		if sf := strings.TrimSpace(update.StepFile); sf != "" {
+			item.StepFile = sf
+		}
 	}
 
 	// step replan 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
@@ -566,6 +570,7 @@ type stepReplanUpdate struct {
 	SummaryFile  string
 	ResultFile   string
 	TimelineFile string
+	StepFile     string
 	CoverageFile string
 	ContextKey   string
 	References   []string

@@ -69,28 +69,22 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build think_act (has shared) failed: %v", err)
 	}
-	for _, needle := range []string{"5.1e", shared + "/task_context.md", "读取", "重写", "执行中补充"} {
+	// workspace 恒存在：事实板（6.2）与账本（6.3）无条件渲染，不再有无-workspace 分支。
+	for _, needle := range []string{"6.2", shared + "/task_context.md", "read_file", "整段覆盖重写", "执行中补充"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act with shared dir must render 5.1e fact board (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render 6.2 fact board (missing %q), got:\n%s", needle, with)
 		}
 	}
-	for _, needle := range []string{"后续阶段判断", "coverage_checklist", "referenced_prior_coverage", "uncovered"} {
+	for _, needle := range []string{"coverage_checklist", "referenced_prior_coverage", "uncovered", "open_item_ids"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act should render updated replan ownership + checklist contract (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act should render checklist + ledger id contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	if strings.Contains(with, "由后续 `final_answer` phase 判断") {
-		t.Fatalf("think_act should not assign replanning to final_answer anymore, got:\n%s", with)
-	}
-
-	without, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction: "你是测试代理",
-	})
-	if err != nil {
-		t.Fatalf("build think_act (no shared) failed: %v", err)
-	}
-	if strings.Contains(without, "5.1e") {
-		t.Fatalf("think_act without shared dir must not render 5.1e block, got:\n%s", without)
+	// step 文件模板（6.4）：progress + 流程与产出 两节。
+	for _, needle := range []string{"step.md", "## progress", "流程与产出"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act should render step.md template contract (missing %q), got:\n%s", needle, with)
+		}
 	}
 }
 
@@ -175,12 +169,10 @@ func TestPromptManager_ThinkActRepoContextSection(t *testing.T) {
 		t.Fatalf("build think_act failed: %v", err)
 	}
 	for _, needle := range []string{
-		"### 5.1ba 代码仓库上下文",
 		"source working dir: /repo/worktree",
 		"repo root: /repo/worktree",
 		"is git repo: true",
 		"current branch: feature/demo",
-		"is git worktree: true",
 	} {
 		if !strings.Contains(prompt, needle) {
 			t.Fatalf("expected think_act repo section to contain %q, got:\n%s", needle, prompt)
@@ -340,53 +332,48 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build think_act (shared + spawn) failed: %v", err)
 	}
-	// Fix6: 原则 12b now drives concurrent coverage via task_context, no ledger.
+	// P11：并发子 Agent 分区下发 + 跨波去重 + 父对账门禁。
 	for _, needle := range []string{
-		"按全集分区下发",
+		"分区下发",
 		"覆盖对账",
-		"父汇合兜底对账",
+		"按全集逐项对账",
 	} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act 原则12b must route concurrent coverage via task_context (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act P11 must render concurrent partition + reconciliation (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Fix5: child rollup via 子 Agent 汇总表 (索引); open_items 子合并已下沉到本 step 入口 (5.1f).
-	for _, needle := range []string{"子 Agent 汇总表", "关键内容索引", "读取路径"} {
+	// 子 Agent 产出经 runtime 机械回流暂存区，think_act 收尾归并并维护汇总表。
+	for _, needle := range []string{"待复核（子agent）", "子 Agent 汇总表", "关键内容索引", "读取路径", "归并"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act 上卷 must render 子 Agent 汇总表 index (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 双写者分职：open_items 入口维护 (5.1f) + 子账本合并下沉到 step 收尾.
+	// 账本 6.3：OI-id 取号 + 三区结构 + 唯一语义写者纪律。
 	for _, needle := range []string{
-		"5.1f",
+		"6.3",
 		shared + "/open_items.md",
 		"## 未解决",
 		"## 不可解局限",
-		"## 已闭环",
+		"next_id",
+		"OI-",
 		"整段覆盖重写",
 		"禁止直接删",
-		"入口/第一手写者",
-		"合并进父",
-		"原样搬进",
+		"唯一写者",
 	} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act must render open_items entry maintenance 5.1f (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render open_items ledger contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 收窄：step 入口不自判不可解局限（裁决交 step_replan），自己只写 ## 未解决 + 闭环.
+	// 收窄：step 不自判不可解局限（裁决交 step_replan）。
 	for _, needle := range []string{"不自行判定", "待 replan 裁决"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act 5.1f must keep limitation adjudication out of step entry (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must keep limitation adjudication out of step entry (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// Fix4: result multi-key coexistence.
-	if !strings.Contains(with, "多 key 共存") {
-		t.Fatalf("think_act must render result multi-key coexistence contract, got:\n%s", with)
-	}
-	// Fix6: no coverage-ledger residue.
-	for _, banned := range []string{"coverage-ledger", "coverage_ledger"} {
+	// 旧注入点残留禁入。
+	for _, banned := range []string{"DEPENDENCY_STEP_SUMMARIES", "EXECUTION_CONTEXTS"} {
 		if strings.Contains(with, banned) {
-			t.Fatalf("think_act must not reference removed %q, got:\n%s", banned, with)
+			t.Fatalf("think_act must not reference removed injection %q, got:\n%s", banned, with)
 		}
 	}
 }
@@ -557,16 +544,10 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 		"委派即首选",
 		"await_subagents",
 		"禁止",
-		"子 Agent 完成性",
+		"完成性与后台等待",
 	} {
 		if !strings.Contains(withSubAgent, needle) {
 			t.Fatalf("think_act prompt (can spawn) missing guidance %q\nprompt:\n%s", needle, withSubAgent)
-		}
-	}
-	// 无 workspace 时不渲染 open_items 入口段 (5.1f gated by WORKSPACE_SHARED_DIR).
-	for _, absent := range []string{"5.1f", "open_items.md"} {
-		if strings.Contains(withSubAgent, absent) {
-			t.Fatalf("think_act prompt without shared dir must not render open_items entry %q\nprompt:\n%s", absent, withSubAgent)
 		}
 	}
 
@@ -582,7 +563,7 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 	for _, absent := range []string{
 		"委派即首选",
 		"await_subagents",
-		"子 Agent 完成性",
+		"完成性与后台等待",
 	} {
 		if strings.Contains(withoutSubAgent, absent) {
 			t.Fatalf("think_act prompt (cannot spawn) should not contain %q\nprompt:\n%s", absent, withoutSubAgent)

@@ -236,12 +236,12 @@ func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 	})
 
 	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
-	for _, marker := range []string{"<CURRENT_STEP>", "<DEPENDENCY_STEP_SUMMARIES>"} {
+	for _, marker := range []string{"<CURRENT_STEP>", "<DEPENDENCY_PLAN_ITEMS>"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
 		}
 	}
-	if strings.Contains(prompt, "<EXECUTION_CONTEXTS>") {
+	if strings.Contains(prompt, "<DEPENDENCY_STEP_SUMMARIES>") {
 		t.Fatalf("did not expect execution contexts without frozen lineage, got %s", prompt)
 	}
 	if strings.Contains(prompt, "<LAST_OUTCOME>") || strings.Contains(prompt, "<SELECTED_STEP_SUMMARIES>") {
@@ -337,7 +337,7 @@ func TestBuildThinkActPrompt_RendersMultipleTaskContextEntries(t *testing.T) {
 	}
 }
 
-func TestSelectDependencyStepSummaryCards_OnlyReturnsDirectDependencies(t *testing.T) {
+func TestSelectDependencyPlanItemCards_OnlyReturnsDependencies(t *testing.T) {
 	current := &builtin_tools.PlanItem{
 		ID:        "step-3",
 		Step:      "实现改动",
@@ -345,19 +345,23 @@ func TestSelectDependencyStepSummaryCards_OnlyReturnsDirectDependencies(t *testi
 		DependsOn: []string{"step-1", "step-2", "step-1"},
 	}
 	snapshot := builtin_tools.StateSnapshot{
-		StepOutcomes: []*builtin_tools.StepOutcome{
-			{StepID: "step-1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "依赖 1", UpdatedAt: time.Unix(1, 0)},
-			{StepID: "step-2", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "依赖 2", UpdatedAt: time.Unix(2, 0)},
-			{StepID: "step-x", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "无关", UpdatedAt: time.Unix(3, 0)},
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "step-1", Step: "依赖 1", Status: builtin_tools.PlanStepCompleted, ShortSummary: "依赖 1 完成", TimelineFile: "shared/step-1/timeline.jsonl"},
+			{ID: "step-2", Step: "依赖 2", Status: builtin_tools.PlanStepCompleted, ShortSummary: "依赖 2 完成"},
+			{ID: "step-x", Step: "无关", Status: builtin_tools.PlanStepCompleted, ShortSummary: "无关"},
+			current,
 		},
 	}
 
-	cards := SelectDependencyStepSummaryCards(snapshot, current)
+	cards := SelectDependencyPlanItemCards(snapshot, current, "/ws/root")
 	if len(cards) != 2 {
-		t.Fatalf("expected 2 dependency summary cards, got %d: %+v", len(cards), cards)
+		t.Fatalf("expected 2 dependency cards, got %d: %+v", len(cards), cards)
 	}
-	if cards[0].StepID != "step-1" || cards[1].StepID != "step-2" {
+	if cards[0].ID != "step-1" || cards[1].ID != "step-2" {
 		t.Fatalf("expected cards ordered by depends_on, got %+v", cards)
+	}
+	if cards[0].TimelineFile != "/ws/root/shared/step-1/timeline.jsonl" {
+		t.Fatalf("expected timeline pointer absolutized, got %q", cards[0].TimelineFile)
 	}
 }
 

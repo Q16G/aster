@@ -61,13 +61,12 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 
 	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
 	for _, expected := range []string{
-		"### 5.3 Skills 索引",
+		"### 7.2 Skills 索引",
 		"| data-flow | 数据流分析 | flow | loaded |",
-		"### 5.3b Injected Skills",
-		"按原则 8e 在 step 收尾",
+		"### 7.3 Injected Skills",
+		"按 P8 卸载用不上的",
 		"#### data-flow",
 		"follow flows",
-		"原则 8e（Skill 卸载 / 上下文回收",
 		"`eject_skill`",
 	} {
 		if !strings.Contains(prompt, expected) {

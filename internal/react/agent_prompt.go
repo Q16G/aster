@@ -21,10 +21,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 
 	snap := a.state.Snapshot()
 	currentStep := snap.CurrentStep()
-	dependencySummaries := SelectDependencyStepSummaryCards(snap, currentStep)
-	executionContexts := a.executionContextsForPrompt(snap)
-	hasDependencySummaries := len(dependencySummaries) > 0
-	hasExecutionContexts := len(executionContexts) > 0
+	dependencyItems := SelectDependencyPlanItemCards(snap, currentStep, a.workspaceRootDir)
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
 
@@ -32,41 +29,32 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	if a.workspaceRuntime != nil {
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
 	}
-	if workspaceSharedDir != "" {
-		for i := range dependencySummaries {
-			stepID := dependencySummaries[i].StepID
-			if stepID != "" && stepTimelineExists(workspaceSharedDir, stepID) {
-				dependencySummaries[i].TimelineFile = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
-			}
-		}
-	}
 
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
 	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentRole:               strings.TrimSpace(a.cfg.Role),
-		AgentBackground:         strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:        strings.TrimSpace(a.cfg.Instruction),
-		TaskContext:             taskContext,
-		WorkspaceRootDir:        a.workspaceRootDir,
-		WorkspaceNamespace:      a.workspaceNamespace,
-		WorkspaceSharedDir:      workspaceSharedDir,
-		RuntimeRepoContext:      a.runtimeRepoContext,
-		SkillsContext:           skillsContext,
-		CurrentStep:             currentStep,
-		DependencyStepSummaries: dependencySummaries,
-		ExecutionContexts:       executionContexts,
-		HasCurrentStep:          currentStep != nil,
-		HasDependencySummaries:  hasDependencySummaries,
-		HasExecutionContexts:    hasExecutionContexts,
-		HasSkillsTable:          skillsContext != nil && skillsContext.HasTable(),
-		HasInjectedSkills:       skillsContext != nil && skillsContext.HasInjected(),
-		MCPContext:              mcpContext,
-		HasMCPTable:             mcpContext != nil && mcpContext.HasTable(),
-		ExtraContext:            extra,
-		SupportsVision:          supportsVision,
-		CanSpawnSubAgent:        canSpawnSubAgent,
+		AgentRole:              strings.TrimSpace(a.cfg.Role),
+		AgentBackground:        strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
+		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
+		TaskContext:            taskContext,
+		WorkspaceRootDir:       a.workspaceRootDir,
+		WorkspaceNamespace:     a.workspaceNamespace,
+		WorkspaceSharedDir:     workspaceSharedDir,
+		RuntimeRepoContext:     a.runtimeRepoContext,
+		SkillsContext:          skillsContext,
+		CurrentStep:            currentStep,
+		DependencyPlanItems:    dependencyItems,
+		HasCurrentStep:         currentStep != nil,
+		HasDependencyPlanItems: len(dependencyItems) > 0,
+		HasSkillsTable:         skillsContext != nil && skillsContext.HasTable(),
+		HasInjectedSkills:      skillsContext != nil && skillsContext.HasInjected(),
+		MCPContext:             mcpContext,
+		HasMCPTable:            mcpContext != nil && mcpContext.HasTable(),
+		ExtraContext:           extra,
+		SupportsVision:         supportsVision,
+		CanSpawnSubAgent:       canSpawnSubAgent,
 	})
 	if err == nil {
 		return prompt
@@ -107,94 +95,82 @@ func latestStepOutcome(outcomes []*builtin_tools.StepOutcome) *builtin_tools.Ste
 	return latest
 }
 
-type stepSummaryCard struct {
-	StepID          string   `json:"step_id"`
+// dependencyPlanItemCard 是前置依赖步骤的 plan_item 产出投影：内联小字段默认注入，
+// 大体量产出经文件指针按需 read_file（copy→pointer 无损降本）。
+type dependencyPlanItemCard struct {
+	ID              string   `json:"id"`
+	Step            string   `json:"step"`
 	Status          string   `json:"status"`
 	ShortSummary    string   `json:"short_summary,omitempty"`
 	KeyFacts        []string `json:"key_facts,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
+	OpenItemIDs     []string `json:"open_item_ids,omitempty"`
 	References      []string `json:"references,omitempty"`
-	SummaryFile     string   `json:"summary_file,omitempty"`
+	StepFile        string   `json:"step_file,omitempty"`
+	ResultFile      string   `json:"result_file,omitempty"`
 	TimelineFile    string   `json:"timeline_file,omitempty"`
-	StatusSummary   string   `json:"status_summary,omitempty"`
-	OpenQuestions   []string `json:"open_questions,omitempty"`
+	CoverageFile    string   `json:"coverage_file,omitempty"`
 }
 
-func SelectDependencyStepSummaryCards(snapshot builtin_tools.StateSnapshot, currentStep *builtin_tools.PlanItem) []stepSummaryCard {
+// 依赖卡片内联 digest 的条数上限：超出部分顺 timeline_file 指针按需回读，保持无损。
+const dependencyCardDigestMax = 20
+
+// SelectDependencyPlanItemCards 从 plan 真相源（终态烘焙后的 plan_item）投影当前 step
+// 的传递依赖产出卡片。指针字段转为绝对路径供模型直接 read_file。
+func SelectDependencyPlanItemCards(snapshot builtin_tools.StateSnapshot, currentStep *builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
 	if currentStep == nil {
-		return []stepSummaryCard{}
+		return nil
 	}
 	dependencyIDs := collectTransitiveDependencyIDs(currentStep, snapshot.Plan)
 	if len(dependencyIDs) == 0 {
-		return []stepSummaryCard{}
+		return nil
 	}
-
-	outcomesByID := make(map[string]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
-	for _, outcome := range snapshot.StepOutcomes {
-		if outcome == nil {
+	itemByID := make(map[string]*builtin_tools.PlanItem, len(snapshot.Plan))
+	for _, item := range snapshot.Plan {
+		if item == nil {
 			continue
 		}
-		stepID := strings.TrimSpace(outcome.StepID)
-		if stepID == "" {
-			continue
-		}
-		prev, exists := outcomesByID[stepID]
-		if !exists || prev == nil || outcome.UpdatedAt.After(prev.UpdatedAt) {
-			outcomesByID[stepID] = outcome
+		if id := strings.TrimSpace(item.ID); id != "" {
+			itemByID[id] = item
 		}
 	}
-	if len(outcomesByID) == 0 {
-		return []stepSummaryCard{}
+
+	abs := func(path string) string {
+		path = strings.TrimSpace(path)
+		if path == "" || filepath.IsAbs(path) || strings.TrimSpace(workspaceRootDir) == "" {
+			return path
+		}
+		return filepath.Join(workspaceRootDir, filepath.FromSlash(path))
 	}
 
-	cards := make([]stepSummaryCard, 0, len(dependencyIDs))
-	addOutcome := func(outcome *builtin_tools.StepOutcome) {
-		if outcome == nil {
-			return
-		}
-		stepID := strings.TrimSpace(outcome.StepID)
-		if stepID == "" {
-			return
-		}
-		short := strings.TrimSpace(outcome.ShortSummary)
-		if short == "" {
-			short = strings.TrimSpace(outcome.Summary)
-		}
-		if short == "" {
-			short = strings.TrimSpace(outcome.DisplayResult)
-		}
-
-		card := stepSummaryCard{
-			StepID:          stepID,
-			Status:          strings.TrimSpace(string(outcome.Status)),
-			ShortSummary:    short,
-			KeyFacts:        outcome.KeyFacts,
-			ToolCallsDigest: outcome.ToolCallsDigest,
-			References:      outcome.References,
-			SummaryFile:     strings.TrimSpace(outcome.SummaryFile),
-			StatusSummary:   strings.TrimSpace(outcome.StatusSummary),
-			OpenQuestions:   outcome.OpenQuestions,
-		}
-		if len(card.KeyFacts) == 0 {
-			card.KeyFacts = nil
-		}
-		if len(card.ToolCallsDigest) == 0 {
-			card.ToolCallsDigest = nil
-		}
-		if len(card.References) == 0 {
-			card.References = nil
-		}
-		if len(card.OpenQuestions) == 0 {
-			card.OpenQuestions = nil
-		}
-		cards = append(cards, card)
-	}
-
+	cards := make([]dependencyPlanItemCard, 0, len(dependencyIDs))
 	for _, depID := range dependencyIDs {
-		addOutcome(outcomesByID[depID])
+		item := itemByID[depID]
+		if item == nil {
+			continue
+		}
+		digest := item.ToolCallsDigest
+		if len(digest) > dependencyCardDigestMax {
+			digest = append(append([]string{}, digest[:dependencyCardDigestMax]...),
+				fmt.Sprintf("...(其余 %d 条见 timeline_file)", len(item.ToolCallsDigest)-dependencyCardDigestMax))
+		}
+		cards = append(cards, dependencyPlanItemCard{
+			ID:              depID,
+			Step:            strings.TrimSpace(item.Step),
+			Status:          strings.TrimSpace(string(item.Status)),
+			ShortSummary:    strings.TrimSpace(item.ShortSummary),
+			KeyFacts:        item.KeyFacts,
+			ToolCallsDigest: digest,
+			OpenItemIDs:     item.OpenItemIDs,
+			References:      item.References,
+			StepFile:        abs(item.StepFile),
+			ResultFile:      abs(item.ResultFile),
+			TimelineFile:    abs(item.TimelineFile),
+			CoverageFile:    abs(item.CoverageFile),
+		})
 	}
 	if len(cards) == 0 {
-		return []stepSummaryCard{}
+		return nil
 	}
 	return cards
 }
