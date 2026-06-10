@@ -130,6 +130,16 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 			return ctx.Err()
 		}
 
+		// 硬上限：降级提示后仍不提交，保守按「无需重规划」收尾，避免判定节点失控空转。
+		if round >= judgmentExplorationBudget+judgmentGraceRounds {
+			a.emitRuntimeLog("warn", "step replan exploration budget exhausted", snapshot, map[string]any{
+				"event":   "step_replan_exploration_budget_exhausted",
+				"step_id": stepID,
+				"rounds":  round,
+			})
+			return a.applyReplanResult(stepID, nil, nil, snapshot, "")
+		}
+
 		replanCtx, replanCancel := context.WithCancel(ctx)
 		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, "", fnTools...)
 		replanCancel()
@@ -170,6 +180,15 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
+				// 探索预算（无损兜底的上限与降级，设计 6.3）：超出后拒绝继续回读，
+				// 要求基于已得信息降级裁决（digest-only + 账本待复核），不静默丢失。
+				if round >= judgmentExplorationBudget {
+					a.AICallProxyWriteToolResult(
+						strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name),
+						"", nil, "", stepReplanBudgetNotice, false,
+					)
+					continue
+				}
 				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
 					return err
 				}
@@ -182,6 +201,18 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		}
 	}
 }
+
+// 判定节点（step_replan / final_answer）的探索预算：默认消费已注入的 digest 与共享区
+// 全文即可裁决，按需回读 timeline / 产物文件以「轮」为预算；超出预算拒绝继续回读并
+// 要求降级裁决，再宽限若干轮仍不提交则保守收尾。
+const (
+	judgmentExplorationBudget = 4
+	judgmentGraceRounds       = 3
+)
+
+const stepReplanBudgetNotice = "回读/探索轮次已达上限：不要再调用查证工具。" +
+	"立即基于已注入与已读取的信息调用 submit_plan 裁决；无法核验的项按 digest-only 保守判定" +
+	"（拿不准偏放行进对应轴），并用 maintenance_directives 的 ledger_add 写入账本待复核。"
 
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	var replanContext *builtin_tools.ReplanContext

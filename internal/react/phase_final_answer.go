@@ -150,6 +150,19 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					return snapshot, fmt.Errorf("final_answer AICallProxy failed: %w", callErr)
 				}
 
+				// 硬上限：降级提示后仍不提交，按纯文本兜底收尾，避免判定节点失控空转。
+				if round >= judgmentExplorationBudget+judgmentGraceRounds {
+					a.emitRuntimeLog("warn", "final answer exploration budget exhausted", snapshot, map[string]any{
+						"event":  "final_answer_exploration_budget_exhausted",
+						"rounds": round,
+					})
+					modelOut = finalAnswerPlaintextFallback(callResult.AssistantText)
+					rawResponse = strings.TrimSpace(callResult.AssistantText)
+					fallbackMode = "exploration_budget_exhausted"
+					gotModelOut = true
+					break
+				}
+
 				// 空响应：plaintext 兜底（不 return，必须落到 L189 后处理产出可交付终报）。
 				if len(callResult.ToolCalls) == 0 {
 					modelOut = finalAnswerPlaintextFallback(callResult.AssistantText)
@@ -189,6 +202,14 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					}
 					if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 						anyUsefulTool = true
+						// 探索预算（设计 6.3）：超出后拒绝继续取证，要求基于已有信息降级裁决。
+						if round >= judgmentExplorationBudget {
+							a.AICallProxyWriteToolResult(
+								strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name),
+								"", nil, "", finalAnswerBudgetNotice, false,
+							)
+							continue
+						}
 						if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
 							return snapshot, err
 						}
@@ -363,6 +384,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 }
 
 const submitFinalAnswerToolName = builtin_tools.SubmitFinalAnswerToolName
+
+const finalAnswerBudgetNotice = "取证轮次已达上限：不要再调用只读工具。" +
+	"立即基于已有信息调用 submit_final_answer；无法核验的诉求项归置为「仅初步」并写明未核验原因。"
 
 // finalAnswerPlaintextFallback 在模型未通过 submit_final_answer 提交结构化决策时，
 // 把其纯文本输出兜底为一个可交付的 completed 终报，保留旧路径「fallback-to-plaintext」语义。
