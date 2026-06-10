@@ -22,7 +22,7 @@ func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
 func (t *UpdateCurrentStepTool) Name() string { return UpdateCurrentStepToolName }
 
 func (t *UpdateCurrentStepTool) Description() string {
-	return "写入当前 step 的终态与结果。"
+	return "step 完成或失败后调用，提交当前 step 的结构化终态与结果；这是结束 step 的唯一方式。status=completed 前须完成覆盖对账（仍有 uncovered 项时不得标 completed）。"
 }
 
 func (t *UpdateCurrentStepTool) Parameters() any {

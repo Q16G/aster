@@ -242,7 +242,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	// userInputTurn：本回合由用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
-	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner.prompt 原则 0.7）。
+	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner.prompt 原则 P4）。
 	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
 	if !regenGoal {
@@ -762,7 +762,7 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 		return nil, fmt.Errorf("submit_plan: needs_planning=true but plan is empty")
 	}
 	if requireGoalUnderstanding && result.NeedsPlanning && strings.TrimSpace(result.GoalUnderstanding) == "" {
-		return nil, fmt.Errorf("submit_plan: needs_planning=true but goal_understanding is empty（请先按原则 0.5 完成输入理解，填入 goal_understanding 再提交）")
+		return nil, fmt.Errorf("submit_plan: needs_planning=true but goal_understanding is empty（请先完成输入理解的七要素结构化复述，填入 goal_understanding 再提交）")
 	}
 	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
 		return nil, fmt.Errorf("submit_plan: needs_planning=false but direct_response is empty")

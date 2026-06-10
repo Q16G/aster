@@ -70,7 +70,7 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			"warnings": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "确属不可解的局限（含 step_replan 降级沉回的项）及风险注意事项。每条须在 user_message 中有对应归置，不得静默丢弃。",
+				"description": "确属不可解的局限（含上游降级沉回的项）及风险注意事项。每条须在 user_message 中有对应归置，不得静默丢弃。",
 			},
 			"user_message": map[string]any{
 				"type":        "string",

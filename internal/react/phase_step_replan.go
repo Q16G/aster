@@ -660,7 +660,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"new_surfaces": map[string]any{
 						"type":        "array",
 						"items":       submitReplanAxisItemSchema(),
-						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内的任务覆盖面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列前按原则 C3 轻量去重（默认偏放行：仅剔除同 (维度×工作项) 对且前提未变且已扎实覆盖的重叠，新项/新维度/前提变化复测/拿不准一律保留，禁止整方向折叠）；已覆盖但浅的转 depth_gaps。受意图半径约束（原则 D1 恒生效），意图外项不计入、改用 maintenance_directives 的 ledger_add 降级落账本不可解局限区。含原则 C5 逐项未覆盖的清单项与原则 L2 升进的可行动项。",
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内的任务覆盖面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列前轻量去重（默认偏放行：仅剔除同 (维度×工作项) 对且前提未变且已扎实覆盖的重叠，新项/新维度/前提变化复测/拿不准一律保留，禁止整方向折叠）；已覆盖但浅的转 depth_gaps。受意图半径约束（恒生效），意图外项不计入、改用 maintenance_directives 的 ledger_add 降级落账本不可解局限区。含声明产出清单逐项比对出的未覆盖项与账本复核升进的可行动项。",
 					},
 					"maintenance_directives": map[string]any{
 						"type":        "array",
@@ -695,15 +695,15 @@ func submitReplanAxisItemSchema() map[string]any {
 		"properties": map[string]any{
 			"item": map[string]any{
 				"type":        "string",
-				"description": "工作项描述；引用了事实板已确认具体值的对象时把值内联进文本本身（原则 L4），下游无需重新发现。",
+				"description": "工作项描述；引用了事实板已确认具体值的对象时把值内联进文本本身，下游无需重新发现。",
 			},
 			"evidence": map[string]any{
 				"type":        "string",
-				"description": "触发该条目的观测事实锚点：digest 行 / 账本 OI-id / 事实板条目 / 清单项 / 角色职责维度。无观测锚点的纯类比扩散不得入轴（原则 C2）。",
+				"description": "触发该条目的观测事实锚点：digest 行 / 账本 OI-id / 事实板条目 / 清单项 / 角色职责维度。无观测锚点的纯类比扩散不得入轴。",
 			},
 			"dimension": map[string]any{
 				"type":        "string",
-				"description": "可选：检查维度标签，供跨 step 去重的 (维度×工作项) 对照（原则 C3）。",
+				"description": "可选：检查维度标签，供跨 step 去重的 (维度×工作项) 对照。",
 			},
 			"ledger_id": map[string]any{
 				"type":        "string",
