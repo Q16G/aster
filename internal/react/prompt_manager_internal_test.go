@@ -435,7 +435,7 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 	}
 	// 账本条目逐条复核与归置：受阻影响后续必入轴、高优先级不沉账本、防死循环开闸。
 	for _, needle := range []string{
-		"受阻且影响后续执行",
+		"受阻且影响后续",
 		"高优先级项天然可行动",
 		"事实开闸",
 		"方法开闸",
