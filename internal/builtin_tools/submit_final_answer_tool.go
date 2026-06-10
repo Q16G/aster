@@ -19,11 +19,7 @@ func NewSubmitFinalAnswerTool() *SubmitFinalAnswerTool { return &SubmitFinalAnsw
 func (t *SubmitFinalAnswerTool) Name() string { return SubmitFinalAnswerToolName }
 
 func (t *SubmitFinalAnswerTool) Description() string {
-	return "完成性评估结束、准备交付最终答复时调用此工具提交结构化决策。" +
-		"参数即 assessment 的完整内容：is_complete/status 给出任务终态判断；" +
-		"incomplete_items/depth_gaps/new_surfaces 三轴盘点尚存缺口（驱动是否回流 plan）；" +
-		"user_message 为可直接交付给用户的高密度答复正文；references 为支撑结论的绝对路径引用。" +
-		"调用即视为提交，不要把决策写成普通文本或代码块。"
+	return "完成性评估结束、准备交付最终答复时调用，提交结构化决策（参数语义见 schema）；调用即视为提交，不要把决策写成普通文本或代码块。"
 }
 
 func (t *SubmitFinalAnswerTool) Parameters() any {
@@ -70,7 +66,7 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			"warnings": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "确属不可解的局限（含上游降级沉回的项）及风险注意事项。每条须在 user_message 中有对应归置，不得静默丢弃。",
+				"description": "最终产出的不可解局限与风险事项清单：主要来自账本 ## 不可解局限，runtime 内部告警中有重要的也可一并纳入。每条须在 user_message 中有对应归置，不得静默丢弃。",
 			},
 			"user_message": map[string]any{
 				"type":        "string",

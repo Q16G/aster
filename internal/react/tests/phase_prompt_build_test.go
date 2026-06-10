@@ -39,7 +39,7 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 		"不要把「等待用户输入」写成 `next_goal`",
 		"`next_goal` 仅在确实需要 agent 继续执行时填写",
 		"可直接交付的完整响应，高密度、不主动压缩",
-		"warnings 与不可解局限须逐条归置",
+		"账本 `## 不可解局限` 与输出字段 `warnings` 须逐条归置",
 		"仅当用户明确要求全量明细或缺少明细会改变结论时才完整展开",
 	}
 	for _, needle := range mustContain {
@@ -71,9 +71,9 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 			t.Fatalf("expected final_answer to consume coverage_checklist (missing %q), got:\n%s", needle, prompt)
 		}
 	}
-	// summary-first 放松不含 warnings；归置不得静默丢弃。
+	// 不可解局限与 warnings 字段不在 summary-first 放松范围，不得静默丢弃。
 	for _, needle := range []string{
-		"不在放松范围",
+		"摘要放松不适用",
 		"不得静默丢弃",
 	} {
 		if !strings.Contains(prompt, needle) {
@@ -113,7 +113,7 @@ func TestBuildFinalAnswerPrompt_ReadsOpenItemsLedgerWhenWorkspace(t *testing.T) 
 		"<OPEN_ITEMS_LEDGER>",
 		"总验收",
 		"不可解局限",
-		"以账本为准",
+		"权威载体",
 	} {
 		if !strings.Contains(prompt, needle) {
 			t.Fatalf("expected final_answer ledger injection (missing %q), got:\n%s", needle, prompt)
