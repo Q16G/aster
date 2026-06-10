@@ -23,6 +23,9 @@ type stepReplanModelOutput struct {
 	DepthGaps []string `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化扩面：对照整体任务目标的任务覆盖面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
 	NewSurfaces []string `json:"new_surfaces"`
+	// MaintenanceDirectives 落盘维护指令：核验发现的落盘缺漏（归档/账本增改/事实烘焙），
+	// 由 runtime 维护执行器在进入下一节点之前机械执行（设计 3.4）。
+	MaintenanceDirectives []*builtin_tools.MaintenanceDirective `json:"maintenance_directives,omitempty"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -224,6 +227,13 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
 	}
 
+	// 维护指令先于状态推进执行（进入下一节点之前），保证下游读到最新共享区；
+	// 执行 warnings 并入本轮 Warnings 注入下游（设计 3.4：失败不阻塞、显式可见）。
+	var maintenanceWarnings []string
+	if modelOut != nil {
+		maintenanceWarnings = a.executeMaintenanceDirectives(stepID, modelOut.MaintenanceDirectives)
+	}
+
 	var replanWarnings []string
 	var replanAxes *builtin_tools.ReplanAxes
 	if replanContext != nil {
@@ -268,7 +278,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		PlanVersion:       planVersion,
 		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
 		CurrentGoal:       summaryGoal,
-		Warnings:          replanWarnings,
+		Warnings:          append(replanWarnings, maintenanceWarnings...),
 		UnresolvedAxes:    replanAxes,
 		ReplanContext:     replanContext,
 		NextPhase:         nextPhase,
@@ -524,6 +534,24 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
 						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的任务覆盖面全集（如 recon 检出且落在用户意图内的模块/接口），尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step，视角是任务覆盖完整性而非单点深挖。入列时按原则2.2 轻量去重（默认偏放行）：只剔除明确同 (维度×工作项) 对、前提未变、已扎实覆盖的重叠，同工作项不同维度/前序从未触及的新项/前提变化复测一律保留，拿不准也保留（禁止整方向折叠误杀新项）；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束（原则6 默认恒生效），意图外/明确不做项不计入此处、降级沉回 open_items.md 的 `## 不可解局限` 区。含原则5.1 逐项未覆盖的清单项、原则7 升进的可行动新面，驱动扩面 replan。",
+					},
+					"maintenance_directives": map[string]any{
+						"type":        "array",
+						"description": "可选：核验发现的落盘缺漏维护指令，由 runtime 在进入下一节点之前机械执行。类型：ledger_add（账本新增，target 留空自动取号）/ ledger_update（target=OI-id，content=更新批注）/ archive_item（target=OI-id 闭环归档，evidence=闭环证据）/ context_bake（content 写入 task_context 执行中补充）/ merge_staging（提示暂存区待归并）。",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"type": map[string]any{
+									"type": "string",
+									"enum": []any{"archive_item", "ledger_add", "ledger_update", "merge_staging", "context_bake"},
+								},
+								"target":   map[string]any{"type": "string", "description": "OI-id 或 task_context 节名（按类型）"},
+								"content":  map[string]any{"type": "string"},
+								"evidence": map[string]any{"type": "string"},
+							},
+							"required":             []string{"type"},
+							"additionalProperties": false,
+						},
 					},
 				},
 			},
