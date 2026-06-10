@@ -38,8 +38,8 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 		"当前输入的主要目标是建立对话、确认状态、获取说明或触发引导时，只要系统已给出恰当回应即视为完成",
 		"不要把「等待用户输入」写成 `next_goal`",
 		"`next_goal` 仅在确实需要 agent 继续执行时填写",
-		"用户可直接消费的总结",
-		"可摘要的只是可枚举清单的逐项台账",
+		"可直接交付的完整响应，高密度、不主动压缩",
+		"warnings 与不可解局限须逐条归置",
 		"仅当用户明确要求全量明细或缺少明细会改变结论时才完整展开",
 	}
 	for _, needle := range mustContain {

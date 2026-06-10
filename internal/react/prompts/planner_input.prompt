@@ -31,7 +31,7 @@
 {{- if .TaskItemsJSON}}
 
 <TASK_ITEMS>
-说明：plan 真相源投影。已完成项内联产出小字段（short_summary / key_facts / tool_calls_digest 截断）与文件指针（step_file / result_file / timeline_file），承接与核实直接消费，无需重新发现。
+说明：已完成项内联产出小字段（short_summary / key_facts / tool_calls_digest 截断）与文件指针（step_file / result_file / timeline_file），承接与核实直接消费，无需重新发现。
 {{.TaskItemsJSON}}
 </TASK_ITEMS>
 {{- end}}

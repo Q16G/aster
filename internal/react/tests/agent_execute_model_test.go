@@ -2395,7 +2395,7 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 
 	// Verify critical markers are present in round 2
 	round2 := replanSystemMsgs[1]
-	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "JSON-SCHEMA", "should_replan"} {
+	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "maintenance_directives", "should_replan"} {
 		if !strings.Contains(round2, marker) {
 			t.Errorf("round-2 system prompt missing marker %q", marker)
 		}
