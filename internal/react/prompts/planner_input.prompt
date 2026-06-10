@@ -31,6 +31,7 @@
 {{- if .TaskItemsJSON}}
 
 <TASK_ITEMS>
+说明：plan 真相源投影。已完成项内联产出小字段（short_summary / key_facts / tool_calls_digest 截断）与文件指针（step_file / result_file / timeline_file），承接与核实直接消费，无需重新发现。
 {{.TaskItemsJSON}}
 </TASK_ITEMS>
 {{- end}}
@@ -40,18 +41,6 @@
 {{.ReplanContextJSON}}
 </REPLAN_CONTEXT>
 {{- end}}
-{{- if .HasExecutionLine}}
-
-<EXECUTION_LINE>
-{{.ExecutionLineJSON}}
-</EXECUTION_LINE>
-{{- end}}
-{{- if .HasWorkspaceContexts}}
-
-<WORKSPACE_STEP_CONTEXTS>
-{{.WorkspaceContextsJSON}}
-</WORKSPACE_STEP_CONTEXTS>
-{{- end}}
 {{- if .RecoveryContextJSON}}
 
 <RECOVERY_CHILD_AGENTS>
@@ -59,7 +48,7 @@
 {{.RecoveryContextJSON}}
 </RECOVERY_CHILD_AGENTS>
 {{- end}}
-{{- if not (or .TaskItemsJSON .ReplanContextJSON .HasExecutionLine .RecoveryContextJSON)}}
+{{- if not (or .TaskItemsJSON .ReplanContextJSON .RecoveryContextJSON)}}
 
 <PLANNING_HINT>
 这是一个全新任务。请先使用工具做轻量调查，了解与任务相关的上下文，然后再调用 submit_plan 提交有针对性的计划。

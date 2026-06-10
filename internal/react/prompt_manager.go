@@ -122,7 +122,10 @@ type TaskPlannerPromptInput struct {
 	WorkspaceSharedDir string
 	RuntimeRepoContext RuntimeRepoContext
 	UserInputTurn      bool
-	SkillsContext      *SkillsPromptContext
+	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
+	// 模板据此渲染重规划分支（3.4 R1-R6）。
+	HasReplanContext bool
+	SkillsContext    *SkillsPromptContext
 	MCPContext         *MCPPromptContext
 	HasSkillsTable     bool
 	HasMCPTable        bool
@@ -393,8 +396,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"REPO_ROOT_DIR":          strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
 		"IS_GIT_REPO":            input.RuntimeRepoContext.IsGitRepo,
 		"CURRENT_BRANCH":         strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"IS_GIT_WORKTREE":        input.RuntimeRepoContext.IsWorktree,
 		"USER_INPUT_TURN":        input.UserInputTurn,
+		"HAS_REPLAN_CONTEXT":     input.HasReplanContext,
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,
 		"HAS_SKILLS_TABLE":       input.HasSkillsTable,

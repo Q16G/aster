@@ -13,16 +13,12 @@ var plannerInputTmpl = template.Must(
 )
 
 type plannerInputData struct {
-	AgentRole             string
-	AgentBackground       string
-	AgentInstruction      string
-	HandoffContext        string
-	InputTimeline         string
-	TaskItemsJSON         string
-	ReplanContextJSON     string
-	ExecutionLineJSON     string
-	HasExecutionLine      bool
-	WorkspaceContextsJSON string
-	HasWorkspaceContexts  bool
-	RecoveryContextJSON   string
+	AgentRole           string
+	AgentBackground     string
+	AgentInstruction    string
+	HandoffContext      string
+	InputTimeline       string
+	TaskItemsJSON       string
+	ReplanContextJSON   string
+	RecoveryContextJSON string
 }

@@ -101,6 +101,7 @@ type dependencyPlanItemCard struct {
 	ID              string   `json:"id"`
 	Step            string   `json:"step"`
 	Status          string   `json:"status"`
+	DependsOn       []string `json:"depends_on,omitempty"`
 	ShortSummary    string   `json:"short_summary,omitempty"`
 	KeyFacts        []string `json:"key_facts,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
@@ -135,6 +136,23 @@ func SelectDependencyPlanItemCards(snapshot builtin_tools.StateSnapshot, current
 		}
 	}
 
+	cards := make([]dependencyPlanItemCard, 0, len(dependencyIDs))
+	for _, depID := range dependencyIDs {
+		if card := planItemCard(itemByID[depID], workspaceRootDir); card != nil {
+			cards = append(cards, *card)
+		}
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	return cards
+}
+
+// planItemCard 把烘焙后的 plan_item 投影为注入卡片（digest 截断、指针转绝对路径）。
+func planItemCard(item *builtin_tools.PlanItem, workspaceRootDir string) *dependencyPlanItemCard {
+	if item == nil || strings.TrimSpace(item.ID) == "" {
+		return nil
+	}
 	abs := func(path string) string {
 		path = strings.TrimSpace(path)
 		if path == "" || filepath.IsAbs(path) || strings.TrimSpace(workspaceRootDir) == "" {
@@ -142,37 +160,37 @@ func SelectDependencyPlanItemCards(snapshot builtin_tools.StateSnapshot, current
 		}
 		return filepath.Join(workspaceRootDir, filepath.FromSlash(path))
 	}
+	digest := item.ToolCallsDigest
+	if len(digest) > dependencyCardDigestMax {
+		digest = append(append([]string{}, digest[:dependencyCardDigestMax]...),
+			fmt.Sprintf("...(其余 %d 条见 timeline_file)", len(item.ToolCallsDigest)-dependencyCardDigestMax))
+	}
+	return &dependencyPlanItemCard{
+		ID:              strings.TrimSpace(item.ID),
+		Step:            strings.TrimSpace(item.Step),
+		Status:          strings.TrimSpace(string(item.Status)),
+		DependsOn:       item.DependsOn,
+		ShortSummary:    strings.TrimSpace(item.ShortSummary),
+		KeyFacts:        item.KeyFacts,
+		ToolCallsDigest: digest,
+		OpenItemIDs:     item.OpenItemIDs,
+		References:      item.References,
+		StepFile:        abs(item.StepFile),
+		ResultFile:      abs(item.ResultFile),
+		TimelineFile:    abs(item.TimelineFile),
+		CoverageFile:    abs(item.CoverageFile),
+	}
+}
 
-	cards := make([]dependencyPlanItemCard, 0, len(dependencyIDs))
-	for _, depID := range dependencyIDs {
-		item := itemByID[depID]
-		if item == nil {
-			continue
+// projectPlanItemsForPlanner 把全量 plan 投影为 planner 的 TASK_ITEMS 注入视图。
+func projectPlanItemsForPlanner(plan []*builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
+	out := make([]dependencyPlanItemCard, 0, len(plan))
+	for _, item := range plan {
+		if card := planItemCard(item, workspaceRootDir); card != nil {
+			out = append(out, *card)
 		}
-		digest := item.ToolCallsDigest
-		if len(digest) > dependencyCardDigestMax {
-			digest = append(append([]string{}, digest[:dependencyCardDigestMax]...),
-				fmt.Sprintf("...(其余 %d 条见 timeline_file)", len(item.ToolCallsDigest)-dependencyCardDigestMax))
-		}
-		cards = append(cards, dependencyPlanItemCard{
-			ID:              depID,
-			Step:            strings.TrimSpace(item.Step),
-			Status:          strings.TrimSpace(string(item.Status)),
-			ShortSummary:    strings.TrimSpace(item.ShortSummary),
-			KeyFacts:        item.KeyFacts,
-			ToolCallsDigest: digest,
-			OpenItemIDs:     item.OpenItemIDs,
-			References:      item.References,
-			StepFile:        abs(item.StepFile),
-			ResultFile:      abs(item.ResultFile),
-			TimelineFile:    abs(item.TimelineFile),
-			CoverageFile:    abs(item.CoverageFile),
-		})
 	}
-	if len(cards) == 0 {
-		return nil
-	}
-	return cards
+	return out
 }
 
 func collectTransitiveDependencyIDs(step *builtin_tools.PlanItem, plan []*builtin_tools.PlanItem) []string {

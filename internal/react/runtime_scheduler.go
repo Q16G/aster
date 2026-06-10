@@ -244,6 +244,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
 	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner.prompt 原则 0.7）。
 	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
+	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
 	}
@@ -852,29 +853,15 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	}
 	data.InputTimeline = strings.Join(lines, "\n")
 
-	// TASK_ITEMS
+	// TASK_ITEMS：plan 真相源投影（烘焙产出小字段 + 指针；digest 截断，指针转绝对路径）。
+	// 取代旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入（copy→pointer）。
 	if len(snapshot.Plan) > 0 {
-		data.TaskItemsJSON = prettyJSON(snapshot.Plan)
+		data.TaskItemsJSON = prettyJSON(projectPlanItemsForPlanner(snapshot.Plan, opts.WorkspaceRootDir))
 	}
 
 	// REPLAN_CONTEXT
 	if snapshot.ReplanContext != nil {
 		data.ReplanContextJSON = prettyJSON(snapshot.ReplanContext)
-	}
-
-	// EXECUTION_LINE
-	if len(snapshot.StepOutcomes) > 0 || len(snapshot.Plan) > 0 || strings.TrimSpace(snapshot.CurrentStepID) != "" || strings.TrimSpace(snapshot.CurrentGoal) != "" {
-		executionLineJSON := buildExecutionLineJSON(snapshot, opts.WorkspaceRootDir)
-		data.ExecutionLineJSON = executionLineJSON
-		data.HasExecutionLine = true
-	}
-
-	// WORKSPACE_STEP_CONTEXTS
-	if opts.WorkspaceRootDir != "" && (len(snapshot.StepOutcomes) > 0 || len(snapshot.Plan) > 0) {
-		if ctxJSON := buildWorkspaceContextsJSON(opts.WorkspaceRootDir, opts.WorkspaceNamespace); ctxJSON != "" {
-			data.WorkspaceContextsJSON = ctxJSON
-			data.HasWorkspaceContexts = true
-		}
 	}
 
 	var buf strings.Builder

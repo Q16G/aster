@@ -961,7 +961,13 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 			{Content: "请对 /repo/target-project 目录下的 Go 项目进行安全审计，重点关注 RCE、SQL 注入、命令注入等高危漏洞", CreatedAt: now.Add(-5 * time.Minute)},
 		},
 		Plan: []*builtin_tools.PlanItem{
-			{ID: "step-1", Step: "加载项目结构与技术栈识别", Status: builtin_tools.PlanStepCompleted},
+			{
+				ID:           "step-1",
+				Step:         "加载项目结构与技术栈识别",
+				Status:       builtin_tools.PlanStepCompleted,
+				ShortSummary: "项目使用 Gin + GORM + Wire，共 120 个 .go 文件，18 个 handler，9 个 repository",
+				KeyFacts:     []string{"框架: Gin v1.9", "ORM: GORM v2", "DI: Wire"},
+			},
 			{ID: "step-2", Step: "加载审计任务清单 skill，确定审计维度", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
 			{ID: "step-3", Step: "执行 SAST 规则扫描（semgrep/regex）", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-2"}},
 			{ID: "step-4", Step: "AI 语义分析：数据流追踪与上下文敏感审计", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-3"}},
@@ -1037,7 +1043,6 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 		"<TASK_ITEMS>",
 		"step-1",
 		"step-6",
-		"<EXECUTION_LINE>",
 		"Gin + GORM + Wire",
 	})
 
@@ -1345,13 +1350,11 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 			"<TASK_ITEMS>",
 			"step-3",
 			"委派子 Agent",
-			"<EXECUTION_LINE>",
 			"SAST 扫描完成",
 			"sub-a1b2c3d4",
 			"15 条告警",
 			"<REPLAN_CONTEXT>",
 			"replace_pending",
-			"原则 1.2",
 		})
 
 		t.Logf("prompt dumped to: %s/scenario_03a_parent_replan_after_sub_agent.prompt.txt (%d bytes)", dumpDir, len(prompt))

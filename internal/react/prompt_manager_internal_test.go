@@ -111,9 +111,23 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, `"task_context"`) {
 		t.Fatalf("task_planner must not contain the removed task_context schema field, got:\n%s", with)
 	}
-	// 原则 0.8 重定位为"以三轴为主的多源综合"，旧 co-equal "交叉分析" 框架须移除。
-	if !strings.Contains(with, "以三轴为主") {
-		t.Fatalf("task_planner 原则0.8 must render 三轴为主 multi-source framing, got:\n%s", with)
+	// 事实板综合（R6 三轴为主轴）归重规划分支：非重规划回合不渲染。
+	if strings.Contains(with, "三轴为主轴") {
+		t.Fatalf("task_planner non-replan turn must not render replan branch, got:\n%s", with)
+	}
+	replan, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:              "测试输入",
+		WorkspaceSharedDir: shared,
+		UserInputTurn:      false,
+		HasReplanContext:   true,
+	})
+	if err != nil {
+		t.Fatalf("build task_planner (replan turn) failed: %v", err)
+	}
+	for _, needle := range []string{"三轴为主轴", "只编排不二次泛化", "产物-消费依赖", "最小扰动"} {
+		if !strings.Contains(replan, needle) {
+			t.Fatalf("task_planner replan turn must render replan branch (missing %q), got:\n%s", needle, replan)
+		}
 	}
 	if strings.Contains(with, "交叉分析") {
 		t.Fatalf("task_planner must not retain the old co-equal 交叉分析 framing, got:\n%s", with)
@@ -138,16 +152,6 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("task_planner in-run turn must not render correction guidance, got:\n%s", inRun)
 	}
 
-	without, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:         "测试输入",
-		UserInputTurn: true,
-	})
-	if err != nil {
-		t.Fatalf("build task_planner (no shared) failed: %v", err)
-	}
-	if strings.Contains(without, "贯穿事实校正") {
-		t.Fatalf("task_planner without shared dir must not render correction guidance, got:\n%s", without)
-	}
 }
 
 func TestPromptManager_ThinkActRepoContextSection(t *testing.T) {
@@ -199,12 +203,11 @@ func TestPromptManager_TaskPlannerRepoContextSection(t *testing.T) {
 		t.Fatalf("build task_planner failed: %v", err)
 	}
 	for _, needle := range []string{
-		"## 1.6 代码仓库上下文",
+		"### 6.1 代码仓库上下文",
 		"source working dir: `/repo/worktree`",
 		"repo root: `/repo/worktree`",
 		"is git repo: `true`",
 		"current branch: `feature/demo`",
-		"is git worktree: `true`",
 	} {
 		if !strings.Contains(prompt, needle) {
 			t.Fatalf("expected task_planner repo section to contain %q, got:\n%s", needle, prompt)
