@@ -371,7 +371,7 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 		}
 	}
 	// 收窄：step 不自判不可解局限（裁决交 step_replan）。
-	for _, needle := range []string{"不自行判定", "待 replan 裁决"} {
+	for _, needle := range []string{"不自行判定", "待裁决"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act must keep limitation adjudication out of step entry (missing %q), got:\n%s", needle, with)
 		}
@@ -482,7 +482,7 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 		"委派即首选",
 		"await_subagents",
 		"禁止",
-		"完成性与后台等待",
+		"完成性与等待",
 	} {
 		if !strings.Contains(withSubAgent, needle) {
 			t.Fatalf("think_act prompt (can spawn) missing guidance %q\nprompt:\n%s", needle, withSubAgent)
@@ -501,7 +501,7 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 	for _, absent := range []string{
 		"委派即首选",
 		"await_subagents",
-		"完成性与后台等待",
+		"完成性与等待",
 	} {
 		if strings.Contains(withoutSubAgent, absent) {
 			t.Fatalf("think_act prompt (cannot spawn) should not contain %q\nprompt:\n%s", absent, withoutSubAgent)
