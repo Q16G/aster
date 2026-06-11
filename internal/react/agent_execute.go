@@ -12,6 +12,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/react/persistv2"
+	"aster/internal/runtimelog"
 	"aster/internal/structuredoutput"
 	"aster/internal/utils"
 
@@ -1236,6 +1237,14 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
 	msgs := buildOutboundMsgs(parts, a.stepHistory)
 	requestOptions := a.buildPromptRequestOptions(promptFamily, parts, true, tools...)
+	runtimelog.LogJSON("info", map[string]any{
+		"event":         "ai_call_prompt_profile",
+		"prompt_family": promptFamily,
+		"system_hash":   requestOptions.PromptCacheKeyHash,
+		"system_len":    len(parts.SystemJoined()),
+		"user_len":      len(parts.User),
+		"history_msgs":  len(a.stepHistory),
+	})
 
 	// StepHistory compaction: only when approaching the input token budget.
 	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.
