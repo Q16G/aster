@@ -61,10 +61,10 @@ type StepReplanPromptInput struct {
 	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
 	// 文件存在才注入，供卡片不足时按需回读。
 	PlannerJournalPath string
-	SkillsContext        *SkillsPromptContext
-	HasSkillsTable       bool
-	AvailableTools       []AvailableToolInfo
-	HasAvailableTools    bool
+	SkillsContext      *SkillsPromptContext
+	HasSkillsTable     bool
+	AvailableTools     []AvailableToolInfo
+	HasAvailableTools  bool
 }
 
 type FinalAnswerPromptInput struct {

@@ -162,12 +162,12 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	artifactDir := resolveStepArtifactDir(prev.PlanVersion, strings.TrimSpace(target.ID))
 
 	snapshot := t.ctx.UpdateCurrentStep(CurrentStepUpdate{
-		Status:          status,
-		Summary:         summary,
-		DisplayResult:   displayResult,
-		Result:          result,
-		Error:           errText,
-		References:      references,
+		Status:            status,
+		Summary:           summary,
+		DisplayResult:     displayResult,
+		Result:            result,
+		Error:             errText,
+		References:        references,
 		StatusSummary:     statusSummary,
 		ShortSummary:      shortSummary,
 		LongSummary:       longSummary,
