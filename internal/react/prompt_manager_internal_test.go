@@ -159,7 +159,6 @@ func TestPromptManager_AgentIdentityEnvBlock(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 	block, err := manager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
-		AgentRole:          "资深审计专家",
 		AgentInstruction:   "你是测试代理",
 		WorkspaceRootDir:   "/ws/root",
 		WorkspaceNamespace: "ns-1",
@@ -179,9 +178,8 @@ func TestPromptManager_AgentIdentityEnvBlock(t *testing.T) {
 		t.Fatalf("build agent identity env failed: %v", err)
 	}
 	for _, needle := range []string{
-		"<AGENT_ROLE>",
-		"资深审计专家",
 		"<AGENT_INSTRUCTION>",
+		"你是测试代理",
 		"<env>",
 		"workspace 路径: /ws/root",
 		"workspace namespace: ns-1",
@@ -194,6 +192,12 @@ func TestPromptManager_AgentIdentityEnvBlock(t *testing.T) {
 	} {
 		if !strings.Contains(block, needle) {
 			t.Fatalf("identity env block missing %q, got:\n%s", needle, block)
+		}
+	}
+	// AGENT_ROLE / AGENT_BACKGROUND 已下沉至各 phase prompt 顶部，identity_env 不再渲染。
+	for _, banned := range []string{"<AGENT_ROLE>", "</AGENT_ROLE>", "<AGENT_BACKGROUND>", "</AGENT_BACKGROUND>"} {
+		if strings.Contains(block, banned) {
+			t.Fatalf("identity env block must not render %q (moved to phase prompt # Role/# Background), got:\n%s", banned, block)
 		}
 	}
 	if strings.Contains(block, "github.com") || strings.Contains(block, "gitRepoUrl") {
@@ -501,5 +505,86 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 	}
 	if !strings.Contains(withoutSubAgent, "3-Strike") {
 		t.Fatalf("think_act prompt (cannot spawn) should still contain 3-Strike principle\nprompt:\n%s", withoutSubAgent)
+	}
+}
+
+// 5 个 phase prompt 顶部必须按「# 当前阶段 + # Role + # Background」三段结构渲染
+// AGENT_ROLE / AGENT_BACKGROUND 占位；空值时 # Role / # Background 不渲染（条件分支）。
+func TestPromptManager_PhasePromptsRenderRoleAndBackground(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+
+	const role = "资深安全审计专家"
+	const background = "10 年 Web 渗透与代码审计经验"
+
+	cases := []struct {
+		name      string
+		stageTag  string
+		buildWith func(role, bg string) (PromptParts, error)
+	}{
+		{
+			name:     "think_act",
+			stageTag: "step（单步执行）",
+			buildWith: func(r, b string) (PromptParts, error) {
+				return manager.BuildThinkActPrompt(ThinkActPromptInput{AgentRole: r, AgentBackground: b})
+			},
+		},
+		{
+			name:     "task_planner",
+			stageTag: "planner（任务规划）",
+			buildWith: func(r, b string) (PromptParts, error) {
+				return manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{Input: "x", AgentRole: r, AgentBackground: b})
+			},
+		},
+		{
+			name:     "step_replan",
+			stageTag: "step_replan（交付复核）",
+			buildWith: func(r, b string) (PromptParts, error) {
+				return manager.BuildStepReplanPrompt(StepReplanPromptInput{CurrentGoal: "目标", AgentRole: r, AgentBackground: b})
+			},
+		},
+		{
+			name:     "final_answer",
+			stageTag: "final_answer（任务验收与最终交付）",
+			buildWith: func(r, b string) (PromptParts, error) {
+				return manager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{Status: "completed", AgentRole: r, AgentBackground: b})
+			},
+		},
+		{
+			name:     "intent_classification",
+			stageTag: "intent_classification（执行意图分析）",
+			buildWith: func(r, b string) (PromptParts, error) {
+				return manager.BuildIntentClassificationPrompt(IntentClassificationPromptInput{LatestInput: "最新输入", AgentRole: r, AgentBackground: b})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		// 注入 role + background：三段都必须出现。
+		parts, err := tc.buildWith(role, background)
+		if err != nil {
+			t.Fatalf("%s build (with role/bg) failed: %v", tc.name, err)
+		}
+		sys := parts.SystemRules
+		for _, needle := range []string{"# 当前阶段", tc.stageTag, "# Role\n" + role, "# Background\n" + background} {
+			if !strings.Contains(sys, needle) {
+				t.Fatalf("%s system must render %q, got:\n%s", tc.name, needle, sys)
+			}
+		}
+
+		// 空 role/bg：「# 当前阶段」恒在，「# Role」/「# Background」段不渲染。
+		emptyParts, err := tc.buildWith("", "")
+		if err != nil {
+			t.Fatalf("%s build (empty role/bg) failed: %v", tc.name, err)
+		}
+		emptySys := emptyParts.SystemRules
+		if !strings.Contains(emptySys, "# 当前阶段") || !strings.Contains(emptySys, tc.stageTag) {
+			t.Fatalf("%s system must always render # 当前阶段 + stage tag, got:\n%s", tc.name, emptySys)
+		}
+		if strings.Contains(emptySys, "# Role\n") || strings.Contains(emptySys, "# Background\n") {
+			t.Fatalf("%s system must not render empty # Role / # Background blocks, got:\n%s", tc.name, emptySys)
+		}
 	}
 }

@@ -32,6 +32,8 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptPar
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
 	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
+		AgentRole:              strings.TrimSpace(a.cfg.Role),
+		AgentBackground:        strings.TrimSpace(a.cfg.Background),
 		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
 		SkillsContext:          skillsContext,
 		CurrentStep:            currentStep,
@@ -98,8 +100,6 @@ func (a *Agent) identityEnvBlock() string {
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
 	}
 	out, err := a.promptManager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
-		AgentRole:          strings.TrimSpace(a.cfg.Role),
-		AgentBackground:    strings.TrimSpace(a.cfg.Background),
 		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
 		WorkspaceRootDir:   a.workspaceRootDir,
 		WorkspaceNamespace: a.workspaceNamespace,

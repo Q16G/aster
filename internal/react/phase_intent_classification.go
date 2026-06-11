@@ -27,6 +27,8 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	})
 
 	input := buildIntentClassificationInput(snapshot)
+	input.AgentRole = strings.TrimSpace(a.cfg.Role)
+	input.AgentBackground = strings.TrimSpace(a.cfg.Background)
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		a.emitRuntimeLog("warn", "build intent classification prompt failed, fallback to carry", snapshot, map[string]any{

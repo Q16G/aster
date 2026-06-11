@@ -8,6 +8,8 @@ import (
 )
 
 type ThinkActPromptInput struct {
+	AgentRole         string
+	AgentBackground   string
 	GoalUnderstanding string
 	SkillsContext     *SkillsPromptContext
 	CurrentStep       any
@@ -35,6 +37,8 @@ type AvailableToolInfo struct {
 }
 
 type StepReplanPromptInput struct {
+	AgentRole         string
+	AgentBackground   string
 	CurrentGoal       any
 	GoalUnderstanding string
 	InputTimeline     any
@@ -58,9 +62,11 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
-	Status        any
-	StateError    any
-	InputTimeline any
+	AgentRole         string
+	AgentBackground   string
+	Status            any
+	StateError        any
+	InputTimeline     any
 	GoalUnderstanding string
 	// PlanItems 是 plan 真相源投影卡片（内联小字段 + 文件指针），替代旧
 	// PLAN/STEP_OUTCOMES/CARRIED_* 全量注入；OpenItemsLedger 是账本全文（F6 归置对象）。
@@ -69,11 +75,11 @@ type FinalAnswerPromptInput struct {
 	Warnings        any
 }
 
-// AgentIdentityEnvPromptInput 渲染公共 system block2：Agent 身份三段 + <env> 块。
+// AgentIdentityEnvPromptInput 渲染公共 system block2：AGENT_INSTRUCTION + <env> 块。
 // 全部输入为 run 内稳定值，渲染结果在 Agent 上缓存一次、各阶段复用（字节一致）。
+// 注：AgentRole / AgentBackground 已下沉至各 phase prompt 顶部（# Role / # Background
+// 段），不再由本块渲染——见 internal/react/prompts/README.md。
 type AgentIdentityEnvPromptInput struct {
-	AgentRole          string
-	AgentBackground    string
 	AgentInstruction   string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
@@ -98,6 +104,8 @@ type StepOutcomesReducerPromptInput struct {
 }
 
 type TaskPlannerPromptInput struct {
+	AgentRole         string
+	AgentBackground   string
 	Input             string
 	GoalUnderstanding string
 	UserInputTurn     bool
@@ -115,6 +123,8 @@ type TaskPlannerPromptInput struct {
 }
 
 type IntentClassificationPromptInput struct {
+	AgentRole         string
+	AgentBackground   string
 	GoalUnderstanding string
 	PreviousGoal      string
 	Status            string
@@ -264,8 +274,12 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"SUPPORTS_VISION":    input.SupportsVision,
-		"CAN_SPAWN_SUBAGENT": input.CanSpawnSubAgent,
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"SUPPORTS_VISION":      input.SupportsVision,
+		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 	}
 	userData := map[string]any{
 		"GOAL_UNDERSTANDING":        strings.TrimSpace(input.GoalUnderstanding),
@@ -287,7 +301,12 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	if m == nil {
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	systemData := map[string]any{}
+	systemData := map[string]any{
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+	}
 	userData := map[string]any{
 		"CURRENT_GOAL":            fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":      strings.TrimSpace(input.GoalUnderstanding),
@@ -316,7 +335,12 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	if m == nil {
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	systemData := map[string]any{}
+	systemData := map[string]any{
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+	}
 	userData := map[string]any{
 		"STATUS":                 fmt.Sprint(input.Status),
 		"STATE_ERROR":            fmt.Sprint(input.StateError),
@@ -335,8 +359,12 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"USER_INPUT_TURN":    input.UserInputTurn,
-		"HAS_REPLAN_CONTEXT": input.HasReplanContext,
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"USER_INPUT_TURN":      input.UserInputTurn,
+		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
 	}
 	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),
@@ -358,7 +386,12 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 	if m == nil {
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	systemData := map[string]any{}
+	systemData := map[string]any{
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+	}
 	userData := map[string]any{
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
@@ -390,11 +423,7 @@ func (m *defaultPromptManager) BuildAgentIdentityEnvPrompt(input AgentIdentityEn
 	}
 
 	return renderTemplate(m.agentIdentityEnvTmpl, map[string]any{
-		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
 		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":        strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":  strings.TrimSpace(input.AgentBackground) != "",
 		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
 		"WORKSPACE_ROOT_DIR":    strings.TrimSpace(input.WorkspaceRootDir),
 		"WORKSPACE_NAMESPACE":   strings.TrimSpace(input.WorkspaceNamespace),

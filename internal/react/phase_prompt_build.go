@@ -3,6 +3,7 @@ package react
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, error) {
@@ -18,6 +19,8 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		availableTools = at
 	}
 	parts, err := a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentRole:            strings.TrimSpace(a.cfg.Role),
+		AgentBackground:      strings.TrimSpace(a.cfg.Background),
 		CurrentGoal:          payload["current_goal"],
 		GoalUnderstanding:    stringFromPayload(payload, "goal_understanding"),
 		InputTimeline:        payload["input_timeline"],
@@ -55,6 +58,8 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 		return PromptParts{}, fmt.Errorf("final answer prompt manager is nil")
 	}
 	parts, err := a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
+		AgentRole:         strings.TrimSpace(a.cfg.Role),
+		AgentBackground:   strings.TrimSpace(a.cfg.Background),
 		Status:            payload["status"],
 		StateError:        payload["state_error"],
 		InputTimeline:     payload["input_timeline"],
