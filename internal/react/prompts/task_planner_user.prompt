@@ -13,6 +13,13 @@
 {{.GOAL_UNDERSTANDING}}
 </GOAL_UNDERSTANDING>
 {{- end}}
+{{- if .HAS_TASK_CONTEXT_BOARD}}
+
+## 贯穿全程关键事实板（当前快照，按「共享区终态」校正）
+<TASK_CONTEXT_BOARD>
+{{.TASK_CONTEXT_BOARD}}
+</TASK_CONTEXT_BOARD>
+{{- end}}
 {{- if .HAS_SKILLS_TABLE}}
 
 <SKILLS_INDEX>

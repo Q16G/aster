@@ -95,17 +95,20 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	// 用户输入回合（cold_start / replan / carry）：渲染校正引导。
+	// 用户输入回合（cold_start / replan / carry）：渲染共享区终态段 + 事实板快照。
 	withParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:         "测试输入",
-		UserInputTurn: true,
+		Input:            "测试输入",
+		UserInputTurn:    true,
+		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: x\n\n## 执行中补充\n",
 	})
 	if err != nil {
 		t.Fatalf("build task_planner (user turn) failed: %v", err)
 	}
 	with := withParts.Joined()
-	if !strings.Contains(with, "贯穿事实校正") || !strings.Contains(with, "输入事实") || !strings.Contains(with, "task_context.md") {
-		t.Fatalf("task_planner user-input turn must render correction guidance + 输入事实 + task_context.md 指称, got:\n%s", with)
+	for _, needle := range []string{"共享区终态", "唯一语义写者", "提交执行计划前", "输入事实", "task_context.md", "<TASK_CONTEXT_BOARD>"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("task_planner user-input turn must render 共享区终态 section + board snapshot (missing %q), got:\n%s", needle, with)
+		}
 	}
 	// The removed structured array field must not reappear in the schema.
 	if strings.Contains(with, `"task_context"`) {
@@ -139,7 +142,7 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("task_planner should align recon-first planning around 2-4 steps, got:\n%s", with)
 	}
 
-	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：不渲染校正引导。
+	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：不渲染共享区终态段与事实板块。
 	inRunParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
 		Input:         "测试输入",
 		UserInputTurn: false,
@@ -147,8 +150,11 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build task_planner (in-run turn) failed: %v", err)
 	}
-	if strings.Contains(inRunParts.Joined(), "贯穿事实校正") {
-		t.Fatalf("task_planner in-run turn must not render correction guidance, got:\n%s", inRunParts.Joined())
+	inRun := inRunParts.Joined()
+	for _, needle := range []string{"共享区终态", "<TASK_CONTEXT_BOARD>"} {
+		if strings.Contains(inRun, needle) {
+			t.Fatalf("task_planner in-run turn must not render %q, got:\n%s", needle, inRun)
+		}
 	}
 }
 

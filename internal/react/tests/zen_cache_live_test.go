@@ -14,6 +14,7 @@ import (
 
 	. "aster/internal/react"
 	"aster/internal/ai/openai"
+	"aster/internal/builtin_tools"
 )
 
 // TestZenLive_PromptSplitCacheProfile 用真实 LLM（opencode zen，OpenAI 请求风格）
@@ -132,6 +133,13 @@ func TestZenLive_PromptSplitCacheProfile(t *testing.T) {
 		WithEmitter(emitter),
 		WithMaxIterations(28),
 		WithTools(listTool, readTool),
+		// 写能力是 agent 的设计前提（共享区维护职责依赖 bash），live 测试同样必须具备。
+		WithBashTool(&BashToolConfig{
+			PermCtx: &builtin_tools.BashPermissionContext{
+				Mode:        builtin_tools.PermissionModeYOLO,
+				ProjectPath: workDir,
+			},
+		}),
 		WithInstruction("你是文件分析助手，使用提供的文件工具完成任务，结论保持简洁。"),
 	)
 	if err != nil {

@@ -57,7 +57,8 @@ func main() {
 
 	analysisDef := react.AgentDefinition{
 		Name:        "analysis-agent",
-		Role:        "你是一个项目分析 Agent，专注于理解项目结构和定位入口。",
+		Role:        "项目分析 Agent，专注于理解项目结构与入口定位",
+		Background:  "熟悉常见项目结构（mono-repo / 多模块 / 框架约定），擅长从 README、入口文件、配置文件快速建立项目轮廓",
 		Instruction: "优先使用现有上下文和工具完成定位，输出简洁的分析结论。",
 		ToolNames:   []string{"list_files", "read_file", "rg", "list_skills"},
 		Policies: react.AgentPolicies{
@@ -98,8 +99,8 @@ func main() {
 
 	executionDef := react.AgentDefinition{
 		Name:        "executor-agent",
-		Role:        "你是一个执行型 Agent，负责按照指令完成具体操作。",
-		Background:  "本次任务场景为自动化运维。",
+		Role:        "执行型 Agent，按照指令完成具体操作",
+		Background:  "熟悉常见运维场景的操作模式与命令惯例；偏好幂等、可回滚、可观察的执行风格",
 		Instruction: "直接执行指令，输出操作结果，不做多余分析。",
 		Policies: react.AgentPolicies{
 			MaxIterations: 5,

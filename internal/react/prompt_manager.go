@@ -109,6 +109,9 @@ type TaskPlannerPromptInput struct {
 	Input             string
 	GoalUnderstanding string
 	UserInputTurn     bool
+	// TaskContextBoard 为共享区事实板（task_context.md）当前快照，
+	// 仅 UserInputTurn=true 时注入，供 planner 对照当前输入做校正。
+	TaskContextBoard string
 	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
 	// 模板据此渲染重规划编排段。
 	HasReplanContext   bool
@@ -370,6 +373,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"INPUT":                  strings.TrimSpace(input.Input),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"TASK_CONTEXT_BOARD":     strings.TrimSpace(input.TaskContextBoard),
+		"HAS_TASK_CONTEXT_BOARD": strings.TrimSpace(input.TaskContextBoard) != "",
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,
 		"HAS_SKILLS_TABLE":       input.HasSkillsTable,

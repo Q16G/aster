@@ -240,6 +240,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner 意图理解段的"事实板同步"）。
 	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
+	if plannerInput.UserInputTurn && a.workspaceRuntime != nil {
+		plannerInput.TaskContextBoard = readSharedFileForPrompt(strings.TrimSpace(a.workspaceRuntime.SharedDir()), taskContextFileName)
+	}
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
 	}
@@ -502,7 +505,7 @@ func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.Function
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool(input.UserInputTurn), buildRequestClarificationFunctionTool())
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
 	input.HasAvailableTools = len(input.AvailableTools) > 0
@@ -664,12 +667,16 @@ func sortedToolNames(allowed map[string]struct{}, extra ...string) []string {
 	return names
 }
 
-func buildSubmitPlanFunctionTool() *ai.FunctionTool {
+func buildSubmitPlanFunctionTool(userInputTurn bool) *ai.FunctionTool {
+	description := "当你完成调查、准备好输出执行计划时，调用此工具提交计划。参数即为计划的结构化内容。"
+	if userInputTurn {
+		description += "提交执行计划（needs_planning=true）前，须先把共享工作区 task_context.md 的 `## 输入事实` 维护到与当前输入一致（用户输入中确定的具体操作事实逐条在板，每行 `- 名称: 值`）。"
+	}
 	return &ai.FunctionTool{
 		Type: "function",
 		Function: &ai.FunctionDetail{
 			Name:        submitPlanToolName,
-			Description: "当你完成调查、准备好输出执行计划时，调用此工具提交计划。参数即为计划的结构化内容。",
+			Description: description,
 			Parameters: map[string]any{
 				"type":     "object",
 				"required": []string{"needs_planning", "plan", "explanation"},
