@@ -44,6 +44,18 @@ skills/
 
 **无参数 skill（含所有子 skill）可省略 `argument-hint` 和 `arguments`**，不要为对齐而填空字段。
 
+### 元 skill 例外
+
+少量「元 skill」（被所有 agent 共用、贯穿整个 ReAct 闭环的产物或基础设施，如 `common/result-with-file`）允许使用一组不同的字段：
+
+| 字段 | 说明 |
+|---|---|
+| `agent: all` | 标记可被任意 agent 加载，等价于跳过用户/模型分发逻辑 |
+| `context: inline` | 标记按 inline 注入而非懒加载（提示词阶段就在场） |
+| `version: "x.y"` | 元 skill 通常自带版本号便于追踪格式演进 |
+
+元 skill 可省略 `tags` / `allowed-tools` / `user-invocable`。判断准则：**只有真正被所有 agent / 所有任务无差别消费的产物层 skill 才用元 skill 形式**，新建普通 skill 时不要套用这套字段。当前唯一元 skill 是 `common/result-with-file`。
+
 ### Frontmatter 示例
 
 ```yaml
