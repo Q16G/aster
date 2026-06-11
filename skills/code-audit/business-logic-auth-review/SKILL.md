@@ -19,7 +19,7 @@ arguments:
 - 认证语义：登录逻辑反转、伪成功、伪失败、权限只靠客户端态
 - ownership / IDOR：controller 看起来有鉴权，但 service / mapper 丢失操作者约束
 
-它不是规则替代品，而是把这些问题固定成可执行 checklist。
+它不是规则替代品，而是把这些已知模式沉淀成**可裁剪的基线 checklist**——模型按基线起步，结合项目实际框架与代码动态增删。
 
 ## 适用信号
 
@@ -33,11 +33,13 @@ arguments:
 - Python：Flask session / Django auth / FastAPI Depends
 - Go：gin context / echo context / 自定义 middleware
 
-## 固定检查项
+## 基线检查项
+
+以下是认证授权维度已知的常见检查角度，作为**基线起点**而非必检硬清单。结合项目实际框架（Spring / PHP / Flask 等）与代码动态调整：适用且已完成 `[x] done`、明确不适用 `[-] n/a (原因)`、基线外的真实发现 `[+] added (来源)`。
 
 ### 1. 登录接口
 
-逐个检查（8 项）：
+基线检查角度（按需增删）：
 
 - 登录查询的 lookup key 是否正确（用户名、邮箱、手机号等）
 - 查询返回非空后，是走成功还是失败分支（反转检测）
@@ -55,7 +57,7 @@ arguments:
 
 ### 2. 管理接口
 
-逐个检查：
+基线检查角度（按需增删）：
 
 - 是否只用 body/query/cookie 里的 account/role/id 做权限判断
 - 是否缺少 server-side auth context
@@ -63,7 +65,7 @@ arguments:
 
 ### 3. 查询与 ownership
 
-逐个检查：
+基线检查角度（按需增删）：
 
 - controller 是否拿到了 operator/owner 信息
 - service 是否继续保留该约束
@@ -72,7 +74,7 @@ arguments:
 
 ### 4. session / cookie 信任边界
 
-逐个检查：
+基线检查角度（按需增删）：
 
 - request-derived value 是否进入 session
 - Cookie value 是否直接进入分支判断
@@ -80,7 +82,7 @@ arguments:
 
 ### 5. 对象绑定与权限字段
 
-逐个检查：
+基线检查角度（按需增删）：
 
 - 端点是否使用自动对象绑定（`@ModelAttribute` / `@RequestBody` 映射到实体 / `BindJSON` / `request.form` → model）
 - 被绑定的实体类是否包含权限/角色/状态字段（role / isAdmin / status / tenantId）

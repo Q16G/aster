@@ -36,7 +36,10 @@ user-invocable: false
 - [postmessage-origin-bypass.md](references/postmessage-origin-bypass.md) — postMessage 未校验 origin / 发送端 `'*'` / 消息进入 eval/innerHTML
 - [client-token-storage-leakage.md](references/client-token-storage-leakage.md) — token 存 localStorage（XSS 可读）/ URL 传递（Referer 泄露）/ 全局变量暴露
 
-## 检查项
+## 基线检查项
+
+以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标代码动态调整：适用且已完成 `[x] done`、明确不适用 `[-] n/a (原因)`、基线外的真实发现 `[+] added (来源)`。
+
 
 ### 1. DOM XSS 变体
 

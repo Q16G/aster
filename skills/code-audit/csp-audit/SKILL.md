@@ -20,7 +20,10 @@ CSP（Content-Security-Policy）是防御 XSS 的重要层。本 skill 不是检
 - [csp-unsafe-directives.md](references/csp-unsafe-directives.md) — unsafe-inline / unsafe-eval / data: URI 的利用方式与安全替代方案
 - [csp-whitelist-bypass.md](references/csp-whitelist-bypass.md) — JSONP 端点绕过 script-src 白名单 / CDN 可控资源 / base-uri 未限制
 
-## 检查项
+## 基线检查项
+
+以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标代码动态调整：适用且已完成 `[x] done`、明确不适用 `[-] n/a (原因)`、基线外的真实发现 `[+] added (来源)`。
+
 
 ### 1. 指令语义分析
 

@@ -21,7 +21,10 @@ user-invocable: false
 - [session-fixation-missing-regeneration.md](references/session-fixation-missing-regeneration.md) — 登录成功后未重建 Session（攻击者预设 Session ID 劫持会话）
 - [cookie-security-misconfiguration.md](references/cookie-security-misconfiguration.md) — 会话 Cookie 缺少 HttpOnly/Secure/SameSite 属性
 
-## 检查项
+## 基线检查项
+
+以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标代码动态调整：适用且已完成 `[x] done`、明确不适用 `[-] n/a (原因)`、基线外的真实发现 `[+] added (来源)`。
+
 
 ### 1. Session ID 生成强度
 

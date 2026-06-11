@@ -20,7 +20,10 @@ user-invocable: false
 - [cors-misconfiguration.md](references/cors-misconfiguration.md) — CORS 错误配置（反射 Origin + Credentials / null origin / 正则绕过）
 - [missing-critical-headers.md](references/missing-critical-headers.md) — HSTS 缺失→SSL Strip / nosniff 缺失→MIME 嗅探 / X-Frame-Options 缺失→Clickjacking
 
-## 检查项
+## 基线检查项
+
+以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标代码动态调整：适用且已完成 `[x] done`、明确不适用 `[-] n/a (原因)`、基线外的真实发现 `[+] added (来源)`。
+
 
 ### 1. 关键安全头
 
