@@ -235,7 +235,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	// userInputTurn：本回合由用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
-	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner.prompt 原则 P4）。
+	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner 意图理解段的"事实板同步"）。
 	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
 	if !regenGoal {

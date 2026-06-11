@@ -15,7 +15,7 @@ const (
 	taskContextFileName      = "task_context.md"
 )
 
-// executeMaintenanceDirectives 机械执行 step_replan 输出的落盘维护指令（设计 3.4）：
+// executeMaintenanceDirectives 机械执行 step_replan 输出的落盘维护指令（见 step_replan 账本复核与维护段）：
 // 时机在 step_replan 返回后、进入下一节点之前，should_replan=false 同样执行，保证
 // 下游（planner / final_answer）读到的共享区是最新状态。单条失败不阻塞，返回
 // warnings 由调用方注入下游。merge_staging 的语义归并无法机械完成，降级为下游提示。

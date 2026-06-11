@@ -60,12 +60,12 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 	})
 
 	parts := agent.BuildThinkActPrompt(context.Background(), "")
-	// Skills 索引与 Injected Skills 落首条 user message；eject_skill 纪律（P8）在 system 规则。
+	// Skills 索引与 Injected Skills 落首条 user message；eject_skill 纪律在 system 规则。
 	for _, expected := range []string{
 		"## Skills 索引",
 		"| data-flow | 数据流分析 | flow | loaded |",
 		"## Injected Skills",
-		"按 P8 卸载用不上的",
+		"eject_skill",
 		"#### data-flow",
 		"follow flows",
 	} {

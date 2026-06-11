@@ -26,7 +26,7 @@ type stepReplanModelOutput struct {
 	// NewSurfaces 轴③泛化扩面：对照整体任务目标的任务覆盖面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
 	NewSurfaces []*builtin_tools.AxisItem `json:"new_surfaces"`
 	// MaintenanceDirectives 落盘维护指令：核验发现的落盘缺漏（归档/账本增改/事实烘焙），
-	// 由 runtime 维护执行器在进入下一节点之前机械执行（设计 3.4）。
+	// 由 runtime 维护执行器在进入下一节点之前机械执行（见 step_replan 账本复核与维护段）。
 	MaintenanceDirectives []*builtin_tools.MaintenanceDirective `json:"maintenance_directives,omitempty"`
 }
 
@@ -255,7 +255,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	}
 
 	// 维护指令先于状态推进执行（进入下一节点之前），保证下游读到最新共享区；
-	// 执行 warnings 并入本轮 Warnings 注入下游（设计 3.4：失败不阻塞、显式可见）。
+	// 执行 warnings 并入本轮 Warnings 注入下游（失败不阻塞、显式可见）。
 	var maintenanceWarnings []string
 	if modelOut != nil {
 		maintenanceWarnings = a.executeMaintenanceDirectives(stepID, modelOut.MaintenanceDirectives)

@@ -26,7 +26,7 @@
 </WARNINGS>
 （WARNINGS 是 runtime 内部告警，如维护指令执行失败等；非业务层不可解局限——后者载于账本 `## 不可解局限`。识别其语义后在 `user_message` 中据实通报，不参与 is_complete 判定。）
 
-## 未闭环账本（总验收必读，只读；F6 逐项归置对象）
+## 未闭环账本（总验收必读，只读；逐项归置闸对象）
 <OPEN_ITEMS_LEDGER>
 {{.OPEN_ITEMS_LEDGER}}
 </OPEN_ITEMS_LEDGER>

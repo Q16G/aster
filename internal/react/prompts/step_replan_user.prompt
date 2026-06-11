@@ -49,7 +49,7 @@
 {{- end}}
 {{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH}}
 
-## 可按需回读的文件（受 3.1 核验依据与探索预算约束）
+## 可按需回读的文件（受核验依据与回读预算约束）
 {{- if .STEP_TIMELINE_PATH}}
 - 当前 step timeline 事件日志（无损兜底来源，逐条工具调用事件 jsonl）：`{{.STEP_TIMELINE_PATH}}`
 {{- end}}

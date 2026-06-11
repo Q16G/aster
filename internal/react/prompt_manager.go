@@ -102,7 +102,7 @@ type TaskPlannerPromptInput struct {
 	GoalUnderstanding string
 	UserInputTurn     bool
 	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
-	// 模板据此渲染重规划分支（3.4 R1-R6）。
+	// 模板据此渲染重规划编排段。
 	HasReplanContext   bool
 	SkillsContext      *SkillsPromptContext
 	MCPContext         *MCPPromptContext

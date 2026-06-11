@@ -65,9 +65,9 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 		t.Fatalf("build think_act failed: %v", err)
 	}
 	with := parts.SystemRules
-	// workspace 恒存在：事实板（5.1）与账本（5.2）无条件渲染；规则文本去参数化，
+	// workspace 恒存在：事实板与账本无条件渲染；规则文本去参数化，
 	// 绝对路径只在身份/env 块出现，规则用「共享工作区」泛称。
-	for _, needle := range []string{"5.1", "共享工作区下的 task_context.md", "收尾终态", "唯一全集", "执行中补充"} {
+	for _, needle := range []string{"task_context.md", "收尾终态", "唯一全集", "执行中补充"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act must render 5.1 fact board (missing %q), got:\n%s", needle, with)
 		}
@@ -104,8 +104,8 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("build task_planner (user turn) failed: %v", err)
 	}
 	with := withParts.Joined()
-	if !strings.Contains(with, "贯穿事实校正") || !strings.Contains(with, "输入事实") || !strings.Contains(with, "共享工作区下 task_context.md") {
-		t.Fatalf("task_planner user-input turn must render correction guidance + 输入事实 + 共享工作区指称, got:\n%s", with)
+	if !strings.Contains(with, "贯穿事实校正") || !strings.Contains(with, "输入事实") || !strings.Contains(with, "task_context.md") {
+		t.Fatalf("task_planner user-input turn must render correction guidance + 输入事实 + task_context.md 指称, got:\n%s", with)
 	}
 	// The removed structured array field must not reappear in the schema.
 	if strings.Contains(with, `"task_context"`) {
@@ -345,11 +345,10 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 账本 5.2：OI-id 取号 + 三区结构 + 唯一语义写者纪律（路径去参数化为「共享工作区」泛称；
+	// 账本契约：OI-id 取号 + 三区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
 	// 维护职责按终态不变量表述：归档历史不丢失、非本 step 条目原样保留）。
 	for _, needle := range []string{
-		"5.2",
-		"共享工作区下的 open_items.md",
+		"open_items.md",
 		"## 未解决",
 		"## 不可解局限",
 		"next_id",
