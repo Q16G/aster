@@ -138,6 +138,26 @@ IDOR 验证协议第 1 步"枚举端点"的输出直接作为结论的入口点�
 - 鉴权模式：`HttpSession.getAttribute("userId")` / Cookie / `request.getAttribute()` from filter
 - 常见缺口：session 固定、Cookie 可伪造、filter 顺序错误、拦截器 exclude 路径配置不当
 
+## 执行模式（基线判断）
+
+开始前，检查 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` 是否存在：
+
+**清单驱动模式**（文件存在时的推荐路径）
+
+读取文件中 `scan_status = pending` 的端点，按 `risk_priority` 排序（high → medium → low）。将端点分批处理，每批以 15 个为参考起点——批次大小可根据端点复杂度、当前 token 预算和上下文空间动态调整，目的是让每批在单次 Think-Act 循环中能完整处理。
+
+对每批端点执行下方 IDOR 验证协议时，输入是这批端点列表而非全量代码重新枚举，协议步骤本身不变。
+
+**scan_status 更新（必须遵守）**
+
+> Why：scan_status 是跨批次、跨子 Agent 的唯一覆盖状态来源；不更新则无法对账，也无法从断点恢复。
+
+每批处理开始前，将本批所有端点 id 的 `scan_status` 更新为 `in_progress`。每批处理结束后，按结果更新为 `completed`（有明确结论）或 `needs_review`（证据不足）。
+
+**自由探索模式**（文件不存在时的回退路径）
+
+保持现有行为——自行执行下方 IDOR 验证协议第 1 步枚举端点，不依赖外部清单。
+
 ## IDOR 验证协议
 
 > **参考案例**：执行本协议前，应先阅读 `references/` 下的案例文件以建立漏洞模式认知：
@@ -189,3 +209,12 @@ IDOR 验证协议第 1 步"枚举端点"的输出直接作为结论的入口点�
 - **端点授权矩阵 B3 每一行也落一条 jsonl**（status 据其是否构成越权取 confirmed / not_vulnerable），保证整张矩阵可被下游计数闸门逐行核到。
 
 下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。
+
+## 覆盖对账（仅清单驱动模式适用）
+
+所有批次完成后，读取 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` 统计各 `scan_status` 数量，输出对账摘要：
+
+- `pending > 0`：输出 `COVERAGE_GAP`，逐行列出所有未覆盖端点 id（禁止折叠或以计数替代枚举）
+- 全部 `completed` / `needs_review`：输出 `COVERAGE_COMPLETE`
+
+对账摘要写入同级目录 `shared/coverage-ledger/inventory/coverage-summary.md`（每次覆盖写，不追加）。

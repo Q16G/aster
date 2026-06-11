@@ -184,6 +184,29 @@ arguments:
 - 归属取值：项目方·同厂商自有 / 第三方异厂商商业 / 公共库 / `unknown`
 - 处置建议取值：公共库免反编译 / 反编译候选（关键路径优先；同厂商自有优先且无法律顾虑，异厂商商业落 (b)、安全/sink 决策在依赖内说不清则候选并标法律） / 免反编译（不在关键路径，或在关键路径但落 (a)、安全/sink 决策在调用方、依赖仅标准化通道，行为可由 CVE/已知语义说清，走 CVE）
 
+### 资产清单落盘（必须遵守）
+
+> Why：Markdown 表格供人阅读，但后续 skill 无法机器读取驱动扫描；JSONL 清单是下游清单驱动模式的唯一数据源，缺失则退化为自由探索。
+
+将上述入口点 / 路由清单以 JSONL 格式写入
+`shared/coverage-ledger/inventory/project-framework-analysis.jsonl`。
+
+每行一个端点，字段：
+
+- `id`：`ep-{三位序号}`（如 `ep-001`），全局唯一；Markdown 表格"备注"列同步标注该 id 以供人机对照
+- `controller`、`method`：类名与方法名
+- `http_method`、`url`：HTTP 方法与 URL pattern
+- `params`：参数列表，每项含 `name` 与 `source`（`path` / `query` / `body` / `header` / `cookie`）
+- `has_resource_id`：参数中是否含有可识别的资源标识符（命名含 `id` / `Id` / `no` / `No` 等后缀）
+- `risk_priority`：`high`（has_resource_id 为 true 且无全局鉴权中间件全覆盖）/ `medium` / `low`
+- `scan_status`：初始值统一写 `pending`
+
+**幂等写入（必须遵守）**
+
+> Why：重跑侦察不应重置已有的扫描进度——其他 skill 可能已将部分端点更新为 `in_progress` 或 `completed`，覆盖写会破坏跨批次的状态追踪。
+
+文件已存在时，**不覆盖、不重置已有 `scan_status`**：以 `id` 字段去重，仅追加文件中尚不存在的端点行；已存在的 id 原样保留。
+
 ## 对后续分析的影响 / 移交清单（必须输出）
 
 本节显式声明侦察产出如何被后续分析维度消费，是本 skill 的核心交付物：

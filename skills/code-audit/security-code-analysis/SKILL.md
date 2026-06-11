@@ -81,6 +81,15 @@ R0 产出的入口点骨架、过滤器/中间件映射（含信任边界）、�
 
 ### B. 认证与授权（推荐全覆盖）— 聚焦入口: `auth-authz`
 
+> **大规模项目规划建议（基线参考，按实际动态调整）**：若 R0 已产出
+> `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` 且端点总数超过 50，
+> 可按 `risk_priority` 分层：high 段优先执行 B1；medium / low 段可视 token 预算
+> 并发起子 Agent 分担，各自认领自己那段的 `pending` 端点。
+> 若预算有限，优先保证 high 段全覆盖，其余段在对账摘要中标注 `budget-skipped`
+>（不标 `pending`，以免与真实遗漏混淆）。
+> **所有子 Agent 必须读写同一份 JSONL 清单（必须遵守）**
+> —— Why：各自维护私有副本会导致 scan_status 冲突和跨 Agent 对账失效。
+
 | # | 任务项 | skill | 适用条件 |
 |---|--------|-------|---------|
 | B1 | 业务逻辑认证授权复核 | `business-logic-auth-review` | 诉求开放式（全量审计）时默认纳入覆盖 |
