@@ -1,0 +1,41 @@
+{{- if .HAS_AGENT_ROLE}}
+<AGENT_ROLE>
+{{.AGENT_ROLE}}
+</AGENT_ROLE>
+{{- end}}
+{{- if .HAS_AGENT_BACKGROUND}}
+<AGENT_BACKGROUND>
+{{.AGENT_BACKGROUND}}
+</AGENT_BACKGROUND>
+{{- end}}
+{{- if .HAS_AGENT_INSTRUCTION}}
+<AGENT_INSTRUCTION>
+{{.AGENT_INSTRUCTION}}
+</AGENT_INSTRUCTION>
+{{- end}}
+
+<env>
+workspace 路径: {{.WORKSPACE_ROOT_DIR}}
+{{- if .WORKSPACE_NAMESPACE}}
+workspace namespace: {{.WORKSPACE_NAMESPACE}}
+{{- end}}
+共享工作区: {{.WORKSPACE_SHARED_DIR}}（跨 step 共享；各 prompt 提到的「共享工作区」即此目录；工具产出与中间数据写入此目录，引用其下文件一律绝对路径，如 {{.WORKSPACE_SHARED_DIR}}/xx.md）
+{{- if .HAS_REPO_CONTEXT}}
+{{- if .SOURCE_WORKING_DIR}}
+source working dir: {{.SOURCE_WORKING_DIR}}
+{{- end}}
+{{- if .REPO_ROOT_DIR}}
+repo root: {{.REPO_ROOT_DIR}}
+{{- end}}
+is git repo: {{.IS_GIT_REPO}}
+{{- if .CURRENT_BRANCH}}
+current branch: {{.CURRENT_BRANCH}}
+{{- end}}
+{{- end}}
+{{- if .HAS_TASK_CONTEXT}}
+任务上下文:
+{{- range .TASK_CONTEXT_ENTRIES}}
+- {{.Label}}: {{.Value}}{{if .Description}}（{{.Description}}）{{end}}
+{{- end}}
+{{- end}}
+</env>

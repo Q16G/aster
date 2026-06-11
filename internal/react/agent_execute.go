@@ -440,6 +440,12 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
+	a.currentTaskContext = taskContext
+	a.identityEnvPrompt = ""
+	a.identityEnvBuilt = false
+	a.frozenStepParts = nil
+	a.frozenStepPartsStepID = ""
+	a.frozenStepPartsPlanVer = 0
 	a.lastStepTranscriptBlobRef = ""
 	a.resetRunHandoff()
 	if a.asyncRegistry != nil {

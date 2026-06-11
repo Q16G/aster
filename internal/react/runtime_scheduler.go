@@ -206,9 +206,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 恢复回合：判定是否需要注入中断点子 agent 现场（gate 见 buildRecoveryChildContextJSON），用后即清标记。
 	recoveryContextJSON := a.maybeBuildRecoveryChildContextJSON(snapshot)
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentRole:           strings.TrimSpace(a.cfg.Role),
-		AgentBackground:     strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:    strings.TrimSpace(a.cfg.Instruction),
 		HandoffContext:      strings.TrimSpace(extraText),
 		WorkspaceRootDir:    strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace:  strings.TrimSpace(a.workspaceNamespace),
@@ -230,15 +227,11 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
 
 	plannerInput := TaskPlannerPromptInput{
-		Input:              inputStr,
-		SkillsContext:      skillsCtx,
-		MCPContext:         mcpCtx,
-		HasSkillsTable:     skillsCtx != nil && skillsCtx.HasTable(),
-		HasMCPTable:        mcpCtx != nil && mcpCtx.HasTable(),
-		RuntimeRepoContext: a.runtimeRepoContext,
-	}
-	if a.workspaceRuntime != nil {
-		plannerInput.WorkspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+		Input:          inputStr,
+		SkillsContext:  skillsCtx,
+		MCPContext:     mcpCtx,
+		HasSkillsTable: skillsCtx != nil && skillsCtx.HasTable(),
+		HasMCPTable:    mcpCtx != nil && mcpCtx.HasTable(),
 	}
 	// userInputTurn：本回合由用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
@@ -516,6 +509,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 	if err != nil {
 		return nil, fmt.Errorf("build task planner prompt failed: %w", err)
 	}
+	prompt.SystemAgent = a.identityEnvBlock()
 
 	const maxSubmitRetries = 3
 	const maxNoUsefulPlanRounds = 2
@@ -529,7 +523,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 		}
 
 		planCtx, planCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyTaskPlanner, fnTools...)
+		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, prompt, promptFamilyTaskPlanner, fnTools...)
 		planCancel()
 		if callErr != nil {
 			return nil, fmt.Errorf("plan phase AICallProxy failed: %w", callErr)
@@ -771,9 +765,6 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 }
 
 type PlannerInputOptions struct {
-	AgentRole          string
-	AgentBackground    string
-	AgentInstruction   string
 	HandoffContext     string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
@@ -817,17 +808,11 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 		return ""
 	}
 
-	opts.AgentRole = strings.TrimSpace(opts.AgentRole)
-	opts.AgentBackground = strings.TrimSpace(opts.AgentBackground)
-	opts.AgentInstruction = strings.TrimSpace(opts.AgentInstruction)
 	opts.HandoffContext = strings.TrimSpace(opts.HandoffContext)
 	opts.WorkspaceRootDir = strings.TrimSpace(opts.WorkspaceRootDir)
 	opts.WorkspaceNamespace = strings.TrimSpace(opts.WorkspaceNamespace)
 
 	data := plannerInputData{
-		AgentRole:           opts.AgentRole,
-		AgentBackground:     opts.AgentBackground,
-		AgentInstruction:    opts.AgentInstruction,
 		HandoffContext:      opts.HandoffContext,
 		RecoveryContextJSON: strings.TrimSpace(opts.RecoveryContextJSON),
 	}
@@ -1134,12 +1119,12 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if _, err := a.ensureFrozenStepLineage(snapshot); err != nil {
 		return err
 	}
-	prompt := a.BuildThinkActPrompt(ctx, extraText, taskContext)
+	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStep)
 
 	thinkCtx, thinkCancel := context.WithCancel(ctx)
 	defer thinkCancel()
-	callResult, err := a.AICallProxy(thinkCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyThinkAct, fnTools...)
+	callResult, err := a.AICallProxy(thinkCtx, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
 	if err != nil {
 		return err
 	}

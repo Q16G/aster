@@ -1,0 +1,35 @@
+{{- if .HAS_AVAILABLE_TOOLS}}
+规划前可用以下工具调查（语义以 function calling schema 为准）：
+{{range .AVAILABLE_TOOLS}}- `{{.Name}}`：{{.Description}}
+{{end}}
+{{- end}}
+## 用户输入 (User Input)
+---
+{{.INPUT}}
+---
+{{- if .HAS_GOAL_UNDERSTANDING}}
+
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+{{- end}}
+{{- if .HAS_SKILLS_TABLE}}
+
+<SKILLS_INDEX>
+{{- if .SKILLS_OVERFLOW_PATH}}
+> 可用能力索引较多，完整列表已保存至 `{{.SKILLS_OVERFLOW_PATH}}`，可通过 `read_file` 查看。
+{{- else}}
+{{.SKILLS_CONTEXT.Table}}
+{{- end}}
+</SKILLS_INDEX>
+{{- end}}
+{{- if .HAS_MCP_TABLE}}
+
+<MCP_SERVERS>
+{{- if .MCP_OVERFLOW_PATH}}
+> 可用 MCP Server 较多，完整列表已保存至 `{{.MCP_OVERFLOW_PATH}}`，可通过 `read_file` 查看。
+{{- else}}
+{{.MCP_CONTEXT.Table}}
+{{- end}}
+</MCP_SERVERS>
+{{- end}}

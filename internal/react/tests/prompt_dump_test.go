@@ -149,7 +149,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 	t.Run("plan_phase", func(t *testing.T) {
 		planner := NewDefaultTaskPlanner(&stubChatClient{})
 		planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-			AgentInstruction:   "你是安全审计 Agent，专注于发现 SQL 注入漏洞",
 			WorkspaceRootDir:   "/repo/project",
 			WorkspaceNamespace: "audit",
 		})
@@ -157,15 +156,14 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			t.Fatal("PlannerInputFromSnapshot returned empty")
 		}
 
-		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 		if err != nil {
 			t.Fatalf("BuildPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "01_plan_phase", prompt)
 
 		mustContainAll(t, "plan", prompt, []string{
-			"<AGENT_INSTRUCTION>",
-			"安全审计 Agent",
 			"<INPUT_TIMELINE>",
 			"SQL 注入漏洞",
 			"<TASK_ITEMS>",
@@ -205,17 +203,17 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		planner := NewDefaultTaskPlanner(&stubChatClient{})
 		planInput := PlannerInputFromSnapshot(replanSnapshot, PlannerInputOptions{
-			AgentInstruction:   "你是安全审计 Agent",
 			WorkspaceRootDir:   "/repo/project",
 			WorkspaceNamespace: "audit",
 		})
-		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
 			Input:             planInput,
 			GoalUnderstanding: "核心目标：审计 SQL 注入。范围边界：仅数据访问层，不做前端。",
 		})
 		if err != nil {
 			t.Fatalf("BuildPrompt replan failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "02_plan_phase_replan", prompt)
 
 		mustContainAll(t, "plan_replan", prompt, []string{
@@ -249,12 +247,9 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		agent.ReplaceState(snapshot)
 
-		prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
-			Entries: []TaskContextEntry{
-				{Label: "项目路径", Value: "/repo/project", Description: "待审计的项目根目录"},
-				{Label: "扫描模式", Value: "deep"},
-			},
-		})
+		// 任务上下文条目已上移至身份/env 块（经 Execute 注入 currentTaskContext），
+		// 此处仅验证 think_act 双部分的任务动态注入。
+		prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
 		dumpPrompt(t, dumpDir, "03_step_phase_think_act", prompt)
 
 		mustContainAll(t, "think_act", prompt, []string{
@@ -265,8 +260,6 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"step-1",
 			"已收集项目结构",
 			"项目使用 Gin 框架",
-			"项目路径: /repo/project",
-			"扫描模式: deep",
 		})
 
 		// think_act 不再渲染跨步骤未决盘点与告警，那是 replan/复核阶段的职责。
@@ -315,7 +308,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		}
 		agent.ReplaceState(firstStepSnap)
 
-		prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
+		prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
 		dumpPrompt(t, dumpDir, "04_step_phase_first_step", prompt)
 
 		mustContainAll(t, "first_step", prompt, []string{
@@ -379,7 +372,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			"references":        outcome.References,
 			"result_file":       "/workspace/steps/step-2/attempts/001/result.json",
 		}
-		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		parts, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal":       "对项目进行安全审计，识别所有 SQL 注入漏洞",
 			"goal_understanding": "核心目标：审计 SQL 注入。范围边界：仅数据访问层，不做前端。",
 			"input_timeline": []*builtin_tools.TimelineInput{
@@ -399,6 +392,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildStepReplanPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "05_step_replan_phase", prompt)
 
 		// Verify all sections render with real data
@@ -512,7 +506,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		for i, o := range completedOutcomes {
 			plan[i].BakeOutcome(o)
 		}
-		prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":      builtin_tools.TaskStatusRunning,
 			"state_error": "",
 			"input_timeline": []*builtin_tools.TimelineInput{
@@ -526,6 +520,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "06_final_answer_completed", prompt)
 
 		mustContainAll(t, "final_answer", prompt, []string{
@@ -577,7 +572,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			t.Fatalf("NewReActAgent failed: %v", err)
 		}
 
-		prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":      builtin_tools.TaskStatusRunning,
 			"state_error": "",
 			"input_timeline": []*builtin_tools.TimelineInput{
@@ -592,6 +587,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt no-plan failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "07_final_answer_no_plan", prompt)
 
 		// Plan section should be hidden
@@ -620,7 +616,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			t.Fatalf("NewReActAgent failed: %v", err)
 		}
 
-		prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":      builtin_tools.TaskStatusFailed,
 			"state_error": "step-2 执行超时：读取大文件时 context deadline exceeded",
 			"input_timeline": []*builtin_tools.TimelineInput{
@@ -637,6 +633,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt error state failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "08_final_answer_error_state", prompt)
 
 		mustContainAll(t, "final_error", prompt, []string{
@@ -684,19 +681,21 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		// Test with struct
 		p1 := copyPayload(basePayload)
 		p1["current_step_card"] = structOutcome
-		prompt1, err := agent.BuildStepReplanPrompt(p1)
+		parts1, err := agent.BuildStepReplanPrompt(p1)
 		if err != nil {
 			t.Fatalf("struct outcome prompt failed: %v", err)
 		}
+		prompt1 := parts1.Joined()
 		dumpPrompt(t, dumpDir, "09a_step_replan_struct_outcome", prompt1)
 
 		// Test with map
 		p2 := copyPayload(basePayload)
 		p2["current_step_card"] = mapOutcome
-		prompt2, err := agent.BuildStepReplanPrompt(p2)
+		parts2, err := agent.BuildStepReplanPrompt(p2)
 		if err != nil {
 			t.Fatalf("map outcome prompt failed: %v", err)
 		}
+		prompt2 := parts2.Joined()
 		dumpPrompt(t, dumpDir, "09b_step_replan_map_outcome", prompt2)
 
 		// Both should produce valid JSON in STEP_OUTCOME
@@ -725,7 +724,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			t.Fatalf("NewReActAgent failed: %v", err)
 		}
 
-		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		parts, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal": "",
 			"current_step_card": map[string]any{
 				"id":     "step-1",
@@ -738,6 +737,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildStepReplanPrompt empty fields failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "10_step_replan_empty_fields", prompt)
 
 		// Should still render all sections, just with empty/null data
@@ -781,8 +781,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 
 		prompt := agent.BuildThinkActPrompt(context.Background(),
 			"来自上游 Agent 的交接：已完成 SAST 扫描，请重点检查 user_repo.go 中第 45 行的 SQL 拼接",
-			nil,
-		)
+		).Joined()
 		dumpPrompt(t, dumpDir, "11_step_phase_with_handoff", prompt)
 
 		mustContainAll(t, "handoff", prompt, []string{
@@ -807,7 +806,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		}
 
 		now := time.Now()
-		prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":      builtin_tools.TaskStatusRunning,
 			"state_error": "",
 			"input_timeline": []*builtin_tools.TimelineInput{
@@ -832,6 +831,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildFinalAnswerPrompt resume failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "12_final_answer_multi_input_resume", prompt)
 
 		// All 3 user inputs should appear in timeline
@@ -877,7 +877,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		}
 
 		// step_replan prompt
-		replanPrompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		replanParts, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal":       "consistency",
 			"current_step_card":  sharedOutcome,
 			"plan_overview":      []any{},
@@ -887,9 +887,10 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("consistency replan failed: %v", err)
 		}
+		replanPrompt := replanParts.Joined()
 
 		// final_answer prompt
-		finalPrompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		finalParts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 			"status":         builtin_tools.TaskStatusRunning,
 			"state_error":    "",
 			"input_timeline": []*builtin_tools.TimelineInput{{Content: "test", CreatedAt: time.Now()}},
@@ -899,6 +900,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("consistency final failed: %v", err)
 		}
+		finalPrompt := finalParts.Joined()
 
 		dumpPrompt(t, dumpDir, "13a_consistency_step_replan", replanPrompt)
 		dumpPrompt(t, dumpDir, "13b_consistency_final_answer", finalPrompt)
@@ -1003,9 +1005,6 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 
 	planner := NewDefaultTaskPlanner(&stubChatClient{})
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentRole:          "安全代码审计专家",
-		AgentBackground:    "你是一个专注于 Go 语言安全审计的 AI Agent，熟悉 OWASP Top 10、CWE 分类体系和常见 Go 安全反模式。你的工作是识别真实可利用的安全漏洞，而非风格问题。",
-		AgentInstruction:   "对目标项目进行全量安全审计。首先加载 security-code-analysis，它定义了分类审计任务清单。\n\n审计要求：\n- 用户意图优先：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内\n- 分析手段和顺序根据项目实际情况灵活安排\n- 必须满足任务清单中 MUST 标记的任务项",
 		WorkspaceRootDir:   "/repo/target-project",
 		WorkspaceNamespace: "audit",
 	})
@@ -1013,22 +1012,15 @@ func TestPromptDump_CodeAnalysis_PlanPhase(t *testing.T) {
 		t.Fatal("PlannerInputFromSnapshot returned empty")
 	}
 
-	prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 	if err != nil {
 		t.Fatalf("BuildPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 	dumpPrompt(t, dumpDir, "scenario_01_code_analysis_plan", prompt)
 
+	// 身份三段已上移至身份/env 块（system block2），planner 输入只含任务动态数据。
 	mustContainAll(t, "code_analysis_plan", prompt, []string{
-		"<AGENT_ROLE>",
-		"安全代码审计专家",
-		"</AGENT_ROLE>",
-		"<AGENT_BACKGROUND>",
-		"OWASP Top 10",
-		"</AGENT_BACKGROUND>",
-		"<AGENT_INSTRUCTION>",
-		"分类审计任务清单",
-		"</AGENT_INSTRUCTION>",
 		"<INPUT_TIMELINE>",
 		"RCE",
 		"<TASK_ITEMS>",
@@ -1075,24 +1067,22 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 
 		planner := NewDefaultTaskPlanner(&stubChatClient{})
 		planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-			AgentInstruction: subAgentInstruction,
-			HandoffContext:   handoffCtx,
+			HandoffContext: handoffCtx,
 		})
 		if planInput == "" {
 			t.Fatal("PlannerInputFromSnapshot returned empty")
 		}
 
-		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 		if err != nil {
 			t.Fatalf("BuildPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "scenario_02a_sub_agent_plan_phase", prompt)
 
 		mustContainAll(t, "sub_plan", prompt, []string{
-			"<AGENT_INSTRUCTION>",
 			"SAST 扫描专家",
 			"semgrep",
-			"</AGENT_INSTRUCTION>",
 			"<HANDOFF_CONTEXT>",
 			"Gin + GORM",
 			"MUST 任务项",
@@ -1100,9 +1090,9 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 			"<INPUT_TIMELINE>",
 		})
 
-		userInputIdx := strings.Index(prompt, "## 5. 用户输入")
+		userInputIdx := strings.Index(prompt, "## 用户输入")
 		if userInputIdx < 0 {
-			t.Fatal("prompt missing '## 5. 用户输入' section")
+			t.Fatal("prompt missing '## 用户输入' section")
 		}
 		userInputSection := prompt[userInputIdx:]
 		for _, forbidden := range []string{
@@ -1181,11 +1171,7 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 			},
 		})
 
-		prompt := agent.BuildThinkActPrompt(context.Background(), handoffCtx, &TaskContextData{
-			Entries: []TaskContextEntry{
-				{Label: "委派上下文", Value: handoffCtx, Description: "父 Agent 传递的显式上下文"},
-			},
-		})
+		prompt := agent.BuildThinkActPrompt(context.Background(), handoffCtx).Joined()
 		dumpPrompt(t, dumpDir, "scenario_02b_sub_agent_think_act", prompt)
 
 		mustContainAll(t, "sub_think_act", prompt, []string{
@@ -1197,7 +1183,7 @@ func TestPromptDump_SubAgent_PlanAndThinkAct(t *testing.T) {
 			"step-1",
 			"规则集加载成功",
 			"SQLi 规则 15 条",
-			"委派上下文",
+			"交接上下文",
 			"Gin + GORM",
 		})
 
@@ -1316,27 +1302,20 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 	// ── Part A: 父 agent replan prompt ──
 	t.Run("parent_replan_after_sub_agent", func(t *testing.T) {
 		planner := NewDefaultTaskPlanner(&stubChatClient{})
-		planInput := PlannerInputFromSnapshot(parentSnapshot, PlannerInputOptions{
-			AgentRole:        "安全代码审计专家",
-			AgentBackground:  "你是根审计 Agent，负责统筹全局审计流程。你通过委派子 Agent 执行 SAST 扫描，现在需要基于扫描结果继续推进后续分析。",
-			AgentInstruction: "对目标项目进行全量安全审计。子 Agent 的工作成果已通过 step outcome 反映在执行线中。",
-		})
+		planInput := PlannerInputFromSnapshot(parentSnapshot, PlannerInputOptions{})
 		if planInput == "" {
 			t.Fatal("PlannerInputFromSnapshot returned empty")
 		}
 
-		prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 		if err != nil {
 			t.Fatalf("BuildPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "scenario_03a_parent_replan_after_sub_agent", prompt)
 
 		mustContainAll(t, "parent_replan", prompt, []string{
-			"<AGENT_ROLE>",
-			"安全代码审计专家",
-			"<AGENT_BACKGROUND>",
 			"子 Agent",
-			"<AGENT_INSTRUCTION>",
 			"<INPUT_TIMELINE>",
 			"<TASK_ITEMS>",
 			"step-3",
@@ -1373,7 +1352,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 
 		agent.ReplaceState(stepSnapshot)
 
-		prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
+		prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
 		dumpPrompt(t, dumpDir, "scenario_03b_parent_think_act_after_sub_agent", prompt)
 
 		mustContainAll(t, "parent_think_act", prompt, []string{
@@ -1408,7 +1387,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		// step-3 的 outcome：子 agent 完成的 SAST 扫描结果
 		step3Outcome := parentSnapshot.StepOutcomes[2] // step-3
 
-		prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+		parts, err := agent.BuildStepReplanPrompt(map[string]any{
 			"current_goal": "对目标项目进行全量安全审计",
 			"current_step_card": map[string]any{
 				"id":                "step-3",
@@ -1427,6 +1406,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildStepReplanPrompt failed: %v", err)
 		}
+		prompt := parts.Joined()
 		dumpPrompt(t, dumpDir, "scenario_03c_parent_step_replan_after_sub_agent", prompt)
 
 		mustContainAll(t, "parent_step_replan", prompt, []string{

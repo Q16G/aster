@@ -58,6 +58,15 @@ type Agent struct {
 	workspaceNamespace  string
 	runtimeRepoContext  RuntimeRepoContext
 	frozenLineageByStep map[string]*frozenStepLineage
+	// currentTaskContext 与 identityEnv* 为 run 内稳定的 system block2 素材与缓存；
+	// frozenStepParts* 是 think_act 首条 user message 的 step 入口冻结快照
+	//（step 内字节恒定，使消息前缀的移动缓存断点全程命中）。
+	currentTaskContext     *TaskContextData
+	identityEnvPrompt      string
+	identityEnvBuilt       bool
+	frozenStepParts        *PromptParts
+	frozenStepPartsStepID  string
+	frozenStepPartsPlanVer int
 	currentResultSource ResultSource
 	workspaceRuntime    builtin_tools.WorkspaceRuntime
 	runClientMu         sync.RWMutex

@@ -46,7 +46,7 @@ func TestBuildFinalAnswerPrompt_PreservesResultFromSharedStepView(t *testing.T) 
 
 	// 烘焙形态：产出小字段随 plan_item 注入（A 阶段终态烘焙后），细节经指针回读。
 	plan[0].BakeOutcome(stepOutcomes[0])
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         "running",
 		"state_error":    "",
 		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("请输出最终答案")},
@@ -57,10 +57,11 @@ func TestBuildFinalAnswerPrompt_PreservesResultFromSharedStepView(t *testing.T) 
 		t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
 	}
 
-	if !strings.Contains(prompt, `"short_summary":"摘要很短"`) {
-		t.Fatalf("expected prompt to carry baked short_summary in PLAN_ITEMS, got:\n%s", prompt)
+	// 动态注入全部落在首条 user message（拆分后 system 不携带任务级数据）。
+	if !strings.Contains(parts.User, `"short_summary":"摘要很短"`) {
+		t.Fatalf("expected user part to carry baked short_summary in PLAN_ITEMS, got:\n%s", parts.User)
 	}
-	if !strings.Contains(prompt, "<PLAN_ITEMS>") || !strings.Contains(prompt, "<OPEN_ITEMS_LEDGER>") {
-		t.Fatalf("expected new injection sections, got:\n%s", prompt)
+	if !strings.Contains(parts.User, "<PLAN_ITEMS>") || !strings.Contains(parts.User, "<OPEN_ITEMS_LEDGER>") {
+		t.Fatalf("expected new injection sections in user part, got:\n%s", parts.User)
 	}
 }

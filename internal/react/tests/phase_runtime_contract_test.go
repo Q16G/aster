@@ -20,7 +20,7 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "继续推进",
 		"current_step_card":  map[string]any{"id": "step-1", "step": "执行", "status": "completed", "short_summary": "done"},
 		"plan_overview":      []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
@@ -32,6 +32,7 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "PLAN_OVERVIEW", "OPEN_ITEMS_LEDGER", "TASK_CONTEXT_BOARD"} {
 		if !strings.Contains(prompt, marker) {
@@ -46,7 +47,7 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal": "分析代码",
 		"current_step_card": map[string]any{
 			"id":            "step-1",
@@ -63,6 +64,7 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	// 卡片应为未转义 JSON 对象，不得二次序列化为字符串。
 	if strings.Contains(prompt, `"{\"`) || strings.Contains(prompt, `\"}"`) {
@@ -93,7 +95,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "侦察完成",
 		"current_step_card":  map[string]any{"id": "step-1", "step": "侦察", "status": "completed", "short_summary": "done"},
 		"plan_overview":      []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
@@ -106,6 +108,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	if !strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
 		t.Fatal("expected rendered <SKILLS_INDEX> block in prompt when skills_context is provided")
@@ -121,7 +124,7 @@ func TestBuildStepReplanPrompt_WithoutSkillsIndex(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "分析完成",
 		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
 		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
@@ -134,6 +137,7 @@ func TestBuildStepReplanPrompt_WithoutSkillsIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	// The principle text references `<SKILLS_INDEX>` in backticks, so check for the actual
 	// rendered block (tag on its own line, not inside backtick-quoted text).
@@ -148,7 +152,7 @@ func TestBuildStepReplanPrompt_EmptySkillsTable(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
+	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "分析完成",
 		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
 		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
@@ -162,6 +166,7 @@ func TestBuildStepReplanPrompt_EmptySkillsTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	if strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
 		t.Fatal("did not expect rendered <SKILLS_INDEX> block when skills_context has empty Table")
@@ -229,7 +234,7 @@ func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 		},
 	})
 
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
+	prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
 	for _, marker := range []string{"<CURRENT_STEP>", "<DEPENDENCY_PLAN_ITEMS>"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
@@ -249,85 +254,6 @@ func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
 	}
 	if strings.Contains(prompt, "```json") {
 		t.Fatalf("expected semantic blocks instead of raw runtime json block")
-	}
-}
-
-func TestBuildThinkActPrompt_RendersGenericTaskContextEntries(t *testing.T) {
-	agent, err := NewReActAgent(
-		"generic-ctx-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
-		Entries: []TaskContextEntry{
-			{Label: "项目路径", Value: "/repo/project", Description: "待分析的项目根目录"},
-			{Label: "共享路径", Value: "/tmp/workspace/shared/step-1"},
-		},
-	})
-	if !strings.Contains(prompt, "项目路径: /repo/project") {
-		t.Fatalf("expected generic entry in prompt, got %s", prompt)
-	}
-	if !strings.Contains(prompt, "待分析的项目根目录") {
-		t.Fatalf("expected description in prompt, got %s", prompt)
-	}
-	if !strings.Contains(prompt, "共享路径: /tmp/workspace/shared/step-1") {
-		t.Fatalf("expected generic entry in prompt, got %s", prompt)
-	}
-}
-
-func TestBuildThinkActPrompt_OmitsTaskContextWhenEmpty(t *testing.T) {
-	agent, err := NewReActAgent(
-		"empty-ctx-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{})
-	if strings.Contains(prompt, "### 5.1c 任务上下文") {
-		t.Fatalf("did not expect task context section for empty data, got %s", prompt)
-	}
-}
-
-func TestBuildThinkActPrompt_RendersMultipleTaskContextEntries(t *testing.T) {
-	agent, err := NewReActAgent(
-		"multi-entry-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
-		Entries: []TaskContextEntry{
-			{Label: "项目路径", Value: "/repo/project"},
-			{Label: "当前路径", Value: "/repo/project/internal/react"},
-			{Label: "编译状态", Value: "ready"},
-			{Label: "阶段说明", Value: "等待当前 step 继续推进。"},
-			{Label: "结构化输入", Value: "{\"ticket\":\"TASK-1\"}"},
-		},
-	})
-
-	for _, expected := range []string{
-		"项目路径: /repo/project",
-		"当前路径: /repo/project/internal/react",
-		"编译状态: ready",
-		"阶段说明: 等待当前 step 继续推进。",
-		"结构化输入: {\"ticket\":\"TASK-1\"}",
-	} {
-		if !strings.Contains(prompt, expected) {
-			t.Fatalf("expected prompt to contain %q, got %s", expected, prompt)
-		}
 	}
 }
 

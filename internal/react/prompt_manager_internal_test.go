@@ -18,9 +18,8 @@ func TestPromptManager_BuildersDoNotRenderNonce(t *testing.T) {
 		{
 			name: "think_act",
 			build: func() (string, error) {
-				return manager.BuildThinkActPrompt(ThinkActPromptInput{
-					AgentInstruction: "你是测试代理",
-				})
+				parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{})
+				return parts.Joined(), err
 			},
 		},
 		{
@@ -61,18 +60,16 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
-	with, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction:   "你是测试代理",
-		WorkspaceSharedDir: shared,
-	})
+	parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{})
 	if err != nil {
-		t.Fatalf("build think_act (has shared) failed: %v", err)
+		t.Fatalf("build think_act failed: %v", err)
 	}
-	// workspace 恒存在：事实板（6.2）与账本（6.3）无条件渲染，不再有无-workspace 分支。
-	for _, needle := range []string{"6.2", shared + "/task_context.md", "read_file", "整段覆盖重写", "执行中补充"} {
+	with := parts.SystemRules
+	// workspace 恒存在：事实板（5.1）与账本（5.2）无条件渲染；规则文本去参数化，
+	// 绝对路径只在身份/env 块出现，规则用「共享工作区」泛称。
+	for _, needle := range []string{"5.1", "共享工作区下的 task_context.md", "read_file", "整段覆盖重写", "执行中补充"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act must render 6.2 fact board (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render 5.1 fact board (missing %q), got:\n%s", needle, with)
 		}
 	}
 	for _, needle := range []string{"coverage_checklist", "uncovered", "open_item_ids"} {
@@ -80,11 +77,15 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 			t.Fatalf("think_act should render checklist + ledger id contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// step 文件模板（6.4）：progress + 流程与产出 两节。
+	// step 文件模板（5.3）：progress + 流程与产出 两节。
 	for _, needle := range []string{"step.md", "## progress", "流程与产出"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act should render step.md template contract (missing %q), got:\n%s", needle, with)
 		}
+	}
+	// 去参数化：system 两块不得出现任何运行时绝对路径占位遗留。
+	if strings.Contains(with, "{{.WORKSPACE_SHARED_DIR}}") {
+		t.Fatalf("think_act system must not retain WORKSPACE_SHARED_DIR placeholder, got:\n%s", with)
 	}
 }
 
@@ -94,18 +95,17 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
-	// 用户输入回合（cold_start / replan / carry）+ shared dir：渲染校正引导。
-	with, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:              "测试输入",
-		WorkspaceSharedDir: shared,
-		UserInputTurn:      true,
+	// 用户输入回合（cold_start / replan / carry）：渲染校正引导。
+	withParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:         "测试输入",
+		UserInputTurn: true,
 	})
 	if err != nil {
 		t.Fatalf("build task_planner (user turn) failed: %v", err)
 	}
-	if !strings.Contains(with, "贯穿事实校正") || !strings.Contains(with, "输入事实") || !strings.Contains(with, shared+"/task_context.md") {
-		t.Fatalf("task_planner user-input turn must render correction guidance + 输入事实 + path, got:\n%s", with)
+	with := withParts.Joined()
+	if !strings.Contains(with, "贯穿事实校正") || !strings.Contains(with, "输入事实") || !strings.Contains(with, "共享工作区下 task_context.md") {
+		t.Fatalf("task_planner user-input turn must render correction guidance + 输入事实 + 共享工作区指称, got:\n%s", with)
 	}
 	// The removed structured array field must not reappear in the schema.
 	if strings.Contains(with, `"task_context"`) {
@@ -115,15 +115,15 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, "三轴为主轴") {
 		t.Fatalf("task_planner non-replan turn must not render replan branch, got:\n%s", with)
 	}
-	replan, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:              "测试输入",
-		WorkspaceSharedDir: shared,
-		UserInputTurn:      false,
-		HasReplanContext:   true,
+	replanParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "测试输入",
+		UserInputTurn:    false,
+		HasReplanContext: true,
 	})
 	if err != nil {
 		t.Fatalf("build task_planner (replan turn) failed: %v", err)
 	}
+	replan := replanParts.Joined()
 	for _, needle := range []string{"三轴为主轴", "只编排不二次泛化", "产物-消费依赖", "最小扰动"} {
 		if !strings.Contains(replan, needle) {
 			t.Fatalf("task_planner replan turn must render replan branch (missing %q), got:\n%s", needle, replan)
@@ -139,28 +139,31 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("task_planner should align recon-first planning around 2-4 steps, got:\n%s", with)
 	}
 
-	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：即便有 shared dir 也不渲染。
-	inRun, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:              "测试输入",
-		WorkspaceSharedDir: shared,
-		UserInputTurn:      false,
+	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：不渲染校正引导。
+	inRunParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:         "测试输入",
+		UserInputTurn: false,
 	})
 	if err != nil {
 		t.Fatalf("build task_planner (in-run turn) failed: %v", err)
 	}
-	if strings.Contains(inRun, "贯穿事实校正") {
-		t.Fatalf("task_planner in-run turn must not render correction guidance, got:\n%s", inRun)
+	if strings.Contains(inRunParts.Joined(), "贯穿事实校正") {
+		t.Fatalf("task_planner in-run turn must not render correction guidance, got:\n%s", inRunParts.Joined())
 	}
-
 }
 
-func TestPromptManager_ThinkActRepoContextSection(t *testing.T) {
+// 仓库上下文与身份段统一收敛到公共身份/env 块（system block2），各阶段模板不再各自渲染。
+func TestPromptManager_AgentIdentityEnvBlock(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
-	prompt, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction: "你是测试代理",
+	block, err := manager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		AgentRole:          "资深审计专家",
+		AgentInstruction:   "你是测试代理",
+		WorkspaceRootDir:   "/ws/root",
+		WorkspaceNamespace: "ns-1",
+		WorkspaceSharedDir: "/ws/shared",
 		RuntimeRepoContext: RuntimeRepoContext{
 			SourceWorkingDir: "/repo/worktree",
 			RepoRootDir:      "/repo/worktree",
@@ -168,118 +171,107 @@ func TestPromptManager_ThinkActRepoContextSection(t *testing.T) {
 			Branch:           "feature/demo",
 			IsWorktree:       true,
 		},
+		TaskContext: &TaskContextData{Entries: []TaskContextEntry{
+			{Label: "项目路径", Value: "/repo/project", Description: "目标项目"},
+		}},
 	})
 	if err != nil {
-		t.Fatalf("build think_act failed: %v", err)
+		t.Fatalf("build agent identity env failed: %v", err)
 	}
 	for _, needle := range []string{
+		"<AGENT_ROLE>",
+		"资深审计专家",
+		"<AGENT_INSTRUCTION>",
+		"<env>",
+		"workspace 路径: /ws/root",
+		"workspace namespace: ns-1",
+		"共享工作区: /ws/shared",
 		"source working dir: /repo/worktree",
 		"repo root: /repo/worktree",
 		"is git repo: true",
 		"current branch: feature/demo",
+		"项目路径: /repo/project",
 	} {
-		if !strings.Contains(prompt, needle) {
-			t.Fatalf("expected think_act repo section to contain %q, got:\n%s", needle, prompt)
+		if !strings.Contains(block, needle) {
+			t.Fatalf("identity env block missing %q, got:\n%s", needle, block)
 		}
+	}
+	if strings.Contains(block, "github.com") || strings.Contains(block, "gitRepoUrl") {
+		t.Fatalf("identity env block must not expose remote url by default, got:\n%s", block)
+	}
+
+	// 多条任务上下文逐条渲染。
+	multi, err := manager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		WorkspaceRootDir:   "/ws/root",
+		WorkspaceSharedDir: "/ws/shared",
+		TaskContext: &TaskContextData{Entries: []TaskContextEntry{
+			{Label: "项目路径", Value: "/repo/project"},
+			{Label: "编译状态", Value: "ready"},
+			{Label: "结构化输入", Value: "{\"ticket\":\"TASK-1\"}"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("build identity env (multi entries) failed: %v", err)
+	}
+	for _, needle := range []string{"项目路径: /repo/project", "编译状态: ready", "结构化输入: {\"ticket\":\"TASK-1\"}"} {
+		if !strings.Contains(multi, needle) {
+			t.Fatalf("identity env block missing task context entry %q, got:\n%s", needle, multi)
+		}
+	}
+
+	// 空任务上下文不渲染该节。
+	empty, err := manager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		WorkspaceRootDir:   "/ws/root",
+		WorkspaceSharedDir: "/ws/shared",
+		TaskContext:        &TaskContextData{},
+	})
+	if err != nil {
+		t.Fatalf("build identity env (empty task context) failed: %v", err)
+	}
+	if strings.Contains(empty, "任务上下文") {
+		t.Fatalf("identity env block must omit task context section for empty data, got:\n%s", empty)
 	}
 }
 
-func TestPromptManager_TaskPlannerRepoContextSection(t *testing.T) {
+// 各阶段模板不再渲染身份段与仓库上下文（由 block2 承担），且 system/user 双部分非空。
+func TestPromptManager_PhasePromptsExcludeIdentityAndRepoContext(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
-	prompt, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input: "测试输入",
-		RuntimeRepoContext: RuntimeRepoContext{
-			SourceWorkingDir: "/repo/worktree",
-			RepoRootDir:      "/repo/worktree",
-			IsGitRepo:        true,
-			Branch:           "feature/demo",
-			IsWorktree:       true,
-		},
-	})
-	if err != nil {
-		t.Fatalf("build task_planner failed: %v", err)
-	}
-	for _, needle := range []string{
-		"### 6.1 代码仓库上下文",
-		"source working dir: `/repo/worktree`",
-		"repo root: `/repo/worktree`",
-		"is git repo: `true`",
-		"current branch: `feature/demo`",
-	} {
-		if !strings.Contains(prompt, needle) {
-			t.Fatalf("expected task_planner repo section to contain %q, got:\n%s", needle, prompt)
-		}
-	}
-	if strings.Contains(prompt, "github.com") || strings.Contains(prompt, "gitRepoUrl") {
-		t.Fatalf("task_planner prompt must not expose remote url by default, got:\n%s", prompt)
-	}
-}
 
-func TestPromptManager_StepReplanRepoContextSection(t *testing.T) {
-	manager, err := newDefaultPromptManager()
-	if err != nil {
-		t.Fatalf("newDefaultPromptManager failed: %v", err)
-	}
-	prompt, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction: "你是测试代理",
-		RuntimeRepoContext: RuntimeRepoContext{
-			SourceWorkingDir: "/repo/worktree",
-			RepoRootDir:      "/repo/worktree",
-			IsGitRepo:        true,
-			Branch:           "feature/demo",
-			IsWorktree:       true,
+	builds := map[string]func() (PromptParts, error){
+		"think_act": func() (PromptParts, error) {
+			return manager.BuildThinkActPrompt(ThinkActPromptInput{})
 		},
-	})
-	if err != nil {
-		t.Fatalf("build step_replan failed: %v", err)
-	}
-	for _, needle := range []string{
-		"### 6.3 代码仓库上下文",
-		"source working dir: `/repo/worktree`",
-		"repo root: `/repo/worktree`",
-		"is git repo: `true`",
-		"current branch: `feature/demo`",
-	} {
-		if !strings.Contains(prompt, needle) {
-			t.Fatalf("expected step_replan repo section to contain %q, got:\n%s", needle, prompt)
-		}
-	}
-}
-
-func TestPromptManager_FinalAnswerRepoContextSection(t *testing.T) {
-	manager, err := newDefaultPromptManager()
-	if err != nil {
-		t.Fatalf("newDefaultPromptManager failed: %v", err)
-	}
-	prompt, err := manager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentInstruction: "你是测试代理",
-		RuntimeRepoContext: RuntimeRepoContext{
-			SourceWorkingDir: "/repo/worktree",
-			RepoRootDir:      "/repo/worktree",
-			IsGitRepo:        true,
-			Branch:           "feature/demo",
-			IsWorktree:       true,
+		"task_planner": func() (PromptParts, error) {
+			return manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{Input: "测试输入"})
 		},
-	})
-	if err != nil {
-		t.Fatalf("build final_answer failed: %v", err)
+		"step_replan": func() (PromptParts, error) {
+			return manager.BuildStepReplanPrompt(StepReplanPromptInput{CurrentGoal: "目标"})
+		},
+		"final_answer": func() (PromptParts, error) {
+			return manager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{Status: "completed"})
+		},
+		"intent_classification": func() (PromptParts, error) {
+			return manager.BuildIntentClassificationPrompt(IntentClassificationPromptInput{LatestInput: "最新输入"})
+		},
 	}
-	for _, needle := range []string{
-		"### 6.2 代码仓库上下文",
-		"source working dir: `/repo/worktree`",
-		"repo root: `/repo/worktree`",
-		"is git repo: `true`",
-		"current branch: `feature/demo`",
-	} {
-		if !strings.Contains(prompt, needle) {
-			t.Fatalf("expected final_answer repo section to contain %q, got:\n%s", needle, prompt)
+	for name, build := range builds {
+		parts, err := build()
+		if err != nil {
+			t.Fatalf("%s build failed: %v", name, err)
 		}
-	}
-	if strings.Contains(prompt, "git@github.com") || strings.Contains(prompt, "gitRepoUrl") {
-		t.Fatalf("final_answer prompt must not expose remote url by default, got:\n%s", prompt)
+		if strings.TrimSpace(parts.SystemRules) == "" || strings.TrimSpace(parts.User) == "" {
+			t.Fatalf("%s must produce non-empty system and user parts", name)
+		}
+		joined := parts.Joined()
+		// 原则文本可引用 `<AGENT_ROLE>` 等标签名；只有真正渲染身份块才会出现闭合标签。
+		for _, banned := range []string{"</AGENT_ROLE>", "</AGENT_BACKGROUND>", "</AGENT_INSTRUCTION>", "source working dir", "代码仓库上下文"} {
+			if strings.Contains(joined, banned) {
+				t.Fatalf("%s must not render identity/repo context (%q moved to identity env block), got:\n%s", name, banned, joined)
+			}
+		}
 	}
 }
 
@@ -289,14 +281,15 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	with, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction: "你是测试代理",
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:      "测试目标",
 		OpenItemsLedger:  "# 未闭环账本\nnext_id: 2\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n\n## 待复核（子agent）\n",
 		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 地址: 10.0.0.1\n\n## 执行中补充\n",
 	})
 	if err != nil {
 		t.Fatalf("build step_replan failed: %v", err)
 	}
+	with := parts.Joined()
 	// 事实烘焙（L4）：只读 + 具体值内联进条目；账本与事实板全文注入。
 	for _, needle := range []string{"烘焙", "<TASK_CONTEXT_BOARD>", "只读", "内联", "<OPEN_ITEMS_LEDGER>", "[OI-001] x", "地址: 10.0.0.1"} {
 		if !strings.Contains(with, needle) {
@@ -329,15 +322,13 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
-	with, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction:   "你是测试代理",
-		WorkspaceSharedDir: shared,
-		CanSpawnSubAgent:   true,
+	parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+		CanSpawnSubAgent: true,
 	})
 	if err != nil {
-		t.Fatalf("build think_act (shared + spawn) failed: %v", err)
+		t.Fatalf("build think_act (spawn) failed: %v", err)
 	}
+	with := parts.SystemRules
 	// P11：并发子 Agent 分区下发 + 跨波去重 + 父对账门禁。
 	for _, needle := range []string{
 		"分区下发",
@@ -354,10 +345,10 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 账本 6.3：OI-id 取号 + 三区结构 + 唯一语义写者纪律。
+	// 账本 5.2：OI-id 取号 + 三区结构 + 唯一语义写者纪律（路径去参数化为「共享工作区」泛称）。
 	for _, needle := range []string{
-		"6.3",
-		shared + "/open_items.md",
+		"5.2",
+		"共享工作区下的 open_items.md",
 		"## 未解决",
 		"## 不可解局限",
 		"next_id",
@@ -378,8 +369,8 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 	}
 	// 旧注入点残留禁入。
 	for _, banned := range []string{"DEPENDENCY_STEP_SUMMARIES", "EXECUTION_CONTEXTS"} {
-		if strings.Contains(with, banned) {
-			t.Fatalf("think_act must not reference removed injection %q, got:\n%s", banned, with)
+		if strings.Contains(parts.Joined(), banned) {
+			t.Fatalf("think_act must not reference removed injection %q, got:\n%s", banned, parts.Joined())
 		}
 	}
 }
@@ -414,13 +405,14 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	with, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentInstruction: "你是测试代理",
-		OpenItemsLedger:  "## 未解决\n- [OI-003] 模块 Y 未深测\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:     "测试目标",
+		OpenItemsLedger: "## 未解决\n- [OI-003] 模块 Y 未深测\n\n## 不可解局限\n\n## 待复核（子agent）\n",
 	})
 	if err != nil {
 		t.Fatalf("build step_replan failed: %v", err)
 	}
+	with := parts.Joined()
 	// 账本=完整超集，多源共判先账本后三轴；每条轴项以 ledger_id 对账。
 	for _, needle := range []string{
 		"完整超集",
@@ -471,13 +463,13 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 	}
 
 	// When the agent can spawn sub-agents, the delegation + await guidance renders.
-	withSubAgent, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction: "你是测试代理",
+	withSubAgentParts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
 		CanSpawnSubAgent: true,
 	})
 	if err != nil {
 		t.Fatalf("build think_act prompt (can spawn) failed: %v", err)
 	}
+	withSubAgent := withSubAgentParts.SystemRules
 	for _, needle := range []string{
 		"委派即首选",
 		"await_subagents",
@@ -491,13 +483,13 @@ func TestPromptManager_ThinkActPromptSubAgentGuidanceGate(t *testing.T) {
 
 	// When the agent is itself a sub-agent (cannot spawn), the delegation section
 	// must be hidden entirely, but unrelated principles (3-Strike) must remain.
-	withoutSubAgent, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentInstruction: "你是测试代理",
+	withoutSubAgentParts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
 		CanSpawnSubAgent: false,
 	})
 	if err != nil {
 		t.Fatalf("build think_act prompt (cannot spawn) failed: %v", err)
 	}
+	withoutSubAgent := withoutSubAgentParts.SystemRules
 	for _, absent := range []string{
 		"委派即首选",
 		"await_subagents",

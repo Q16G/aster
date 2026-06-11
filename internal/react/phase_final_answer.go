@@ -136,7 +136,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			runtimelog.LogJSON("info", map[string]any{
 				"event":              "final_answer_model_request",
 				"phase":              "final_answer",
-				"raw_request_length": len(prompt),
+				"raw_request_length": len(prompt.Joined()),
 			})
 
 			fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseFinalAnswer)
@@ -152,7 +152,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					return snapshot, ctx.Err()
 				}
 				faCtx, faCancel := context.WithCancel(ctx)
-				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyFinalAnswer, fnTools...)
+				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, promptFamilyFinalAnswer, fnTools...)
 				faCancel()
 				if callErr != nil {
 					return snapshot, fmt.Errorf("final_answer AICallProxy failed: %w", callErr)

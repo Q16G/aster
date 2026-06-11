@@ -75,8 +75,8 @@ func TestPromptBloat_AgentBrowserImpact(t *testing.T) {
 	auditAgent := makeAgent("audit-only", auditSkills)
 	browserAgent := makeAgent("audit-with-browser", browserSkills)
 
-	auditPrompt := auditAgent.BuildThinkActPrompt(ctx, "", nil)
-	browserPrompt := browserAgent.BuildThinkActPrompt(ctx, "", nil)
+	auditPrompt := auditAgent.BuildThinkActPrompt(ctx, "").Joined()
+	browserPrompt := browserAgent.BuildThinkActPrompt(ctx, "").Joined()
 
 	estTokens := func(s string) int { return len(s) * 10 / 35 }
 

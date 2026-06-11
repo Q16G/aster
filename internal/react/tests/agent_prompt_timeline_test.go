@@ -53,23 +53,19 @@ func TestPlannerInputFromSnapshot_EmptyWithoutTimeline(t *testing.T) {
 	}
 }
 
-func TestPlannerInputFromSnapshot_IncludesAgentIdentityAndHandoffContext(t *testing.T) {
+// 身份三段已上移至公共身份/env 块（system block2），planner_input 只承载交接上下文等动态输入。
+func TestPlannerInputFromSnapshot_IncludesHandoffContextWithoutIdentity(t *testing.T) {
 	snapshot := builtin_tools.StateSnapshot{
 		InputTimeline: []*builtin_tools.TimelineInput{
 			{Content: "hello", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
 		},
 	}
 	opts := PlannerInputOptions{
-		AgentRole:        "data_flow_analysis_agent",
-		AgentInstruction: "需要做取证与路径验证，不要直接输出修复方案。",
-		HandoffContext:   "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
+		HandoffContext: "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
 	}
 
 	got := PlannerInputFromSnapshot(snapshot, opts)
 	for _, marker := range []string{
-		"<AGENT_ROLE>",
-		"data_flow_analysis_agent",
-		"</AGENT_ROLE>",
 		"<HANDOFF_CONTEXT>",
 		"project_path: /tmp/repo",
 		"</HANDOFF_CONTEXT>",
@@ -77,6 +73,9 @@ func TestPlannerInputFromSnapshot_IncludesAgentIdentityAndHandoffContext(t *test
 		if !strings.Contains(got, marker) {
 			t.Fatalf("expected marker %q in planner input, got %s", marker, got)
 		}
+	}
+	if strings.Contains(got, "<AGENT_ROLE>") || strings.Contains(got, "<AGENT_INSTRUCTION>") {
+		t.Fatalf("planner input must not render identity blocks (moved to identity env block), got %s", got)
 	}
 }
 

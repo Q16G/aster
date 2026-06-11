@@ -1,21 +1,3 @@
-{{- if .AgentRole}}
-<AGENT_ROLE>
-{{.AgentRole}}
-</AGENT_ROLE>
-
-{{end -}}
-{{- if .AgentBackground}}
-<AGENT_BACKGROUND>
-{{.AgentBackground}}
-</AGENT_BACKGROUND>
-
-{{end -}}
-{{- if .AgentInstruction}}
-<AGENT_INSTRUCTION>
-{{.AgentInstruction}}
-</AGENT_INSTRUCTION>
-
-{{end -}}
 {{- if .HandoffContext}}
 <HANDOFF_CONTEXT>
 {{.HandoffContext}}

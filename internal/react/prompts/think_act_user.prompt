@@ -1,0 +1,47 @@
+{{- if .GOAL_UNDERSTANDING}}
+## 意图理解（意图半径锚）
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+
+{{- end}}
+## 当前任务视图
+{{- if .HAS_CURRENT_STEP}}
+<CURRENT_STEP>
+{{.CURRENT_STEP}}
+</CURRENT_STEP>
+{{- end}}
+{{- if .HAS_DEPENDENCY_PLAN_ITEMS}}
+前置依赖步骤的产出卡片（内联小字段 + 文件指针；需要细节时顺 `step_file` / `result_file` / `timeline_file` 指针 `read_file`，timeline 是逐条工具调用事件的无损日志）：
+<DEPENDENCY_PLAN_ITEMS>
+{{.DEPENDENCY_PLAN_ITEMS}}
+</DEPENDENCY_PLAN_ITEMS>
+{{- end}}
+{{- if .EXTRA_CONTEXT}}
+
+## 交接上下文
+---
+{{.EXTRA_CONTEXT}}
+---
+{{- end}}
+{{- if .HAS_SKILLS_TABLE}}
+
+## Skills 索引
+---
+{{.SKILLS_CONTEXT.Table}}
+---
+{{- end}}
+{{- if .HAS_INJECTED_SKILLS}}
+
+## Injected Skills（已注入指令，收尾前按 P8 卸载用不上的）
+---
+{{.SKILLS_CONTEXT.Injected}}
+---
+{{- end}}
+{{- if .HAS_MCP_TABLE}}
+
+## MCP Servers
+---
+{{.MCP_CONTEXT.Table}}
+---
+{{- end}}

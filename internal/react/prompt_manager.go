@@ -8,17 +8,9 @@ import (
 )
 
 type ThinkActPromptInput struct {
-	AgentRole          string
-	AgentBackground    string
-	AgentInstruction   string
-	GoalUnderstanding  string
-	TaskContext        *TaskContextData
-	WorkspaceRootDir   string
-	WorkspaceNamespace string
-	WorkspaceSharedDir string
-	RuntimeRepoContext RuntimeRepoContext
-	SkillsContext      *SkillsPromptContext
-	CurrentStep        any
+	GoalUnderstanding string
+	SkillsContext     *SkillsPromptContext
+	CurrentStep       any
 	// DependencyPlanItems 是前置依赖步骤的 plan_item 产出卡片（内联小字段 + 文件指针），
 	// 替代旧的 DEPENDENCY_STEP_SUMMARIES / EXECUTION_CONTEXTS 全量注入。
 	DependencyPlanItems    any
@@ -43,13 +35,9 @@ type AvailableToolInfo struct {
 }
 
 type StepReplanPromptInput struct {
-	AgentRole          string
-	AgentBackground    string
-	AgentInstruction   string
-	CurrentGoal        any
-	GoalUnderstanding  string
-	RuntimeRepoContext RuntimeRepoContext
-	InputTimeline      any
+	CurrentGoal       any
+	GoalUnderstanding string
+	InputTimeline     any
 	// CurrentStepCard 是当前 step 产出的 plan_item 卡片投影（替代旧 STEP_OUTCOME/
 	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 id/step/status/depends_on
 	//（替代旧 TASK_PLAN/STEP_OUTCOMES）。账本与事实板全文默认注入（设计 3.1）。
@@ -70,20 +58,28 @@ type StepReplanPromptInput struct {
 }
 
 type FinalAnswerPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
-	AgentInstruction  string
-	Status            any
-	StateError        any
-	InputTimeline     any
+	Status        any
+	StateError    any
+	InputTimeline any
 	GoalUnderstanding string
 	// PlanItems 是 plan 真相源投影卡片（内联小字段 + 文件指针），替代旧
 	// PLAN/STEP_OUTCOMES/CARRIED_* 全量注入；OpenItemsLedger 是账本全文（F6 归置对象）。
-	PlanItems          any
-	OpenItemsLedger    string
-	Warnings           any
+	PlanItems       any
+	OpenItemsLedger string
+	Warnings        any
+}
+
+// AgentIdentityEnvPromptInput 渲染公共 system block2：Agent 身份三段 + <env> 块。
+// 全部输入为 run 内稳定值，渲染结果在 Agent 上缓存一次、各阶段复用（字节一致）。
+type AgentIdentityEnvPromptInput struct {
+	AgentRole          string
+	AgentBackground    string
+	AgentInstruction   string
+	WorkspaceRootDir   string
+	WorkspaceNamespace string
 	WorkspaceSharedDir string
 	RuntimeRepoContext RuntimeRepoContext
+	TaskContext        *TaskContextData
 }
 
 type HistoryCompactionPromptInput struct {
@@ -102,15 +98,13 @@ type StepOutcomesReducerPromptInput struct {
 }
 
 type TaskPlannerPromptInput struct {
-	Input              string
-	GoalUnderstanding  string
-	WorkspaceSharedDir string
-	RuntimeRepoContext RuntimeRepoContext
-	UserInputTurn      bool
+	Input             string
+	GoalUnderstanding string
+	UserInputTurn     bool
 	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
 	// 模板据此渲染重规划分支（3.4 R1-R6）。
-	HasReplanContext bool
-	SkillsContext    *SkillsPromptContext
+	HasReplanContext   bool
+	SkillsContext      *SkillsPromptContext
 	MCPContext         *MCPPromptContext
 	HasSkillsTable     bool
 	HasMCPTable        bool
@@ -121,18 +115,17 @@ type TaskPlannerPromptInput struct {
 }
 
 type IntentClassificationPromptInput struct {
-	GoalUnderstanding  string
-	PreviousGoal       string
-	Status             string
-	HasFinalAnswer     bool
-	Interrupted        bool
-	CompletedCount     int
-	TotalCount         int
-	RecentOutcomes     []IntentOutcomeSummary
-	PendingSteps       []IntentPendingStep
-	InputTimeline      []IntentTimelineEntry
-	LatestInput        string
-	WorkspaceSharedDir string
+	GoalUnderstanding string
+	PreviousGoal      string
+	Status            string
+	HasFinalAnswer    bool
+	Interrupted       bool
+	CompletedCount    int
+	TotalCount        int
+	RecentOutcomes    []IntentOutcomeSummary
+	PendingSteps      []IntentPendingStep
+	InputTimeline     []IntentTimelineEntry
+	LatestInput       string
 }
 
 type IntentPendingStep struct {
@@ -155,102 +148,127 @@ type IntentTimelineEntry struct {
 }
 
 type PromptManager interface {
-	BuildThinkActPrompt(input ThinkActPromptInput) (string, error)
-	BuildStepReplanPrompt(input StepReplanPromptInput) (string, error)
-	BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (string, error)
+	BuildThinkActPrompt(input ThinkActPromptInput) (PromptParts, error)
+	BuildStepReplanPrompt(input StepReplanPromptInput) (PromptParts, error)
+	BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (PromptParts, error)
+	BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (PromptParts, error)
+	BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (PromptParts, error)
+	BuildAgentIdentityEnvPrompt(input AgentIdentityEnvPromptInput) (string, error)
 	BuildHistoryCompactionPrompt(input HistoryCompactionPromptInput) (string, error)
-	BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (string, error)
 	BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error)
 	BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error)
-	BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (string, error)
 }
 
 type defaultPromptManager struct {
-	thinkActTmpl             *template.Template
-	stepReplanTmpl           *template.Template
-	finalAnswerTmpl          *template.Template
-	historyCompactionTmpl    *template.Template
-	taskPlannerTmpl          *template.Template
-	agentHandoffTmpl         *template.Template
-	stepOutcomesReducerTmpl  *template.Template
-	intentClassificationTmpl *template.Template
+	thinkActSystemTmpl             *template.Template
+	thinkActUserTmpl               *template.Template
+	stepReplanSystemTmpl           *template.Template
+	stepReplanUserTmpl             *template.Template
+	finalAnswerSystemTmpl          *template.Template
+	finalAnswerUserTmpl            *template.Template
+	taskPlannerSystemTmpl          *template.Template
+	taskPlannerUserTmpl            *template.Template
+	intentClassificationSystemTmpl *template.Template
+	intentClassificationUserTmpl   *template.Template
+	agentIdentityEnvTmpl           *template.Template
+	historyCompactionTmpl          *template.Template
+	agentHandoffTmpl               *template.Template
+	stepOutcomesReducerTmpl        *template.Template
 }
 
 func newDefaultPromptManager() (PromptManager, error) {
-	thinkActTmpl, err := template.New("think_act").Parse(thinkActPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse think_act prompt failed: %w", err)
+	parse := func(name, text string) (*template.Template, error) {
+		tmpl, err := template.New(name).Parse(text)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s prompt failed: %w", name, err)
+		}
+		return tmpl, nil
 	}
-	stepReplanTmpl, err := template.New("step_replan").Parse(stepReplanPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse step_replan prompt failed: %w", err)
+	m := &defaultPromptManager{}
+	var err error
+	if m.thinkActSystemTmpl, err = parse("think_act_system", thinkActSystemPrompt); err != nil {
+		return nil, err
 	}
-	finalAnswerTmpl, err := template.New("final_answer").Parse(finalAnswerPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse final_answer prompt failed: %w", err)
+	if m.thinkActUserTmpl, err = parse("think_act_user", thinkActUserPrompt); err != nil {
+		return nil, err
 	}
-	historyCompactionTmpl, err := template.New("history_compaction").Parse(historyCompactionPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse history_compaction prompt failed: %w", err)
+	if m.stepReplanSystemTmpl, err = parse("step_replan_system", stepReplanSystemPrompt); err != nil {
+		return nil, err
 	}
-	taskPlannerTmpl, err := template.New("task_planner").Parse(taskPlanPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse task_planner prompt failed: %w", err)
+	if m.stepReplanUserTmpl, err = parse("step_replan_user", stepReplanUserPrompt); err != nil {
+		return nil, err
 	}
-	agentHandoffTmpl, err := template.New("agent_handoff").Parse(agentHandoffPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse agent_handoff prompt failed: %w", err)
+	if m.finalAnswerSystemTmpl, err = parse("final_answer_system", finalAnswerSystemPrompt); err != nil {
+		return nil, err
 	}
-	stepOutcomesReducerTmpl, err := template.New("step_outcomes_reducer").Parse(stepOutcomesReducerPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse step_outcomes_reducer prompt failed: %w", err)
+	if m.finalAnswerUserTmpl, err = parse("final_answer_user", finalAnswerUserPrompt); err != nil {
+		return nil, err
 	}
-	intentClassificationTmpl, err := template.New("intent_classification").Parse(intentClassificationPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("parse intent_classification prompt failed: %w", err)
+	if m.taskPlannerSystemTmpl, err = parse("task_planner_system", taskPlannerSystemPrompt); err != nil {
+		return nil, err
 	}
-	return &defaultPromptManager{
-		thinkActTmpl:             thinkActTmpl,
-		stepReplanTmpl:           stepReplanTmpl,
-		finalAnswerTmpl:          finalAnswerTmpl,
-		historyCompactionTmpl:    historyCompactionTmpl,
-		taskPlannerTmpl:          taskPlannerTmpl,
-		agentHandoffTmpl:         agentHandoffTmpl,
-		stepOutcomesReducerTmpl:  stepOutcomesReducerTmpl,
-		intentClassificationTmpl: intentClassificationTmpl,
-	}, nil
+	if m.taskPlannerUserTmpl, err = parse("task_planner_user", taskPlannerUserPrompt); err != nil {
+		return nil, err
+	}
+	if m.intentClassificationSystemTmpl, err = parse("intent_classification_system", intentClassificationSystemPrompt); err != nil {
+		return nil, err
+	}
+	if m.intentClassificationUserTmpl, err = parse("intent_classification_user", intentClassificationUserPrompt); err != nil {
+		return nil, err
+	}
+	if m.agentIdentityEnvTmpl, err = parse("agent_identity_env", agentIdentityEnvPrompt); err != nil {
+		return nil, err
+	}
+	if m.historyCompactionTmpl, err = parse("history_compaction", historyCompactionPrompt); err != nil {
+		return nil, err
+	}
+	if m.agentHandoffTmpl, err = parse("agent_handoff", agentHandoffPrompt); err != nil {
+		return nil, err
+	}
+	if m.stepOutcomesReducerTmpl, err = parse("step_outcomes_reducer", stepOutcomesReducerPrompt); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
-func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (string, error) {
-	if m == nil || m.thinkActTmpl == nil {
-		return "", fmt.Errorf("think_act template is nil")
+func renderTemplate(tmpl *template.Template, data map[string]any) (string, error) {
+	if tmpl == nil {
+		return "", fmt.Errorf("template is nil")
 	}
-	hasRepoContext := strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo
-
-	var taskContextEntries []TaskContextEntry
-	if input.TaskContext != nil {
-		taskContextEntries = input.TaskContext.VisibleEntries()
-	}
-
 	buf := bytes.NewBuffer(nil)
-	if err := m.thinkActTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":                strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":          strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":         strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":            strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction) != "",
+	if err := tmpl.Execute(buf, data); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
+// renderPromptParts 渲染 system/user 双模板并校验双部分非空（五个 ReAct 形态
+// prompt 的硬性约束：请求结构恒为 system + 首条 user message + stepHistory）。
+func renderPromptParts(family string, systemTmpl, userTmpl *template.Template, systemData, userData map[string]any) (PromptParts, error) {
+	system, err := renderTemplate(systemTmpl, systemData)
+	if err != nil {
+		return PromptParts{}, fmt.Errorf("render %s system prompt failed: %w", family, err)
+	}
+	user, err := renderTemplate(userTmpl, userData)
+	if err != nil {
+		return PromptParts{}, fmt.Errorf("render %s user prompt failed: %w", family, err)
+	}
+	if system == "" || user == "" {
+		return PromptParts{}, fmt.Errorf("%s prompt requires non-empty system and user parts (system=%d user=%d bytes)", family, len(system), len(user))
+	}
+	return PromptParts{SystemRules: system, User: user}, nil
+}
+
+func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
+	}
+	systemData := map[string]any{
+		"SUPPORTS_VISION":    input.SupportsVision,
+		"CAN_SPAWN_SUBAGENT": input.CanSpawnSubAgent,
+	}
+	userData := map[string]any{
 		"GOAL_UNDERSTANDING":        strings.TrimSpace(input.GoalUnderstanding),
-		"WORKSPACE_ROOT_DIR":        strings.TrimSpace(input.WorkspaceRootDir),
-		"WORKSPACE_NAMESPACE":       strings.TrimSpace(input.WorkspaceNamespace),
-		"WORKSPACE_SHARED_DIR":      strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":          hasRepoContext,
-		"SOURCE_WORKING_DIR":        strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":             strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":               input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":            strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"HAS_TASK_CONTEXT":          len(taskContextEntries) > 0,
-		"TASK_CONTEXT_ENTRIES":      taskContextEntries,
 		"SKILLS_CONTEXT":            input.SkillsContext,
 		"CURRENT_STEP":              prettyJSON(input.CurrentStep),
 		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
@@ -261,34 +279,19 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (s
 		"MCP_CONTEXT":               input.MCPContext,
 		"HAS_MCP_TABLE":             input.HasMCPTable,
 		"EXTRA_CONTEXT":             strings.TrimSpace(input.ExtraContext),
-		"SUPPORTS_VISION":           input.SupportsVision,
-		"CAN_SPAWN_SUBAGENT":        input.CanSpawnSubAgent,
-	}); err != nil {
-		return "", err
 	}
-	return buf.String(), nil
+	return renderPromptParts("think_act", m.thinkActSystemTmpl, m.thinkActUserTmpl, systemData, userData)
 }
 
-func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput) (string, error) {
-	if m == nil || m.stepReplanTmpl == nil {
-		return "", fmt.Errorf("step replan template is nil")
+func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.stepReplanTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":              strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":        strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":       strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":          strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":    strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":   strings.TrimSpace(input.AgentInstruction) != "",
+	systemData := map[string]any{}
+	userData := map[string]any{
 		"CURRENT_GOAL":            fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":      strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":  strings.TrimSpace(input.GoalUnderstanding) != "",
-		"HAS_REPO_CONTEXT":        strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
-		"SOURCE_WORKING_DIR":      strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":           strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":             input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":          strings.TrimSpace(input.RuntimeRepoContext.Branch),
 		"INPUT_TIMELINE":          prettyJSON(input.InputTimeline),
 		"CURRENT_STEP_CARD":       prettyJSON(input.CurrentStepCard),
 		"PLAN_OVERVIEW":           prettyJSON(input.PlanOverview),
@@ -305,24 +308,16 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"HAS_SKILLS_TABLE":        input.HasSkillsTable,
 		"AVAILABLE_TOOLS":         input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":     input.HasAvailableTools,
-	}); err != nil {
-		return "", err
 	}
-	return buf.String(), nil
+	return renderPromptParts("step_replan", m.stepReplanSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
 }
 
-func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (string, error) {
-	if m == nil || m.finalAnswerTmpl == nil {
-		return "", fmt.Errorf("final answer template is nil")
+func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.finalAnswerTmpl.Execute(buf, map[string]any{
-		"AGENT_ROLE":                   strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":             strings.TrimSpace(input.AgentBackground),
-		"AGENT_INSTRUCTION":            strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_ROLE":               strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND":         strings.TrimSpace(input.AgentBackground) != "",
-		"HAS_AGENT_INSTRUCTION":        strings.TrimSpace(input.AgentInstruction) != "",
+	systemData := map[string]any{}
+	userData := map[string]any{
 		"STATUS":                 fmt.Sprint(input.Status),
 		"STATE_ERROR":            fmt.Sprint(input.StateError),
 		"INPUT_TIMELINE":         prettyJSON(input.InputTimeline),
@@ -331,49 +326,22 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"PLAN_ITEMS":             prettyJSON(input.PlanItems),
 		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
 		"WARNINGS":               prettyJSON(input.Warnings),
-		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":       strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
-		"SOURCE_WORKING_DIR":     strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":          strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":            input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":         strings.TrimSpace(input.RuntimeRepoContext.Branch),
-	}); err != nil {
-		return "", err
 	}
-	return buf.String(), nil
+	return renderPromptParts("final_answer", m.finalAnswerSystemTmpl, m.finalAnswerUserTmpl, systemData, userData)
 }
 
-func (m *defaultPromptManager) BuildHistoryCompactionPrompt(input HistoryCompactionPromptInput) (string, error) {
-	if m == nil || m.historyCompactionTmpl == nil {
-		return "", fmt.Errorf("history compaction template is nil")
+func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.historyCompactionTmpl.Execute(buf, map[string]any{
-		"INSTRUCTION":  strings.TrimSpace(input.Instruction),
-		"PREV_SUMMARY": strings.TrimSpace(input.PrevSummary),
-	}); err != nil {
-		return "", err
+	systemData := map[string]any{
+		"USER_INPUT_TURN":    input.UserInputTurn,
+		"HAS_REPLAN_CONTEXT": input.HasReplanContext,
 	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (string, error) {
-	if m == nil || m.taskPlannerTmpl == nil {
-		return "", fmt.Errorf("task planner template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.taskPlannerTmpl.Execute(buf, map[string]any{
+	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
-		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":       strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo,
-		"SOURCE_WORKING_DIR":     strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":          strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":            input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":         strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"USER_INPUT_TURN":        input.UserInputTurn,
-		"HAS_REPLAN_CONTEXT":     input.HasReplanContext,
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,
 		"HAS_SKILLS_TABLE":       input.HasSkillsTable,
@@ -382,46 +350,16 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"MCP_OVERFLOW_PATH":      strings.TrimSpace(input.MCPOverflowPath),
 		"AVAILABLE_TOOLS":        input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools,
-	}); err != nil {
-		return "", err
 	}
-	return buf.String(), nil
+	return renderPromptParts("task_planner", m.taskPlannerSystemTmpl, m.taskPlannerUserTmpl, systemData, userData)
 }
 
-func (m *defaultPromptManager) BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error) {
-	if m == nil || m.agentHandoffTmpl == nil {
-		return "", fmt.Errorf("agent handoff template is nil")
+func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.agentHandoffTmpl.Execute(buf, map[string]any{
-		"HANDOFF_TO":        strings.TrimSpace(input.HandoffTo),
-		"AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction),
-		"PREV_SUMMARY":      strings.TrimSpace(input.PrevSummary),
-	}); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error) {
-	if m == nil || m.stepOutcomesReducerTmpl == nil {
-		return "", fmt.Errorf("step outcomes reducer template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.stepOutcomesReducerTmpl.Execute(buf, map[string]any{
-		"STEP_OUTCOMES": strings.TrimSpace(input.StepOutcomes),
-	}); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (string, error) {
-	if m == nil || m.intentClassificationTmpl == nil {
-		return "", fmt.Errorf("intent classification template is nil")
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := m.intentClassificationTmpl.Execute(buf, map[string]any{
+	systemData := map[string]any{}
+	userData := map[string]any{
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"PREVIOUS_GOAL":          strings.TrimSpace(input.PreviousGoal),
@@ -436,10 +374,67 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 		"PENDING_STEPS":          input.PendingSteps,
 		"INPUT_TIMELINE":         input.InputTimeline,
 		"LATEST_INPUT":           strings.TrimSpace(input.LatestInput),
-		"HAS_WORKSPACE_DIR":      strings.TrimSpace(input.WorkspaceSharedDir) != "",
-		"WORKSPACE_SHARED_DIR":   strings.TrimSpace(input.WorkspaceSharedDir),
-	}); err != nil {
-		return "", err
 	}
-	return buf.String(), nil
+	return renderPromptParts("intent_classification", m.intentClassificationSystemTmpl, m.intentClassificationUserTmpl, systemData, userData)
+}
+
+func (m *defaultPromptManager) BuildAgentIdentityEnvPrompt(input AgentIdentityEnvPromptInput) (string, error) {
+	if m == nil || m.agentIdentityEnvTmpl == nil {
+		return "", fmt.Errorf("agent identity env template is nil")
+	}
+	hasRepoContext := strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir) != "" || strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir) != "" || input.RuntimeRepoContext.IsGitRepo
+
+	var taskContextEntries []TaskContextEntry
+	if input.TaskContext != nil {
+		taskContextEntries = input.TaskContext.VisibleEntries()
+	}
+
+	return renderTemplate(m.agentIdentityEnvTmpl, map[string]any{
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_ROLE":        strings.TrimSpace(input.AgentRole) != "",
+		"HAS_AGENT_BACKGROUND":  strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
+		"WORKSPACE_ROOT_DIR":    strings.TrimSpace(input.WorkspaceRootDir),
+		"WORKSPACE_NAMESPACE":   strings.TrimSpace(input.WorkspaceNamespace),
+		"WORKSPACE_SHARED_DIR":  strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":      hasRepoContext,
+		"SOURCE_WORKING_DIR":    strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":         strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":           input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":        strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"HAS_TASK_CONTEXT":      len(taskContextEntries) > 0,
+		"TASK_CONTEXT_ENTRIES":  taskContextEntries,
+	})
+}
+
+func (m *defaultPromptManager) BuildHistoryCompactionPrompt(input HistoryCompactionPromptInput) (string, error) {
+	if m == nil || m.historyCompactionTmpl == nil {
+		return "", fmt.Errorf("history compaction template is nil")
+	}
+	return renderTemplate(m.historyCompactionTmpl, map[string]any{
+		"INSTRUCTION":  strings.TrimSpace(input.Instruction),
+		"PREV_SUMMARY": strings.TrimSpace(input.PrevSummary),
+	})
+}
+
+func (m *defaultPromptManager) BuildAgentHandoffPrompt(input AgentHandoffPromptInput) (string, error) {
+	if m == nil || m.agentHandoffTmpl == nil {
+		return "", fmt.Errorf("agent handoff template is nil")
+	}
+	return renderTemplate(m.agentHandoffTmpl, map[string]any{
+		"HANDOFF_TO":        strings.TrimSpace(input.HandoffTo),
+		"AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction),
+		"PREV_SUMMARY":      strings.TrimSpace(input.PrevSummary),
+	})
+}
+
+func (m *defaultPromptManager) BuildStepOutcomesReducerPrompt(input StepOutcomesReducerPromptInput) (string, error) {
+	if m == nil || m.stepOutcomesReducerTmpl == nil {
+		return "", fmt.Errorf("step outcomes reducer template is nil")
+	}
+	return renderTemplate(m.stepOutcomesReducerTmpl, map[string]any{
+		"STEP_OUTCOMES": strings.TrimSpace(input.StepOutcomes),
+	})
 }

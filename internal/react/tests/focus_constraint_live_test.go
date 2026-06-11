@@ -63,15 +63,13 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 - **用户意图优先**：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内，不要主动扩展到用户未提及的维度。MUST 标记仅在全量审计（用户未指定方向）时才作为强制要求
 - 全量审计时，分析手段和顺序根据项目实际情况和可用工具集灵活安排，必须满足任务清单中 MUST 标记的任务项`
 
-	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentInstruction: agentInstruction,
-	})
+	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
 	if planInput == "" {
 		t.Fatal("PlannerInputFromSnapshot returned empty")
 	}
 
 	planner := NewDefaultTaskPlanner(client)
-	prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{
+	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
 		Input:          planInput,
 		SkillsContext:  skillsCtx,
 		HasSkillsTable: true,
@@ -79,6 +77,9 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPrompt failed: %v", err)
 	}
+	// 身份指令在生产路径经身份/env 块（system block2）注入，这里手工模拟。
+	parts.SystemAgent = "<AGENT_INSTRUCTION>\n" + agentInstruction + "\n</AGENT_INSTRUCTION>"
+	prompt := parts.Joined()
 
 	// 打印渲染后的完整 prompt
 	t.Logf("=== RENDERED PLANNER PROMPT (%d bytes) ===", len(prompt))
@@ -217,7 +218,7 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 		Warnings: []string{},
 	}
 
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         builtin_tools.TaskStatusRunning,
 		"state_error":    "",
 		"input_timeline": snapshot.InputTimeline,
@@ -230,6 +231,7 @@ func TestFocusConstraint_FinalAnswerLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalAnswerPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 	if prompt == "" {
 		t.Fatal("BuildFinalAnswerPrompt returned empty")
 	}

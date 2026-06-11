@@ -344,34 +344,24 @@ func TestSubAgentTool_ContextReachesPrompt(t *testing.T) {
 		t.Fatalf("expected 2 visible entries (委派上下文 + 交接上下文), got %d", len(visible))
 	}
 
-	child, err := factory.Build(childDef)
-	if err != nil {
+	if _, err := factory.Build(childDef); err != nil {
 		t.Fatalf("factory.Build: %v", err)
 	}
 
-	prompt := child.BuildThinkActPrompt(context.Background(), "", tc)
-
-	t.Logf("\n=== PROMPT (relevant section) ===")
-	for _, line := range strings.Split(prompt, "\n") {
-		if strings.Contains(line, "上下文") || strings.Contains(line, "委派") ||
-			strings.Contains(line, "交接") || strings.Contains(line, "项目根目录") ||
-			strings.Contains(line, "已完成步骤") {
-			t.Logf("  %s", line)
+	// 任务上下文条目的 prompt 渲染已上移至身份/env 块（system block2），
+	// 由 Execute 注入 currentTaskContext 后统一渲染（覆盖见
+	// TestPromptManager_AgentIdentityEnvBlock）；这里只验证条目语义本身。
+	for i, expected := range []struct{ label, valueSubstr string }{
+		{"委派上下文", "项目根目录"},
+		{"交接上下文", "已完成步骤上下文"},
+	} {
+		if visible[i].Label != expected.label {
+			t.Errorf("entry %d label = %q, want %q", i, visible[i].Label, expected.label)
+		}
+		if !strings.Contains(visible[i].Value, expected.valueSubstr) {
+			t.Errorf("entry %d value missing %q: %q", i, expected.valueSubstr, visible[i].Value)
 		}
 	}
 
-	if !strings.Contains(prompt, "项目根目录") {
-		t.Error("prompt should contain explicit context '项目根目录'")
-	}
-	if !strings.Contains(prompt, "已完成步骤上下文") {
-		t.Error("prompt should contain handoff context '已完成步骤上下文'")
-	}
-	if !strings.Contains(prompt, "委派上下文") {
-		t.Error("prompt should contain label '委派上下文'")
-	}
-	if !strings.Contains(prompt, "交接上下文") {
-		t.Error("prompt should contain label '交接上下文'")
-	}
-
-	t.Logf("PASS: both explicit context and handoff context appear in child agent prompt")
+	t.Logf("PASS: explicit context and handoff context entries carried by task context")
 }

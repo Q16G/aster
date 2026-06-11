@@ -149,26 +149,31 @@ func TestRunIntentClassificationPhase_PlaintextColdStart(t *testing.T) {
 	}
 }
 
-// BuildIntentClassificationPrompt 应注入核心目标理解 / 最新输入 / workspace 根目录。
+// BuildIntentClassificationPrompt 应注入核心目标理解 / 最新输入；取证指引（事实板/账本）
+// 在 system 部分以「共享工作区」泛称点名，绝对路径由身份/env 块承载。
 func TestBuildIntentClassificationPrompt_Injection(t *testing.T) {
 	agent := newIntentTestAgent(t, &intentTestClient{})
 	snap := agent.state.Snapshot()
 	input := buildIntentClassificationInput(snap)
-	input.WorkspaceSharedDir = "/tmp/intent-workspace"
 
-	prompt, err := agent.promptManager.BuildIntentClassificationPrompt(input)
+	parts, err := agent.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		t.Fatalf("BuildIntentClassificationPrompt: %v", err)
 	}
 	for _, want := range []string{
-		"全量安全审计",                              // GoalUnderstanding
-		"我系统里装了 jadx",                         // LatestInput
-		"/tmp/intent-workspace",                 // WorkspaceSharedDir
-		"/tmp/intent-workspace/task_context.md", // 点名事实板
-		"/tmp/intent-workspace/open_items.md",   // 点名未闭环账本
+		"全量安全审计",   // GoalUnderstanding
+		"我系统里装了 jadx", // LatestInput
 	} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("expected prompt to contain %q", want)
+		if !strings.Contains(parts.User, want) {
+			t.Errorf("expected user part to contain %q", want)
+		}
+	}
+	for _, want := range []string{
+		"共享工作区下的 task_context.md", // 点名事实板
+		"共享工作区下的 open_items.md",   // 点名未闭环账本
+	} {
+		if !strings.Contains(parts.SystemRules, want) {
+			t.Errorf("expected system part to contain %q", want)
 		}
 	}
 }

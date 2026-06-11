@@ -18,7 +18,7 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         "running",
 		"state_error":    "",
 		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("你好")},
@@ -31,6 +31,7 @@ func TestBuildFinalAnswerPrompt_EmphasizesInputTimelineCompletion(t *testing.T) 
 	if err != nil {
 		t.Fatalf("buildFinalAnswerPrompt failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	mustContain := []string{
 		"是用户输入时间线，不是待办任务清单",
@@ -92,21 +93,20 @@ func TestBuildFinalAnswerPrompt_ReadsOpenItemsLedgerWhenWorkspace(t *testing.T) 
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	const shared = "/ws/shared"
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
-		"status":               "running",
-		"state_error":          "",
-		"input_timeline":       []*ai.MsgInfo{ai.NewUserMsgInfo("你好")},
-		"show_plan":            false,
-		"plan":                 []any{},
-		"plan_version":         1,
-		"step_outcomes":        []any{},
-		"warnings":             []string{},
-		"workspace_shared_dir": shared,
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
+		"status":         "running",
+		"state_error":    "",
+		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("你好")},
+		"show_plan":      false,
+		"plan":           []any{},
+		"plan_version":   1,
+		"step_outcomes":  []any{},
+		"warnings":       []string{},
 	})
 	if err != nil {
 		t.Fatalf("buildFinalAnswerPrompt (workspace) failed: %v", err)
 	}
+	prompt := parts.Joined()
 
 	// 账本全文注入做总验收 + 不可解局限逐条归置。
 	for _, needle := range []string{

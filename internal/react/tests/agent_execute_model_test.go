@@ -1911,8 +1911,8 @@ func (p *executeModelAgenticPlanner) Plan(ctx context.Context, input string) (*b
 	return nil, fmt.Errorf("should not be called when PlannerPromptBuilder is implemented")
 }
 
-func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (string, error) {
-	return p.prompt, nil
+func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (PromptParts, error) {
+	return PromptParts{SystemRules: p.prompt, User: "测试输入"}, nil
 }
 
 func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
@@ -2271,19 +2271,35 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 	}
 }
 
-// recordingChatClient wraps executeModelTestClient and captures the system message
-// (msgs[0]) from each ChatEx call, enabling tests to verify that multi-round
-// tool loops retain the full system prompt.
+// recordingChatClient wraps executeModelTestClient and captures the prompt prefix
+// (leading system messages + first user message) from each ChatEx call, enabling
+// tests to verify that multi-round tool loops retain the full prompt prefix.
 type recordingChatClient struct {
 	executeModelTestClient
-	systemMessages []string // Content of msgs[0] from each ChatEx call
+	systemMessages []string // system blocks + first user message of each ChatEx call
 }
 
 func (c *recordingChatClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
-	if len(infos) > 0 && infos[0] != nil {
-		if s, ok := infos[0].Content.(string); ok {
-			c.systemMessages = append(c.systemMessages, s)
+	var prefix []string
+	for _, info := range infos {
+		if info == nil {
+			continue
 		}
+		s, ok := info.Content.(string)
+		if !ok {
+			break
+		}
+		if info.Role == "system" {
+			prefix = append(prefix, s)
+			continue
+		}
+		if info.Role == "user" {
+			prefix = append(prefix, s)
+		}
+		break
+	}
+	if len(prefix) > 0 {
+		c.systemMessages = append(c.systemMessages, strings.Join(prefix, "\n\n"))
 	}
 	return c.executeModelTestClient.ChatEx(ctx, infos, tools...)
 }

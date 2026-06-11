@@ -19,7 +19,7 @@ func TestBuildFinalAnswerPrompt_HidesPlanSectionWhenNeedsPlanningFalse(t *testin
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         "running",
 		"state_error":    "",
 		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("你好")},
@@ -33,6 +33,7 @@ func TestBuildFinalAnswerPrompt_HidesPlanSectionWhenNeedsPlanningFalse(t *testin
 		t.Fatalf("buildFinalAnswerPrompt failed: %v", err)
 	}
 
+	prompt := parts.Joined()
 	if strings.Contains(prompt, "<PLAN_VERSION>") || strings.Contains(prompt, "<STEP_OUTCOMES>") {
 		t.Fatalf("expected removed sections to stay absent, got:\n%s", prompt)
 	}
@@ -48,7 +49,7 @@ func TestBuildFinalAnswerPrompt_RendersPlanItemsCards(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	prompt, err := agent.BuildFinalAnswerPrompt(map[string]any{
+	parts, err := agent.BuildFinalAnswerPrompt(map[string]any{
 		"status":         "running",
 		"state_error":    "",
 		"input_timeline": []*ai.MsgInfo{ai.NewUserMsgInfo("你好")},
@@ -59,8 +60,8 @@ func TestBuildFinalAnswerPrompt_RendersPlanItemsCards(t *testing.T) {
 		t.Fatalf("buildFinalAnswerPrompt failed: %v", err)
 	}
 
-	if !strings.Contains(prompt, "<PLAN_ITEMS>") || !strings.Contains(prompt, "已检查") {
-		t.Fatalf("expected prompt to render plan item cards, got:\n%s", prompt)
+	if !strings.Contains(parts.User, "<PLAN_ITEMS>") || !strings.Contains(parts.User, "已检查") {
+		t.Fatalf("expected user part to render plan item cards, got:\n%s", parts.User)
 	}
 }
 

@@ -59,19 +59,22 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 		ActiveSkillNames: []string{"data-flow"},
 	})
 
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
+	parts := agent.BuildThinkActPrompt(context.Background(), "")
+	// Skills 索引与 Injected Skills 落首条 user message；eject_skill 纪律（P8）在 system 规则。
 	for _, expected := range []string{
-		"### 7.2 Skills 索引",
+		"## Skills 索引",
 		"| data-flow | 数据流分析 | flow | loaded |",
-		"### 7.3 Injected Skills",
+		"## Injected Skills",
 		"按 P8 卸载用不上的",
 		"#### data-flow",
 		"follow flows",
-		"`eject_skill`",
 	} {
-		if !strings.Contains(prompt, expected) {
-			t.Fatalf("expected prompt to contain %q, got:\n%s", expected, prompt)
+		if !strings.Contains(parts.User, expected) {
+			t.Fatalf("expected user part to contain %q, got:\n%s", expected, parts.User)
 		}
+	}
+	if !strings.Contains(parts.SystemRules, "`eject_skill`") {
+		t.Fatalf("expected system rules to contain eject_skill discipline, got:\n%s", parts.SystemRules)
 	}
 }
 

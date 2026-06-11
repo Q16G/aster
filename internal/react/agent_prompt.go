@@ -11,12 +11,15 @@ import (
 	"aster/internal/builtin_tools"
 )
 
-//go:embed prompts/think_act.prompt
-var thinkActPrompt string
+//go:embed prompts/think_act_system.prompt
+var thinkActSystemPrompt string
 
-func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskContext *TaskContextData) string {
+//go:embed prompts/think_act_user.prompt
+var thinkActUserPrompt string
+
+func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptParts {
 	if a == nil || a.promptManager == nil {
-		return ""
+		return PromptParts{}
 	}
 
 	snap := a.state.Snapshot()
@@ -25,24 +28,11 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
 
-	workspaceSharedDir := ""
-	if a.workspaceRuntime != nil {
-		workspaceSharedDir = a.workspaceRuntime.SharedDir()
-	}
-
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
-	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentRole:              strings.TrimSpace(a.cfg.Role),
-		AgentBackground:        strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
+	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
 		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
-		TaskContext:            taskContext,
-		WorkspaceRootDir:       a.workspaceRootDir,
-		WorkspaceNamespace:     a.workspaceNamespace,
-		WorkspaceSharedDir:     workspaceSharedDir,
-		RuntimeRepoContext:     a.runtimeRepoContext,
 		SkillsContext:          skillsContext,
 		CurrentStep:            currentStep,
 		DependencyPlanItems:    dependencyItems,
@@ -57,14 +47,72 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskConte
 		CanSpawnSubAgent:       canSpawnSubAgent,
 	})
 	if err == nil {
-		return prompt
+		parts.SystemAgent = a.identityEnvBlock()
+		return parts
 	}
 
 	fallbackState := FormatRuntimeStateJSON(snap, a.workspaceSessionID)
-	if fallbackState == "{}" {
-		return strings.TrimSpace(a.cfg.Instruction)
+	return PromptParts{
+		SystemRules: firstNonEmpty(strings.TrimSpace(a.cfg.Instruction), "你是 step 执行代理，基于运行时状态推进当前 step。"),
+		SystemAgent: a.identityEnvBlock(),
+		User:        fmt.Sprintf("运行时状态：\n%s", fallbackState),
 	}
-	return fmt.Sprintf("%s\n\n运行时状态：\n%s", strings.TrimSpace(a.cfg.Instruction), fallbackState)
+}
+
+// thinkActPartsForStep 返回当前 step 的 think_act PromptParts：首条 user message
+// 按 step 入口冻结（按 stepID + planVersion 键缓存），step 内各轮字节恒定——
+// mid-step 的 skill 加载经 tool result 通道即时生效，§Injected Skills 快照固定在
+// step 入口，消息前缀的移动缓存断点得以全程命中。
+func (a *Agent) thinkActPartsForStep(ctx context.Context, extra string, snapshot builtin_tools.StateSnapshot) PromptParts {
+	stepID := strings.TrimSpace(snapshot.CurrentStepID)
+	if stepID == "" {
+		if cs := snapshot.CurrentStep(); cs != nil {
+			stepID = strings.TrimSpace(cs.ID)
+		}
+	}
+	if a.frozenStepParts != nil && stepID != "" &&
+		a.frozenStepPartsStepID == stepID && a.frozenStepPartsPlanVer == snapshot.PlanVersion {
+		return *a.frozenStepParts
+	}
+	parts := a.BuildThinkActPrompt(ctx, extra)
+	if stepID != "" {
+		frozen := parts
+		a.frozenStepParts = &frozen
+		a.frozenStepPartsStepID = stepID
+		a.frozenStepPartsPlanVer = snapshot.PlanVersion
+	}
+	return parts
+}
+
+// identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。输入全部为 run 内
+// 稳定值，各阶段复用同一渲染结果以保证字节一致（同一缓存条目）。
+func (a *Agent) identityEnvBlock() string {
+	if a == nil || a.promptManager == nil {
+		return ""
+	}
+	if a.identityEnvBuilt {
+		return a.identityEnvPrompt
+	}
+	workspaceSharedDir := ""
+	if a.workspaceRuntime != nil {
+		workspaceSharedDir = a.workspaceRuntime.SharedDir()
+	}
+	out, err := a.promptManager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
+		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
+		WorkspaceRootDir:   a.workspaceRootDir,
+		WorkspaceNamespace: a.workspaceNamespace,
+		WorkspaceSharedDir: workspaceSharedDir,
+		RuntimeRepoContext: a.runtimeRepoContext,
+		TaskContext:        a.currentTaskContext,
+	})
+	if err != nil {
+		return ""
+	}
+	a.identityEnvPrompt = out
+	a.identityEnvBuilt = true
+	return out
 }
 
 // canSpawnSubAgent reports whether this agent can actually delegate to sub_agent.

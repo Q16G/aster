@@ -27,9 +27,6 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	})
 
 	input := buildIntentClassificationInput(snapshot)
-	if a.workspaceRuntime != nil {
-		input.WorkspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
-	}
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		a.emitRuntimeLog("warn", "build intent classification prompt failed, fallback to carry", snapshot, map[string]any{
@@ -37,6 +34,8 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 		})
 		return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "build prompt fallback"})
 	}
+
+	prompt.SystemAgent = a.identityEnvBlock()
 
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseIntentClassification)
 	fnTools = append(fnTools, buildSubmitIntentFunctionTool())
@@ -50,7 +49,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "context canceled fallback"})
 		}
 		callCtx, callCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, PromptParts{SystemRules: prompt}, promptFamilyIntentRecognition, fnTools...)
+		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition, fnTools...)
 		callCancel()
 		if callErr != nil {
 			a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{

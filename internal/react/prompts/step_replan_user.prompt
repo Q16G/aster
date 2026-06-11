@@ -1,0 +1,68 @@
+{{- if .HAS_AVAILABLE_TOOLS}}
+## 本阶段可用核验工具（语义以 function calling schema 为准）
+{{range .AVAILABLE_TOOLS}}- `{{.Name}}`：{{.Description}}
+{{end}}
+{{- end}}
+## 诉求与意图
+<CURRENT_GOAL>
+{{.CURRENT_GOAL}}
+</CURRENT_GOAL>
+{{- if .HAS_GOAL_UNDERSTANDING}}
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+{{- end}}
+<INPUT_TIMELINE>
+{{.INPUT_TIMELINE}}
+</INPUT_TIMELINE>
+
+## 当前 step 产出（plan_item 卡片：内联小字段 + 文件指针）
+<CURRENT_STEP_CARD>
+{{.CURRENT_STEP_CARD}}
+</CURRENT_STEP_CARD>
+{{- if .HAS_STEP_FILE_CONTENT}}
+当前 step 过程文件（step.md，执行节点的人类可读总结）：
+<STEP_FILE>
+{{.STEP_FILE_CONTENT}}
+</STEP_FILE>
+{{- end}}
+
+## 计划概要（全部步骤的 id / step / status / depends_on）
+<PLAN_OVERVIEW>
+{{.PLAN_OVERVIEW}}
+</PLAN_OVERVIEW>
+
+## 未闭环账本（完整超集；维护经 maintenance_directives，不直接写文件）
+<OPEN_ITEMS_LEDGER>
+{{.OPEN_ITEMS_LEDGER}}
+</OPEN_ITEMS_LEDGER>
+
+## 贯穿全程关键事实板（只读；补充经 context_bake 指令）
+<TASK_CONTEXT_BOARD>
+{{.TASK_CONTEXT_BOARD}}
+</TASK_CONTEXT_BOARD>
+{{- if .HAS_SKILLS_TABLE}}
+
+<SKILLS_INDEX>
+{{.SKILLS_CONTEXT.Table}}
+</SKILLS_INDEX>
+{{- end}}
+{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH}}
+
+## 可按需回读的文件（受 3.1 核验依据与探索预算约束）
+{{- if .STEP_TIMELINE_PATH}}
+- 当前 step timeline 事件日志（无损兜底来源，逐条工具调用事件 jsonl）：`{{.STEP_TIMELINE_PATH}}`
+{{- end}}
+{{- if .STEP_RESULT_PATH}}
+- 当前 step result 文件（结构化原始结果）：`{{.STEP_RESULT_PATH}}`
+{{- end}}
+{{- if .STEP_CONTEXTS_PATH}}
+- 全局 step contexts 索引（所有已执行 step 的执行记录与产出指针）：`{{.STEP_CONTEXTS_PATH}}`
+{{- end}}
+{{- if .STEP_TRANSCRIPT_PATH}}
+- 当前 step 执行对话记录（体量大，仅摘要不足时读）：`{{.STEP_TRANSCRIPT_PATH}}`
+{{- end}}
+{{- if .OPEN_ITEMS_ARCHIVE_PATH}}
+- 已闭环归档（C3 去重核对时按需读）：`{{.OPEN_ITEMS_ARCHIVE_PATH}}`
+{{- end}}
+{{- end}}
