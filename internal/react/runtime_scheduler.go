@@ -847,10 +847,19 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	}
 	data.InputTimeline = strings.Join(lines, "\n")
 
-	// TASK_ITEMS：plan 真相源投影（烘焙产出小字段 + 指针；digest 截断，指针转绝对路径）。
+	// TASK_ITEMS：plan 真相源投影（烘焙产出小字段 + 指针，指针转绝对路径；slim 投影
+	// 去 digest——planner 按需顺 timeline_file / journal 回读）。
 	// 取代旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入（copy→pointer）。
 	if len(snapshot.Plan) > 0 {
-		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCards(snapshot.Plan, opts.WorkspaceRootDir))
+		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, opts.WorkspaceRootDir))
+	}
+
+	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入）。
+	if opts.WorkspaceRootDir != "" {
+		journalPath := builtin_tools.WorkspacePlannerJournalFileAbs(opts.WorkspaceRootDir)
+		if info, err := os.Stat(journalPath); err == nil && info.Size() > 0 {
+			data.PlannerJournalPath = journalPath
+		}
 	}
 
 	// REPLAN_CONTEXT

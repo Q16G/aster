@@ -34,6 +34,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		StepTranscriptPath:   stringFromPayload(payload, "step_transcript_path"),
 		StepTimelinePath:     stringFromPayload(payload, "step_timeline_path"),
 		OpenItemsArchivePath: stringFromPayload(payload, "open_items_archive_path"),
+		PlannerJournalPath:   stringFromPayload(payload, "planner_journal_path"),
 		SkillsContext:        skillsCtx,
 		HasSkillsTable:       skillsCtx != nil && skillsCtx.HasTable(),
 		AvailableTools:       availableTools,
@@ -58,15 +59,16 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 		return PromptParts{}, fmt.Errorf("final answer prompt manager is nil")
 	}
 	parts, err := a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentRole:         strings.TrimSpace(a.cfg.Role),
-		AgentBackground:   strings.TrimSpace(a.cfg.Background),
-		Status:            payload["status"],
-		StateError:        payload["state_error"],
-		InputTimeline:     payload["input_timeline"],
-		GoalUnderstanding: stringFromPayload(payload, "goal_understanding"),
-		PlanItems:         payload["plan_items"],
-		OpenItemsLedger:   stringFromPayload(payload, "open_items_ledger"),
-		Warnings:          payload["warnings"],
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
+		Status:             payload["status"],
+		StateError:         payload["state_error"],
+		InputTimeline:      payload["input_timeline"],
+		GoalUnderstanding:  stringFromPayload(payload, "goal_understanding"),
+		PlanItems:          payload["plan_items"],
+		PlannerJournalPath: stringFromPayload(payload, "planner_journal_path"),
+		OpenItemsLedger:    stringFromPayload(payload, "open_items_ledger"),
+		Warnings:           payload["warnings"],
 	})
 	if err != nil {
 		return PromptParts{}, err

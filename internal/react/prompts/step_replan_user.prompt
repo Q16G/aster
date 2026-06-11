@@ -27,7 +27,7 @@
 </STEP_FILE>
 {{- end}}
 
-## 计划概要（全部步骤的 id / step / status / depends_on）
+## 计划全量卡片（全部步骤；内联产出小字段 + 文件指针，digest 顺 timeline_file 指针按需回读）
 <PLAN_OVERVIEW>
 {{.PLAN_OVERVIEW}}
 </PLAN_OVERVIEW>
@@ -47,11 +47,14 @@
 {{.SKILLS_CONTEXT.Table}}
 </SKILLS_INDEX>
 {{- end}}
-{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH}}
+{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH .PLANNER_JOURNAL_PATH}}
 
 ## 可按需回读的文件（受核验依据与回读预算约束）
 {{- if .STEP_TIMELINE_PATH}}
 - 当前 step timeline 事件日志（无损兜底来源，逐条工具调用事件 jsonl）：`{{.STEP_TIMELINE_PATH}}`
+{{- end}}
+{{- if .PLANNER_JOURNAL_PATH}}
+- 计划全量历史 journal（plan 真相源，jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PLANNER_JOURNAL_PATH}}`
 {{- end}}
 {{- if .STEP_RESULT_PATH}}
 - 当前 step result 文件（结构化原始结果）：`{{.STEP_RESULT_PATH}}`

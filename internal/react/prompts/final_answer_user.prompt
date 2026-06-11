@@ -20,6 +20,9 @@
 <PLAN_ITEMS>
 {{.PLAN_ITEMS}}
 </PLAN_ITEMS>
+{{- if .PLANNER_JOURNAL_PATH}}
+计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PLANNER_JOURNAL_PATH}}`
+{{- end}}
 
 <WARNINGS>
 {{.WARNINGS}}

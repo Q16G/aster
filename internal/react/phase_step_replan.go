@@ -88,6 +88,15 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if workspaceSharedDir != "" {
 		archivePath = filepath.Join(workspaceSharedDir, openItemsArchiveFileName)
 	}
+	plannerJournalPath := ""
+	if root := strings.TrimSpace(a.workspaceRootDir); root != "" {
+		if p := builtin_tools.WorkspacePlannerJournalFileAbs(root); p != "" {
+			if info, statErr := os.Stat(p); statErr == nil && info.Size() > 0 {
+				plannerJournalPath = p
+			}
+		}
+	}
+
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
@@ -98,7 +107,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"goal_understanding":      snapshot.GoalUnderstanding,
 		"input_timeline":          snapshot.InputTimeline,
 		"current_step_card":       buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath),
-		"plan_overview":           buildPlanOverview(snapshot.Plan),
+		"plan_overview":           ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path":    plannerJournalPath,
 		"open_items_ledger":       readSharedFileForPrompt(workspaceSharedDir, openItemsFileName),
 		"task_context_board":      readSharedFileForPrompt(workspaceSharedDir, taskContextFileName),
 		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
@@ -566,29 +576,6 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 		card.TimelineFile = filepath.Join(sharedDir, card.ID, "timeline.jsonl")
 	}
 	return card
-}
-
-type planOverviewEntry struct {
-	ID        string   `json:"id"`
-	Step      string   `json:"step"`
-	Status    string   `json:"status"`
-	DependsOn []string `json:"depends_on,omitempty"`
-}
-
-func buildPlanOverview(plan []*builtin_tools.PlanItem) []planOverviewEntry {
-	out := make([]planOverviewEntry, 0, len(plan))
-	for _, item := range plan {
-		if item == nil {
-			continue
-		}
-		out = append(out, planOverviewEntry{
-			ID:        strings.TrimSpace(item.ID),
-			Step:      strings.TrimSpace(item.Step),
-			Status:    strings.TrimSpace(string(item.Status)),
-			DependsOn: item.DependsOn,
-		})
-	}
-	return out
 }
 
 // readSharedFileForPrompt 读取共享区文件全文用于注入；缺失时返回占位说明（不报错）。

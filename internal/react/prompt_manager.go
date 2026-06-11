@@ -46,8 +46,8 @@ type StepReplanPromptInput struct {
 	GoalUnderstanding string
 	InputTimeline     any
 	// CurrentStepCard 是当前 step 产出的 plan_item 卡片投影（替代旧 STEP_OUTCOME/
-	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 id/step/status/depends_on
-	//（替代旧 TASK_PLAN/STEP_OUTCOMES）。账本与事实板全文默认注入（设计 3.1）。
+	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 slim 全量卡片（去 digest，
+	// 含产出小字段与文件指针）。账本与事实板全文默认注入（设计 3.1）。
 	CurrentStepCard      any
 	PlanOverview         any
 	OpenItemsLedger      string
@@ -58,6 +58,9 @@ type StepReplanPromptInput struct {
 	StepTranscriptPath   string
 	StepTimelinePath     string
 	OpenItemsArchivePath string
+	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
+	// 文件存在才注入，供卡片不足时按需回读。
+	PlannerJournalPath string
 	SkillsContext        *SkillsPromptContext
 	HasSkillsTable       bool
 	AvailableTools       []AvailableToolInfo
@@ -76,6 +79,9 @@ type FinalAnswerPromptInput struct {
 	PlanItems       any
 	OpenItemsLedger string
 	Warnings        any
+	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
+	// 文件存在才注入，供卡片不足时按需回读。
+	PlannerJournalPath string
 }
 
 // AgentIdentityEnvPromptInput 渲染公共 system block2：AGENT_INSTRUCTION + <env> 块。
@@ -330,6 +336,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_TRANSCRIPT_PATH":    input.StepTranscriptPath,
 		"STEP_TIMELINE_PATH":      input.StepTimelinePath,
 		"OPEN_ITEMS_ARCHIVE_PATH": input.OpenItemsArchivePath,
+		"PLANNER_JOURNAL_PATH":    input.PlannerJournalPath,
 		"SKILLS_CONTEXT":          input.SkillsContext,
 		"HAS_SKILLS_TABLE":        input.HasSkillsTable,
 		"AVAILABLE_TOOLS":         input.AvailableTools,
@@ -355,6 +362,7 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"PLAN_ITEMS":             prettyJSON(input.PlanItems),
+		"PLANNER_JOURNAL_PATH":   strings.TrimSpace(input.PlannerJournalPath),
 		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
 		"WARNINGS":               prettyJSON(input.Warnings),
 	}

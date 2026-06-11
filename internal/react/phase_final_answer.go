@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -68,6 +69,14 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			}
 		}
 	}
+	plannerJournalPath := ""
+	if root := strings.TrimSpace(a.workspaceRootDir); root != "" {
+		if p := builtin_tools.WorkspacePlannerJournalFileAbs(root); p != "" {
+			if info, statErr := os.Stat(p); statErr == nil && info.Size() > 0 {
+				plannerJournalPath = p
+			}
+		}
+	}
 
 	payload := map[string]any{
 		"status":             stateStatus,
@@ -81,6 +90,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"plan_version":         snapshot.PlanVersion,
 		"step_outcomes":        stepOutcomeViews,
 		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path": plannerJournalPath,
 		"open_items_ledger":    readSharedFileForPrompt(workspaceSharedDir, openItemsFileName),
 		"external_interrupt":   externalInterrupt,
 		"replan_context":       snapshot.ReplanContext,
