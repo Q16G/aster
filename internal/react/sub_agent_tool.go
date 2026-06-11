@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"aster/internal/builtin_tools"
 	"aster/internal/runtimelog"
@@ -20,8 +19,6 @@ const (
 type SubAgentTool struct {
 	parentAgent *Agent
 	factory     *AgentFactory
-	// rollupMu 串行化并发子 agent 终态时对父级账本暂存区的读改写。
-	rollupMu sync.Mutex
 }
 
 var _ AgentTool = (*SubAgentTool)(nil)
@@ -286,7 +283,9 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
 		return
 	}
-	t.rollupChildArtifacts(childName, childRootDir)
+	// 不再机械回流子 agent 共享区到父级账本：父 AI 在 think_act「子 Agent 委派 → 产出归并」
+	// 原则约束下，按主 Agent 视角主动消费子工作区并归类写入父级两区/事实板/归档。
+	// 这里仅更新 ChildAgents 指针，AI 通过事实板汇总表的读取路径下钻。
 	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
 	if err != nil || parentState == nil {
 		return
@@ -309,31 +308,6 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 			"event": "finalize_child_agent_save_failed",
 			"child": childName,
 			"error": err.Error(),
-		})
-	}
-}
-
-// rollupChildArtifacts 机械回流子 agent 产出到父级账本暂存区（设计：机械回流归 runtime，
-// 语义归并归 think_act 收尾）。失败只记日志，不阻塞子 agent 终态登记。
-func (t *SubAgentTool) rollupChildArtifacts(childName, childRootDir string) {
-	parentSharedDir := strings.TrimSpace(t.parentAgent.workspaceRuntime.SharedDir())
-	childSharedDir := filepath.Join(childRootDir, "shared")
-
-	t.rollupMu.Lock()
-	defer t.rollupMu.Unlock()
-	rolled, err := rollupChildArtifactsToParentLedger(parentSharedDir, childName, childSharedDir)
-	if err != nil {
-		runtimelog.LogJSON("warning", map[string]any{
-			"event": "child_agent_ledger_rollup_failed",
-			"child": childName,
-			"error": err.Error(),
-		})
-		return
-	}
-	if rolled {
-		runtimelog.LogJSON("info", map[string]any{
-			"event": "child_agent_ledger_rollup",
-			"child": childName,
 		})
 	}
 }
