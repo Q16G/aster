@@ -384,7 +384,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 				{"id": "step-2", "step": "逐文件检查 SQL", "status": "completed", "depends_on": []string{"step-1"}},
 				{"id": "step-3", "step": "汇总报告", "status": "pending", "depends_on": []string{"step-2"}},
 			},
-			"open_items_ledger":  "# 未闭环账本\n\n## 未解决\n- [OI-002] middleware 层输入校验未确认（来源: step-2）\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+			"open_items_ledger":  "# 未闭环账本\n\n## 未解决\n- [OI-002] middleware 层输入校验未确认（来源: step-2）\n\n## 不可解局限\n",
 			"task_context_board": "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: /repo/project\n\n## 执行中补充\n- GORM v2，5 个 db.Raw 文件\n",
 			"step_result_path":   "/workspace/steps/step-2/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
@@ -514,7 +514,7 @@ func TestPromptDump_AllPhases(t *testing.T) {
 			},
 			"goal_understanding": "核心目标：SQL 注入审计。范围边界：仅后端数据层。",
 			"plan_items":         ProjectPlanItemCards(plan, ""),
-			"open_items_ledger":  "# 未闭环账本\n\n## 未解决\n\n## 不可解局限\n- [OI-001] middleware 校验未确认（待 replan 裁决）\n\n## 待复核（子agent）\n",
+			"open_items_ledger":  "# 未闭环账本\n\n## 未解决\n\n## 不可解局限\n- [OI-001] middleware 校验未确认（待 replan 裁决）\n",
 			"warnings":           []string{"user_repo.go 高危"},
 		})
 		if err != nil {
@@ -1398,7 +1398,7 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 				"tool_calls_digest": step3Outcome.ToolCallsDigest,
 			},
 			"plan_overview":      parentSnapshot.Plan,
-			"open_items_ledger":  "## 未解决\n- [OI-004] SSRF/XXE 的 Medium 告警是否为误报（来源: step-3）\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+			"open_items_ledger":  "## 未解决\n- [OI-004] SSRF/XXE 的 Medium 告警是否为误报（来源: step-3）\n\n## 不可解局限\n",
 			"task_context_board": "# 贯穿全程关键事实\n\n## 执行中补充\n- High 告警 5 条需要数据流验证\n",
 			"step_result_path":   "/workspace/steps/step-3/attempts/001/result.json",
 			"step_contexts_path": "/workspace/step_contexts.jsonl",
