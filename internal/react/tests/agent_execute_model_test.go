@@ -1398,7 +1398,6 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
-						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
@@ -1461,7 +1460,6 @@ func TestExecute_StepReplanDefaultInnerRetryRemainsThree(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
-						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
@@ -1659,7 +1657,6 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"summary":        "ok1",
 						"display_result": "step1 ok",
 						"result":         "step1 ok",
-						"open_questions": []string{"新增验证缺口需要确认"},
 					}),
 				},
 			},
@@ -2076,7 +2073,6 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 						"display_result":    "step ok",
 						"result":            "step ok",
 						"short_summary":     "completed analysis",
-						"tool_calls_digest": []string{"read_file(main.go)", "rg('TODO')"},
 						"key_facts":         []string{"found 3 TODOs"},
 					}),
 				},
@@ -2145,9 +2141,6 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 	if rec.ShortSummary != "completed analysis" {
 		t.Fatalf("expected short_summary='completed analysis', got %q", rec.ShortSummary)
 	}
-	if len(rec.ToolCallsDigest) != 2 {
-		t.Fatalf("expected 2 tool_calls_digest entries, got %d: %v", len(rec.ToolCallsDigest), rec.ToolCallsDigest)
-	}
 	if len(rec.KeyFacts) != 1 || rec.KeyFacts[0] != "found 3 TODOs" {
 		t.Fatalf("expected key_facts=[found 3 TODOs], got %v", rec.KeyFacts)
 	}
@@ -2168,7 +2161,6 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 						"display_result":    "step1 ok",
 						"result":            "step1 ok",
 						"short_summary":     "first step done",
-						"tool_calls_digest": []string{"bash(ls)"},
 					}),
 				},
 			},
@@ -2183,7 +2175,6 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 						"display_result":    "step2 ok",
 						"result":            "step2 ok",
 						"short_summary":     "second step done",
-						"tool_calls_digest": []string{"read_file(a.go)", "read_file(b.go)"},
 						"key_facts":         []string{"fact-a", "fact-b"},
 					}),
 				},
@@ -2263,9 +2254,6 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 	if records[2].ShortSummary != "second step done" {
 		t.Fatalf("expected step-2 short_summary='second step done', got %q", records[2].ShortSummary)
 	}
-	if len(records[2].ToolCallsDigest) != 2 {
-		t.Fatalf("expected step-2 tool_calls_digest len=2, got %d", len(records[2].ToolCallsDigest))
-	}
 	if len(records[2].KeyFacts) != 2 {
 		t.Fatalf("expected step-2 key_facts len=2, got %d", len(records[2].KeyFacts))
 	}
@@ -2328,7 +2316,6 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 							"display_result": "found issues",
 							"result":         "result data",
 							"short_summary":  "analysis complete",
-							"open_questions": []string{"need to check middleware"},
 						}),
 					},
 				},

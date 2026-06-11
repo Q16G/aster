@@ -17,11 +17,10 @@ func TestApplyStepReplan_BakesOutcomeIntoPlanItem(t *testing.T) {
 	tracker.EnsureCurrentStep()
 
 	tracker.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
-		Status:          builtin_tools.PlanStepCompleted,
-		StatusSummary:   "完成",
-		ShortSummary:    "完成侦察，发现入口 A",
-		KeyFacts:        []string{"入口 A 位于模块 X"},
-		ToolCallsDigest: []string{"[bash] scan → 1 entry"},
+		Status:        builtin_tools.PlanStepCompleted,
+		StatusSummary: "完成",
+		ShortSummary:  "完成侦察，发现入口 A",
+		KeyFacts:      []string{"入口 A 位于模块 X"},
 		CoverageChecklist: []builtin_tools.CoverageChecklistItem{
 			{Item: "模块 X", Status: "verified", Evidence: "scan 输出"},
 		},
@@ -48,8 +47,8 @@ func TestApplyStepReplan_BakesOutcomeIntoPlanItem(t *testing.T) {
 	if item.ShortSummary != "完成侦察，发现入口 A" {
 		t.Fatalf("expected short_summary baked, got %q", item.ShortSummary)
 	}
-	if len(item.KeyFacts) != 1 || len(item.ToolCallsDigest) != 1 {
-		t.Fatalf("expected key_facts/tool_calls_digest baked, got %+v", item)
+	if len(item.KeyFacts) != 1 {
+		t.Fatalf("expected key_facts baked, got %+v", item.KeyFacts)
 	}
 	if item.TimelineFile != "shared/step-1/timeline.jsonl" {
 		t.Fatalf("expected timeline_file baked, got %q", item.TimelineFile)

@@ -79,8 +79,6 @@ func (f *fakeToolContext) UpdateCurrentStep(update CurrentStepUpdate) StateSnaps
 		ShortSummary:    update.ShortSummary,
 		LongSummary:     update.LongSummary,
 		KeyFacts:        update.KeyFacts,
-		OpenQuestions:   update.OpenQuestions,
-		ToolCallsDigest: update.ToolCallsDigest,
 	})
 	return f.Snapshot()
 }
@@ -315,8 +313,6 @@ func TestUpdateCurrentStepBlockedByRunningChildAgent(t *testing.T) {
 		"short_summary":   "done",
 		"long_summary":    "done",
 		"key_facts":       []any{},
-		"open_questions":  []any{},
-		"tool_calls_digest": []any{},
 	})
 	if err == nil {
 		t.Fatal("expected error when child agents are still running")
@@ -347,8 +343,6 @@ func TestUpdateCurrentStepAllowsCompletedWhenNoRunningChildren(t *testing.T) {
 		"short_summary":   "done",
 		"long_summary":    "done",
 		"key_facts":       []any{},
-		"open_questions":  []any{},
-		"tool_calls_digest": []any{},
 	})
 	if err != nil {
 		t.Fatalf("expected no error when all children finished, got: %v", err)
@@ -374,8 +368,6 @@ func TestUpdateCurrentStepFailedBypassesChildCheck(t *testing.T) {
 		"short_summary":   "failed",
 		"long_summary":    "failed",
 		"key_facts":       []any{},
-		"open_questions":  []any{},
-		"tool_calls_digest": []any{},
 	})
 	if err != nil {
 		t.Fatalf("failed status should bypass child agent check, got: %v", err)
@@ -398,8 +390,6 @@ func TestUpdateCurrentStepNoCheckerAllowsCompleted(t *testing.T) {
 		"short_summary":   "done",
 		"long_summary":    "done",
 		"key_facts":       []any{},
-		"open_questions":  []any{},
-		"tool_calls_digest": []any{},
 	})
 	if err != nil {
 		t.Fatalf("nil checker should not block, got: %v", err)

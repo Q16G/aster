@@ -316,8 +316,6 @@ type CurrentStepUpdate struct {
 	ShortSummary      string                  `json:"short_summary"`
 	LongSummary       string                  `json:"long_summary"`
 	KeyFacts          []string                `json:"key_facts"`
-	OpenQuestions     []string                `json:"open_questions"`
-	ToolCallsDigest   []string                `json:"tool_calls_digest"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
 	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 }

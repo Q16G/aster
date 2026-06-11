@@ -80,20 +80,6 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 					"type": "string",
 				},
 			},
-			"open_questions": map[string]any{
-				"type":        "array",
-				"description": "未决问题数组，记录信息不足或需要后续确认的事项",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"tool_calls_digest": map[string]any{
-				"type":        "array",
-				"description": "本 step 工具调用摘要数组，每条格式：[工具名] 关键参数摘要 → 结果要点",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
 			"coverage_checklist": map[string]any{
 				"type":        "array",
 				"description": "覆盖对账清单。当 step 声明目标含全量量词或存在可枚举清单时必填：执行现场逐项物化对账，每项给出状态与依据",
@@ -130,7 +116,7 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 				},
 			},
 		},
-		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts", "open_questions", "tool_calls_digest"},
+		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts"},
 		"additionalProperties": false,
 	}
 }
@@ -169,8 +155,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	shortSummary := ToolRuntimeValue(args["short_summary"])
 	longSummary := ToolRuntimeValue(args["long_summary"])
 	keyFacts := normalizeToolStringSlice(args["key_facts"])
-	openQuestions := normalizeToolStringSlice(args["open_questions"])
-	toolCallsDigest := normalizeToolStringSlice(args["tool_calls_digest"])
 	coverageChecklist, err := normalizeCoverageChecklist(args["coverage_checklist"])
 	if err != nil {
 		return "", err
@@ -196,8 +180,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		ShortSummary:      shortSummary,
 		LongSummary:       longSummary,
 		KeyFacts:          keyFacts,
-		OpenQuestions:     openQuestions,
-		ToolCallsDigest:   toolCallsDigest,
 		CoverageChecklist: coverageChecklist,
 		OpenItemIDs:       openItemIDs,
 	})
