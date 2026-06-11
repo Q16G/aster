@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"aster/internal/builtin_tools"
 )
 
 // step 过程文件：shared 目录下扁平的 step_<step_id>.md，由 runtime 在 step 入口
@@ -30,13 +32,17 @@ func legacyStepFileExists(sharedDir, stepID string) bool {
 	return stepSharedFileExists(sharedDir, stepID, "step.md")
 }
 
+// stepFileExists 判定新布局过程文件是否存在——只看是否能 Stat，不看大小。
+// AI 中途经 bash 把过程文件短暂写为 0 字节（heredoc rewrite / mv 替换 / write 失败重试）
+// 仍应被认作"存在"，否则 readSharedStepFileForPrompt 会跌回 legacy 路径读到老 session
+// 残留的 shared/<stepID>/step.md。legacyStepFileExists 保留 size>0（旧文件价值在内容）。
 func stepFileExists(sharedDir, stepID string) bool {
 	abs := stepFileAbs(sharedDir, stepID)
 	if abs == "" {
 		return false
 	}
-	info, err := os.Stat(abs)
-	return err == nil && info.Size() > 0
+	_, err := os.Stat(abs)
+	return err == nil
 }
 
 func stepFileScaffold(stepID, stepTitle string) string {
@@ -56,18 +62,18 @@ func stepFileScaffold(stepID, stepTitle string) string {
 
 // ensureStepFileScaffold 在 step 入口预创建过程文件骨架。仅当文件不存在时写入，
 // 已存在则原样跳过（保护 resume / replan 重入同 step 的既有进展）。
-func ensureStepFileScaffold(sharedDir, stepID, stepTitle string) error {
-	abs := stepFileAbs(sharedDir, stepID)
-	if abs == "" {
+// 写入经 WorkspaceRuntime.WriteFileRel 完成——其内置 resolveAbsPath 根逃逸防护，
+// stepID 含 ".." 或 "/" 等异常字符时拒绝写出，避免骨架落在 sharedDir 之外。
+func ensureStepFileScaffold(rt builtin_tools.WorkspaceRuntime, stepID, stepTitle string) error {
+	if rt == nil {
 		return nil
 	}
-	if _, err := os.Stat(abs); err == nil {
+	sharedDir := rt.SharedDir()
+	if stepFileAbs(sharedDir, stepID) == "" {
 		return nil
-	} else if !os.IsNotExist(err) {
-		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return err
+	if stepFileExists(sharedDir, stepID) {
+		return nil
 	}
-	return os.WriteFile(abs, []byte(stepFileScaffold(stepID, stepTitle)), 0o644)
+	return rt.WriteFileRel(stepFileRelPath(stepID), []byte(stepFileScaffold(stepID, stepTitle)))
 }

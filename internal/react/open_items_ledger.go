@@ -38,6 +38,8 @@ func extractMarkdownSection(content, heading string) string {
 
 // appendToMarkdownSection 把 block 追加进文件中 heading（## 级）节的末尾（下一个
 // ## 级标题之前）。节不存在时（如被模型覆盖写丢弃）在文件尾重建，保证机械写入永不丢数据。
+// 锚点定位行首化：要求 heading 与下一节标题 "## " 都出现在行首；账本条目正文内嵌的 ## 字面
+// 不会被误命中（例如条目 "- [OI-007] 详见 ## 待复核（子agent） 暂存区"）。
 func appendToMarkdownSection(path, heading, block string) error {
 	block = strings.TrimSpace(block)
 	if block == "" {
@@ -49,20 +51,19 @@ func appendToMarkdownSection(path, heading, block string) error {
 	}
 	content := string(data)
 
-	idx := strings.Index(content, heading)
-	if idx < 0 {
+	_, sectionStart := locateHeadingLine(content, heading)
+	if sectionStart < 0 {
+		// 节不存在：文件尾重建
 		if content != "" && !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
 		content += "\n" + heading + "\n"
-		idx = strings.Index(content, heading)
+		_, sectionStart = locateHeadingLine(content, heading)
 	}
 
-	// 插入点：节内、下一个 ## 级标题之前（该节可能不是末节）。
-	sectionStart := idx + len(heading)
-	insertAt := len(content)
-	if next := strings.Index(content[sectionStart:], "\n## "); next >= 0 {
-		insertAt = sectionStart + next + 1 // 保留换行，块插在下一标题行之前
+	insertAt := nextH2LineStart(content, sectionStart)
+	if insertAt < 0 {
+		insertAt = len(content)
 	}
 
 	var b strings.Builder
@@ -73,6 +74,55 @@ func appendToMarkdownSection(path, heading, block string) error {
 	b.WriteString("\n" + block + "\n")
 	b.WriteString(content[insertAt:])
 	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+// locateHeadingLine 在 content 中查找完整等于 heading 的一整行（兼容 \r\n 行尾），
+// 返回行起始 byte 索引与该行末换行符之后的 byte 索引；找不到返回 -1, -1。
+func locateHeadingLine(content, heading string) (int, int) {
+	pos := 0
+	for pos <= len(content) {
+		next := strings.IndexByte(content[pos:], '\n')
+		var lineEnd int
+		if next < 0 {
+			lineEnd = len(content)
+		} else {
+			lineEnd = pos + next
+		}
+		if strings.TrimRight(content[pos:lineEnd], "\r") == heading {
+			if next < 0 {
+				return pos, len(content)
+			}
+			return pos, lineEnd + 1
+		}
+		if next < 0 {
+			return -1, -1
+		}
+		pos = lineEnd + 1
+	}
+	return -1, -1
+}
+
+// nextH2LineStart 返回 content[from:] 中下一个 "## " 起头行的行起始 byte 索引（绝对值）；
+// 找不到返回 -1。要求该行以 "## " 起头（含一个空格），与 # / ### 区分。
+func nextH2LineStart(content string, from int) int {
+	pos := from
+	for pos <= len(content) {
+		next := strings.IndexByte(content[pos:], '\n')
+		var lineEnd int
+		if next < 0 {
+			lineEnd = len(content)
+		} else {
+			lineEnd = pos + next
+		}
+		if strings.HasPrefix(content[pos:lineEnd], "## ") {
+			return pos
+		}
+		if next < 0 {
+			return -1
+		}
+		pos = lineEnd + 1
+	}
+	return -1
 }
 
 // appendToOpenItemsStaging 把 block 追加进父级账本的「## 待复核（子agent）」暂存区。

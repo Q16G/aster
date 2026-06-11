@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -243,6 +244,25 @@ func ProjectPlanItemCards(plan []*builtin_tools.PlanItem, workspaceRootDir strin
 		}
 	}
 	return out
+}
+
+// resolvePlannerJournalPointer 解析 workspace/planner.jsonl（plan 唯一真相源）的绝对路径，
+// 仅当文件存在且大小 > 0 时返回；否则返回空串。三个判定阶段（task_planner 续规划 /
+// step_replan / final_answer）共用，避免相同 5 行逻辑在多处复制后漂移。
+func resolvePlannerJournalPointer(workspaceRootDir string) string {
+	root := strings.TrimSpace(workspaceRootDir)
+	if root == "" {
+		return ""
+	}
+	p := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	if p == "" {
+		return ""
+	}
+	info, err := os.Stat(p)
+	if err != nil || info.Size() <= 0 {
+		return ""
+	}
+	return p
 }
 
 // ProjectPlanItemCardsSlim 是去 tool_calls_digest 的瘦身全量投影，供 task_planner

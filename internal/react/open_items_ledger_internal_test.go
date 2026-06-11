@@ -101,3 +101,37 @@ func TestAppendToOpenItemsStaging_RebuildsMissingSectionAndInsertsBeforeNextHead
 		t.Fatalf("expected rebuilt staging section, got:\n%s", string(data2))
 	}
 }
+
+// TestAppendToMarkdownSection_HeadingLineAnchored 锁定锚点行首化：账本条目正文里出现的
+// `## 待复核（子agent）` 字面不应被当作节标题命中，避免插入落到错误区段中央。
+func TestAppendToMarkdownSection_HeadingLineAnchored(t *testing.T) {
+	dir := t.TempDir()
+	// `## 未解决` 区有条目引用了 `## 待复核（子agent）` 字面（行内出现，非行首独立节标题），
+	// 真正的 `## 待复核（子agent）` 节标题位于文件末尾——append 必须落在末节内，不能错位
+	// 到未解决区内（旧版 strings.Index 子串匹配会错位到条目所在行尾）。
+	p := writeLedgerFile(t, dir, "open_items.md",
+		"## 未解决\n- [OI-007] 详见 ## 待复核（子agent） 暂存区\n\n## 不可解局限\n\n## 待复核（子agent）\n")
+	if err := appendToOpenItemsStaging(p, "### 来源: sub-x\n- 新条目"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	data, _ := os.ReadFile(p)
+	content := string(data)
+
+	staging := extractMarkdownSection(content, openItemsStagingHeading)
+	if !strings.Contains(staging, "sub-x") || !strings.Contains(staging, "新条目") {
+		t.Fatalf("new block must land in 待复核 section, got staging:\n%s\nfull:\n%s", staging, content)
+	}
+	// 未解决区不被污染：OI-007 条目原样保留，新条目不应漏进来。
+	unresolved := extractMarkdownSection(content, openItemsUnresolvedHeading)
+	if !strings.Contains(unresolved, "OI-007") {
+		t.Fatalf("unresolved must keep OI-007 entry, got:\n%s", unresolved)
+	}
+	if strings.Contains(unresolved, "sub-x") || strings.Contains(unresolved, "新条目") {
+		t.Fatalf("new block leaked into unresolved section:\n%s", unresolved)
+	}
+	// 不可解局限区原样未触达。
+	blocked := extractMarkdownSection(content, openItemsBlockedHeading)
+	if strings.Contains(blocked, "sub-x") {
+		t.Fatalf("new block leaked into blocked section:\n%s", blocked)
+	}
+}

@@ -1,11 +1,52 @@
 package react
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"aster/internal/builtin_tools"
 )
+
+// TestResolvePlannerJournalPointer 锁定 helper 的四个分支：空 rootDir / 不存在 / 0 字节 / 有内容。
+func TestResolvePlannerJournalPointer(t *testing.T) {
+	if got := resolvePlannerJournalPointer(""); got != "" {
+		t.Fatalf("empty rootDir should return empty, got %q", got)
+	}
+
+	root := t.TempDir()
+	// 文件不存在
+	if got := resolvePlannerJournalPointer(root); got != "" {
+		t.Fatalf("missing journal should return empty, got %q", got)
+	}
+
+	journalPath := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	if err := os.MkdirAll(filepath.Dir(journalPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+
+	// 0 字节
+	if err := os.WriteFile(journalPath, []byte{}, 0o644); err != nil {
+		t.Fatalf("write empty journal failed: %v", err)
+	}
+	if got := resolvePlannerJournalPointer(root); got != "" {
+		t.Fatalf("zero-byte journal should return empty, got %q", got)
+	}
+
+	// 有内容
+	if err := os.WriteFile(journalPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write content journal failed: %v", err)
+	}
+	if got := resolvePlannerJournalPointer(root); got != journalPath {
+		t.Fatalf("non-empty journal should return path, got %q want %q", got, journalPath)
+	}
+
+	// rootDir 头尾空白被 trim
+	if got := resolvePlannerJournalPointer("  " + root + "  "); got != journalPath {
+		t.Fatalf("trim rootDir should still resolve, got %q want %q", got, journalPath)
+	}
+}
 
 func TestProjectPlanItemCardsSlim_DropsDigestKeepsPointers(t *testing.T) {
 	plan := []*builtin_tools.PlanItem{
