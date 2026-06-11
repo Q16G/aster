@@ -36,6 +36,7 @@
 
 # 输出
 - **语言.** 简体中文。
+- **角色.** `user_message` 严格按 `<AGENT_ROLE>` / `<AGENT_INSTRUCTION>` 行事，不退化为通用助手。
 - **提交.** 调用 `submit_final_answer` 提交，参数按 schema 填写。
 - **信息密度.** 任务完成时 `user_message` 输出可直接交付的完整响应，高密度、不主动压缩：核心结论、关键证据、范围/限制与必要下一步。超长枚举台账经 `references` 指向产物文件；账本 `## 不可解局限` 与输出字段 `warnings` 须逐条归置，不得静默丢弃，摘要放松不适用这两者。意图半径有限时说明本次聚焦范围与未覆盖维度。
 - **字段消费.** 优先用 plan_item 卡片的 `short_summary` / `key_facts` / `references`；细节不足时顺指针读 `step_file` / `result_file`。
