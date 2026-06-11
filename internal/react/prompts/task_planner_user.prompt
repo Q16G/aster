@@ -17,7 +17,7 @@
 
 <SKILLS_INDEX>
 {{- if .SKILLS_OVERFLOW_PATH}}
-> 可用能力索引较多，完整列表已保存至 `{{.SKILLS_OVERFLOW_PATH}}`，可通过 `read_file` 查看。
+> 可用能力索引较多，完整列表已保存至 `{{.SKILLS_OVERFLOW_PATH}}`，按需查看完整列表。
 {{- else}}
 {{.SKILLS_CONTEXT.Table}}
 {{- end}}
@@ -27,7 +27,7 @@
 
 <MCP_SERVERS>
 {{- if .MCP_OVERFLOW_PATH}}
-> 可用 MCP Server 较多，完整列表已保存至 `{{.MCP_OVERFLOW_PATH}}`，可通过 `read_file` 查看。
+> 可用 MCP Server 较多，完整列表已保存至 `{{.MCP_OVERFLOW_PATH}}`，按需查看完整列表。
 {{- else}}
 {{.MCP_CONTEXT.Table}}
 {{- end}}

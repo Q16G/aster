@@ -67,7 +67,7 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 	with := parts.SystemRules
 	// workspace 恒存在：事实板（5.1）与账本（5.2）无条件渲染；规则文本去参数化，
 	// 绝对路径只在身份/env 块出现，规则用「共享工作区」泛称。
-	for _, needle := range []string{"5.1", "共享工作区下的 task_context.md", "read_file", "整段覆盖重写", "执行中补充"} {
+	for _, needle := range []string{"5.1", "共享工作区下的 task_context.md", "收尾终态", "唯一全集", "执行中补充"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act must render 5.1 fact board (missing %q), got:\n%s", needle, with)
 		}
@@ -345,7 +345,8 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 账本 5.2：OI-id 取号 + 三区结构 + 唯一语义写者纪律（路径去参数化为「共享工作区」泛称）。
+	// 账本 5.2：OI-id 取号 + 三区结构 + 唯一语义写者纪律（路径去参数化为「共享工作区」泛称；
+	// 维护职责按终态不变量表述：归档历史不丢失、非本 step 条目原样保留）。
 	for _, needle := range []string{
 		"5.2",
 		"共享工作区下的 open_items.md",
@@ -353,8 +354,8 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 		"## 不可解局限",
 		"next_id",
 		"OI-",
-		"整段覆盖重写",
-		"禁止直接删",
+		"归档历史不丢失",
+		"原样保留",
 		"唯一写者",
 	} {
 		if !strings.Contains(with, needle) {

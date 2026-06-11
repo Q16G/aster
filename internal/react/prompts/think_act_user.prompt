@@ -12,7 +12,7 @@
 </CURRENT_STEP>
 {{- end}}
 {{- if .HAS_DEPENDENCY_PLAN_ITEMS}}
-前置依赖步骤的产出卡片（内联小字段 + 文件指针；需要细节时顺 `step_file` / `result_file` / `timeline_file` 指针 `read_file`，timeline 是逐条工具调用事件的无损日志）：
+前置依赖步骤的产出卡片（内联小字段 + 文件指针；需要细节时顺 `step_file` / `result_file` / `timeline_file` 指针取全文，timeline 是逐条工具调用事件的无损日志）：
 <DEPENDENCY_PLAN_ITEMS>
 {{.DEPENDENCY_PLAN_ITEMS}}
 </DEPENDENCY_PLAN_ITEMS>
