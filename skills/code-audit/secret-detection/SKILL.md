@@ -5,6 +5,9 @@ tags: code-audit,secret,credential,trufflehog
 when-to-use: 当需要检查代码中是否存在硬编码的密钥、API Key、密码等敏感信息时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true
+argument-hint: "[target_path]"
+arguments:
+  - target_path
 ---
 
 # 敏感信息检测
