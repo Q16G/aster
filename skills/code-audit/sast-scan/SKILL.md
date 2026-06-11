@@ -104,8 +104,10 @@ semgrep --version
 标准命令：
 
 ```bash
-semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout 600 --max-memory 4096
+semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout 600 --max-memory 4096 --jobs 4
 ```
+
+> **优先使用工具内置并发**：semgrep 自带 `--jobs N` 内部 worker pool（建议显式写 4，与 `--max-memory 4096` 配合时单机峰值约 16GB 可控）。**不要通过分发多个并行子 Agent 起多个 semgrep 进程**——单进程内的 `--jobs` worker 共享规则集解析与 AST 缓存，比多进程更高效，也避免多 semgrep 同时驻留导致 OOM。
 
 建议额外排除明显无关目录：
 
@@ -129,12 +131,14 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout
 
 每个子目录作为一次独立 `semgrep scan` 的 `<target_path>`。
 
-**每批命令**：复用上面的标准命令，只把 `<target_path>` 换成子目录，`--json --timeout 600 --max-memory 4096` 与排除项保持不变，并通过 bash 显式传 `timeout_ms`：
+**每批命令**：复用上面的标准命令，只把 `<target_path>` 换成子目录，`--json --timeout 600 --max-memory 4096 --jobs 4` 与排除项保持不变，并通过 bash 显式传 `timeout_ms`：
 
 ```bash
-semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout 600 --max-memory 4096 \
+semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout 600 --max-memory 4096 --jobs 4 \
   --exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
 ```
+
+**分批 = 串行执行，不是并发分发**：分批的目的是降低单次失败半径与峰值内存，**不是为了多个 semgrep 同时跑**。同一时刻只允许 **1 个 semgrep 进程**驻留。若由子 Agent 执行分批，主 Agent 必须按串行（同步 `sub_agent` 或队列式后台）派发，**禁止 `run_in_background=true` 同时起多个分片子 Agent 各自跑 semgrep**——这会让 N 个 semgrep 同时驻留，内存爆炸。单进程内 `--jobs 4` 已充分利用多核。
 
 **单批失败隔离**：某批超时或 OOM 时，把该模块明确记入「扫描缺口」，其余批的结果仍然有效，**不得因为一批失败就放弃全部**。
 
@@ -275,6 +279,7 @@ semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout
 - 不要将多个 finding 合并为聚合计数（如"50 处任意文件下载 + 13 处路径穿越"），每个 finding 必须独占一行，包含 file:line
 - 不要用"等"、"..."、"（略）"、"（其余 N 条略）"等方式省略 finding 列表中的条目，所有发现必须完整枚举
 - 不要因为项目大就只扫了部分模块却宣称"完整审计已完成"；分批扫描时未扫到的模块必须显式列入"扫描缺口"
+- 不要通过 `sub_agent(run_in_background=true)` 同时起多个分片子 Agent 各自跑 semgrep；分批必须串行，单机同一时刻 ≤1 个 semgrep 进程，单进程靠 `--jobs 4` 利用多核
 
 ## 发现即落行（coverage-ledger/findings）
 
