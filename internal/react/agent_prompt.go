@@ -31,12 +31,18 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptPar
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
+	stepFilePath := ""
+	if a.workspaceRuntime != nil {
+		stepFilePath = stepFileAbs(a.workspaceRuntime.SharedDir(), snap.CurrentStepID)
+	}
+
 	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
 		AgentRole:              strings.TrimSpace(a.cfg.Role),
 		AgentBackground:        strings.TrimSpace(a.cfg.Background),
 		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
 		SkillsContext:          skillsContext,
 		CurrentStep:            currentStep,
+		CurrentStepFilePath:    stepFilePath,
 		DependencyPlanItems:    dependencyItems,
 		HasCurrentStep:         currentStep != nil,
 		HasDependencyPlanItems: len(dependencyItems) > 0,

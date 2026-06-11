@@ -260,7 +260,7 @@ func normalizeCoverageChecklist(value any) ([]CoverageChecklistItem, error) {
 }
 
 // resolveStepArtifactDir 返回 step 产物目录；summary_file 双写已废弃（产出并入
-// shared/<stepID>/step.md，指针走 plan_item.step_file）。
+// shared/step_<stepID>.md，指针走 plan_item.step_file）。
 func resolveStepArtifactDir(planVersion int, stepID string) string {
 	if planVersion <= 0 || strings.TrimSpace(stepID) == "" {
 		return ""

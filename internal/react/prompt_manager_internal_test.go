@@ -77,10 +77,10 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 			t.Fatalf("think_act should render checklist + ledger id contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// step 文件模板（5.3）：progress + 流程与产出 两节。
-	for _, needle := range []string{"step.md", "## progress", "流程与产出"} {
+	// step 过程文件契约：三节固定 + 每轮一致不变量。
+	for _, needle := range []string{"step 过程文件", "## 子步骤清单", "## 进展记录", "## 收尾产出", "每轮执行结束时文件与实际进度一致"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act should render step.md template contract (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act should render step file template contract (missing %q), got:\n%s", needle, with)
 		}
 	}
 	// 去参数化：system 两块不得出现任何运行时绝对路径占位遗留。

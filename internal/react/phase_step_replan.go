@@ -289,10 +289,14 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
-	// step 过程文件（think_act 按 6.4 模板维护）：存在才填指针。
+	// step 过程文件（think_act 按三节契约维护）：存在才填指针；旧布局 fallback 兼容老 session。
 	var stepFile string
-	if a.workspaceRuntime != nil && stepSharedFileExists(a.workspaceRuntime.SharedDir(), stepID, "step.md") {
-		stepFile = fmt.Sprintf("shared/%s/step.md", stepID)
+	if a.workspaceRuntime != nil {
+		if stepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
+			stepFile = stepFileRelPath(stepID)
+		} else if legacyStepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
+			stepFile = fmt.Sprintf("shared/%s/step.md", stepID)
+		}
 	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
 
@@ -615,7 +619,15 @@ func readSharedFileForPrompt(sharedDir, name string) string {
 }
 
 func readSharedStepFileForPrompt(sharedDir, stepID string) string {
-	if !stepSharedFileExists(sharedDir, stepID, "step.md") {
+	if stepFileExists(sharedDir, stepID) {
+		data, err := os.ReadFile(stepFileAbs(sharedDir, stepID))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(data))
+	}
+	// 旧布局 shared/<stepID>/step.md fallback（老 session resume）。
+	if !legacyStepFileExists(sharedDir, stepID) {
 		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "step.md"))

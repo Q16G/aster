@@ -1128,6 +1128,16 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if _, err := a.ensureFrozenStepLineage(snapshot); err != nil {
 		return err
 	}
+	// 预创建 step 过程文件骨架：必须先于 prompt 冻结，注入的路径才指向已存在文件。
+	if a.workspaceRuntime != nil && currentStep != nil {
+		if err := ensureStepFileScaffold(a.workspaceRuntime.SharedDir(), snapshot.CurrentStepID, currentStep.Step); err != nil {
+			a.emitRuntimeLog("warn", "ensure step file scaffold failed", snapshot, map[string]any{
+				"event":   "step_file_scaffold_failed",
+				"step_id": snapshot.CurrentStepID,
+				"error":   err.Error(),
+			})
+		}
+	}
 	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStep)
 

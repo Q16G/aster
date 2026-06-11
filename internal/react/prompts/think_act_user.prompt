@@ -11,6 +11,9 @@
 {{.CURRENT_STEP}}
 </CURRENT_STEP>
 {{- end}}
+{{- if .STEP_FILE_PATH}}
+本 step 过程文件（已预置骨架，按系统 prompt 契约每轮维护）：`{{.STEP_FILE_PATH}}`
+{{- end}}
 {{- if .HAS_DEPENDENCY_PLAN_ITEMS}}
 前置依赖步骤的产出卡片（内联小字段 + 文件指针；需要细节时顺 `step_file` / `result_file` / `timeline_file` 指针取全文，timeline 是逐条工具调用事件的无损日志）：
 <DEPENDENCY_PLAN_ITEMS>

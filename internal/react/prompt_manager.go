@@ -15,7 +15,10 @@ type ThinkActPromptInput struct {
 	CurrentStep       any
 	// DependencyPlanItems 是前置依赖步骤的 plan_item 产出卡片（内联小字段 + 文件指针），
 	// 替代旧的 DEPENDENCY_STEP_SUMMARIES / EXECUTION_CONTEXTS 全量注入。
-	DependencyPlanItems    any
+	DependencyPlanItems any
+	// CurrentStepFilePath 是 runtime 预创建的 step 过程文件绝对路径
+	//（shared/step_<step_id>.md），step 内恒定，随首条 user message 冻结。
+	CurrentStepFilePath    string
 	HasCurrentStep         bool
 	HasDependencyPlanItems bool
 	HasSkillsTable         bool
@@ -288,6 +291,7 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"GOAL_UNDERSTANDING":        strings.TrimSpace(input.GoalUnderstanding),
 		"SKILLS_CONTEXT":            input.SkillsContext,
 		"CURRENT_STEP":              prettyJSON(input.CurrentStep),
+		"STEP_FILE_PATH":            strings.TrimSpace(input.CurrentStepFilePath),
 		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
 		"HAS_CURRENT_STEP":          input.HasCurrentStep,
 		"HAS_DEPENDENCY_PLAN_ITEMS": input.HasDependencyPlanItems,
