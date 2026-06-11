@@ -102,7 +102,6 @@ type PlanItem struct {
 	ShortSummary      string                  `json:"short_summary,omitempty"`
 	KeyFacts          []string                `json:"key_facts,omitempty"`
 	ToolCallsDigest   []string                `json:"tool_calls_digest,omitempty"`
-	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
 
 	// ==================== 指针字段（按需解引用，need_expand 协议） ====================
@@ -180,7 +179,6 @@ func (p *PlanItem) BakeOutcome(o *StepOutcome) {
 	p.ShortSummary = strings.TrimSpace(o.ShortSummary)
 	p.KeyFacts = CloneStringSlice(o.KeyFacts)
 	p.ToolCallsDigest = CloneStringSlice(o.ToolCallsDigest)
-	p.OpenItemIDs = CloneStringSlice(o.OpenItemIDs)
 	p.References = CloneStringSlice(o.References)
 	p.ResultFile = strings.TrimSpace(o.ResultFile)
 	p.TimelineFile = strings.TrimSpace(o.TimelineFile)
@@ -224,7 +222,6 @@ type StepOutcome struct {
 	OpenQuestions     []string                `json:"open_questions,omitempty"`
 	ToolCallsDigest   []string                `json:"tool_calls_digest,omitempty"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
-	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 
 	// ==================== C. Artifact 索引层（artifact writer 回填） ====================
 	ArtifactDir  string `json:"artifact_dir,omitempty"`
@@ -317,7 +314,6 @@ type CurrentStepUpdate struct {
 	LongSummary       string                  `json:"long_summary"`
 	KeyFacts          []string                `json:"key_facts"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
-	OpenItemIDs       []string                `json:"open_item_ids,omitempty"`
 }
 
 type ReplanContext struct {

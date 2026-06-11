@@ -68,10 +68,11 @@ const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n##
 
 // 活跃账本三区（未解决 / 不可解局限 / 待复核（子agent））；已闭环滚动归档到
 // open_items_archive.md，让每轮重读的活跃账本不随闭环量无界膨胀。
-// 头部 next_id 计数器供 OI-id 取号（条目形如 `- [OI-007] 描述（来源: …）`）；
-// 「## 待复核（子agent）」是 runtime 机械回流子 agent 产出的暂存区，由 think_act
-// 在 step 收尾归并取号后清空。节标题须与 prompt 逐字一致。
-const openItemsScaffold = "# 未闭环账本\nnext_id: 1\n\n## 未解决\n\n## 不可解局限\n\n## 待复核（子agent）\n"
+// 账本由 AI（think_act / step_replan）直接维护，条目格式宽松（建议保留 OI-xxx
+// 编号习惯与来源/证据标注）；「## 待复核（子agent）」是 runtime 机械回流子 agent
+// 产出的暂存区，由 think_act 在 step 收尾归并后清空。三区节标题是 runtime 回流
+// 与 prompt 的共同契约，须逐字一致。
+const openItemsScaffold = "# 未闭环账本\n\n## 未解决\n\n## 不可解局限\n\n## 待复核（子agent）\n"
 
 const openItemsArchiveScaffold = "## 已闭环\n"
 

@@ -127,20 +127,3 @@ func NormalizeAxisItems(in []*AxisItem) []*AxisItem {
 	}
 	return out
 }
-
-// MaintenanceDirective 是 step_replan 输出的落盘维护指令，由 runtime 维护执行器
-// 在进入下一节点之前机械执行（append 类操作）；单条失败记 warning 注入下游，不阻塞。
-type MaintenanceDirective struct {
-	Type     string `json:"type"` // archive_item | ledger_add | ledger_update | merge_staging | context_bake
-	Target   string `json:"target,omitempty"`
-	Content  string `json:"content,omitempty"`
-	Evidence string `json:"evidence,omitempty"`
-}
-
-const (
-	MaintenanceDirectiveArchiveItem  = "archive_item"
-	MaintenanceDirectiveLedgerAdd    = "ledger_add"
-	MaintenanceDirectiveLedgerUpdate = "ledger_update"
-	MaintenanceDirectiveMergeStaging = "merge_staging"
-	MaintenanceDirectiveContextBake  = "context_bake"
-)

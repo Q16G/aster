@@ -159,7 +159,6 @@ type dependencyPlanItemCard struct {
 	ShortSummary    string   `json:"short_summary,omitempty"`
 	KeyFacts        []string `json:"key_facts,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
-	OpenItemIDs     []string `json:"open_item_ids,omitempty"`
 	References      []string `json:"references,omitempty"`
 	StepFile        string   `json:"step_file,omitempty"`
 	ResultFile      string   `json:"result_file,omitempty"`
@@ -227,7 +226,6 @@ func planItemCard(item *builtin_tools.PlanItem, workspaceRootDir string) *depend
 		ShortSummary:    strings.TrimSpace(item.ShortSummary),
 		KeyFacts:        item.KeyFacts,
 		ToolCallsDigest: digest,
-		OpenItemIDs:     item.OpenItemIDs,
 		References:      item.References,
 		StepFile:        abs(item.StepFile),
 		ResultFile:      abs(item.ResultFile),

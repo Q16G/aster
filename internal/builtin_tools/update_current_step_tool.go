@@ -108,13 +108,6 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 					"additionalProperties": false,
 				},
 			},
-			"open_item_ids": map[string]any{
-				"type":        "array",
-				"description": "可选：本 step 写入 open_items.md 账本的新条目 OI-id 列表，供后续对账",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
 		},
 		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts"},
 		"additionalProperties": false,
@@ -159,7 +152,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	if err != nil {
 		return "", err
 	}
-	openItemIDs := normalizeToolStringSlice(args["open_item_ids"])
 
 	prev := t.ctx.Snapshot()
 	target := prev.CurrentStep()
@@ -181,7 +173,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		LongSummary:       longSummary,
 		KeyFacts:          keyFacts,
 		CoverageChecklist: coverageChecklist,
-		OpenItemIDs:       openItemIDs,
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
 	EmitToolRuntimeInfo(ctx, "step result ready", map[string]any{

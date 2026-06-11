@@ -900,7 +900,6 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.LongSummary = update.LongSummary
 		outcome.KeyFacts = update.KeyFacts
 		outcome.CoverageChecklist = update.CoverageChecklist
-		outcome.OpenItemIDs = update.OpenItemIDs
 		outcome.UpdatedAt = time.Now()
 		return
 	}
@@ -918,7 +917,6 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		LongSummary:       update.LongSummary,
 		KeyFacts:          update.KeyFacts,
 		CoverageChecklist: update.CoverageChecklist,
-		OpenItemIDs:       update.OpenItemIDs,
 		UpdatedAt:         time.Now(),
 	})
 }

@@ -197,7 +197,6 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 			ShortSummary:    strings.TrimSpace(item.ShortSummary),
 			KeyFacts:        CloneStringSlice(item.KeyFacts),
 			ToolCallsDigest: CloneStringSlice(item.ToolCallsDigest),
-			OpenItemIDs:     CloneStringSlice(item.OpenItemIDs),
 			StepFile:        strings.TrimSpace(item.StepFile),
 			ResultFile:      strings.TrimSpace(item.ResultFile),
 			TimelineFile:    strings.TrimSpace(item.TimelineFile),

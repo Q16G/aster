@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 )
 
 const (
 	openItemsFileName            = "open_items.md"
+	openItemsArchiveFileName     = "open_items_archive.md"
+	openItemsArchiveHeading      = "## 已闭环"
+	taskContextFileName          = "task_context.md"
 	openItemsStagingHeading      = "## 待复核（子agent）"
 	taskContextRuntimeAddHeading = "## 执行中补充"
 	openItemsUnresolvedHeading   = "## 未解决"
@@ -77,117 +78,6 @@ func appendToMarkdownSection(path, heading, block string) error {
 // appendToOpenItemsStaging 把 block 追加进父级账本的「## 待复核（子agent）」暂存区。
 func appendToOpenItemsStaging(openItemsPath, block string) error {
 	return appendToMarkdownSection(openItemsPath, openItemsStagingHeading, block)
-}
-
-// allocateLedgerID 从账本头部 next_id 计数器取号并递增写回；计数器行缺失（被模型
-// 覆盖写丢弃）时扫描既有 [OI-n] 取 max+1 重建。
-func allocateLedgerID(openItemsPath string) (string, error) {
-	data, err := os.ReadFile(openItemsPath)
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	content := string(data)
-	lines := strings.Split(content, "\n")
-
-	next := 0
-	counterLine := -1
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "next_id:") {
-			if n, perr := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "next_id:"))); perr == nil && n > 0 {
-				next = n
-				counterLine = i
-			}
-			break
-		}
-	}
-	if next <= 0 {
-		maxSeen := 0
-		for _, m := range ledgerIDRe.FindAllStringSubmatch(content, -1) {
-			if n, perr := strconv.Atoi(m[1]); perr == nil && n > maxSeen {
-				maxSeen = n
-			}
-		}
-		next = maxSeen + 1
-	}
-
-	id := fmt.Sprintf("OI-%03d", next)
-	counter := fmt.Sprintf("next_id: %d", next+1)
-	if counterLine >= 0 {
-		lines[counterLine] = counter
-		content = strings.Join(lines, "\n")
-	} else {
-		content = "# 未闭环账本\n" + counter + "\n\n" + content
-	}
-	if err := os.WriteFile(openItemsPath, []byte(content), 0o644); err != nil {
-		return "", err
-	}
-	return id, nil
-}
-
-var ledgerIDRe = regexp.MustCompile(`\[OI-(\d+)\]`)
-
-// removeLedgerLine 从账本中移除含指定 OI-id 的整行（含其紧随的缩进续行），返回被移除文本。
-func removeLedgerLine(openItemsPath, oiID string) (string, bool, error) {
-	data, err := os.ReadFile(openItemsPath)
-	if err != nil {
-		return "", false, err
-	}
-	lines := strings.Split(string(data), "\n")
-	marker := "[" + strings.TrimSpace(oiID) + "]"
-	var removed []string
-	out := make([]string, 0, len(lines))
-	i := 0
-	for i < len(lines) {
-		if strings.Contains(lines[i], marker) {
-			removed = append(removed, lines[i])
-			i++
-			// 连带缩进续行
-			for i < len(lines) && (strings.HasPrefix(lines[i], "  ") || strings.HasPrefix(lines[i], "\t")) {
-				removed = append(removed, lines[i])
-				i++
-			}
-			continue
-		}
-		out = append(out, lines[i])
-		i++
-	}
-	if len(removed) == 0 {
-		return "", false, nil
-	}
-	if err := os.WriteFile(openItemsPath, []byte(strings.Join(out, "\n")), 0o644); err != nil {
-		return "", false, err
-	}
-	return strings.Join(removed, "\n"), true, nil
-}
-
-// annotateLedgerLine 在含指定 OI-id 的行尾追加更新批注。
-func annotateLedgerLine(openItemsPath, oiID, note string) (bool, error) {
-	note = strings.TrimSpace(note)
-	if note == "" {
-		return false, nil
-	}
-	data, err := os.ReadFile(openItemsPath)
-	if err != nil {
-		return false, err
-	}
-	lines := strings.Split(string(data), "\n")
-	marker := "[" + strings.TrimSpace(oiID) + "]"
-	found := false
-	for i, line := range lines {
-		if strings.Contains(line, marker) {
-			lines[i] = line + "（更新: " + note + "）"
-			found = true
-			break
-		}
-	}
-	if !found {
-		return false, nil
-	}
-	if err := os.WriteFile(openItemsPath, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // rollupChildArtifactsToParentLedger 在子 agent 终态时，把其 task_context.md

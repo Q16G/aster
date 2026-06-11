@@ -67,14 +67,30 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 	with := parts.SystemRules
 	// workspace 恒存在：事实板与账本无条件渲染；规则文本去参数化，
 	// 绝对路径只在身份/env 块出现，规则用「共享工作区」泛称。
-	for _, needle := range []string{"task_context.md", "收尾终态", "唯一全集", "执行中补充"} {
+	// 事实板三类判据 + 入板闸门（高利用价值通用判据）。
+	for _, needle := range []string{
+		"task_context.md", "唯一全集", "执行中补充", "入板闸门",
+		"关键结论与决策依据", "全局参数与环境事实", "产物索引与解索引指引", "什么情况下该读",
+	} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act must render 5.1 fact board (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render fact board contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	for _, needle := range []string{"coverage_checklist", "uncovered", "open_item_ids"} {
+	for _, needle := range []string{"coverage_checklist", "uncovered"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act should render checklist + ledger id contract (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act should render checklist contract (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 边完成边归档（持续不变量）+ 共享区禁 emoji。
+	for _, needle := range []string{"解决即归档", "立即迁入归档", "禁止 emoji"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("think_act must render incremental archive + emoji ban (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 已废协议残留禁入。
+	for _, banned := range []string{"open_item_ids", "next_id"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("think_act must not retain removed protocol %q, got:\n%s", banned, with)
 		}
 	}
 	// step 过程文件契约：三节固定 + 每轮一致不变量。
@@ -105,7 +121,7 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("build task_planner (user turn) failed: %v", err)
 	}
 	with := withParts.Joined()
-	for _, needle := range []string{"共享区终态", "唯一语义写者", "提交执行计划前", "输入事实", "task_context.md", "<TASK_CONTEXT_BOARD>"} {
+	for _, needle := range []string{"共享区终态", "唯一语义写者", "提交执行计划前", "输入事实", "环境/参数事实", "禁止 emoji", "task_context.md", "<TASK_CONTEXT_BOARD>"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("task_planner user-input turn must render 共享区终态 section + board snapshot (missing %q), got:\n%s", needle, with)
 		}
@@ -293,23 +309,28 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 
 	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
 		CurrentGoal:      "测试目标",
-		OpenItemsLedger:  "# 未闭环账本\nnext_id: 2\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+		OpenItemsLedger:  "# 未闭环账本\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n\n## 待复核（子agent）\n",
 		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 地址: 10.0.0.1\n\n## 执行中补充\n",
 	})
 	if err != nil {
 		t.Fatalf("build step_replan failed: %v", err)
 	}
 	with := parts.Joined()
-	// 事实烘焙（L4）：只读 + 具体值内联进条目；账本与事实板全文注入。
-	for _, needle := range []string{"烘焙", "<TASK_CONTEXT_BOARD>", "只读", "内联", "<OPEN_ITEMS_LEDGER>", "[OI-001] x", "地址: 10.0.0.1"} {
+	// 事实烘焙（L4）：具体值内联进条目；账本与事实板全文注入。
+	for _, needle := range []string{"烘焙", "<TASK_CONTEXT_BOARD>", "内联", "<OPEN_ITEMS_LEDGER>", "[OI-001] x", "地址: 10.0.0.1"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan must inject ledger + fact board with bake contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 不直接写文件：维护经 maintenance_directives；收敛显式可审计。
-	for _, needle := range []string{"maintenance_directives", "不直接写", "ledger_add", "archive_item", "context_bake", "禁止静默消失"} {
+	// AI 直接维护共享区：边裁定边落盘 + 提交前落盘终态 + 禁 emoji；指令机制残留禁入。
+	for _, needle := range []string{"直接补正", "边裁定边落盘", "落盘终态", "禁止静默消失", "禁止 emoji"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must route maintenance via directives (missing %q), got:\n%s", needle, with)
+			t.Fatalf("step_replan must render direct shared-area maintenance (missing %q), got:\n%s", needle, with)
+		}
+	}
+	for _, banned := range []string{"maintenance_directives", "ledger_add", "archive_item", "context_bake", "merge_staging", "next_id"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("step_replan must not retain directive mechanism %q, got:\n%s", banned, with)
 		}
 	}
 	// 旧注入点与 heredoc 写盘指令残留禁入。
@@ -355,13 +376,12 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 账本契约：OI-id 取号 + 三区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
+	// 账本契约：三区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
 	// 维护职责按终态不变量表述：归档历史不丢失、非本 step 条目原样保留）。
 	for _, needle := range []string{
 		"open_items.md",
 		"## 未解决",
 		"## 不可解局限",
-		"next_id",
 		"OI-",
 		"归档历史不丢失",
 		"原样保留",

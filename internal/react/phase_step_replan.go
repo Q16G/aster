@@ -25,9 +25,6 @@ type stepReplanModelOutput struct {
 	DepthGaps []*builtin_tools.AxisItem `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化扩面：对照整体任务目标的任务覆盖面全集，尚未被任何已完成工作覆盖的面，驱动扩面 replan。
 	NewSurfaces []*builtin_tools.AxisItem `json:"new_surfaces"`
-	// MaintenanceDirectives 落盘维护指令：核验发现的落盘缺漏（归档/账本增改/事实烘焙），
-	// 由 runtime 维护执行器在进入下一节点之前机械执行（见 step_replan 账本复核与维护段）。
-	MaintenanceDirectives []*builtin_tools.MaintenanceDirective `json:"maintenance_directives,omitempty"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -91,7 +88,6 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if workspaceSharedDir != "" {
 		archivePath = filepath.Join(workspaceSharedDir, openItemsArchiveFileName)
 	}
-
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
@@ -201,14 +197,16 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 // 判定节点（step_replan / final_answer）的探索预算：默认消费已注入的 digest 与共享区
 // 全文即可裁决，按需回读 timeline / 产物文件以「轮」为预算；超出预算拒绝继续回读并
 // 要求降级裁决，再宽限若干轮仍不提交则保守收尾。
+// step_replan 直接维护共享区文件后，维护写盘与核验回读共用此预算（边裁定边落盘），
+// 预算相应放宽。
 const (
-	judgmentExplorationBudget = 4
+	judgmentExplorationBudget = 6
 	judgmentGraceRounds       = 3
 )
 
-const stepReplanBudgetNotice = "回读/探索轮次已达上限：不要再调用查证工具。" +
+const stepReplanBudgetNotice = "回读/探索/落盘轮次已达上限：不要再调用工具。" +
 	"立即基于已注入与已读取的信息调用 submit_plan 裁决；无法核验的项按 digest-only 保守判定" +
-	"（拿不准偏放行进对应轴），并用 maintenance_directives 的 ledger_add 写入账本待复核。"
+	"（拿不准偏放行进对应轴）；未及落盘的账本/归档/事实板缺漏全部体现为三轴条目并在 evidence 注明未落盘，不得静默丢弃。"
 
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	var replanContext *builtin_tools.ReplanContext
@@ -252,13 +250,6 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	summaryGoal := ""
 	if replanContext != nil {
 		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
-	}
-
-	// 维护指令先于状态推进执行（进入下一节点之前），保证下游读到最新共享区；
-	// 执行 warnings 并入本轮 Warnings 注入下游（失败不阻塞、显式可见）。
-	var maintenanceWarnings []string
-	if modelOut != nil {
-		maintenanceWarnings = a.executeMaintenanceDirectives(stepID, modelOut.MaintenanceDirectives)
 	}
 
 	var replanWarnings []string
@@ -315,7 +306,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		PlanVersion:       planVersion,
 		TranscriptBlobRef: a.lastStepTranscriptBlobRef,
 		CurrentGoal:       summaryGoal,
-		Warnings:          append(replanWarnings, maintenanceWarnings...),
+		Warnings:          replanWarnings,
 		UnresolvedAxes:    replanAxes,
 		ReplanContext:     replanContext,
 		NextPhase:         nextPhase,
@@ -547,7 +538,6 @@ type replanStepCard struct {
 	OpenQuestions     []string                              `json:"open_questions,omitempty"`
 	ToolCallsDigest   []string                              `json:"tool_calls_digest,omitempty"`
 	CoverageChecklist []builtin_tools.CoverageChecklistItem `json:"coverage_checklist,omitempty"`
-	OpenItemIDs       []string                              `json:"open_item_ids,omitempty"`
 	References        []string                              `json:"references,omitempty"`
 	Error             string                                `json:"error,omitempty"`
 	ResultFile        string                                `json:"result_file,omitempty"`
@@ -568,7 +558,6 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 		OpenQuestions:     outcome.OpenQuestions,
 		ToolCallsDigest:   outcome.ToolCallsDigest,
 		CoverageChecklist: outcome.CoverageChecklist,
-		OpenItemIDs:       outcome.OpenItemIDs,
 		References:        outcome.References,
 		Error:             strings.TrimSpace(outcome.Error),
 		ResultFile:        strings.TrimSpace(resultPath),
@@ -672,25 +661,7 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 					"new_surfaces": map[string]any{
 						"type":        "array",
 						"items":       submitReplanAxisItemSchema(),
-						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内的任务覆盖面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列前轻量去重（默认偏放行：仅剔除同 (维度×工作项) 对且前提未变且已扎实覆盖的重叠，新项/新维度/前提变化复测/拿不准一律保留，禁止整方向折叠）；已覆盖但浅的转 depth_gaps。受意图半径约束（恒生效），意图外项不计入、改用 maintenance_directives 的 ledger_add 降级落账本不可解局限区。含声明产出清单逐项比对出的未覆盖项与账本复核升进的可行动项。",
-					},
-					"maintenance_directives": map[string]any{
-						"type":        "array",
-						"description": "可选：核验发现的落盘缺漏维护指令，由 runtime 在进入下一节点之前机械执行。类型：ledger_add（账本新增，target 留空自动取号）/ ledger_update（target=OI-id，content=更新批注）/ archive_item（target=OI-id 闭环归档，evidence=闭环证据）/ context_bake（content 写入 task_context 执行中补充）/ merge_staging（提示暂存区待归并）。",
-						"items": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"type": map[string]any{
-									"type": "string",
-									"enum": []any{"archive_item", "ledger_add", "ledger_update", "merge_staging", "context_bake"},
-								},
-								"target":   map[string]any{"type": "string", "description": "OI-id 或 task_context 节名（按类型）"},
-								"content":  map[string]any{"type": "string"},
-								"evidence": map[string]any{"type": "string"},
-							},
-							"required":             []string{"type"},
-							"additionalProperties": false,
-						},
+						"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内的任务覆盖面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列前轻量去重（默认偏放行：仅剔除同 (维度×工作项) 对且前提未变且已扎实覆盖的重叠，新项/新维度/前提变化复测/拿不准一律保留，禁止整方向折叠）；已覆盖但浅的转 depth_gaps。受意图半径约束（恒生效），意图外项不计入、由你直接登记进共享区账本的不可解局限区降级留痕。含声明产出清单逐项比对出的未覆盖项与账本复核升进的可行动项。",
 					},
 				},
 			},
@@ -719,7 +690,7 @@ func submitReplanAxisItemSchema() map[string]any {
 			},
 			"ledger_id": map[string]any{
 				"type":        "string",
-				"description": "可选：对应账本条目的 OI-id（对账键）；本轮 ledger_add 新增且未取号的可留空。",
+				"description": "可选：对应账本条目的 OI-id（对账键）；本轮新写入账本且尚无编号的可留空。",
 			},
 			"produces": map[string]any{
 				"type":        "string",

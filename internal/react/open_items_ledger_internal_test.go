@@ -25,7 +25,7 @@ func TestRollupChildArtifactsToParentLedger(t *testing.T) {
 	childShared := filepath.Join(root, "child", "shared")
 
 	writeLedgerFile(t, parentShared, "open_items.md",
-		"# 未闭环账本\nnext_id: 3\n\n## 未解决\n- [OI-001] 父级条目\n\n## 不可解局限\n\n## 待复核（子agent）\n")
+		"# 未闭环账本\n\n## 未解决\n- [OI-001] 父级条目\n\n## 不可解局限\n\n## 待复核（子agent）\n")
 	writeLedgerFile(t, childShared, "task_context.md",
 		"# 贯穿全程关键事实\n\n## 输入事实\n- 地址: 10.0.0.1\n\n## 执行中补充\n- 子发现: 入口 B 可达\n")
 	writeLedgerFile(t, childShared, "open_items.md",
@@ -54,9 +54,6 @@ func TestRollupChildArtifactsToParentLedger(t *testing.T) {
 	// 父级语义区不被触碰。
 	if unresolved := extractMarkdownSection(content, openItemsUnresolvedHeading); !strings.Contains(unresolved, "OI-001") || strings.Contains(unresolved, "子未解决") {
 		t.Fatalf("parent unresolved section should be untouched, got:\n%s", unresolved)
-	}
-	if !strings.Contains(content, "next_id: 3") {
-		t.Fatal("next_id counter should be preserved")
 	}
 }
 

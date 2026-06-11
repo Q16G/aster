@@ -32,12 +32,12 @@
 {{.PLAN_OVERVIEW}}
 </PLAN_OVERVIEW>
 
-## 未闭环账本（完整超集；维护经 maintenance_directives，不直接写文件）
+## 未闭环账本（完整超集；缺漏由你直接维护至终态）
 <OPEN_ITEMS_LEDGER>
 {{.OPEN_ITEMS_LEDGER}}
 </OPEN_ITEMS_LEDGER>
 
-## 贯穿全程关键事实板（只读；补充经 context_bake 指令）
+## 贯穿全程关键事实板（核验确认的事实缺漏由你直接补入 `## 执行中补充`）
 <TASK_CONTEXT_BOARD>
 {{.TASK_CONTEXT_BOARD}}
 </TASK_CONTEXT_BOARD>

@@ -24,8 +24,7 @@ func TestApplyStepReplan_BakesOutcomeIntoPlanItem(t *testing.T) {
 		CoverageChecklist: []builtin_tools.CoverageChecklistItem{
 			{Item: "模块 X", Status: "verified", Evidence: "scan 输出"},
 		},
-		OpenItemIDs: []string{"OI-001"},
-		References:  []string{"/tmp/report.md"},
+		References: []string{"/tmp/report.md"},
 	})
 
 	snap := tracker.ApplyStepReplan("step-1", stepReplanUpdate{
@@ -55,9 +54,6 @@ func TestApplyStepReplan_BakesOutcomeIntoPlanItem(t *testing.T) {
 	}
 	if item.ResultFile != "shared/step_artifacts/step-1.result.json" {
 		t.Fatalf("expected result_file baked, got %q", item.ResultFile)
-	}
-	if len(item.OpenItemIDs) != 1 || item.OpenItemIDs[0] != "OI-001" {
-		t.Fatalf("expected open_item_ids baked, got %+v", item.OpenItemIDs)
 	}
 	// 未超阈值：清单内联，coverage_file 为空。
 	if item.CoverageFile != "" || len(item.CoverageChecklist) != 1 {
