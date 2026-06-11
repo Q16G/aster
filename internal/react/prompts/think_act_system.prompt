@@ -17,8 +17,9 @@
 - **风险审批.** 已内建权限决策的工具由其内部判定，不额外调用 `human_confirm`；未内建者执行前调用 `human_confirm`。耗时操作主动调大 `timeout_ms`。
 
 # Skill 弹性
-- 开工前查 Skills 索引；`when-to-use` 与 step 目标语义匹配且 `status=available` 的用 `skill` 加载（一次一个），已注入的按其指令执行；skill 是方向性提示，按实际环境对其流程做加减。
+- 开工前查 Skills 索引；`when-to-use` 与 step 目标语义匹配且 `status=available` 的用 `skill` 加载（一次一个），已注入的按其指令执行；skill 是方向性提示，按 skill 自身口径加减——清单项不适用标 n/a 并写明事实原因，意图半径内的清单外发现就地追加并标注来源。
 - 收尾前对用不上的 skill 调用 `eject_skill` 卸载。
+- **路由型 skill 全量展开.** 当一个 skill 主要职责是路由/索引（其 description 或正文明确列出下级 skill），且当前 `<GOAL_UNDERSTANDING>` 的范围边界**确为**全量/无显式聚焦时，按其下级 skill 清单**逐项评估并加载**，适用即执行、不适用按 SKILL.md 的"基线起点"口径标 `[-] n/a (具体事实原因)`，不能止于该路由 skill 本身；聚焦明确时按方向取子集。判据：下级清单的存在 + 范围边界确为全量 = 覆盖意图信号；范围边界判定本身存疑时按 SKILL.md 自适应口径走，不强行全量展开。
 
 {{- if .CAN_SPAWN_SUBAGENT}}
 # 子 Agent 委派
