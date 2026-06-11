@@ -463,14 +463,12 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 		Type:   EventTypeStepReplanResult,
 		NodeID: "step_replan_result",
 		Payload: map[string]any{
-			"step_id":          strings.TrimSpace(stepID),
-			"step_name":        strings.TrimSpace(stepName),
-			"should_replan":    result.ShouldReplan,
-			"replan_reason":    strings.TrimSpace(result.ReplanReason),
-			"next_goal":        strings.TrimSpace(result.NextGoal),
-			"incomplete_items": builtin_tools.AxisItemStrings(result.IncompleteItems),
-			"depth_gaps":       builtin_tools.AxisItemStrings(result.DepthGaps),
-			"new_surfaces":     builtin_tools.AxisItemStrings(result.NewSurfaces),
+			"step_id":       strings.TrimSpace(stepID),
+			"step_name":     strings.TrimSpace(stepName),
+			"should_replan": result.ShouldReplan,
+			"replan_reason": strings.TrimSpace(result.ReplanReason),
+			"next_goal":     strings.TrimSpace(result.NextGoal),
+			"plan_size":     len(result.Plan),
 		},
 	})
 }

@@ -182,13 +182,14 @@ type PromptManager interface {
 }
 
 type defaultPromptManager struct {
-	thinkActSystemTmpl             *template.Template
-	thinkActUserTmpl               *template.Template
-	stepReplanSystemTmpl           *template.Template
+	thinkActSystemTmpl *template.Template
+	thinkActUserTmpl   *template.Template
+	// planningSystemTmpl 是 plan / step_replan 共用的 system 模板（单文件，
+	// IS_REPLAN_PHASE 分阶段渲染）；两相位的 user 模板仍各自独立。
+	planningSystemTmpl             *template.Template
 	stepReplanUserTmpl             *template.Template
 	finalAnswerSystemTmpl          *template.Template
 	finalAnswerUserTmpl            *template.Template
-	taskPlannerSystemTmpl          *template.Template
 	taskPlannerUserTmpl            *template.Template
 	intentClassificationSystemTmpl *template.Template
 	intentClassificationUserTmpl   *template.Template
@@ -214,7 +215,7 @@ func newDefaultPromptManager() (PromptManager, error) {
 	if m.thinkActUserTmpl, err = parse("think_act_user", thinkActUserPrompt); err != nil {
 		return nil, err
 	}
-	if m.stepReplanSystemTmpl, err = parse("step_replan_system", stepReplanSystemPrompt); err != nil {
+	if m.planningSystemTmpl, err = parse("planning_system", planningSystemPrompt); err != nil {
 		return nil, err
 	}
 	if m.stepReplanUserTmpl, err = parse("step_replan_user", stepReplanUserPrompt); err != nil {
@@ -224,9 +225,6 @@ func newDefaultPromptManager() (PromptManager, error) {
 		return nil, err
 	}
 	if m.finalAnswerUserTmpl, err = parse("final_answer_user", finalAnswerUserPrompt); err != nil {
-		return nil, err
-	}
-	if m.taskPlannerSystemTmpl, err = parse("task_planner_system", taskPlannerSystemPrompt); err != nil {
 		return nil, err
 	}
 	if m.taskPlannerUserTmpl, err = parse("task_planner_user", taskPlannerUserPrompt); err != nil {
@@ -319,6 +317,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"IS_REPLAN_PHASE":      true,
 	}
 	userData := map[string]any{
 		"CURRENT_GOAL":            fmt.Sprint(input.CurrentGoal),
@@ -342,7 +341,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"AVAILABLE_TOOLS":         input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":     input.HasAvailableTools,
 	}
-	return renderPromptParts("step_replan", m.stepReplanSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
+	return renderPromptParts("step_replan", m.planningSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
 }
 
 func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (PromptParts, error) {
@@ -378,6 +377,7 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"IS_REPLAN_PHASE":      false,
 		"USER_INPUT_TURN":      input.UserInputTurn,
 		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
 	}
@@ -396,7 +396,7 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"AVAILABLE_TOOLS":        input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools,
 	}
-	return renderPromptParts("task_planner", m.taskPlannerSystemTmpl, m.taskPlannerUserTmpl, systemData, userData)
+	return renderPromptParts("task_planner", m.planningSystemTmpl, m.taskPlannerUserTmpl, systemData, userData)
 }
 
 func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClassificationPromptInput) (PromptParts, error) {

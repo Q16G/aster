@@ -87,6 +87,10 @@ type Agent struct {
 	// 表示「这是一次恢复」。它只是注入中断点子 agent 现场的必要条件——是否真注入由 runPlanPhase
 	// 计算的「存在 ParentStepKey 未综合进 step_outcome 的 child_agent」条件决定。判定一次后即清。
 	resumeChildRecovery bool
+
+	// contextWindowTokens 是本轮 Execute 时从 runClient 解析到的模型上下文窗口大小（tokens）。
+	// 由 Execute 写入，调度循环内只读，无并发问题。用于共享区大文件的动态截断阈值计算。
+	contextWindowTokens int
 }
 
 // NewReActAgent 创建 ReAct Agent

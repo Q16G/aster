@@ -35,9 +35,6 @@ func NewDefaultTaskPlanner(aiClient ai.ChatClient, promptManagers ...PromptManag
 	return &DefaultTaskPlanner{aiClient: aiClient, promptManager: promptManager}
 }
 
-//go:embed prompts/task_planner_system.prompt
-var taskPlannerSystemPrompt string
-
 //go:embed prompts/task_planner_user.prompt
 var taskPlannerUserPrompt string
 

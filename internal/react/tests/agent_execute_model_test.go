@@ -1621,6 +1621,9 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	}
 }
 
+// TestExecute_StepSummaryReplansBeforeRunningOldPendingStep 校验 step_replan 直达 Step
+// 重编排路径：旧 legacy-step 在 step-1 完成后被 step_replan 直接替换为 step-2，相位机不
+// 经过 Plan 相位（planner 只在初始规划时被调用一次）。
 func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
@@ -1639,13 +1642,6 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 					{ID: "legacy-step", Step: "过时旧待办", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
 				},
 			},
-			{
-				NeedsPlanning: true,
-				Explanation:   "补齐新缺口",
-				Plan: []*builtin_tools.PlanItem{
-					{ID: "step-2", Step: "围绕新缺口补齐验证", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
-				},
-			},
 		},
 	}
 	client := &executeModelTestClient{
@@ -1661,14 +1657,20 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
+				// step_replan 直接产出重编排后的完整 pending 集（替换 legacy-step）。
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-submit-replan-1", "submit_plan", map[string]any{
-						"should_replan":    true,
-						"replan_reason":    "旧计划未覆盖新增验证缺口",
-						"next_goal":        "围绕新缺口补齐验证",
-						"incomplete_items": []any{},
-						"new_surfaces":     []any{"missing-1"},
-						"warnings":         []any{"warn-1"},
+						"should_replan": true,
+						"replan_reason": "旧计划未覆盖新增验证缺口",
+						"next_goal":     "围绕新缺口补齐验证",
+						"plan": []any{
+							map[string]any{
+								"id":         "step-2",
+								"step":       "围绕新缺口补齐验证",
+								"status":     "pending",
+								"depends_on": []any{"step-1"},
+							},
+						},
 					}),
 				},
 			},
@@ -1685,12 +1687,10 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-submit-replan-2", "submit_plan", map[string]any{
-						"should_replan":    false,
-						"replan_reason":    "",
-						"next_goal":        "",
-						"incomplete_items": []any{},
-						"new_surfaces":     []any{},
-						"warnings":         []any{},
+						"should_replan": false,
+						"replan_reason": "",
+						"next_goal":     "",
+						"plan":          []any{},
 					}),
 				},
 			},
@@ -1725,19 +1725,14 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if client.calls != 5 {
 		t.Fatalf("expected 5 model calls (step+replan+step+replan+final), got %d", client.calls)
 	}
-	if planner.calls != 2 {
-		t.Fatalf("expected planner called twice, got %d", planner.calls)
-	}
-	if len(planner.inputs) < 2 || !strings.Contains(planner.inputs[1], "<REPLAN_CONTEXT>") {
-		t.Fatalf("expected second planner input to include replan context, got %q", strings.Join(planner.inputs, "\n---\n"))
-	}
-	if !strings.Contains(planner.inputs[1], "\"reason\":\"旧计划未覆盖新增验证缺口\"") {
-		t.Fatalf("expected second planner input to include replan reason, got %q", planner.inputs[1])
+	// 直达 Step 路径下 planner 只在初始规划被调用一次，不再回流 Plan 相位重新编排。
+	if planner.calls != 1 {
+		t.Fatalf("expected planner called once (direct re-plan via step_replan), got %d", planner.calls)
 	}
 
 	snapshot := agent.State()
 	if snapshot.PlanVersion != 2 {
-		t.Fatalf("expected plan version 2 after replan, got %d", snapshot.PlanVersion)
+		t.Fatalf("expected plan version 2 after direct re-plan, got %d", snapshot.PlanVersion)
 	}
 	if snapshot.ReplanContext != nil {
 		t.Fatalf("expected replan context cleared after replanned plan finishes, got %+v", snapshot.ReplanContext)
@@ -2407,6 +2402,89 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 	// Verify it's not empty
 	if len(round2) < 100 {
 		t.Fatalf("round-2 system prompt suspiciously short (%d bytes), likely empty or truncated", len(round2))
+	}
+}
+
+// TestStepReplan_NoBudgetInterruptOnManyToolRounds 校验取消思考预算后，step_replan
+// 在 12 轮文件工具调用后仍能正常 submit_plan 并直达 Step，不被中段催促降级。
+// 旧实现下 7 轮起就会收到 stepReplanBudgetNotice、9 轮硬退；新实现下 round 不再设上限。
+func TestStepReplan_NoBudgetInterruptOnManyToolRounds(t *testing.T) {
+	const readRounds = 12
+
+	replies := make([]executeModelReply, 0, 3+readRounds)
+	// step phase: step completes
+	replies = append(replies, executeModelReply{
+		toolCalls: []*ai.FunctionTool{
+			mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+				"status":         "completed",
+				"summary":        "done",
+				"display_result": "ok",
+				"result":         "ok",
+				"short_summary":  "step done",
+			}),
+		},
+	})
+	// step_replan: many rounds of read_file before submitting
+	for i := 0; i < readRounds; i++ {
+		replies = append(replies, executeModelReply{
+			toolCalls: []*ai.FunctionTool{
+				mustBuildToolCall(t, fmt.Sprintf("call-read-%d", i), builtin_tools.ReadFileToolName, map[string]any{
+					"path": fmt.Sprintf("/tmp/read-%d.txt", i),
+				}),
+			},
+		})
+	}
+	// step_replan final round: submit_plan should_replan=false
+	replies = append(replies, executeModelReply{
+		toolCalls: []*ai.FunctionTool{
+			mustBuildToolCall(t, "call-submit-replan", "submit_plan", map[string]any{
+				"should_replan": false,
+				"replan_reason": "",
+				"next_goal":     "",
+				"plan":          []any{},
+			}),
+		},
+	})
+	// final_answer
+	replies = append(replies, executeModelReply{
+		content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"no-budget","references":[]}`,
+	})
+
+	client := &executeModelTestClient{replies: replies}
+
+	agent, err := NewReActAgent(
+		"replan-no-budget",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(20),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTools(&noopPhaseTool{name: builtin_tools.ReadFileToolName}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: true,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "分析", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success after %d step_replan tool rounds, got %#v", readRounds, runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "no-budget" {
+		t.Fatalf("expected final answer 'no-budget', got %q", runResult.Result)
+	}
+	// 全部预设回复都被消费，证明所有 readRounds 工具调用都被实际执行，无 budget notice 中断。
+	if client.calls != len(replies) {
+		t.Fatalf("expected %d model calls (all replies consumed), got %d — budget may have short-circuited", len(replies), client.calls)
 	}
 }
 

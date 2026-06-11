@@ -235,13 +235,30 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		HasSkillsTable:  skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
 	}
-	// userInputTurn：本回合由用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
+	// userInputTurn：本回合由顶层用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
 	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner 意图理解段的"事实板同步"）。
-	plannerInput.UserInputTurn = snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated
+	// 子 Agent 首次规划的 ReplanContext 同样为 nil，但子 Agent 工作区不承担顶层事实板维护契约——
+	// 经 IsSubAgent 守卫排除，避免子 Agent 被强制注入用户回合段。
+	plannerInput.UserInputTurn = !a.cfg.IsSubAgent && (snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated)
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
 	if plannerInput.UserInputTurn && a.workspaceRuntime != nil {
-		plannerInput.TaskContextBoard = readSharedFileForPrompt(strings.TrimSpace(a.workspaceRuntime.SharedDir()), taskContextFileName)
+		// TaskContextBoard 按动态上限截断：task_context.md 是精简事实板，正常不会过大，
+		// 但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
+		raw := readSharedFileOptional(a.workspaceRuntime.SharedDir(), taskContextFileName)
+		limit := sharedFileLimitBytes(a.contextWindowTokens)
+		if limit > 0 && len(raw) > limit {
+			absPath := filepath.Join(a.workspaceRuntime.SharedDir(), taskContextFileName)
+			cutByte := limit
+			if i := strings.LastIndexByte(raw[:limit], '\n'); i >= limit/2 {
+				cutByte = i
+			}
+			for cutByte > 0 && raw[cutByte]&0xC0 == 0x80 {
+				cutByte--
+			}
+			raw = raw[:cutByte] + "\n\n（[截断] 仅显示前 " + formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
+		}
+		plannerInput.TaskContextBoard = raw
 	}
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
@@ -367,9 +384,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 const submitPlanToolName = "submit_plan"
 const requestClarificationToolName = "request_clarification"
 
-// maxClarificationRounds 限制 Plan 阶段澄清提问的总轮数，防止反复反问造成死循环。
-const maxClarificationRounds = 1
-
 func buildRequestClarificationFunctionTool() *ai.FunctionTool {
 	return &ai.FunctionTool{
 		Type: "function",
@@ -434,18 +448,14 @@ func parseClarificationArgs(args any) (*clarificationArgs, error) {
 // handleClarificationToolCall 处理 planner 的 request_clarification 调用：
 // 经 OnHumanInput 同步问答通道把问题发给用户，回答作为工具结果写回 stepHistory，
 // 下一轮 planner 据此重做理解与规划。无人工通道或用户取消时优雅降级，不阻塞。
-func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.FunctionTool, rounds int) {
+// 不再用代码硬上限限制澄清轮数：靠 prompt 的「聚焦、能一次问清就一次问清」纪律
+// 与用户主动取消（OnHumanInput 返回空/错误）约束。
+func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.FunctionTool) {
 	callID := strings.TrimSpace(tc.Id)
 	parsed, parseErr := parseClarificationArgs(tc.Function.Arguments)
 	if parseErr != nil {
 		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil, "",
 			fmt.Sprintf("request_clarification 参数无效: %s\n请基于最合理假设继续，并把假设写入 goal_understanding。", parseErr.Error()), false)
-		return
-	}
-
-	if rounds > maxClarificationRounds {
-		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
-			"已达到澄清提问上限（最多一轮）。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
 		return
 	}
 
@@ -505,7 +515,7 @@ func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.Function
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool(input.UserInputTurn), buildRequestClarificationFunctionTool())
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
 	input.HasAvailableTools = len(input.AvailableTools) > 0
@@ -519,7 +529,6 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 	const maxSubmitRetries = 3
 	const maxNoUsefulPlanRounds = 2
 	submitRetries := 0
-	clarificationRounds := 0
 	noUsefulRounds := 0
 
 	for round := 0; ; round++ {
@@ -597,8 +606,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				return parsed, nil
 			}
 			if tc.Function.Name == requestClarificationToolName {
-				clarificationRounds++
-				a.handleClarificationToolCall(ctx, tc, clarificationRounds)
+				a.handleClarificationToolCall(ctx, tc)
 				anyUsefulTool = true
 				continue
 			}
@@ -667,16 +675,15 @@ func sortedToolNames(allowed map[string]struct{}, extra ...string) []string {
 	return names
 }
 
-func buildSubmitPlanFunctionTool(userInputTurn bool) *ai.FunctionTool {
-	description := "当你完成调查、准备好输出执行计划时，调用此工具提交计划。参数即为计划的结构化内容。"
-	if userInputTurn {
-		description += "提交执行计划（needs_planning=true）前，须先把共享工作区 task_context.md 的 `## 输入事实` 维护到与当前输入一致（用户输入中确定的具体操作事实逐条在板，每行 `- 名称: 值`）。"
-	}
+// buildSubmitPlanFunctionTool 的 description 只描述工具职责本身；用户输入回合下的事实板维护
+// 前置约束由 task_planner system prompt 的 USER_INPUT_TURN 守卫段（# 共享区终态）承载，不在
+// 工具 description 重复——避免约束跨 system / user / tool 三层耦合。
+func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 	return &ai.FunctionTool{
 		Type: "function",
 		Function: &ai.FunctionDetail{
 			Name:        submitPlanToolName,
-			Description: description,
+			Description: "当你完成调查、准备好输出执行计划时，调用此工具提交计划。参数即为计划的结构化内容。",
 			Parameters: map[string]any{
 				"type":     "object",
 				"required": []string{"needs_planning", "plan", "explanation"},
@@ -854,13 +861,8 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, opts.WorkspaceRootDir))
 	}
 
-	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入）。
-	if opts.WorkspaceRootDir != "" {
-		journalPath := builtin_tools.WorkspacePlannerJournalFileAbs(opts.WorkspaceRootDir)
-		if info, err := os.Stat(journalPath); err == nil && info.Size() > 0 {
-			data.PlannerJournalPath = journalPath
-		}
-	}
+	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入；helper 内置 stat 与 size>0 判定）。
+	data.PlannerJournalPath = resolvePlannerJournalPointer(opts.WorkspaceRootDir)
 
 	// REPLAN_CONTEXT
 	if snapshot.ReplanContext != nil {
@@ -886,13 +888,22 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		if item == nil || (item.Status != builtin_tools.PlanStepCompleted && item.Status != builtin_tools.PlanStepInProgress) {
 			continue
 		}
-		clone := &builtin_tools.PlanItem{
-			ID:        strings.TrimSpace(item.ID),
-			Step:      strings.TrimSpace(item.Step),
-			Status:    item.Status,
-			DependsOn: builtin_tools.CloneStringSlice(item.DependsOn),
+		// 完整浅拷贝 + 切片字段克隆，保留 BakeOutcome 写回的烘焙字段（short_summary /
+		// key_facts / tool_calls_digest / coverage_checklist / step_file / result_file /
+		// timeline_file / coverage_file / references），避免直达 Step 重编排时把
+		// completed 项重置为只有 id/step/status/depends_on 的裸 PlanItem。
+		clone := *item
+		clone.ID = strings.TrimSpace(item.ID)
+		clone.Step = strings.TrimSpace(item.Step)
+		clone.DependsOn = builtin_tools.CloneStringSlice(item.DependsOn)
+		clone.KeyFacts = builtin_tools.CloneStringSlice(item.KeyFacts)
+		clone.ToolCallsDigest = builtin_tools.CloneStringSlice(item.ToolCallsDigest)
+		clone.References = builtin_tools.CloneStringSlice(item.References)
+		clone.ResolvedDependsOn = nil
+		if len(item.CoverageChecklist) > 0 {
+			clone.CoverageChecklist = append([]builtin_tools.CoverageChecklistItem(nil), item.CoverageChecklist...)
 		}
-		merged = append(merged, clone)
+		merged = append(merged, &clone)
 		if clone.ID != "" {
 			preserved[clone.ID] = struct{}{}
 		}
@@ -1139,7 +1150,7 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	// 预创建 step 过程文件骨架：必须先于 prompt 冻结，注入的路径才指向已存在文件。
 	if a.workspaceRuntime != nil && currentStep != nil {
-		if err := ensureStepFileScaffold(a.workspaceRuntime.SharedDir(), snapshot.CurrentStepID, currentStep.Step); err != nil {
+		if err := ensureStepFileScaffold(a.workspaceRuntime, snapshot.CurrentStepID, currentStep.Step); err != nil {
 			a.emitRuntimeLog("warn", "ensure step file scaffold failed", snapshot, map[string]any{
 				"event":   "step_file_scaffold_failed",
 				"step_id": snapshot.CurrentStepID,

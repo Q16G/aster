@@ -503,7 +503,6 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.CurrentGoal = strings.TrimSpace(update.CurrentGoal)
 	update.References = normalizeReferences(update.References)
 	update.Warnings = normalizeReferences(update.Warnings)
-	update.UnresolvedAxes = normalizeReplanAxes(update.UnresolvedAxes)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
 	var backfilled *builtin_tools.StepOutcome
@@ -544,15 +543,23 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		t.state.CurrentStepID = ""
 	}
 
+	// 直达 Step 重编排：在烘焙 completed plan_item 之后原子替换整个 plan 与 PlanVersion，
+	// 等价于 UpdatePlan 但保留前一阶段刚写回 outcome 的烘焙字段。NewPlan 仅由 phase_step_replan
+	// 在 should_replan=true 时传入，已包含合并后的 completed / in_progress / 新 pending。
+	if len(update.NewPlan) > 0 {
+		builtin_tools.HydratePlanRelations(update.NewPlan)
+		t.state.Plan = update.NewPlan
+		t.state.PlanVersion++
+		t.state.NeedsPlanning = true
+	}
+
 	if update.CurrentGoal != "" {
 		t.state.CurrentGoal = update.CurrentGoal
-	}
-	if update.UnresolvedAxes != nil {
-		t.state.UnresolvedAxes = builtin_tools.CloneReplanAxes(update.UnresolvedAxes)
 	}
 	if update.Warnings != nil {
 		t.state.Warnings = normalizeReferences(append(t.state.Warnings, update.Warnings...))
 	}
+	// step_replan 不再写 UnresolvedAxes（三轴输出已删）；该字段仅由 final_answer 自身评估写入。
 	t.state.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 	t.state.Phase = update.NextPhase
 	if update.NextPhase == builtin_tools.AgentPhasePlan {
@@ -578,10 +585,13 @@ type stepReplanUpdate struct {
 	InheritedContextKeys []string
 	InheritedRefIDs      []string
 
-	CurrentGoal    string
-	Warnings       []string
-	UnresolvedAxes *builtin_tools.ReplanAxes
-	ReplanContext  *builtin_tools.ReplanContext
+	CurrentGoal   string
+	Warnings      []string
+	ReplanContext *builtin_tools.ReplanContext
+	// NewPlan 仅由 phase_step_replan 在 should_replan=true 时传入，承载直接重编排后的
+	// 完整 plan（已含 completed / in_progress / 新 pending 的 merge 结果）。非空时原子
+	// 替换 state.Plan、PlanVersion++，等价于 UpdatePlan 但发生在烘焙之后。
+	NewPlan []*builtin_tools.PlanItem
 
 	NextPhase builtin_tools.AgentPhase
 }

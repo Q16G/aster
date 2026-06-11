@@ -130,9 +130,10 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, `"task_context"`) {
 		t.Fatalf("task_planner must not contain the removed task_context schema field, got:\n%s", with)
 	}
-	// 事实板综合（R6 三轴为主轴）归重规划分支：非重规划回合不渲染。
-	if strings.Contains(with, "三轴为主轴") {
-		t.Fatalf("task_planner non-replan turn must not render replan branch, got:\n%s", with)
+	// 回流编排段归 plan 分支 + HAS_REPLAN_CONTEXT；非回流回合不渲染该段（用段标题断言以避开
+	// 共享段对"复核重编排与回流编排"措辞的常规引用）。
+	if strings.Contains(with, "# 回流编排（本回合消费") {
+		t.Fatalf("task_planner non-replan turn must not render 回流编排 section, got:\n%s", with)
 	}
 	replanParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
 		Input:            "测试输入",
@@ -143,9 +144,15 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("build task_planner (replan turn) failed: %v", err)
 	}
 	replan := replanParts.Joined()
-	for _, needle := range []string{"三轴为主轴", "只编排不二次泛化", "产物-消费依赖", "最小扰动"} {
+	for _, needle := range []string{"回流编排", "只编排不二次泛化", "产物-消费依赖", "最小扰动"} {
 		if !strings.Contains(replan, needle) {
-			t.Fatalf("task_planner replan turn must render replan branch (missing %q), got:\n%s", needle, replan)
+			t.Fatalf("task_planner replan turn must render 回流编排 branch (missing %q), got:\n%s", needle, replan)
+		}
+	}
+	// step_replan 的内部判定段（核验依据 / 维度① / 账本复核与维护）不应渲染在 plan 模式下。
+	for _, banned := range []string{"# 核验依据", "**维度①  存在性/完成度**", "# 账本复核与维护", "# 直接编排（账本维护完成后产出 pending 计划）"} {
+		if strings.Contains(replan, banned) {
+			t.Fatalf("task_planner replan turn must not render step_replan-only section %q, got:\n%s", banned, replan)
 		}
 	}
 	if strings.Contains(with, "交叉分析") {
@@ -309,7 +316,7 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 
 	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
 		CurrentGoal:      "测试目标",
-		OpenItemsLedger:  "# 未闭环账本\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+		OpenItemsLedger:  "# 未闭环账本\n\n## 未解决\n- [OI-001] x\n\n## 不可解局限\n",
 		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 地址: 10.0.0.1\n\n## 执行中补充\n",
 	})
 	if err != nil {
@@ -339,10 +346,21 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 			t.Fatalf("step_replan must not retain removed injection/instruction %q, got:\n%s", banned, with)
 		}
 	}
-	// evidence-grounded：三轴条目要求 evidence 锚点。
-	for _, needle := range []string{"evidence", "观测事实", "ledger_id"} {
+	// evidence-grounded：账本条目要求观测事实锚点。OI-id 对账作为约定但不再以 "ledger_id" 字段名出现。
+	for _, needle := range []string{"evidence", "观测事实", "OI-"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("step_replan must require evidence-grounded axis items (missing %q), got:\n%s", needle, with)
+			t.Fatalf("step_replan must require evidence-grounded ledger entries (missing %q), got:\n%s", needle, with)
+		}
+	}
+	// 内化三轴 + 直接编排：判定纪律保留，但输出字段已删，改为直接产出 pending 计划。
+	for _, needle := range []string{"# 判定维度", "# 直接编排（账本维护完成后产出 pending 计划）", "并输出重编排后的"} {
+		if !strings.Contains(with, needle) {
+			t.Fatalf("step_replan must render internalized triaxes + direct re-plan section (missing %q), got:\n%s", needle, with)
+		}
+	}
+	for _, banned := range []string{"`incomplete_items`", "`depth_gaps`", "`new_surfaces`"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("step_replan must not retain triaxes as output field names %q, got:\n%s", banned, with)
 		}
 	}
 }
@@ -370,13 +388,19 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act P11 must render concurrent partition + reconciliation (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 子 Agent 产出经 runtime 机械回流暂存区，think_act 收尾归并并维护汇总表。
-	for _, needle := range []string{"待复核（子agent）", "子 Agent 汇总表", "关键内容索引", "读取路径", "归并"} {
+	// 子 Agent 产出归并由 think_act 主动消费子工作区按主视角重判归类，并维护父事实板汇总表。
+	for _, needle := range []string{"产出归并", "子 Agent 汇总表", "关键内容索引", "读取路径"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("think_act must render staging merge + summary index (missing %q), got:\n%s", needle, with)
+			t.Fatalf("think_act must render sub-agent merge contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 账本契约：三区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
+	// 暂存区机制已废除：三区结构和"待复核"区不再出现。
+	for _, banned := range []string{"待复核（子agent）", "## 待复核"} {
+		if strings.Contains(with, banned) {
+			t.Fatalf("think_act must not retain runtime staging area %q, got:\n%s", banned, with)
+		}
+	}
+	// 账本契约：两区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
 	// 维护职责按终态不变量表述：归档历史不丢失、非本 step 条目原样保留）。
 	for _, needle := range []string{
 		"open_items.md",
@@ -402,6 +426,22 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 		if strings.Contains(parts.Joined(), banned) {
 			t.Fatalf("think_act must not reference removed injection %q, got:\n%s", banned, parts.Joined())
 		}
+	}
+}
+
+// TestBuildSubmitPlanFunctionTool_DescriptionStaysToolScoped 锁定 submit_plan 工具描述只描述
+// 工具职责本身，不携带回合相关约束（事实板维护等）——这些约束属于 task_planner system prompt 的
+// USER_INPUT_TURN 段，分层后避免约束跨 system/user/tool 三层耦合。
+func TestBuildSubmitPlanFunctionTool_DescriptionStaysToolScoped(t *testing.T) {
+	tool := buildSubmitPlanFunctionTool()
+	desc := tool.Function.Description
+	for _, banned := range []string{"task_context.md", "## 输入事实", "维护到与当前输入一致", "用户输入回合", "USER_INPUT_TURN"} {
+		if strings.Contains(desc, banned) {
+			t.Fatalf("submit_plan description must not embed turn-conditional constraint %q, got: %s", banned, desc)
+		}
+	}
+	if !strings.Contains(desc, "submit_plan"[:5]) && !strings.Contains(desc, "提交") {
+		t.Fatalf("submit_plan description should still describe its purpose, got: %s", desc)
 	}
 }
 
@@ -437,19 +477,19 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 
 	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
 		CurrentGoal:     "测试目标",
-		OpenItemsLedger: "## 未解决\n- [OI-003] 模块 Y 未深测\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+		OpenItemsLedger: "## 未解决\n- [OI-003] 模块 Y 未深测\n\n## 不可解局限\n",
 	})
 	if err != nil {
 		t.Fatalf("build step_replan failed: %v", err)
 	}
 	with := parts.Joined()
-	// 账本=完整超集，多源共判先账本后三轴；每条轴项以 ledger_id 对账。
+	// 账本=完整超集，plan items=可行动投影；账本条目沿用 OI-xxx 编号惯例。
 	for _, needle := range []string{
 		"完整超集",
 		"多源共判",
 		"投影",
 		"[OI-003] 模块 Y 未深测",
-		"ledger_id",
+		"OI-",
 	} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan must render superset+projection contract (missing %q), got:\n%s", needle, with)
@@ -472,8 +512,8 @@ func TestPromptManager_StepReplanOpenItemsLedgerGate(t *testing.T) {
 			t.Fatalf("step_replan must consume coverage_checklist (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// digest 默认 + timeline 按需 + 探索预算降级（B3 协议入 prompt）。
-	for _, needle := range []string{"tool_calls_digest", "timeline", "探索预算", "digest-only"} {
+	// digest 默认 + timeline 按需核验（思考预算上限已删，改为"按需充分核验"自律口径）。
+	for _, needle := range []string{"tool_calls_digest", "timeline", "按需充分核验", "digest-only"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan must render bounded verification contract (missing %q), got:\n%s", needle, with)
 		}
@@ -566,7 +606,7 @@ func TestPromptManager_PhasePromptsRenderRoleAndBackground(t *testing.T) {
 		},
 		{
 			name:     "step_replan",
-			stageTag: "step_replan（交付复核）",
+			stageTag: "step_replan（交付复核与重编排）",
 			buildWith: func(r, b string) (PromptParts, error) {
 				return manager.BuildStepReplanPrompt(StepReplanPromptInput{CurrentGoal: "目标", AgentRole: r, AgentBackground: b})
 			},

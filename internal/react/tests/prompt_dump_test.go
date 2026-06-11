@@ -1438,3 +1438,158 @@ func TestPromptDump_ParentAfterSubAgentCompleted(t *testing.T) {
 		t.Logf("prompt dumped to: %s/scenario_03c_parent_step_replan_after_sub_agent.prompt.txt (%d bytes)", dumpDir, len(prompt))
 	})
 }
+
+// TestPromptDump_PlannerAndStepReplan 把 task_planner（含 replan 回合）与 step_replan 的
+// system+user prompt 全文写入 /tmp/prompt_review/ 供人工 review。
+// 运行：go test ./internal/react/tests/ -run TestPromptDump_PlannerAndStepReplan -v
+func TestPromptDump_PlannerAndStepReplan(t *testing.T) {
+	dumpDir := "/tmp/prompt_review"
+	if err := os.MkdirAll(dumpDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dumpDir, err)
+	}
+
+	now := time.Now()
+	planInput := []*builtin_tools.TimelineInput{
+		{Content: "帮我对这个 Go 项目做 SQL 注入安全审计", CreatedAt: now},
+	}
+
+	// ─── 1. task_planner：冷启动（用户输入回合）───
+	t.Run("task_planner_cold_start", func(t *testing.T) {
+		planner := NewDefaultTaskPlanner(&stubChatClient{})
+		snapshot := builtin_tools.StateSnapshot{
+			Phase:         builtin_tools.AgentPhaseStep,
+			Status:        builtin_tools.TaskStatusRunning,
+			InputTimeline: planInput,
+		}
+		rawInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
+			WorkspaceRootDir:   "/repo/myproject",
+			WorkspaceNamespace: "audit",
+		})
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
+			Input:         rawInput,
+			UserInputTurn: true,
+			AgentRole:     "高级安全审计工程师",
+			AgentBackground: "专注 Go 后端安全，熟悉 SAST/DAST 工具链。",
+		})
+		if err != nil {
+			t.Fatalf("build task_planner prompt: %v", err)
+		}
+		prompt := parts.Joined()
+		outPath := filepath.Join(dumpDir, "01_task_planner_cold_start.prompt.txt")
+		if err := os.WriteFile(outPath, []byte(prompt), 0o644); err != nil {
+			t.Fatalf("write %s: %v", outPath, err)
+		}
+		t.Logf("[task_planner/cold_start] dumped to %s (%d bytes)", outPath, len(prompt))
+	})
+
+	// ─── 2. task_planner：replan 回合（携带 REPLAN_CONTEXT）───
+	t.Run("task_planner_replan_turn", func(t *testing.T) {
+		planner := NewDefaultTaskPlanner(&stubChatClient{})
+		replanSnapshot := builtin_tools.StateSnapshot{
+			Phase:         builtin_tools.AgentPhasePlan,
+			Status:        builtin_tools.TaskStatusRunning,
+			InputTimeline: planInput,
+			GoalUnderstanding: "核心目标：对 /repo/myproject 做 SQL 注入审计。范围边界：数据访问层 repository/*.go。",
+			ReplanContext: &builtin_tools.ReplanContext{
+				SourceStepID: "step-2",
+				Reason:       "middleware 层输入校验未确认，需要扩面",
+				NextGoal:     "补充核验 middleware 层过滤逻辑",
+				IncompleteItems: builtin_tools.NewAxisItems([]string{
+					"middleware/auth.go 的参数校验未检查",
+				}),
+				NewSurfaces: builtin_tools.NewAxisItems([]string{
+					"internal/middleware/*.go 整体未审计",
+				}),
+				ReplacePending: true,
+			},
+			Plan: []*builtin_tools.PlanItem{
+				{ID: "step-1", Step: "收集项目结构", Status: builtin_tools.PlanStepCompleted},
+				{ID: "step-2", Step: "审计 repository 层 SQL 拼接", Status: builtin_tools.PlanStepCompleted, DependsOn: []string{"step-1"}},
+				{ID: "step-3", Step: "汇总报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-2"}},
+			},
+		}
+		rawInput := PlannerInputFromSnapshot(replanSnapshot, PlannerInputOptions{
+			WorkspaceRootDir:   "/repo/myproject",
+			WorkspaceNamespace: "audit",
+		})
+		parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
+			Input:            rawInput,
+			UserInputTurn:    false,
+			HasReplanContext: true,
+			GoalUnderstanding: replanSnapshot.GoalUnderstanding,
+			AgentRole:        "高级安全审计工程师",
+			AgentBackground:  "专注 Go 后端安全，熟悉 SAST/DAST 工具链。",
+		})
+		if err != nil {
+			t.Fatalf("build task_planner replan prompt: %v", err)
+		}
+		prompt := parts.Joined()
+		outPath := filepath.Join(dumpDir, "02_task_planner_replan_turn.prompt.txt")
+		if err := os.WriteFile(outPath, []byte(prompt), 0o644); err != nil {
+			t.Fatalf("write %s: %v", outPath, err)
+		}
+		t.Logf("[task_planner/replan] dumped to %s (%d bytes)", outPath, len(prompt))
+	})
+
+	// ─── 3. step_replan：step-2 完成后判定回合 ───
+	t.Run("step_replan", func(t *testing.T) {
+		agent, err := NewReActAgent(
+			"audit-agent",
+			&stubChatClient{},
+			WithEmitter(NewDummyEmitter()),
+		)
+		if err != nil {
+			t.Fatalf("NewReActAgent: %v", err)
+		}
+
+		stepCard := map[string]any{
+			"id":     "step-2",
+			"step":   "逐文件检查 SQL 拼接和参数化查询",
+			"status": "completed",
+			"short_summary": "已检查 8 个 db.Raw 调用点，发现 3 处 SQL 注入",
+			"key_facts": []string{
+				"user_repo.go:45 — 直接拼接用户输入到 WHERE 子句",
+				"order_repo.go:82 — fmt.Sprintf 构造 ORDER BY",
+				"search_handler.go:31 — 查询参数直接传入 db.Raw",
+			},
+			"tool_calls_digest": []string{
+				"rg(\"db.Raw\") → 8 matches in 5 files",
+				"read_file(user_repo.go) → 发现拼接 SQL",
+				"read_file(order_repo.go) → 发现 fmt.Sprintf SQL",
+			},
+			"open_questions": []string{
+				"middleware 层是否有统一的输入校验？",
+			},
+			"result_file":  "/repo/myproject/workspace/steps/step-2/attempts/001/result.json",
+			"timeline_file": "/repo/myproject/workspace/shared/step-2/timeline.jsonl",
+		}
+		parts, err := agent.BuildStepReplanPrompt(map[string]any{
+			"current_goal": "对 /repo/myproject 做 SQL 注入安全审计",
+			"goal_understanding": "核心目标：SQL 注入审计。范围边界：repository/*.go。",
+			"input_timeline": planInput,
+			"current_step_card": stepCard,
+			"plan_overview": []map[string]any{
+				{"id": "step-1", "step": "收集项目结构", "status": "completed"},
+				{"id": "step-2", "step": "审计 repository 层", "status": "completed", "depends_on": []string{"step-1"}},
+				{"id": "step-3", "step": "汇总报告", "status": "pending", "depends_on": []string{"step-2"}},
+			},
+			"open_items_ledger": "# 未闭环账本\n\n## 未解决\n- [OI-001] middleware 层输入校验未确认（来源: step-2 open_questions）\n\n## 不可解局限\n\n## 待复核（子agent）\n",
+			"task_context_board": "# 贯穿全程关键事实\n\n## 输入事实\n- 目标项目: /repo/myproject\n- 技术栈: Go + Gin + GORM v2\n\n## 执行中补充\n- 发现 5 个包含 db.Raw 的文件\n- 3 处已确认 SQL 注入漏洞\n",
+			"step_result_path":        "/repo/myproject/workspace/steps/step-2/attempts/001/result.json",
+			"step_contexts_path":      "/repo/myproject/workspace/step_contexts.jsonl",
+			"step_timeline_path":      "/repo/myproject/workspace/shared/step-2/timeline.jsonl",
+			"open_items_archive_path": "/repo/myproject/workspace/shared/open_items_archive.md",
+		})
+		if err != nil {
+			t.Fatalf("BuildStepReplanPrompt: %v", err)
+		}
+		prompt := parts.Joined()
+		outPath := filepath.Join(dumpDir, "03_step_replan.prompt.txt")
+		if err := os.WriteFile(outPath, []byte(prompt), 0o644); err != nil {
+			t.Fatalf("write %s: %v", outPath, err)
+		}
+		t.Logf("[step_replan] dumped to %s (%d bytes)", outPath, len(prompt))
+	})
+
+	t.Logf("\n=== All prompts written to: %s ===\n  ls -la %s", dumpDir, dumpDir)
+}

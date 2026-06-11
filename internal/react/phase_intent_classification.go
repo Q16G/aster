@@ -43,10 +43,12 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	fnTools = append(fnTools, buildSubmitIntentFunctionTool())
 
 	const maxSubmitRetries = 3
-	const maxRounds = 8
 	submitRetries := 0
 
-	for round := 0; round < maxRounds; round++ {
+	// 不再以 maxRounds 计数硬上限：让 intent 阶段按需充分判定（参数校验失败仍走 maxSubmitRetries
+	// 退到 carry；模型 hang / ctx 取消由 fallback-on-error 分支接管）。
+	for round := 0; ; round++ {
+		_ = round
 		if ctx != nil && ctx.Err() != nil {
 			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "context canceled fallback"})
 		}
@@ -118,12 +120,6 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 			return a.applyIntentClassification(snapshot, result)
 		}
 	}
-
-	// 超出最大轮次仍未提交：安全降级 carry，不中断 resume。
-	a.emitRuntimeLog("warn", "intent classification max rounds reached, fallback to carry", snapshot, map[string]any{
-		"event": "intent_max_rounds",
-	})
-	return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "max rounds fallback"})
 }
 
 func (a *Agent) emitIntentClassified(snapshot builtin_tools.StateSnapshot, result intentClassificationModelOutput) {
