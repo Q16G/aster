@@ -2,6 +2,7 @@ package react
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"aster/internal/builtin_tools"
@@ -74,6 +75,37 @@ func TestParseSubmitReplanArgs_PlanParsed(t *testing.T) {
 	}
 }
 
+// TestParseSubmitReplanArgs_RejectsNonPending 校验 status 必须为 pending：
+// 已完成 / 进行中项由系统自动承接，模型若复述会被 mergeReplannedPlan 静默吞噉，
+// 必须在 parser 层拒绝。
+func TestParseSubmitReplanArgs_RejectsNonPending(t *testing.T) {
+	cases := []string{"in_progress", "completed", "failed"}
+	for _, status := range cases {
+		t.Run(status, func(t *testing.T) {
+			args := map[string]any{
+				"should_replan": true,
+				"replan_reason": "测试 non-pending 状态被拒",
+				"next_goal":     "x",
+				"plan": []any{
+					map[string]any{
+						"id":         "s2",
+						"step":       "深挖某模块",
+						"status":     status,
+						"depends_on": []any{},
+					},
+				},
+			}
+			_, err := parseSubmitReplanArgs(args)
+			if err == nil {
+				t.Fatalf("expected error for status=%q, got nil", status)
+			}
+			if !strings.Contains(err.Error(), "pending") {
+				t.Fatalf("error must mention pending, got: %v", err)
+			}
+		})
+	}
+}
+
 // TestStepReplanModelOutput_PlanJSONTag 校验结构体 json tag 为 plan。
 func TestStepReplanModelOutput_PlanJSONTag(t *testing.T) {
 	out := stepReplanModelOutput{
@@ -132,5 +164,26 @@ func TestBuildSubmitReplanFunctionTool_PlanSchema(t *testing.T) {
 		if _, ok := props[axis]; ok {
 			t.Fatalf("axis field %q must not appear in properties: %v", axis, props)
 		}
+	}
+}
+
+// TestSubmitReplanPlanItemSchema_StatusEnumNarrowedToPending 校验 plan item schema
+// 的 status enum 收窄为 ["pending"]：参数契约真相源在 schema，重编排项必须为 pending。
+func TestSubmitReplanPlanItemSchema_StatusEnumNarrowedToPending(t *testing.T) {
+	itemSchema := submitReplanPlanItemSchema()
+	props, ok := itemSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties not a map: %T", itemSchema["properties"])
+	}
+	statusField, ok := props["status"].(map[string]any)
+	if !ok {
+		t.Fatalf("status field not a map: %T", props["status"])
+	}
+	enum, ok := statusField["enum"].([]string)
+	if !ok {
+		t.Fatalf("status.enum not []string: %T", statusField["enum"])
+	}
+	if len(enum) != 1 || enum[0] != "pending" {
+		t.Fatalf("status.enum must be [\"pending\"], got %v", enum)
 	}
 }

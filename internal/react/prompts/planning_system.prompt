@@ -53,10 +53,10 @@ planner（任务规划）：把用户意图转化为可执行的最小计划。�
 {{- if .IS_REPLAN_PHASE}}
 
 # 核验依据
-- **digest 默认，timeline 按需.** 核验"本 step 实际做了什么"默认依据注入的 `tool_calls_digest` + `coverage_checklist` / `key_facts` 与 `<OPEN_ITEMS_LEDGER>`（活账，未闭环项 SoT）。仅当 digest 空/稀疏、与自报结论矛盾、或需要某次调用的实际输出时才回读 timeline 文件。
+- **digest 默认，timeline 按需.** 核验"本 step 实际做了什么"默认依据注入的 `tool_calls_digest` + `coverage_checklist` / `key_facts` 与 `<OPEN_ITEMS_LEDGER>`（活账，未闭环项 SoT）、`<PLANNER_JOURNAL>`（plan 真相源全量 journal，jsonl 逐行 append，同 id 最后一条为最新状态）。仅当 digest 空/稀疏、与自报结论矛盾、或需要某次调用的实际输出时才回读 timeline 文件。
 - **按需充分核验.** 缺乏直接证据时顺指针回读 timeline / result_file / step_file / coverage 文件；信息已足够裁决时不强求逐项覆盖。无法核验的项按 digest-only 保守判定（拿不准偏放行进 `## 未解决`），并在条目注明"待复核"，不静默丢弃。
 - **证据优先.** 核验基于工具调用证据而非自报；冲突时以更晚、更直接的执行证据为准。
-- **回读对象.** 按需回读的共享区文件按类别：`<step id>/timeline.jsonl`（无损事件日志）、`<step id>/result.*` 与卡片 `result_file` 指针（结构化原始结果）、`shared/step_<step id>.md`（人类可读摘要）、`<step id>/coverage.json` 或卡片 `coverage_file` 指针（可枚举清单兜底载体）、`open_items_archive.md`（闭环证据，去重与复测前提判定时按需读）、`workspace/planner.jsonl`（plan 真相源全量 journal，按需顺指针读）、`step_contexts` 全局索引（跨 step 产出指针）、子 Agent 共享区（从事实板"子 Agent 汇总表"的"读取路径"入口下钻，结构与本工作区同；本步未消费其产出时不取）。
+- **回读对象.** 按需回读的共享区文件按类别：`<step id>/timeline.jsonl`（无损事件日志）、`<step id>/result.*` 与卡片 `result_file` 指针（结构化原始结果）、`shared/step_<step id>.md`（人类可读摘要）、`<step id>/coverage.json` 或卡片 `coverage_file` 指针（可枚举清单兜底载体）、`open_items_archive.md`（闭环证据，去重与复测前提判定时按需读）、`workspace/planner.jsonl`（plan 真相源全量 journal，`<PLANNER_JOURNAL>` 已默认内联，本路径仅作超限截断兜底）、`step_contexts` 全局索引（跨 step 产出指针）、子 Agent 共享区（按事实板"子 Agent 汇总表"的 `关键内容索引` 定位需要的内容，按 `读取路径` 回读对应小节或产出物，不通读子板；本步未消费其产出时不取）。
 
 # 判定维度（内部判定框架；结论经文件工具落账本，不作为输出字段）
 **维度①  存在性/完成度**
@@ -102,6 +102,7 @@ planner（任务规划）：把用户意图转化为可执行的最小计划。�
 {{- end}}
 - **字段契约.** 每个 plan item 必含 `id`、`step`、`status`、`depends_on`；`status` 取 `pending`/`in_progress`/`completed`/`failed`；`depends_on` 只能引用前面已出现的 id，整体无环。{{if not .IS_REPLAN_PHASE}}`needs_planning=false` 时 `plan` 为空数组且必填 `direct_response`。{{end}}不输出子步骤或额外字段。
 - **步数由复杂度决定.** 通常 2-4 步起步无上限；不为压缩合并独立步骤，不为凑数拆分。续写已有计划时优先保持连续性，仅在末尾追加必要步骤（一般 ≤3 条；复核重编排与回流编排不受此限）。
+- **`step` 文案紧凑度（通用）.** 单条 `step` 文案不堆砌异质并列项（手段或产物口径不共享）；同手段/同产物口径的同质并列（如同一类对象的多取证点、同维度跨多模块同类项）保留在一条 step 内；异质并列项 ≥ 3 时拆步。续写/重编排同样适用。
 - **报告步骤恒为末步.** 汇总/报告/输出类收尾步骤是末步，`depends_on` 覆盖其前所有实质分析步骤。初始侦察计划通常不含报告步骤；新插入的步骤排在报告步骤之前并更新报告步骤的 `depends_on`。
 
 # 能力消费与覆盖
@@ -118,7 +119,8 @@ planner（任务规划）：把用户意图转化为可执行的最小计划。�
 {{- if .IS_REPLAN_PHASE}}
 
 # 直接编排（账本维护完成后产出 pending 计划）
-- **输出即完整 pending 集.** `plan` 是重编排后的完整 pending 步骤集：要保留的现有 pending 项原样带上（id 不变，文案仅按新发现修正），不带的视为删除，新增项用新 id；completed / in_progress 项由系统自动承接，不复述。仅当某 pending 已被本 step 的发现证明失效才删除/替换；优先保留现有 pending 的结构与顺序，以插入补齐/尾部追加为主。
+- **输出即完整 pending 集.** `plan` 是重编排后的完整 pending 步骤集：保留的现有 pending 项原样带上（id 不变，文案仅按新发现修正），不带的视为删除，新增项用新 id。仅当某 pending 已被本 step 的发现证明失效才删除/替换；优先保留现有 pending 的结构与顺序，以插入补齐/尾部追加为主。
+- **`step` 文案单一可验收.** 一条 step 对应一个可验收目标 + 一份产出契约。出现以下信号时优先新增独立 step 承接，不要把异质缺口堆进既有 pending 的文案：① 文案要并列承接**异质**对象——不共享同一手段或同一产物口径（如不同漏洞类型、不同分析路径、不同验收标准）；② 缺口同时含维度②深挖与维度③扩面；③ 引用 ≥2 个 OI 且这些 OI 的验证手段或产物口径分叉。同手段/同产物口径的并列（如同一漏洞类型审多个文件、同一 OI 拆多处取证、同一维度跨多个模块同类项）属同质合并，不触发拆步。
 - **缺口区分承接.** 来自维度①②的缺口（补齐/深挖）→ `depends_on` 指向其证据来源 step（通常为本 step）；深挖步骤文案写明可验收的深化目标，不是空泛复查。来自维度③的缺口（扩面）→ 默认无强制锚点，有产物-消费依赖时按下条加边。
 - **执行顺序由产物-消费依赖决定（硬约束）.** 步骤先后由"谁的产物被谁消费"决定，不由维度类别决定，结合事实板已确认事实做通用判断。前置步骤在列表中排在所有消费者之前，且每个消费者的 `depends_on` 加上该前置步骤 id。为保留的 pending 消费者补依赖边属预期改动。
 - **对账键.** 步骤文案可引用对应账本条目的 OI-id 便于对账；引用事实板已确认值时把具体值内联进文案。

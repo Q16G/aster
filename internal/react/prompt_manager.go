@@ -59,12 +59,16 @@ type StepReplanPromptInput struct {
 	StepTimelinePath     string
 	OpenItemsArchivePath string
 	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
-	// 文件存在才注入，供卡片不足时按需回读。
+	// 文件存在才注入；与 PlannerJournal 全文并存，作为超限截断兜底入口。
 	PlannerJournalPath string
-	SkillsContext      *SkillsPromptContext
-	HasSkillsTable     bool
-	AvailableTools     []AvailableToolInfo
-	HasAvailableTools  bool
+	// PlannerJournal 是 workspace/planner.jsonl 全文快照（plan 唯一真相源），
+	// 与 OpenItemsLedger / TaskContextBoard 同为判定 SoT；超限走 readSharedFileForPromptWithLimit
+	// 同款截断策略并在尾部追加路径提示，PlannerJournalPath 兜底回读。
+	PlannerJournal    string
+	SkillsContext     *SkillsPromptContext
+	HasSkillsTable    bool
+	AvailableTools    []AvailableToolInfo
+	HasAvailableTools bool
 }
 
 type FinalAnswerPromptInput struct {
@@ -334,8 +338,11 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"STEP_CONTEXTS_PATH":      input.StepContextsPath,
 		"STEP_TRANSCRIPT_PATH":    input.StepTranscriptPath,
 		"STEP_TIMELINE_PATH":      input.StepTimelinePath,
-		"OPEN_ITEMS_ARCHIVE_PATH": input.OpenItemsArchivePath,
-		"PLANNER_JOURNAL_PATH":    input.PlannerJournalPath,
+		"OPEN_ITEMS_ARCHIVE_PATH":  input.OpenItemsArchivePath,
+		"PLANNER_JOURNAL_PATH":     input.PlannerJournalPath,
+		"HAS_PLANNER_JOURNAL_PATH": strings.TrimSpace(input.PlannerJournalPath) != "",
+		"PLANNER_JOURNAL":          strings.TrimSpace(input.PlannerJournal),
+		"HAS_PLANNER_JOURNAL":      strings.TrimSpace(input.PlannerJournal) != "",
 		"SKILLS_CONTEXT":          input.SkillsContext,
 		"HAS_SKILLS_TABLE":        input.HasSkillsTable,
 		"AVAILABLE_TOOLS":         input.AvailableTools,

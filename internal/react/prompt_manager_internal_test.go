@@ -308,6 +308,51 @@ func TestPromptManager_PhasePromptsExcludeIdentityAndRepoContext(t *testing.T) {
 	}
 }
 
+// TestBuildStepReplanPrompt_OmitsJournalPathWhenNotTruncated 校验 PlannerJournalPath 传空串
+// （表示 journal 未触发超限截断）时，渲染产物里不应出现"计划全量历史 journal 文件指针"行。
+func TestBuildStepReplanPrompt_OmitsJournalPathWhenNotTruncated(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:        "测试目标",
+		PlannerJournal:     `{"plan_version":1,"kind":"plan"}`,
+		PlannerJournalPath: "", // 调用方判定未截断 → 传空串
+	})
+	if err != nil {
+		t.Fatalf("BuildStepReplanPrompt failed: %v", err)
+	}
+	rendered := parts.Joined()
+	if strings.Contains(rendered, "计划全量历史 journal 文件指针") {
+		t.Fatalf("journal pointer line must be omitted when not truncated, got:\n%s", rendered)
+	}
+}
+
+// TestBuildStepReplanPrompt_KeepsJournalPathWhenTruncated 校验 PlannerJournalPath 非空
+// （表示 journal 触发超限截断）时，渲染产物含路径指针行供模型按需回读。
+func TestBuildStepReplanPrompt_KeepsJournalPathWhenTruncated(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:        "测试目标",
+		PlannerJournal:     `{"plan_version":1}` + "\n\n（[截断] 仅显示前 1.0 KB。完整内容见文件：/tmp/planner.jsonl）",
+		PlannerJournalPath: "/tmp/planner.jsonl",
+	})
+	if err != nil {
+		t.Fatalf("BuildStepReplanPrompt failed: %v", err)
+	}
+	rendered := parts.Joined()
+	if !strings.Contains(rendered, "计划全量历史 journal 文件指针") {
+		t.Fatalf("journal pointer line must appear when truncated, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "/tmp/planner.jsonl") {
+		t.Fatalf("rendered prompt must contain the journal path, got:\n%s", rendered)
+	}
+}
+
 func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {

@@ -43,9 +43,21 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		return fmt.Errorf("step_replan phase missing step outcome step_id=%s", stepID)
 	}
 
+	workspaceSharedDir := ""
+	if a.workspaceRuntime != nil {
+		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	}
+
+	// digest 归约：runtime 对 timeline 的规则归约为权威来源，先于 SimpleTask bypass 与 LLM
+	// 判定 prompt 注入完成，确保所有下游路径（simple / 直达 Step / 子 Agent 回流）拿到同一
+	// 归约结果；applyReplanResult 不再重复归约。
+	if reduced := reduceStepTimelineToolCallsDigest(workspaceSharedDir, stepID); len(reduced) > 0 {
+		rawOutcome.ToolCallsDigest = reduced
+	}
+
 	// 简单分支直通（设计 2.1）：simple 单步任务完成后跳过三轴 LLM 判定直达验收；
-	// 机械落盘（digest 归约 / plan_item 烘焙 / journal / step_contexts）由
-	// applyReplanResult 保留执行，final_answer 仍持有 should_replan 回流兜底。
+	// 机械落盘（plan_item 烘焙 / journal / step_contexts）由 applyReplanResult 保留执行，
+	// final_answer 仍持有 should_replan 回流兜底。
 	if snapshot.SimpleTask && len(snapshot.Plan) == 1 {
 		a.emitRuntimeLog("info", "simple task bypasses step replan", snapshot, map[string]any{
 			"event":   "step_replan_bypassed_simple",
@@ -59,17 +71,6 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// Rationale: the old fast-path skip logic only relied on self-reported signals like
 	// open_questions/warnings/unresolved, which can be under-reported and cause replan to
 	// "never trigger". We intentionally trade cost for correctness here.
-
-	workspaceSharedDir := ""
-	if a.workspaceRuntime != nil {
-		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
-	}
-
-	// digest 归约前移：判定 prompt 必须看到 runtime 权威 digest（applyReplanResult 处
-	// 的归约保持兜底，二次归约幂等）。
-	if reduced := reduceStepTimelineToolCallsDigest(workspaceSharedDir, stepID); len(reduced) > 0 {
-		rawOutcome.ToolCallsDigest = reduced
-	}
 
 	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
 	stepContextsPath := a.resolveStepContextsPath()
@@ -85,7 +86,12 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if workspaceSharedDir != "" {
 		archivePath = filepath.Join(workspaceSharedDir, openItemsArchiveFileName)
 	}
-	plannerJournalPath := resolvePlannerJournalPointer(a.workspaceRootDir)
+	plannerJournal := readPlannerJournalForPrompt(a.workspaceRootDir, sharedFileLimitBytes(a.contextWindowTokens))
+	// 仅在内联 journal 触发截断时注入路径指针——未截断时模型已看到全文，路径行属冗余 token。
+	plannerJournalPath := ""
+	if isTruncatedForPrompt(plannerJournal) {
+		plannerJournalPath = resolvePlannerJournalPointer(a.workspaceRootDir)
+	}
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
@@ -99,6 +105,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"current_step_card":       buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath),
 		"plan_overview":           ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
 		"planner_journal_path":    plannerJournalPath,
+		"planner_journal":         plannerJournal,
 		"open_items_ledger":       readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
 		"task_context_board":      readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
 		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
@@ -246,13 +253,8 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 
-	// tool_calls_digest 以 runtime 对 timeline 的规则归约为权威来源；模型自报仅在
-	// timeline 缺失（如无任何工具调用）时作兜底。
-	if rawOutcome != nil && a.workspaceRuntime != nil {
-		if reduced := reduceStepTimelineToolCallsDigest(a.workspaceRuntime.SharedDir(), stepID); len(reduced) > 0 {
-			rawOutcome.ToolCallsDigest = reduced
-		}
-	}
+	// tool_calls_digest 已在 runStepReplanPhase 入口完成 runtime 归约（写入 rawOutcome）；
+	// 同一 phase 内 rawOutcome 是同一指针，此处直接信任，不再重复读 timeline。
 
 	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
 
@@ -614,7 +616,12 @@ func readSharedFileForPromptWithLimit(sharedDir, name string, limitBytes int) st
 	if sharedDir == "" {
 		return "(共享区不可用)"
 	}
-	absPath := filepath.Join(sharedDir, name)
+	return readFileForPromptWithLimit(filepath.Join(sharedDir, name), limitBytes)
+}
+
+// readFileForPromptWithLimit 是 readSharedFileForPromptWithLimit 的核心实现，接受绝对路径，
+// 供非共享区文件（例如 workspace/planner.jsonl）复用同一套读取+截断+占位策略。
+func readFileForPromptWithLimit(absPath string, limitBytes int) string {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return "(文件尚不存在)"
@@ -639,6 +646,28 @@ func readSharedFileForPromptWithLimit(sharedDir, name string, limitBytes int) st
 			formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
 	}
 	return content
+}
+
+// isTruncatedForPrompt 判定 readFileForPromptWithLimit 产出的文本是否被超限截断。
+// 截断尾部含固定标记串「（[截断]」（见 readFileForPromptWithLimit 实现），未截断或
+// 文件不存在的占位说明（如「(文件尚不存在)」/「(文件为空)」）一律返回 false。
+func isTruncatedForPrompt(content string) bool {
+	return strings.Contains(content, "（[截断]")
+}
+
+// readPlannerJournalForPrompt 读取 workspace/planner.jsonl 全文用于注入。
+// 与 readSharedFileForPromptWithLimit 共用截断与占位策略；workspaceRootDir 空或
+// planner.jsonl 不存在时返回占位提示，让模型识别状态。
+func readPlannerJournalForPrompt(workspaceRootDir string, limitBytes int) string {
+	root := strings.TrimSpace(workspaceRootDir)
+	if root == "" {
+		return "(workspace 不可用)"
+	}
+	absPath := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	if absPath == "" {
+		return "(workspace 不可用)"
+	}
+	return readFileForPromptWithLimit(absPath, limitBytes)
 }
 
 // formatBytes 把字节数格式化为人类可读字符串（仅用于截断提示）。
@@ -685,35 +714,33 @@ func readSharedStepFileForPrompt(sharedDir, stepID string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// buildSubmitReplanFunctionTool 构造 step_replan 阶段的 submit_plan 工具：
-// 复用 planner 的 plan item schema，should_replan=true 时由模型直接产出重编排
-// 后的完整 pending 步骤集（completed / in_progress 由系统自动承接、不在此复述）。
-// 三轴输出字段已删除，缺口经文件工具直接补到 open_items.md。
+// buildSubmitReplanFunctionTool 构造 step_replan 阶段的 submit_plan 工具。
+// 参数契约真相源在 schema；本函数 description 字段仅承担调用时机判据。
 func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 	return &ai.FunctionTool{
 		Type: "function",
 		Function: &ai.FunctionDetail{
 			Name:        submitPlanToolName,
-			Description: "当你完成复核与重编排、准备好输出决策时，调用此工具提交。提交前账本/归档/事实板的落盘终态必须已成立（用文件工具直接补正）；should_replan=true 时同时直接产出重编排后的 pending 步骤集，不再回流 Plan 相位。",
+			Description: "完成复核与重编排后提交本轮决策；提交前账本 / 归档 / 事实板终态已成立。",
 			Parameters: map[string]any{
 				"type":     "object",
 				"required": []string{"should_replan", "replan_reason", "next_goal", "plan"},
 				"properties": map[string]any{
 					"should_replan": map[string]any{
 						"type":        "boolean",
-						"description": "是否存在可行动缺口且未被现有 pending 步骤完整覆盖。仅当判定后需要新增/调整 pending 步骤时为 true。",
+						"description": "存在可行动缺口且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
 					},
 					"replan_reason": map[string]any{
 						"type":        "string",
-						"description": "should_replan=false 时填空字符串；true 时填一句人类可读的总括说明（说明缺口性质与本轮重编排意图）。",
+						"description": "should_replan=true 时填一句人类可读的缺口总括；false 时填空字符串。",
 					},
 					"next_goal": map[string]any{
 						"type":        "string",
-						"description": "should_replan=false 时填空字符串；true 时填明确的下一轮目标，不要写「等待用户输入」。",
+						"description": "should_replan=true 时填明确的下一轮目标；false 时填空字符串。",
 					},
 					"plan": map[string]any{
 						"type":        "array",
-						"description": "重编排后的 pending 步骤集（替代旧三轴输出）。should_replan=true 时必填非空：只输出 pending 步骤（保留 / 新增 / 调整），completed 与 in_progress 项由系统自动承接、不在此复述；status 一律 pending；depends_on 可引用已完成步骤 id（执行顺序按产物-消费依赖排序）；步骤文案可引用对应账本条目的 OI-id 对账，并把事实板已确认具体值内联进文案；不得出现 <SKILLS_INDEX> 中的能力名称。should_replan=false 时填空数组。",
+						"description": "重编排后的完整 pending 步骤集。should_replan=true 时非空；false 时为空数组。步骤文案可引用账本条目 OI-id 与事实板已确认值；不得出现能力索引中的名称。",
 						"items":       submitReplanPlanItemSchema(),
 					},
 				},
@@ -722,19 +749,19 @@ func buildSubmitReplanFunctionTool() *ai.FunctionTool {
 	}
 }
 
-// submitReplanPlanItemSchema 是 step_replan 提交的 plan item schema，与 task_planner
-// 的 plan item schema 保持一致（id / step / status / depends_on）。
+// submitReplanPlanItemSchema 是 step_replan 提交的 plan item schema。
+// status 收窄为 pending：已完成 / 进行中项由系统自动承接、不在 plan 中复述。
 func submitReplanPlanItemSchema() map[string]any {
 	return map[string]any{
 		"type":     "object",
 		"required": []string{"id", "step", "status", "depends_on"},
 		"properties": map[string]any{
 			"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-			"step": map[string]any{"type": "string", "description": "步骤描述，不得为空；不得出现 <SKILLS_INDEX> 中的能力名称；可引用 OI-id 与已确认事实值。"},
+			"step": map[string]any{"type": "string", "description": "步骤描述，不得为空；可引用 OI-id 与已确认事实值。"},
 			"status": map[string]any{
 				"type":        "string",
-				"enum":        []string{"pending", "in_progress", "completed", "failed"},
-				"description": "步骤状态。重编排步骤填 pending。",
+				"enum":        []string{"pending"},
+				"description": "重编排步骤一律 pending。已完成 / 进行中项由系统自动承接，不在 plan 中复述。",
 			},
 			"depends_on": map[string]any{
 				"type":        "array",
@@ -793,6 +820,11 @@ func parseSubmitReplanArgs(args any) (stepReplanModelOutput, error) {
 			}
 			if strings.TrimSpace(string(item.Status)) == "" {
 				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 %q 的 status 为空", id)
+			}
+			// runtime 兜底（语义口径由 schema 承担）：重编排项必须为 pending；
+			// completed / in_progress 项由系统自动承接，模型若复述会被 mergeReplannedPlan 静默吞噉。
+			if builtin_tools.PlanStepStatus(strings.TrimSpace(string(item.Status))) != builtin_tools.PlanStepPending {
+				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 %q status 必须为 pending（当前 %q）", id, item.Status)
 			}
 		}
 	}

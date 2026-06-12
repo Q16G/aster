@@ -41,20 +41,27 @@
 <TASK_CONTEXT_BOARD>
 {{.TASK_CONTEXT_BOARD}}
 </TASK_CONTEXT_BOARD>
+{{- if .HAS_PLANNER_JOURNAL}}
+
+## 计划全量历史 journal（plan 真相源；jsonl 逐行 append，同 id 最后一条为最新状态；超限截断时按 PLANNER_JOURNAL_PATH 补读）
+<PLANNER_JOURNAL>
+{{.PLANNER_JOURNAL}}
+</PLANNER_JOURNAL>
+{{- end}}
 {{- if .HAS_SKILLS_TABLE}}
 
 <SKILLS_INDEX>
 {{.SKILLS_CONTEXT.Table}}
 </SKILLS_INDEX>
 {{- end}}
-{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH .PLANNER_JOURNAL_PATH}}
+{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .OPEN_ITEMS_ARCHIVE_PATH .HAS_PLANNER_JOURNAL_PATH}}
 
 ## 可按需回读的文件（受核验依据与回读预算约束）
 {{- if .STEP_TIMELINE_PATH}}
 - 当前 step timeline 事件日志（无损兜底来源，逐条工具调用事件 jsonl）：`{{.STEP_TIMELINE_PATH}}`
 {{- end}}
-{{- if .PLANNER_JOURNAL_PATH}}
-- 计划全量历史 journal（plan 真相源，jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PLANNER_JOURNAL_PATH}}`
+{{- if .HAS_PLANNER_JOURNAL_PATH}}
+- 计划全量历史 journal 文件指针（`<PLANNER_JOURNAL>` 已被超限截断，按本路径补读完整内容）：`{{.PLANNER_JOURNAL_PATH}}`
 {{- end}}
 {{- if .STEP_RESULT_PATH}}
 - 当前 step result 文件（结构化原始结果）：`{{.STEP_RESULT_PATH}}`

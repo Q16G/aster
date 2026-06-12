@@ -35,6 +35,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		StepTimelinePath:     stringFromPayload(payload, "step_timeline_path"),
 		OpenItemsArchivePath: stringFromPayload(payload, "open_items_archive_path"),
 		PlannerJournalPath:   stringFromPayload(payload, "planner_journal_path"),
+		PlannerJournal:       stringFromPayload(payload, "planner_journal"),
 		SkillsContext:        skillsCtx,
 		HasSkillsTable:       skillsCtx != nil && skillsCtx.HasTable(),
 		AvailableTools:       availableTools,
