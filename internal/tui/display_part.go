@@ -130,6 +130,7 @@ type StepReplanPart struct {
 	ShouldReplan    bool     `json:"should_replan"`
 	ReplanReason    string   `json:"replan_reason,omitempty"`
 	NextGoal        string   `json:"next_goal,omitempty"`
+	PlanSize        int      `json:"plan_size,omitempty"`
 	IncompleteItems []string `json:"incomplete_items,omitempty"`
 	NewSurfaces     []string `json:"new_surfaces,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`

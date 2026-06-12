@@ -701,12 +701,17 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		shouldReplan := payloadBool(event.Payload, "should_replan")
 		replanReason := payloadString(event.Payload, "replan_reason")
 		nextGoal := payloadString(event.Payload, "next_goal")
+		planSize := payloadInt(event.Payload, "plan_size")
 		incompleteItems := payloadStringSlice(event.Payload, "incomplete_items")
 		newSurfaces := payloadStringSlice(event.Payload, "new_surfaces")
 		warnings := payloadStringSlice(event.Payload, "warnings")
 		if isRoot {
 			if shouldReplan {
-				m.thinkingPanel.PushEntry("step_replan", "replan requested")
+				if planSize > 0 {
+					m.thinkingPanel.PushEntry("step_replan", fmt.Sprintf("replan requested → %d steps", planSize))
+				} else {
+					m.thinkingPanel.PushEntry("step_replan", "replan requested")
+				}
 			} else {
 				m.thinkingPanel.PushEntry("step_replan", "continue current plan")
 			}
@@ -718,6 +723,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			ShouldReplan:    shouldReplan,
 			ReplanReason:    replanReason,
 			NextGoal:        nextGoal,
+			PlanSize:        planSize,
 			IncompleteItems: incompleteItems,
 			NewSurfaces:     newSurfaces,
 			Warnings:        warnings,
