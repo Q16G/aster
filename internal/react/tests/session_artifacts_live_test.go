@@ -26,6 +26,9 @@ import (
 // workspace 路径固定写入 /tmp/session_artifacts_review_live（每次重跑清空），
 // 让你测试结束后还能 cd 进去看。
 func TestSessionArtifacts_LiveZenSingleStep(t *testing.T) {
+	if os.Getenv("SASTPRO_REACT_LIVE_TEST") != "1" {
+		t.Skip("live test disabled; set SASTPRO_REACT_LIVE_TEST=1 (then 也需 ZEN_LIVE_API_KEY 或 ZEN_LIVE_KEY_FILE)")
+	}
 	key := strings.TrimSpace(os.Getenv("ZEN_LIVE_API_KEY"))
 	if key == "" {
 		keyFile := strings.TrimSpace(os.Getenv("ZEN_LIVE_KEY_FILE"))
@@ -232,6 +235,9 @@ func TestSessionArtifacts_LiveZenSingleStep(t *testing.T) {
 // task_context.md 的 `## 输入事实` 节（提交计划前完成）。
 // 模型与 key 读取与 zen_cache 测试一致（ZEN_LIVE_API_KEY / ZEN_LIVE_KEY_FILE）。
 func TestSessionArtifacts_LivePlannerInputFacts(t *testing.T) {
+	if os.Getenv("SASTPRO_REACT_LIVE_TEST") != "1" {
+		t.Skip("live test disabled; set SASTPRO_REACT_LIVE_TEST=1 (then 也需 ZEN_LIVE_API_KEY 或 ZEN_LIVE_KEY_FILE)")
+	}
 	key := strings.TrimSpace(os.Getenv("ZEN_LIVE_API_KEY"))
 	if key == "" {
 		keyFile := strings.TrimSpace(os.Getenv("ZEN_LIVE_KEY_FILE"))

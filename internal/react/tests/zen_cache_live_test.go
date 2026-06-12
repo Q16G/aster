@@ -31,6 +31,9 @@ import (
 //
 // 或把 key 写入 ZEN_LIVE_KEY_FILE 指向的文件（默认 /tmp/zen_live_key）。
 func TestZenLive_PromptSplitCacheProfile(t *testing.T) {
+	if os.Getenv("SASTPRO_REACT_LIVE_TEST") != "1" {
+		t.Skip("live test disabled; set SASTPRO_REACT_LIVE_TEST=1 (then 也需 ZEN_LIVE_API_KEY 或 ZEN_LIVE_KEY_FILE)")
+	}
 	key := strings.TrimSpace(os.Getenv("ZEN_LIVE_API_KEY"))
 	if key == "" {
 		keyFile := strings.TrimSpace(os.Getenv("ZEN_LIVE_KEY_FILE"))
