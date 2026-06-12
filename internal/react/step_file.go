@@ -52,7 +52,7 @@ func stepFileScaffold(stepID, stepTitle string) string {
 	}
 	return fmt.Sprintf(`# step_%s: %s
 
-## 子步骤清单
+## 未覆盖待补（实时维护）
 
 ## 进展记录
 

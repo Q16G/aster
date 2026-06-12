@@ -34,14 +34,14 @@ func TestEnsureStepFileScaffold_CreateAndIdempotent(t *testing.T) {
 		t.Fatalf("read scaffold failed: %v", err)
 	}
 	content := string(data)
-	for _, needle := range []string{"# step_s1: 扫描目标目录", "## 子步骤清单", "## 进展记录", "## 收尾产出"} {
+	for _, needle := range []string{"# step_s1: 扫描目标目录", "## 未覆盖待补（实时维护）", "## 进展记录", "## 收尾产出"} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("scaffold missing %q, got:\n%s", needle, content)
 		}
 	}
 
 	// 已存在时不覆盖：保护 resume / replan 重入同 step 的既有进展。
-	custom := "# step_s1: 扫描目标目录\n\n## 子步骤清单\n- [x] 已完成项\n"
+	custom := "# step_s1: 扫描目标目录\n\n## 未覆盖待补（实时维护）\n- [x] 已完成项\n"
 	if err := os.WriteFile(abs, []byte(custom), 0o644); err != nil {
 		t.Fatalf("write custom content failed: %v", err)
 	}
