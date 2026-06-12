@@ -2,7 +2,11 @@ package builtin_tools_test
 
 import (
 	. "aster/internal/builtin_tools"
+	"bytes"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -98,6 +102,64 @@ func TestPlannerJournal_LoadMissingFileReturnsEmpty(t *testing.T) {
 	}
 	if items != nil || version != 0 {
 		t.Fatalf("expected empty result, got items=%v version=%d", items, version)
+	}
+}
+
+// TestPlannerJournal_SnapshotRewriteDropsOldVersionLines 断言 snapshot 语义：
+// 新 plan_version 写入后磁盘文件不应再包含旧 plan_version 的行；行数 = 最新
+// plan 全量 items 数量，每行 kind=plan。
+func TestPlannerJournal_SnapshotRewriteDropsOldVersionLines(t *testing.T) {
+	root := t.TempDir()
+
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPlan, PlanVersion: 1, Item: &PlanItem{ID: "step-1", Step: "A", Status: PlanStepPending}},
+		{Kind: PlannerJournalKindPlan, PlanVersion: 1, Item: &PlanItem{ID: "step-old", Step: "X", Status: PlanStepPending}},
+	}); err != nil {
+		t.Fatalf("append v1 failed: %v", err)
+	}
+
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPlan, PlanVersion: 2, Item: &PlanItem{ID: "step-1", Step: "A", Status: PlanStepCompleted}},
+		{Kind: PlannerJournalKindPlan, PlanVersion: 2, Item: &PlanItem{ID: "step-3", Step: "C", Status: PlanStepPending}},
+	}); err != nil {
+		t.Fatalf("append v2 failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(WorkspacePlannerJournalFileAbs(root))
+	if err != nil {
+		t.Fatalf("read planner.jsonl failed: %v", err)
+	}
+	lines := bytes.Split(bytes.TrimRight(raw, "\n"), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("expected exactly 2 lines after snapshot rewrite, got %d:\n%s", len(lines), raw)
+	}
+	if strings.Contains(string(raw), `"step-old"`) {
+		t.Fatalf("snapshot must not retain v1-only item step-old:\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"plan_version":1`) {
+		t.Fatalf("snapshot must not retain plan_version=1 lines:\n%s", raw)
+	}
+
+	for i, line := range lines {
+		var rec PlannerJournalRecord
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("line %d not valid json: %v\n%s", i, err, line)
+		}
+		if rec.Kind != PlannerJournalKindPlan {
+			t.Fatalf("line %d kind=%q, want kind=plan", i, rec.Kind)
+		}
+		if rec.PlanVersion != 2 {
+			t.Fatalf("line %d plan_version=%d, want 2", i, rec.PlanVersion)
+		}
+	}
+
+	// 重放仍得到正确的最新状态。
+	items, version, err := LoadPlannerJournal(root)
+	if err != nil {
+		t.Fatalf("reload after snapshot failed: %v", err)
+	}
+	if version != 2 || len(items) != 2 {
+		t.Fatalf("reload mismatch: version=%d items=%d", version, len(items))
 	}
 }
 
