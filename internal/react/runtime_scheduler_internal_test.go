@@ -144,6 +144,87 @@ func TestMergeReplannedPlan_NoDepsStepsAlwaysRunnable(t *testing.T) {
 	t.Logf("confirmed: pending steps without depends_on are always runnable — scheduler would NOT skip them")
 }
 
+// TestMergeReplannedPlan_PreservesFailed 校验 failed 项（含其烘焙字段）经 merge 后仍保留：
+// 失败步骤的执行痕迹（step_file / timeline_file / references）不能在重编排后静默丢失，
+// 且后续 pending 若用相同 id 引用 failed 作为依赖锚点不会被 NormalizePlanItems 判为未知。
+func TestMergeReplannedPlan_PreservesFailed(t *testing.T) {
+	prev := []*builtin_tools.PlanItem{
+		{ID: "recon", Step: "侦察", Status: builtin_tools.PlanStepCompleted},
+		{
+			ID:           "exploit",
+			Step:         "尝试漏洞利用",
+			Status:       builtin_tools.PlanStepFailed,
+			ShortSummary: "目标不可达",
+			KeyFacts:     []string{"目标 IP 无响应"},
+			StepFile:     "shared/step_exploit.md",
+			TimelineFile: "shared/exploit/timeline.jsonl",
+			References:   []string{"shared/exploit/result.json"},
+		},
+	}
+	next := []*builtin_tools.PlanItem{
+		{ID: "report", Step: "汇总报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"recon", "exploit"}},
+	}
+
+	merged := mergeReplannedPlan(prev, next)
+
+	var failedItem *builtin_tools.PlanItem
+	for _, item := range merged {
+		if item.ID == "exploit" {
+			failedItem = item
+			break
+		}
+	}
+	if failedItem == nil {
+		t.Fatalf("failed step 'exploit' should be preserved in merged plan, got %v", planIDs(merged))
+	}
+	if failedItem.Status != builtin_tools.PlanStepFailed {
+		t.Fatalf("expected status=failed, got %q", failedItem.Status)
+	}
+	if failedItem.StepFile == "" || failedItem.TimelineFile == "" || len(failedItem.References) == 0 {
+		t.Fatalf("baked fields lost on failed item: %+v", failedItem)
+	}
+
+	if _, err := builtin_tools.NormalizePlanItems(merged, true); err != nil {
+		t.Fatalf("NormalizePlanItems should accept plan with failed dep 'exploit', got: %v", err)
+	}
+}
+
+// TestMergeReplannedPlan_PreservesSkipped 校验 PropagateSkippedPlanSteps 产出的 skipped 项
+// 经 merge 后仍保留，后续 pending 可合法依赖该 skipped id。
+func TestMergeReplannedPlan_PreservesSkipped(t *testing.T) {
+	prev := []*builtin_tools.PlanItem{
+		{ID: "auth", Step: "认证测试", Status: builtin_tools.PlanStepCompleted},
+		{ID: "perm", Step: "越权测试", Status: builtin_tools.PlanStepSkipped, DependsOn: []string{"auth"}},
+	}
+	next := []*builtin_tools.PlanItem{
+		{ID: "report", Step: "总结发现", Status: builtin_tools.PlanStepPending, DependsOn: []string{"auth", "perm"}},
+	}
+
+	merged := mergeReplannedPlan(prev, next)
+
+	found := false
+	for _, item := range merged {
+		if item.ID == "perm" && item.Status == builtin_tools.PlanStepSkipped {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("skipped step 'perm' should be preserved, got plan %v", planIDs(merged))
+	}
+
+	if _, err := builtin_tools.NormalizePlanItems(merged, true); err != nil {
+		t.Fatalf("NormalizePlanItems should accept plan with skipped dep 'perm', got: %v", err)
+	}
+}
+
+func planIDs(items []*builtin_tools.PlanItem) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.ID)
+	}
+	return out
+}
+
 func TestMergeReplannedPlan_ValidDependencyChain(t *testing.T) {
 	prev := []*builtin_tools.PlanItem{
 		{ID: "recon", Step: "基础侦察", Status: builtin_tools.PlanStepCompleted},

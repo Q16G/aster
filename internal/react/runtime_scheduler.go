@@ -885,7 +885,11 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 	preserved := make(map[string]struct{}, len(prev))
 	preservedText := make(map[string]struct{}, len(prev))
 	for _, item := range prev {
-		if item == nil || (item.Status != builtin_tools.PlanStepCompleted && item.Status != builtin_tools.PlanStepInProgress) {
+		// 所有 non-pending 项（completed / in_progress / failed / skipped）保留为依赖锚点
+		// 与烘焙载体；pending 由 next 完整替换。失败 / 跳过项一并保留可避免：
+		// ①烘焙字段（step_file / timeline_file / coverage_file / references）丢失；
+		// ②planner.jsonl 全量重写后历史痕迹消失；③模型新 plan 用同 id 复活但 BakeOutcome 清零。
+		if item == nil || item.Status == builtin_tools.PlanStepPending {
 			continue
 		}
 		// 完整浅拷贝 + 切片字段克隆，保留 BakeOutcome 写回的烘焙字段（short_summary /
