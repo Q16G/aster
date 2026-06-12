@@ -31,7 +31,7 @@ func (t *SubAgentTool) Name() string  { return builtin_tools.SubAgentToolName }
 func (t *SubAgentTool) IsAgent() bool { return true }
 
 func (t *SubAgentTool) Description() string {
-	return "派生一个子 Agent 独立执行委派任务。遇到相互独立、可并行、专业性强或耗时较长的子任务时，应优先考虑委派给 sub_agent，而不是全部自己串行完成。"
+	return "派生子 Agent 独立执行任务。当前阶段需处理同手段/同产物口径独立可验收的子任务集（已落清单）时是默认动作；自己串行处理是反模式。"
 }
 
 func (t *SubAgentTool) Parameters() any {
@@ -53,7 +53,7 @@ func (t *SubAgentTool) Parameters() any {
 			},
 			"run_in_background": map[string]any{
 				"type":        "boolean",
-				"description": "可选：异步执行子 Agent，立即返回 agent_id。适合长耗时或可并行子任务。完成后结果会自动推送到上下文；启动后调用 await_subagents 让出执行权等待完成，不要紧密轮询 sub_agent_status。",
+				"description": "可选：异步执行子 Agent，立即返回 agent_id。完成后结果会自动推送到上下文。",
 			},
 		},
 		"required":             []string{"instruction"},
