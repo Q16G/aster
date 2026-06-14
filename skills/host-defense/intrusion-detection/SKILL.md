@@ -1,7 +1,6 @@
 ---
 name: intrusion-detection
 description: 入侵检测分析 — 日志分析与异常行为识别
-tags: host-defense,ids,log-analysis,forensics
 when-to-use: 当怀疑主机被入侵、需要分析日志和异常行为时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true

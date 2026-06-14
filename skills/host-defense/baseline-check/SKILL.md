@@ -1,7 +1,6 @@
 ---
 name: baseline-check
 description: 安全基线检查 — 主机安全配置审计（CIS Benchmark）
-tags: host-defense,baseline,hardening,cis
 when-to-use: 当需要检查主机安全配置是否符合安全基线标准时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true

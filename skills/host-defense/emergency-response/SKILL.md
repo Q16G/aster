@@ -1,7 +1,6 @@
 ---
 name: emergency-response
 description: 应急响应工作流 — 安全事件处置与取证
-tags: host-defense,incident-response,forensics
 when-to-use: 当发生安全事件需要紧急响应、取证分析和处置时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true
