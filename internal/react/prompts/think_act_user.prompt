@@ -14,6 +14,12 @@
 {{- if .STEP_FILE_PATH}}
 本 step 过程文件（已预置骨架，按系统 prompt 契约每轮维护）：`{{.STEP_FILE_PATH}}`
 {{- end}}
+{{- if .TASK_CONTEXT_PATH}}
+事实板（已预置骨架，按系统 prompt 共享区维护契约即时维护 `## 执行中补充`）：`{{.TASK_CONTEXT_PATH}}`
+{{- end}}
+{{- if .OPEN_ITEMS_LEDGER_PATH}}
+未闭环账本（已预置骨架，单文件三区，step 执行期你是唯一写者，按系统 prompt 共享区维护契约即时维护；解决一项立即把 OI-id + 闭环证据指针就地迁入 `## 已闭环`）：`{{.OPEN_ITEMS_LEDGER_PATH}}`
+{{- end}}
 {{- if .HAS_DEPENDENCY_PLAN_ITEMS}}
 前置依赖步骤的产出卡片（内联小字段 + 文件指针；需要细节时顺 `step_file` / `result_file` / `timeline_file` 指针取全文，timeline 是逐条工具调用事件的无损日志）：
 <DEPENDENCY_PLAN_ITEMS>
