@@ -89,12 +89,12 @@ func (a *Agent) reduceStepOutcomesIfNeeded(ctx context.Context, client ai.ChatCl
 	reducedJSON, _ := json.Marshal(result)
 	reducedTokens := countTokens(string(reducedJSON))
 	runtimelog.LogJSON("info", map[string]any{
-		"event":          "step_outcomes_reducer_completed",
-		"before_tokens":  totalTokens,
-		"after_tokens":   reducedTokens,
-		"before_steps":   len(outcomes),
-		"after_steps":    len(result),
-		"reduced_steps":  len(reduced),
+		"event":           "step_outcomes_reducer_completed",
+		"before_tokens":   totalTokens,
+		"after_tokens":    reducedTokens,
+		"before_steps":    len(outcomes),
+		"after_steps":     len(result),
+		"reduced_steps":   len(reduced),
 		"protected_steps": len(toKeep),
 	})
 

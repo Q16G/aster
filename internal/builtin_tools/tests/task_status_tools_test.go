@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -393,5 +394,50 @@ func TestUpdateCurrentStepNoCheckerAllowsCompleted(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("nil checker should not block, got: %v", err)
+	}
+}
+
+func TestUpdateCurrentStepBlockedByStepFileChecker(t *testing.T) {
+	ctx := newFakeToolContext()
+	ctx.snapshot.Plan = []*PlanItem{
+		{ID: "s1", Step: "侦察目标", Status: PlanStepInProgress},
+	}
+	ctx.snapshot.CurrentStepID = "s1"
+
+	tool := NewUpdateCurrentStepTool(ctx)
+	var checkedStepID string
+	tool.StepFileChecker = func(stepID string) error {
+		checkedStepID = stepID
+		return fmt.Errorf("step 过程文件为空，请补写后再提交")
+	}
+
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"status":         "completed",
+		"status_summary": "done",
+		"short_summary":  "done",
+		"long_summary":   "done",
+		"key_facts":      []any{},
+	})
+	if err == nil {
+		t.Fatal("expected error when step file checker rejects")
+	}
+	if checkedStepID != "s1" {
+		t.Fatalf("expected checker called with step id s1, got %q", checkedStepID)
+	}
+
+	// failed 提交不经过 StepFileChecker。
+	checkedStepID = ""
+	if _, err := tool.Execute(context.Background(), map[string]any{
+		"status":         "failed",
+		"error":          "blocked",
+		"status_summary": "failed",
+		"short_summary":  "failed",
+		"long_summary":   "failed",
+		"key_facts":      []any{},
+	}); err != nil {
+		t.Fatalf("failed submission must bypass step file checker, got: %v", err)
+	}
+	if checkedStepID != "" {
+		t.Fatalf("step file checker must not run for failed status, called with %q", checkedStepID)
 	}
 }

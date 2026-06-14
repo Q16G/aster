@@ -11,6 +11,7 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/runtimelog"
 )
 
 type stepReplanModelOutput struct {
@@ -73,6 +74,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// "never trigger". We intentionally trade cost for correctness here.
 
 	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
+	// 覆盖清单超阈值时落盘并以指针入卡（persistCoverageChecklist 幂等，烘焙路径的同名调用不冲突）。
+	stepCoveragePath := ""
+	if rel := a.persistCoverageChecklist(stepID, rawOutcome); rel != "" {
+		stepCoveragePath = filepath.Join(a.workspaceRootDir, rel)
+	}
 	stepContextsPath := a.resolveStepContextsPath()
 	stepTranscriptPath := ""
 	if ref := strings.TrimSpace(a.lastStepTranscriptBlobRef); ref != "" && a.v2Store != nil {
@@ -82,9 +88,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if stepTimelineExists(workspaceSharedDir, stepID) {
 		stepTimelinePath = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
 	}
-	archivePath := ""
+	openItemsPath := ""
+	taskContextPath := ""
 	if workspaceSharedDir != "" {
-		archivePath = filepath.Join(workspaceSharedDir, openItemsArchiveFileName)
+		openItemsPath = filepath.Join(workspaceSharedDir, openItemsFileName)
+		taskContextPath = filepath.Join(workspaceSharedDir, taskContextFileName)
 	}
 	plannerJournal := readPlannerJournalForPrompt(a.workspaceRootDir, sharedFileLimitBytes(a.contextWindowTokens))
 	// 仅在内联 journal 触发截断时注入路径指针——未截断时模型已看到全文，路径行属冗余 token。
@@ -99,23 +107,25 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":            snapshot.CurrentGoal,
-		"goal_understanding":      snapshot.GoalUnderstanding,
-		"input_timeline":          snapshot.InputTimeline,
-		"current_step_card":       buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath),
-		"plan_overview":           ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
-		"planner_journal_path":    plannerJournalPath,
-		"planner_journal":         plannerJournal,
-		"open_items_ledger":       readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"task_context_board":      readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
-		"step_result_path":        stepResultPath,
-		"step_contexts_path":      stepContextsPath,
-		"step_transcript_path":    stepTranscriptPath,
-		"step_timeline_path":      stepTimelinePath,
-		"open_items_archive_path": archivePath,
-		"skills_context":          skillsCtx,
-		"available_tools":         functionToolsToAvailableInfo(fnTools),
+		"current_goal":         snapshot.CurrentGoal,
+		"goal_understanding":   snapshot.GoalUnderstanding,
+		"input_timeline":       snapshot.InputTimeline,
+		"current_step_card":    buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath, stepCoveragePath),
+		"plan_overview":        ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path": plannerJournalPath,
+		"planner_journal":      plannerJournal,
+		"open_items_ledger":    readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"task_context_board":   readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"step_file_content":    readSharedStepFileForPrompt(workspaceSharedDir, stepID),
+		"step_result_path":     stepResultPath,
+		"step_contexts_path":   stepContextsPath,
+		"step_transcript_path": stepTranscriptPath,
+		"step_timeline_path":   stepTimelinePath,
+		"open_items_path":      openItemsPath,
+		"task_context_path":    taskContextPath,
+		"step_file_path":       stepFileAbs(workspaceSharedDir, stepID),
+		"skills_context":       skillsCtx,
+		"available_tools":      functionToolsToAvailableInfo(fnTools),
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
@@ -138,7 +148,13 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		}
 
 		// Replan 允许空响应：语义为"不需要重规划"，默认继续当前计划。
+		// 记 warning 便于观测「replan 零核验零落盘静默通过」的频率。
 		if len(callResult.ToolCalls) == 0 {
+			a.emitRuntimeLog("warning", "step replan returned no tool calls; treated as no-replan", snapshot, map[string]any{
+				"event":        "step_replan_text_fallback",
+				"step_id":      stepID,
+				"content_size": len(strings.TrimSpace(callResult.AssistantText)),
+			})
 			return a.applyReplanResult(stepID, nil, nil, nil, snapshot, "")
 		}
 
@@ -554,9 +570,10 @@ type replanStepCard struct {
 	Error             string                                `json:"error,omitempty"`
 	ResultFile        string                                `json:"result_file,omitempty"`
 	TimelineFile      string                                `json:"timeline_file,omitempty"`
+	CoverageFile      string                                `json:"coverage_file,omitempty"`
 }
 
-func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, sharedDir, resultPath string) *replanStepCard {
+func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, sharedDir, resultPath, coveragePath string) *replanStepCard {
 	if current == nil || outcome == nil {
 		return nil
 	}
@@ -573,6 +590,11 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 		References:        outcome.References,
 		Error:             strings.TrimSpace(outcome.Error),
 		ResultFile:        strings.TrimSpace(resultPath),
+		CoverageFile:      strings.TrimSpace(coveragePath),
+	}
+	// 清单已落盘指针化时内联只截留前 N 条，完整清单顺 coverage_file 回读。
+	if card.CoverageFile != "" && len(card.CoverageChecklist) > coverageChecklistInlineMaxItems {
+		card.CoverageChecklist = card.CoverageChecklist[:coverageChecklistInlineMaxItems]
 	}
 	if stepTimelineExists(sharedDir, card.ID) {
 		card.TimelineFile = filepath.Join(sharedDir, card.ID, "timeline.jsonl")
@@ -586,9 +608,9 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 //
 // contextWindowTokens <= 0 时用默认上限 defaultContextWindowTokens。
 func sharedFileLimitBytes(contextWindowTokens int) int {
-	const hardLimitBytes = 20 * 1024                  // 20 KB
-	const dynamicRatio = 0.40                         // 40% 上下文
-	const bytesPerToken = defaultCharsPerToken        // 4 bytes/token（保守估算）
+	const hardLimitBytes = 20 * 1024           // 20 KB
+	const dynamicRatio = 0.40                  // 40% 上下文
+	const bytesPerToken = defaultCharsPerToken // 4 bytes/token（保守估算）
 	cw := contextWindowTokens
 	if cw <= 0 {
 		cw = defaultContextWindowTokens
@@ -681,6 +703,37 @@ func formatBytes(n int) string {
 	return fmt.Sprintf("%d B", n)
 }
 
+// taskContextSkeleton 是 planner 冷启时 task_context.md 的初始骨架——仅含两节空标题
+// （`## 输入事实` / `## 执行中补充`），为 LLM 提供入板锚点。骨架本身视作零内容快照，
+// 不写入任何具体值（包括路径、技术栈、凭据等），符合 prompt_validate.md 第 6 条；
+// 完整的"提交前须成立"终态由 planner 在提交计划前补齐。
+const taskContextSkeleton = "## 输入事实\n\n## 执行中补充\n"
+
+// ensureTaskContextSkeleton 在顶层 planner 首次进入时确保 task_context.md 存在。
+// 文件已存在则不动；不存在则写入两节空标题骨架，避免冷启时 LLM 收到完全空白的
+// 事实板上下文、无现成结构可参照。任何 IO 错误仅记录 warn，不阻塞规划流程。
+func (a *Agent) ensureTaskContextSkeleton() {
+	if a == nil || a.workspaceRuntime == nil {
+		return
+	}
+	sharedDir := a.workspaceRuntime.SharedDir()
+	if strings.TrimSpace(sharedDir) == "" {
+		return
+	}
+	absPath := filepath.Join(sharedDir, taskContextFileName)
+	if _, err := os.Stat(absPath); err == nil {
+		return
+	}
+	relPath := filepath.ToSlash(filepath.Join("shared", taskContextFileName))
+	if err := a.workspaceRuntime.WriteFileRel(relPath, []byte(taskContextSkeleton)); err != nil {
+		runtimelog.LogJSON("warning", map[string]any{
+			"event": "task_context_skeleton_write_failed",
+			"path":  absPath,
+			"error": err.Error(),
+		})
+	}
+}
+
 // readSharedFileOptional 与 readSharedFileForPrompt 同源读取共享区文件，但所有"无内容"分支
 // （sharedDir 为空 / 文件不存在 / 文件为空）一律返回 ""，让外层的 `HAS_XXX` gate（基于
 // strings.TrimSpace != ""）正确判定"是否注入"。
@@ -757,7 +810,7 @@ func submitReplanPlanItemSchema() map[string]any {
 		"required": []string{"id", "step", "status", "depends_on"},
 		"properties": map[string]any{
 			"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-			"step": map[string]any{"type": "string", "description": "步骤描述，不得为空；可引用 OI-id 与已确认事实值。"},
+			"step": map[string]any{"type": "string", "description": "一条 step 是一个可独立验收的成果单元，标记完成时只声明一件被验证达成的事；一条描述若声明了多件各自可独立验收、各自可独立失败的事，按每件成果拆成多条 step。粒度上限：一条 step 约 3 次工具调用完成、>5 必拆；step 文案出现\"并且/同时/+/以及\"等并列连接，或试图合并多个独立检查类目（如同时涉及 XSS、SSRF、CORS 等不同类目）→ 视为粒度过大必须拆分；同一动作作用于多个对象按对象逐条拆，不在一条内列清单。不得为空，可引用 OI-id 与已确认事实值。"},
 			"status": map[string]any{
 				"type":        "string",
 				"enum":        []string{"pending"},

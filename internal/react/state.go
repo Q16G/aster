@@ -915,13 +915,13 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 	}
 
 	t.state.StepOutcomes = append(t.state.StepOutcomes, &builtin_tools.StepOutcome{
-		StepID:          stepID,
-		Status:          status,
-		Summary:         update.Summary,
-		DisplayResult:   update.DisplayResult,
-		Result:          update.Result,
-		Error:           update.Error,
-		References:      update.References,
+		StepID:            stepID,
+		Status:            status,
+		Summary:           update.Summary,
+		DisplayResult:     update.DisplayResult,
+		Result:            update.Result,
+		Error:             update.Error,
+		References:        update.References,
 		StatusSummary:     update.StatusSummary,
 		ShortSummary:      update.ShortSummary,
 		LongSummary:       update.LongSummary,

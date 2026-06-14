@@ -57,4 +57,3 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	_ = fsyncDir(dir)
 	return nil
 }
-

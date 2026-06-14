@@ -7,17 +7,17 @@ import (
 // AgentDefinition is the declarative specification for an Agent.
 // Different agents are expressed as different definitions, not different runtimes.
 type AgentDefinition struct {
-	Name            string
-	Role            string
-	Background      string
-	Instruction     string
-	ModelID         string
-	ToolNames       []string
-	SkillNames      []string
-	PreloadSkills   []string
-	MCPServers      []*mcp.MCPServerConfig
-	Policies        AgentPolicies
-	Context         []TaskContextEntry
+	Name          string
+	Role          string
+	Background    string
+	Instruction   string
+	ModelID       string
+	ToolNames     []string
+	SkillNames    []string
+	PreloadSkills []string
+	MCPServers    []*mcp.MCPServerConfig
+	Policies      AgentPolicies
+	Context       []TaskContextEntry
 	// IsSubAgent marks a definition built for a depth>0 child agent. Sub-agents
 	// must not register or expose the orchestration tools (sub_agent /
 	// sub_agent_status / await_subagents).

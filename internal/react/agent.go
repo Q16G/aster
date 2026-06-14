@@ -67,14 +67,17 @@ type Agent struct {
 	frozenStepParts        *PromptParts
 	frozenStepPartsStepID  string
 	frozenStepPartsPlanVer int
-	currentResultSource ResultSource
-	workspaceRuntime    builtin_tools.WorkspaceRuntime
-	runClientMu         sync.RWMutex
-	currentRunClientVal ai.ChatClient
-	finishMu            sync.Mutex
-	finishHooks         []func()
-	historyHookMu       sync.RWMutex
-	historyChangeHook   func(change *HistoryChange)
+	currentResultSource    ResultSource
+	workspaceRuntime       builtin_tools.WorkspaceRuntime
+	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
+	stepFileGateMu         sync.Mutex
+	stepFileGateRejections map[string]int
+	runClientMu            sync.RWMutex
+	currentRunClientVal    ai.ChatClient
+	finishMu               sync.Mutex
+	finishHooks            []func()
+	historyHookMu          sync.RWMutex
+	historyChangeHook      func(change *HistoryChange)
 
 	asyncRegistry *AsyncAgentRegistry
 
@@ -182,6 +185,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	// 平台级内置工具：状态回写、任务状态查询所有 Agent 共享；human_confirm 仅顶层注册（见下）。
 	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
 	ucsTool.ChildAgentChecker = agent.runningChildAgentNames
+	ucsTool.StepFileChecker = agent.checkStepFileProgress
 	if err := agent.registerTool(ucsTool); err != nil {
 		return nil, err
 	}

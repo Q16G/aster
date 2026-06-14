@@ -1,6 +1,7 @@
 package react
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,5 +82,38 @@ func TestProjectPlanItemCardsSlim_DropsDigestKeepsPointers(t *testing.T) {
 	full := ProjectPlanItemCards(plan, "/ws")
 	if len(full[0].ToolCallsDigest) != 1 {
 		t.Fatalf("full card must keep tool_calls_digest, got %+v", full[0].ToolCallsDigest)
+	}
+}
+
+func TestBuildReplanStepCard_CoveragePointerTruncatesInline(t *testing.T) {
+	items := make([]builtin_tools.CoverageChecklistItem, coverageChecklistInlineMaxItems+10)
+	for i := range items {
+		items[i] = builtin_tools.CoverageChecklistItem{
+			Item:   fmt.Sprintf("item-%d", i),
+			Status: "verified",
+		}
+	}
+	current := &builtin_tools.PlanItem{ID: "s1", Step: "覆盖测试"}
+	outcome := &builtin_tools.StepOutcome{
+		Status:            builtin_tools.StepOutcomeCompleted,
+		CoverageChecklist: items,
+	}
+
+	// 有指针：内联截留前 N 条。
+	card := buildReplanStepCard(current, outcome, "", "", "/ws/shared/s1/coverage.json")
+	if card.CoverageFile != "/ws/shared/s1/coverage.json" {
+		t.Fatalf("unexpected coverage file: %q", card.CoverageFile)
+	}
+	if len(card.CoverageChecklist) != coverageChecklistInlineMaxItems {
+		t.Fatalf("expected inline truncated to %d, got %d", coverageChecklistInlineMaxItems, len(card.CoverageChecklist))
+	}
+
+	// 无指针：原样内联，不截断。
+	card = buildReplanStepCard(current, outcome, "", "", "")
+	if card.CoverageFile != "" {
+		t.Fatalf("expected empty coverage file, got %q", card.CoverageFile)
+	}
+	if len(card.CoverageChecklist) != coverageChecklistInlineMaxItems+10 {
+		t.Fatalf("expected full inline checklist, got %d", len(card.CoverageChecklist))
 	}
 }

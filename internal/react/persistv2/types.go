@@ -123,9 +123,9 @@ type Snapshot struct {
 }
 
 type FinalOutput struct {
-	TurnID          string `json:"turn_id,omitempty"`
-	Status          string `json:"status,omitempty"`
-	Content         string `json:"content,omitempty"`
-	BlobRef         string `json:"blob_ref,omitempty"`
-	UpdatedAt       int64  `json:"updated_at,omitempty"`
+	TurnID    string `json:"turn_id,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Content   string `json:"content,omitempty"`
+	BlobRef   string `json:"blob_ref,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
 }

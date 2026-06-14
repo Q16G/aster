@@ -14,13 +14,13 @@ import (
 // emptyRetryClient returns empty responses for the first emptyCount calls,
 // then returns a response with the given content or tool calls.
 type emptyRetryClient struct {
-	emptyCount   int
-	callCount    atomic.Int32
-	content      string
-	toolCalls    []*ai.FunctionTool
-	returnErr    error
-	returnNil    bool // return nil choices
-	summaryText  string
+	emptyCount  int
+	callCount   atomic.Int32
+	content     string
+	toolCalls   []*ai.FunctionTool
+	returnErr   error
+	returnNil   bool // return nil choices
+	summaryText string
 }
 
 func (c *emptyRetryClient) Chat(_ context.Context, _ *ai.MsgInfo, _ ...*ai.FunctionTool) (string, error) {

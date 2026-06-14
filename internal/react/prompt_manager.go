@@ -18,7 +18,14 @@ type ThinkActPromptInput struct {
 	DependencyPlanItems any
 	// CurrentStepFilePath 是 runtime 预创建的 step 过程文件绝对路径
 	//（shared/step_<step_id>.md），step 内恒定，随首条 user message 冻结。
-	CurrentStepFilePath    string
+	CurrentStepFilePath string
+	// OpenItemsLedgerPath / TaskContextPath 是共享区账本（单文件三区）、事实板文件绝对路径
+	//（workspace_runtime.EnsureSharedScaffold 已预置骨架）；think_act 按 system prompt 共享区
+	// 维护契约即时维护账本、按"解决即归档"持续不变量在 step 执行中把闭环项就地迁入 `## 已闭环`、
+	// 并把高利用价值具体值按入板闸门补入事实板 `## 执行中补充`，与 step_replan 的账本/事实板
+	// 维护构成"边执行边归档 + 收尾复核"双写双校。
+	OpenItemsLedgerPath    string
+	TaskContextPath        string
 	HasCurrentStep         bool
 	HasDependencyPlanItems bool
 	HasSkillsTable         bool
@@ -40,24 +47,31 @@ type AvailableToolInfo struct {
 }
 
 type StepReplanPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
+	AgentRole       string
+	AgentBackground string
+	// IsSubAgent 与 task_planner 同语义：标记本回合发生在子 Agent 内部，
+	// 用于让共享 planning_system.prompt 的子 Agent 守卫一致渲染。
+	IsSubAgent        bool
 	CurrentGoal       any
 	GoalUnderstanding string
 	InputTimeline     any
 	// CurrentStepCard 是当前 step 产出的 plan_item 卡片投影（替代旧 STEP_OUTCOME/
 	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 slim 全量卡片（去 digest，
 	// 含产出小字段与文件指针）。账本与事实板全文默认注入（设计 3.1）。
-	CurrentStepCard      any
-	PlanOverview         any
-	OpenItemsLedger      string
-	TaskContextBoard     string
-	StepFileContent      string
-	StepResultPath       string
-	StepContextsPath     string
-	StepTranscriptPath   string
-	StepTimelinePath     string
-	OpenItemsArchivePath string
+	CurrentStepCard    any
+	PlanOverview       any
+	OpenItemsLedger    string
+	TaskContextBoard   string
+	StepFileContent    string
+	StepResultPath     string
+	StepContextsPath   string
+	StepTranscriptPath string
+	StepTimelinePath   string
+	// OpenItemsPath / TaskContextPath / StepFilePath 是本相位直接维护的三个共享区
+	// 文件绝对路径（账本单文件三区 / 事实板 / step 过程文件），供落盘补正直接寻址。
+	OpenItemsPath   string
+	TaskContextPath string
+	StepFilePath    string
 	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
 	// 文件存在才注入；与 PlannerJournal 全文并存，作为超限截断兜底入口。
 	PlannerJournalPath string
@@ -122,9 +136,22 @@ type TaskPlannerPromptInput struct {
 	Input             string
 	GoalUnderstanding string
 	UserInputTurn     bool
+	// IsSubAgent 标记本 planner 回合发生在子 Agent 内部；用于让模板对子 Agent
+	// 关闭"顶层 planner 维护事实板终态"的契约段（子 Agent 工作区不承担顶层
+	// 事实板维护责任，避免被强制注入）。
+	IsSubAgent bool
+	// CanSpawnSubAgent 控制 planner 阶段 sub_agent 委派条款的渲染——顶层
+	// planner 允许委派调研深化子 Agent，子 Agent 与平台未开放委派时为 false。
+	CanSpawnSubAgent bool
 	// TaskContextBoard 为共享区事实板（task_context.md）当前快照，
 	// 仅 UserInputTurn=true 时注入，供 planner 对照当前输入做校正。
 	TaskContextBoard string
+	// TaskContextPath / OpenItemsLedgerPath 是共享区事实板、账本（单文件三区）文件绝对路径
+	//（workspace_runtime.EnsureSharedScaffold 已预置骨架）；planning_system.prompt 的
+	// "共享区直接维护文件"段据此渲染绝对路径锚点，让 planner 在 submit_plan 前的"输入事实"
+	// 落盘、维护账本至终态时直接寻址，不再靠 WORKSPACE_SHARED_DIR + 文件名拼装。
+	TaskContextPath     string
+	OpenItemsLedgerPath string
 	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
 	// 模板据此渲染重规划编排段。
 	HasReplanContext   bool
@@ -300,6 +327,8 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"SKILLS_CONTEXT":            input.SkillsContext,
 		"CURRENT_STEP":              prettyJSON(input.CurrentStep),
 		"STEP_FILE_PATH":            strings.TrimSpace(input.CurrentStepFilePath),
+		"OPEN_ITEMS_LEDGER_PATH":    strings.TrimSpace(input.OpenItemsLedgerPath),
+		"TASK_CONTEXT_PATH":         strings.TrimSpace(input.TaskContextPath),
 		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
 		"HAS_CURRENT_STEP":          input.HasCurrentStep,
 		"HAS_DEPENDENCY_PLAN_ITEMS": input.HasDependencyPlanItems,
@@ -322,31 +351,37 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
 		"IS_REPLAN_PHASE":      true,
+		"IS_SUB_AGENT":         input.IsSubAgent,
+		"CAN_SPAWN_SUBAGENT":   false,
+		// 共享区直接维护文件的绝对路径下沉到 system 模板，承担"哪个文件由本相位
+		// 直接落盘"的稳定契约——user 模板里的同名条目已删除（见 step_replan_user.prompt）。
+		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsPath),
+		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
+		"STEP_FILE_PATH":    strings.TrimSpace(input.StepFilePath),
 	}
 	userData := map[string]any{
-		"CURRENT_GOAL":            fmt.Sprint(input.CurrentGoal),
-		"GOAL_UNDERSTANDING":      strings.TrimSpace(input.GoalUnderstanding),
-		"HAS_GOAL_UNDERSTANDING":  strings.TrimSpace(input.GoalUnderstanding) != "",
-		"INPUT_TIMELINE":          prettyJSON(input.InputTimeline),
-		"CURRENT_STEP_CARD":       prettyJSON(input.CurrentStepCard),
-		"PLAN_OVERVIEW":           prettyJSON(input.PlanOverview),
-		"OPEN_ITEMS_LEDGER":       strings.TrimSpace(input.OpenItemsLedger),
-		"TASK_CONTEXT_BOARD":      strings.TrimSpace(input.TaskContextBoard),
-		"STEP_FILE_CONTENT":       strings.TrimSpace(input.StepFileContent),
-		"HAS_STEP_FILE_CONTENT":   strings.TrimSpace(input.StepFileContent) != "",
-		"STEP_RESULT_PATH":        input.StepResultPath,
-		"STEP_CONTEXTS_PATH":      input.StepContextsPath,
-		"STEP_TRANSCRIPT_PATH":    input.StepTranscriptPath,
-		"STEP_TIMELINE_PATH":      input.StepTimelinePath,
-		"OPEN_ITEMS_ARCHIVE_PATH":  input.OpenItemsArchivePath,
+		"CURRENT_GOAL":             fmt.Sprint(input.CurrentGoal),
+		"GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding),
+		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
+		"INPUT_TIMELINE":           prettyJSON(input.InputTimeline),
+		"CURRENT_STEP_CARD":        prettyJSON(input.CurrentStepCard),
+		"PLAN_OVERVIEW":            prettyJSON(input.PlanOverview),
+		"OPEN_ITEMS_LEDGER":        strings.TrimSpace(input.OpenItemsLedger),
+		"TASK_CONTEXT_BOARD":       strings.TrimSpace(input.TaskContextBoard),
+		"STEP_FILE_CONTENT":        strings.TrimSpace(input.StepFileContent),
+		"HAS_STEP_FILE_CONTENT":    strings.TrimSpace(input.StepFileContent) != "",
+		"STEP_RESULT_PATH":         input.StepResultPath,
+		"STEP_CONTEXTS_PATH":       input.StepContextsPath,
+		"STEP_TRANSCRIPT_PATH":     input.StepTranscriptPath,
+		"STEP_TIMELINE_PATH":       input.StepTimelinePath,
 		"PLANNER_JOURNAL_PATH":     input.PlannerJournalPath,
 		"HAS_PLANNER_JOURNAL_PATH": strings.TrimSpace(input.PlannerJournalPath) != "",
 		"PLANNER_JOURNAL":          strings.TrimSpace(input.PlannerJournal),
 		"HAS_PLANNER_JOURNAL":      strings.TrimSpace(input.PlannerJournal) != "",
-		"SKILLS_CONTEXT":          input.SkillsContext,
-		"HAS_SKILLS_TABLE":        input.HasSkillsTable,
-		"AVAILABLE_TOOLS":         input.AvailableTools,
-		"HAS_AVAILABLE_TOOLS":     input.HasAvailableTools,
+		"SKILLS_CONTEXT":           input.SkillsContext,
+		"HAS_SKILLS_TABLE":         input.HasSkillsTable,
+		"AVAILABLE_TOOLS":          input.AvailableTools,
+		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools,
 	}
 	return renderPromptParts("step_replan", m.planningSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
 }
@@ -385,8 +420,15 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
 		"IS_REPLAN_PHASE":      false,
+		"IS_SUB_AGENT":         input.IsSubAgent,
+		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 		"USER_INPUT_TURN":      input.UserInputTurn,
 		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
+		// 共享区直接维护文件的绝对路径下沉到 system 模板（与 step_replan 相位共享同一段）。
+		// plan 相位主要维护 task_context.md 的 `## 输入事实` 和（regen 期间）账本三区。
+		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),
+		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
+		"STEP_FILE_PATH":    "",
 	}
 	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),

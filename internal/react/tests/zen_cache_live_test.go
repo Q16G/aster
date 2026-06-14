@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	. "aster/internal/react"
 	"aster/internal/ai/openai"
 	"aster/internal/builtin_tools"
+	. "aster/internal/react"
 )
 
 // TestZenLive_PromptSplitCacheProfile 用真实 LLM（opencode zen，OpenAI 请求风格）

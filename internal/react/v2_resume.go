@@ -163,4 +163,3 @@ func (a *Agent) softResetWithContext(ctx context.Context, client ai.ChatClient, 
 		}
 	}
 }
-

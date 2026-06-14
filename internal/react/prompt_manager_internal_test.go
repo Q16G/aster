@@ -81,8 +81,8 @@ func TestPromptManager_ThinkActTaskContextFileGate(t *testing.T) {
 			t.Fatalf("think_act should render checklist contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// 边完成边归档（持续不变量）+ 共享区禁 emoji。
-	for _, needle := range []string{"解决即归档", "立即迁入归档", "禁止 emoji"} {
+	// 边完成边归档（持续不变量，就地迁入本账本 `## 已闭环`）+ 共享区禁 emoji。
+	for _, needle := range []string{"解决即归档", "就地迁入本账本", "## 已闭环", "禁止 emoji"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("think_act must render incremental archive + emoji ban (missing %q), got:\n%s", needle, with)
 		}
@@ -111,20 +111,25 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
 
-	// 用户输入回合（cold_start / replan / carry）：渲染共享区终态段 + 事实板快照。
+	// 顶层 planner（用户输入回合）：渲染共享区终态段 + 事实板快照。
 	withParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
 		Input:            "测试输入",
 		UserInputTurn:    true,
+		IsSubAgent:       false,
 		TaskContextBoard: "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: x\n\n## 执行中补充\n",
 	})
 	if err != nil {
 		t.Fatalf("build task_planner (user turn) failed: %v", err)
 	}
 	with := withParts.Joined()
-	for _, needle := range []string{"共享区终态", "唯一语义写者", "提交执行计划前", "输入事实", "环境/参数事实", "禁止 emoji", "task_context.md", "<TASK_CONTEXT_BOARD>"} {
+	for _, needle := range []string{"共享区终态", "`submit_plan` 前须成立", "输入事实", "环境/参数事实", "禁止 emoji", "task_context.md", "<TASK_CONTEXT_BOARD>"} {
 		if !strings.Contains(with, needle) {
-			t.Fatalf("task_planner user-input turn must render 共享区终态 section + board snapshot (missing %q), got:\n%s", needle, with)
+			t.Fatalf("task_planner top-level turn must render 共享区终态 section + board snapshot (missing %q), got:\n%s", needle, with)
 		}
+	}
+	// 终态段措辞已下沉为陈述句，"唯一语义写者"角色化复述已按规范第 14 条删除。
+	if strings.Contains(with, "唯一语义写者") {
+		t.Fatalf("task_planner must drop the legacy role phrasing '唯一语义写者', got:\n%s", with)
 	}
 	// The removed structured array field must not reappear in the schema.
 	if strings.Contains(with, `"task_context"`) {
@@ -161,23 +166,79 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, "至少 3 步") {
 		t.Fatalf("task_planner must not retain the hard minimum 3-step rule, got:\n%s", with)
 	}
-	if !strings.Contains(with, "2-4 步") {
-		t.Fatalf("task_planner should align recon-first planning around 2-4 steps, got:\n%s", with)
+	if !strings.Contains(with, "4-8 步") {
+		t.Fatalf("task_planner should align recon-first planning around 4-8 steps, got:\n%s", with)
 	}
 
-	// 运行过程中回合（step_replan 内部重规划 / 子 Agent 等待）：不渲染共享区终态段与事实板块。
-	inRunParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
-		Input:         "测试输入",
-		UserInputTurn: false,
+	// 顶层 planner 兜底回流回合（!UserInputTurn 但仍是顶层）：终态段仍渲染——守卫
+	// 由 USER_INPUT_TURN 放宽为 !IS_SUB_AGENT，确保兜底回流场景也能校正事实板。
+	fallbackParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "测试输入",
+		UserInputTurn:    false,
+		IsSubAgent:       false,
+		HasReplanContext: true,
 	})
 	if err != nil {
-		t.Fatalf("build task_planner (in-run turn) failed: %v", err)
+		t.Fatalf("build task_planner (fallback turn) failed: %v", err)
 	}
-	inRun := inRunParts.Joined()
-	for _, needle := range []string{"共享区终态", "<TASK_CONTEXT_BOARD>"} {
-		if strings.Contains(inRun, needle) {
-			t.Fatalf("task_planner in-run turn must not render %q, got:\n%s", needle, inRun)
+	fallback := fallbackParts.Joined()
+	for _, needle := range []string{"共享区终态", "`submit_plan` 前须成立"} {
+		if !strings.Contains(fallback, needle) {
+			t.Fatalf("task_planner fallback turn must still render 共享区终态 section (missing %q), got:\n%s", needle, fallback)
 		}
+	}
+
+	// 子 Agent 回合：也渲染共享区终态段，因为子 Agent 在自己工作区下维护独立的
+	// `task_context.md`；与父板的关系由"继承父事实板"段管控（只读父板）。
+	subParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:         "测试输入",
+		UserInputTurn: true,
+		IsSubAgent:    true,
+	})
+	if err != nil {
+		t.Fatalf("build task_planner (sub-agent turn) failed: %v", err)
+	}
+	sub := subParts.Joined()
+	if !strings.Contains(sub, "共享区终态") {
+		t.Fatalf("sub-agent planner must render 共享区终态 section (own workspace board), got:\n%s", sub)
+	}
+}
+
+// TestPromptManager_TaskPlannerSubAgentDelegation 校验顶层 planner 在 CAN_SPAWN_SUBAGENT=true
+// 时渲染"规划期委派"条款，子 Agent / 未开放时该条款不渲染。
+func TestPromptManager_TaskPlannerSubAgentDelegation(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+
+	canParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "测试输入",
+		UserInputTurn:    true,
+		IsSubAgent:       false,
+		CanSpawnSubAgent: true,
+	})
+	if err != nil {
+		t.Fatalf("build task_planner (can spawn) failed: %v", err)
+	}
+	canTxt := canParts.Joined()
+	for _, needle := range []string{"规划期委派", "`sub_agent`"} {
+		if !strings.Contains(canTxt, needle) {
+			t.Fatalf("planner with CanSpawnSubAgent must render delegation clause (missing %q), got:\n%s", needle, canTxt)
+		}
+	}
+
+	cannotParts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "测试输入",
+		UserInputTurn:    true,
+		IsSubAgent:       false,
+		CanSpawnSubAgent: false,
+	})
+	if err != nil {
+		t.Fatalf("build task_planner (cannot spawn) failed: %v", err)
+	}
+	if strings.Contains(cannotParts.Joined(), "规划期委派") {
+		t.Fatalf("planner without CanSpawnSubAgent must not render delegation clause, got:\n%s", cannotParts.Joined())
 	}
 }
 
@@ -445,14 +506,15 @@ func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 			t.Fatalf("think_act must not retain runtime staging area %q, got:\n%s", banned, with)
 		}
 	}
-	// 账本契约：两区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
-	// 维护职责按终态不变量表述：归档历史不丢失、非本 step 条目原样保留）。
+	// 账本契约：单文件三区结构 + 唯一写者纪律（路径去参数化为「共享工作区」泛称；
+	// 维护职责按终态不变量表述：闭环历史不丢失、非本 step 条目原样保留）。
 	for _, needle := range []string{
 		"open_items.md",
 		"## 未解决",
 		"## 不可解局限",
+		"## 已闭环",
 		"OI-",
-		"归档历史不丢失",
+		"闭环历史不丢失",
 		"原样保留",
 		"唯一写者",
 	} {
@@ -698,4 +760,244 @@ func TestPromptManager_PhasePromptsRenderRoleAndBackground(t *testing.T) {
 			t.Fatalf("%s system must not render empty # Role / # Background blocks, got:\n%s", tc.name, emptySys)
 		}
 	}
+}
+
+// TestBuildStepReplanPrompt_InjectsMaintainedFilePaths 校验直接维护文件三路径注入：
+// 路径齐备时 system 模板渲染「共享区直接维护文件」段（已从 user 模板下沉至 planning_system）；
+// 全空时整节不渲染。
+func TestBuildStepReplanPrompt_InjectsMaintainedFilePaths(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal:     "测试目标",
+		OpenItemsPath:   "/ws/shared/open_items.md",
+		TaskContextPath: "/ws/shared/task_context.md",
+		StepFilePath:    "/ws/shared/step_s1.md",
+	})
+	if err != nil {
+		t.Fatalf("BuildStepReplanPrompt failed: %v", err)
+	}
+	rendered := parts.SystemRules
+	for _, needle := range []string{
+		"# 共享区文件路径",
+		"`open_items.md`（未闭环账本，单文件三区 `## 未解决` / `## 不可解局限` / `## 已闭环`）：`/ws/shared/open_items.md`",
+		"`task_context.md`（事实板，`## 输入事实` / `## 执行中补充`）：`/ws/shared/task_context.md`",
+		"`step_<step id>.md`（当前 step 过程文件，人类可读摘要）：`/ws/shared/step_s1.md`",
+	} {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("replan system prompt missing %q, got:\n%s", needle, rendered)
+		}
+	}
+	if strings.Contains(parts.User, "# 共享区文件路径") {
+		t.Fatalf("shared-file-paths section must live in system prompt only, found in user:\n%s", parts.User)
+	}
+
+	without, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{CurrentGoal: "测试目标"})
+	if err != nil {
+		t.Fatalf("BuildStepReplanPrompt (no paths) failed: %v", err)
+	}
+	if strings.Contains(without.Joined(), "# 共享区文件路径") {
+		t.Fatalf("shared-file-paths section must be omitted when paths absent, got:\n%s", without.Joined())
+	}
+}
+
+// TestBuildThinkActPrompt_InjectsTaskContextPath 校验 think_act user 模板渲染事实板路径条目。
+func TestBuildThinkActPrompt_InjectsTaskContextPath(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+		HasCurrentStep:      true,
+		CurrentStep:         map[string]any{"id": "s1"},
+		CurrentStepFilePath: "/ws/shared/step_s1.md",
+		TaskContextPath:     "/ws/shared/task_context.md",
+		OpenItemsLedgerPath: "/ws/shared/open_items.md",
+	})
+	if err != nil {
+		t.Fatalf("BuildThinkActPrompt failed: %v", err)
+	}
+	if !strings.Contains(parts.User, "事实板（已预置骨架，按系统 prompt 共享区维护契约即时维护 `## 执行中补充`）：`/ws/shared/task_context.md`") {
+		t.Fatalf("think_act user prompt missing task_context path entry, got:\n%s", parts.User)
+	}
+
+	without, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+		HasCurrentStep: true,
+		CurrentStep:    map[string]any{"id": "s1"},
+	})
+	if err != nil {
+		t.Fatalf("BuildThinkActPrompt (no paths) failed: %v", err)
+	}
+	if strings.Contains(without.User, "事实板（已预置骨架") {
+		t.Fatalf("task_context path entry must be omitted when path absent, got:\n%s", without.User)
+	}
+}
+
+// TestBuildTaskPlannerPrompt_InjectsSharedFilePaths 校验 plan 相位 system 模板也渲染
+// 「共享区直接维护文件」段（含事实板/账本绝对路径）。
+func TestBuildTaskPlannerPrompt_InjectsSharedFilePaths(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:               "做点事",
+		TaskContextPath:     "/ws/shared/task_context.md",
+		OpenItemsLedgerPath: "/ws/shared/open_items.md",
+	})
+	if err != nil {
+		t.Fatalf("BuildTaskPlannerPrompt failed: %v", err)
+	}
+	for _, needle := range []string{
+		"# 共享区文件路径",
+		"`task_context.md`（事实板，`## 输入事实` / `## 执行中补充`）：`/ws/shared/task_context.md`",
+		"`open_items.md`（未闭环账本，单文件三区 `## 未解决` / `## 不可解局限` / `## 已闭环`）：`/ws/shared/open_items.md`",
+	} {
+		if !strings.Contains(parts.SystemRules, needle) {
+			t.Fatalf("planner system prompt missing %q, got:\n%s", needle, parts.SystemRules)
+		}
+	}
+	// plan 相位无 current step，过程文件条目不应渲染。
+	if strings.Contains(parts.SystemRules, "`step_<step id>.md`") {
+		t.Fatalf("planner system prompt must omit step_file entry, got:\n%s", parts.SystemRules)
+	}
+}
+
+// TestPlanningSystemPromptContainsGranularityClauses 锁定 planning_system.prompt 的
+// step 粒度纪律——对齐 yaklang `generate_plan.go` 的「约 3 步 / >5 必拆 / 禁并列连接 / 按对象拆」
+// 四条硬约束；同时禁止旧的「同一动作跨多个对象 → 一条内联完整清单」豁免条款回流。
+// 两相位（plan 与 step_replan）共用同一 system prompt，须同时渲染出粒度条款。
+func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+
+	cases := []struct {
+		name  string
+		build func() (string, error)
+	}{
+		{
+			name: "plan_phase",
+			build: func() (string, error) {
+				parts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{})
+				return parts.SystemRules, err
+			},
+		},
+		{
+			name: "step_replan_phase",
+			build: func() (string, error) {
+				parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+					CurrentGoal: "粒度自检",
+				})
+				return parts.SystemRules, err
+			},
+		},
+	}
+
+	required := []string{
+		"约 3 次工具调用",
+		">5 必拆",
+		"并且 / 同时 / + / 以及",
+		"按操作对象",
+		"不在一条内列清单",
+		"粒度自检",
+	}
+	forbidden := []string{
+		// 旧豁免条款：同一动作跨多个对象（逐一处理 A/B/C）→ 一条内联完整清单
+		"逐一处理 A/B/C",
+		"一条内联完整清单",
+	}
+
+	for _, tc := range cases {
+		rendered, err := tc.build()
+		if err != nil {
+			t.Fatalf("%s build failed: %v", tc.name, err)
+		}
+		for _, needle := range required {
+			if !strings.Contains(rendered, needle) {
+				t.Fatalf("%s prompt missing granularity clause %q, got:\n%s", tc.name, needle, rendered)
+			}
+		}
+		for _, banned := range forbidden {
+			if strings.Contains(rendered, banned) {
+				t.Fatalf("%s prompt must drop legacy exemption %q, got:\n%s", tc.name, banned, rendered)
+			}
+		}
+	}
+}
+
+// TestBuildSubmitPlanFunctionTool_StepDescriptionContainsGranularityConstraints 锁定
+// submit_plan / submit_replan 两入口的 step 字段 description 都含粒度上限与按对象拆条款，
+// 同时禁止旧豁免条款（"同一种处理作用于多个对象算一件事可在一条内把对象列成清单"）回流。
+func TestBuildSubmitPlanFunctionTool_StepDescriptionContainsGranularityConstraints(t *testing.T) {
+	required := []string{
+		"约 3 次工具调用",
+		">5 必拆",
+		"并且/同时",
+		"按对象逐条拆",
+	}
+	forbidden := "算一件事可在一条内把对象列成清单"
+
+	for _, tc := range []struct {
+		name    string
+		stepKey string
+		desc    func(t *testing.T) string
+	}{
+		{
+			name: "submit_plan",
+			desc: func(t *testing.T) string {
+				tool := buildSubmitPlanFunctionTool()
+				params, ok := tool.Function.Parameters.(map[string]any)
+				if !ok {
+					t.Fatalf("submit_plan parameters not a map: %T", tool.Function.Parameters)
+				}
+				return digStepDescription(t, params, []string{"properties", "plan", "items", "properties", "step", "description"})
+			},
+		},
+		{
+			name: "submit_replan",
+			desc: func(t *testing.T) string {
+				tool := buildSubmitReplanFunctionTool()
+				params, ok := tool.Function.Parameters.(map[string]any)
+				if !ok {
+					t.Fatalf("submit_replan parameters not a map: %T", tool.Function.Parameters)
+				}
+				return digStepDescription(t, params, []string{"properties", "plan", "items", "properties", "step", "description"})
+			},
+		},
+	} {
+		desc := tc.desc(t)
+		for _, needle := range required {
+			if !strings.Contains(desc, needle) {
+				t.Fatalf("%s step description missing %q, got: %s", tc.name, needle, desc)
+			}
+		}
+		if strings.Contains(desc, forbidden) {
+			t.Fatalf("%s step description must drop legacy exemption %q, got: %s", tc.name, forbidden, desc)
+		}
+	}
+}
+
+func digStepDescription(t *testing.T, root map[string]any, path []string) string {
+	t.Helper()
+	cur := any(root)
+	for i, key := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			t.Fatalf("path[%d] %q: parent not a map (%T)", i, key, cur)
+		}
+		next, exists := m[key]
+		if !exists {
+			t.Fatalf("path[%d] %q missing in: %+v", i, key, m)
+		}
+		cur = next
+	}
+	desc, ok := cur.(string)
+	if !ok {
+		t.Fatalf("description not a string: %T", cur)
+	}
+	return desc
 }

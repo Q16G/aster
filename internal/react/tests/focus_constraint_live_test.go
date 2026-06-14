@@ -45,7 +45,7 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 	skillsCtx := &SkillsPromptContext{
 		Table: `| name | description | when-to-use | status |
 |------|-------------|-------------|--------|
-| security-code-analysis | 代码安全审计 — 理解用户意图、识别攻击面、按分类 checklist 编排审计任务 | 做系统性代码安全审计时首先加载 | available |
+| project-framework-analysis | 项目结构识别 + 攻击面盘点 | 进入代码审计阶段首先加载 | available |
 | sast-scan | 结构化漏洞扫描（RCE/SQLi/XXE/SSRF/XSS） | 需要静态分析扫描代码漏洞时 | available |
 | dataflow-analysis | 跨函数数据流验证 | 验证 source-to-sink 可达性 | available |
 | auth-authz | 认证授权子清单 — 认证/授权/IDOR/会话安全 | 聚焦审计认证授权维度，或项目有登录、会话管理、权限判断时 | available |
@@ -55,11 +55,11 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 | stored-xss-detection | 存储型 XSS 检测 | 存在数据写入后读出并渲染的流程时 | available |`,
 	}
 
-	// Agent instruction (来自 code-audit profile，包含我们新增的"用户意图优先"条款)
+	// Agent instruction (来自 code-audit profile v3，含项目结构识别和用户意图优先条款)
 	agentInstruction := `你是代码安全审计 Agent。
 
 审计要求：
-- 首先加载 security-code-analysis，它定义了分类审计任务清单，指导后续 skill 的加载和编排
+- 首先加载 project-framework-analysis 做项目结构识别 + 攻击面盘点，按其输出指导后续 skill 的加载和编排
 - **用户意图优先**：当用户明确指定审计方向时，计划和执行必须聚焦在用户指定的方向内，不要主动扩展到用户未提及的维度。MUST 标记仅在全量审计（用户未指定方向）时才作为强制要求
 - 全量审计时，分析手段和顺序根据项目实际情况和可用工具集灵活安排，必须满足任务清单中 MUST 标记的任务项`
 

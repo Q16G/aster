@@ -235,6 +235,12 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		HasSkillsTable:  skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
 	}
+	if a.workspaceRuntime != nil {
+		if sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir()); sharedDir != "" {
+			plannerInput.TaskContextPath = filepath.Join(sharedDir, taskContextFileName)
+			plannerInput.OpenItemsLedgerPath = filepath.Join(sharedDir, openItemsFileName)
+		}
+	}
 	// userInputTurn：本回合由顶层用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
 	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
 	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner 意图理解段的"事实板同步"）。
@@ -242,7 +248,17 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 经 IsSubAgent 守卫排除，避免子 Agent 被强制注入用户回合段。
 	plannerInput.UserInputTurn = !a.cfg.IsSubAgent && (snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated)
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
-	if plannerInput.UserInputTurn && a.workspaceRuntime != nil {
+	// IsSubAgent 单独承担"顶层事实板维护契约"段的守卫——即便兜底回流（UserInitiated=false）
+	// 也保留契约，避免事实板因守卫过窄被静默跳过。CanSpawnSubAgent 仅顶层 planner 开放：
+	// 子 Agent 内 sub_agent 工具本身被运行时关闭，prompt 同步关闭委派条款，避免无意义引导。
+	plannerInput.IsSubAgent = a.cfg.IsSubAgent
+	plannerInput.CanSpawnSubAgent = !a.cfg.IsSubAgent
+	// 顶层 planner 冷启时若共享区事实板尚未落盘，预创建仅含两节空标题的骨架，
+	// 让 LLM 收到现成结构作为入板锚点；存在则不覆盖。骨架本身视作零内容快照。
+	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
+		a.ensureTaskContextSkeleton()
+	}
+	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
 		// TaskContextBoard 按动态上限截断：task_context.md 是精简事实板，正常不会过大，
 		// 但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
 		raw := readSharedFileOptional(a.workspaceRuntime.SharedDir(), taskContextFileName)
@@ -603,6 +619,53 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						continue
 					}
 				}
+				// 子 Agent 完成性守卫：规划期委派的子 Agent 全部结束并归并产出后才允许
+				// submit_plan（「规划期委派」契约的机械兜底；step 相位由 ChildAgentChecker
+				// 承担同职责）。超限后由 runtime 代为等待（与 runStepPhase A4 安全网同型，
+				// 不丢子 Agent 产出），归并缺失降级记 warning。
+				if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+					running := a.runningChildAgentNames()
+					submitRetries++
+					if submitRetries <= maxSubmitRetries {
+						a.AICallProxyWriteToolResult(
+							strings.TrimSpace(tc.Id), submitPlanToolName,
+							"", nil, "",
+							fmt.Sprintf("仍有后台子 Agent 运行中：%s。请先调用 await_subagents 等待其全部结束、把有价值产出按入板闸门归并进 `## 执行中补充` 后再 submit_plan。", strings.Join(running, ", ")),
+							false,
+						)
+						anyUsefulTool = true
+						continue
+					}
+					a.emitRuntimeLog("warning", "plan submitted with running sub-agents; runtime awaits on model's behalf", a.state.Snapshot(), map[string]any{
+						"event":   "plan_submit_awaits_subagents",
+						"round":   round,
+						"running": running,
+					})
+					a.awaitAllBackgroundSubAgents(ctx)
+				}
+				// 共享区终态闸门：用户输入回合的执行计划提交前，task_context.md 的
+				// `## 输入事实` 须已落盘（planning_system「共享区终态」契约的机械兜底）。
+				// 超限降级为接受 + warning——闸门用于逼模型补写，事实板缺失不应使整个任务失败。
+				if parsed.NeedsPlanning && input.UserInputTurn && a.workspaceRuntime != nil {
+					raw := readSharedFileOptional(a.workspaceRuntime.SharedDir(), taskContextFileName)
+					if !taskContextInputFactsPresent(raw) {
+						submitRetries++
+						if submitRetries <= maxSubmitRetries {
+							a.AICallProxyWriteToolResult(
+								strings.TrimSpace(tc.Id), submitPlanToolName,
+								"", nil, "",
+								"共享区终态未成立：task_context.md 的 `## 输入事实` 为空。请把用户输入中确定的具体操作事实逐条写入该节（每行 `- 名称: 值`）后重新调用 submit_plan。",
+								false,
+							)
+							anyUsefulTool = true
+							continue
+						}
+						a.emitRuntimeLog("warning", "task_context input facts still missing after submit retries", a.state.Snapshot(), map[string]any{
+							"event": "plan_submit_input_facts_missing",
+							"round": round,
+						})
+					}
+				}
 				return parsed, nil
 			}
 			if tc.Function.Name == requestClarificationToolName {
@@ -700,7 +763,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 							"required": []string{"id", "step", "status", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-								"step": map[string]any{"type": "string", "description": "步骤描述，不得为空；不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
+								"step": map[string]any{"type": "string", "description": "一条 step 是一个可独立验收的成果单元，标记完成时只声明一件被验证达成的事；一条描述若声明了多件各自可独立验收、各自可独立失败的事，按每件成果拆成多条 step。粒度上限：一条 step 约 3 次工具调用完成、>5 必拆；step 文案出现\"并且/同时/+/以及\"等并列连接，或试图合并多个独立检查类目（如同时涉及 XSS、SSRF、CORS 等不同类目）→ 视为粒度过大必须拆分；同一动作作用于多个对象按对象逐条拆，不在一条内列清单。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
 								"status": map[string]any{
 									"type":        "string",
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},

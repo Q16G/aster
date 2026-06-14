@@ -19,9 +19,9 @@ func (f fakeSkillLookup) LookupSkill(_ context.Context, name string) (*SkillInfo
 
 type plainTool struct{}
 
-func (plainTool) Name() string                                          { return "read_file" }
-func (plainTool) Description() string                                   { return "" }
-func (plainTool) Parameters() any                                       { return nil }
+func (plainTool) Name() string                                            { return "read_file" }
+func (plainTool) Description() string                                     { return "" }
+func (plainTool) Parameters() any                                         { return nil }
 func (plainTool) Execute(context.Context, map[string]any) (string, error) { return "", nil }
 
 func TestSkillToolIsAgentForArgs(t *testing.T) {

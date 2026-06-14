@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -1907,6 +1909,22 @@ func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (
 	return PromptParts{SystemRules: p.prompt, User: "测试输入"}, nil
 }
 
+// seedTaskContextFactsWorkspace 预置一个 `## 输入事实` 已落盘的工作区（模拟模型已按
+// 「共享区终态」契约写入），让脚本化 plan 用例通过 submit_plan 的事实板闸门。
+func seedTaskContextFactsWorkspace(t *testing.T) ExecuteOption {
+	t.Helper()
+	root := t.TempDir()
+	sharedDir := filepath.Join(root, "shared")
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
+		t.Fatalf("mkdir shared dir failed: %v", err)
+	}
+	content := "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: 脚本化测试任务\n\n## 执行中补充\n"
+	if err := os.WriteFile(filepath.Join(sharedDir, "task_context.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write task_context.md failed: %v", err)
+	}
+	return WithWorkspaceSession("seeded-facts-session", root)
+}
+
 func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
@@ -1953,7 +1971,7 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude(), seedTaskContextFactsWorkspace(t))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -2063,12 +2081,12 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "ok",
-						"display_result":    "step ok",
-						"result":            "step ok",
-						"short_summary":     "completed analysis",
-						"key_facts":         []string{"found 3 TODOs"},
+						"status":         "completed",
+						"summary":        "ok",
+						"display_result": "step ok",
+						"result":         "step ok",
+						"short_summary":  "completed analysis",
+						"key_facts":      []string{"found 3 TODOs"},
 					}),
 				},
 			},
@@ -2151,11 +2169,11 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-1-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "step1 done",
-						"display_result":    "step1 ok",
-						"result":            "step1 ok",
-						"short_summary":     "first step done",
+						"status":         "completed",
+						"summary":        "step1 done",
+						"display_result": "step1 ok",
+						"result":         "step1 ok",
+						"short_summary":  "first step done",
 					}),
 				},
 			},
@@ -2165,12 +2183,12 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "step2 done",
-						"display_result":    "step2 ok",
-						"result":            "step2 ok",
-						"short_summary":     "second step done",
-						"key_facts":         []string{"fact-a", "fact-b"},
+						"status":         "completed",
+						"summary":        "step2 done",
+						"display_result": "step2 ok",
+						"result":         "step2 ok",
+						"short_summary":  "second step done",
+						"key_facts":      []string{"fact-a", "fact-b"},
 					}),
 				},
 			},
@@ -2672,7 +2690,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	runResult, err := agent.Execute(context.Background(), "test validation retry", WithSkipIntentPrelude())
+	runResult, err := agent.Execute(context.Background(), "test validation retry", WithSkipIntentPrelude(), seedTaskContextFactsWorkspace(t))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -2774,5 +2792,81 @@ func mustBuildToolCall(t *testing.T, callID string, name string, args map[string
 			Name:      name,
 			Arguments: string(raw),
 		},
+	}
+}
+
+func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
+	submitPlanReply := func(callID string) executeModelReply {
+		return executeModelReply{
+			toolCalls: []*ai.FunctionTool{
+				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
+					"needs_planning": true,
+					"plan": []any{
+						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
+					},
+					"explanation":        "需要规划",
+					"goal_understanding": "核心目标：执行用户请求",
+				}),
+			},
+		}
+	}
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// plan 回合 1-3：事实板为空，submit_plan 被闸门拒绝并要求补写。
+			submitPlanReply("call-submit-1"),
+			submitPlanReply("call-submit-2"),
+			submitPlanReply("call-submit-3"),
+			// plan 回合 4：超过重试上限，闸门降级放行接受计划。
+			submitPlanReply("call-submit-4"),
+			// step 完成。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "ok",
+						"result": "ok", "short_summary": "step done",
+					}),
+				},
+			},
+			// step_replan：不重排。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-replan", "submit_plan", map[string]any{
+						"should_replan": false, "replan_reason": "", "next_goal": "",
+						"incomplete_items": []string{}, "new_surfaces": []string{}, "warnings": []string{},
+					}),
+				},
+			},
+			// final_answer。
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"facts-gate-final","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"facts-gate-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(8),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	// 不预置事实板：闸门应拒绝 3 次后降级放行；回复位次与上述脚本一一对应。
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success after gate degrade-accept, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "facts-gate-final" {
+		t.Fatalf("expected final answer after degrade-accept, got %q", runResult.Result)
+	}
+	if client.calls != len(client.replies) {
+		t.Fatalf("expected %d model calls (3 gate rejections + degrade accept + step + replan + final), got %d", len(client.replies), client.calls)
 	}
 }

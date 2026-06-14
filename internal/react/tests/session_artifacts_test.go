@@ -25,8 +25,7 @@ import (
 //	<workspace>/                                     ← 临时根
 //	├── shared/                                       ← 共享工作区（task_context.md / open_items.md 等）
 //	│   ├── task_context.md                           ← 贯穿事实板骨架
-//	│   ├── open_items.md                             ← 未闭环账本骨架
-//	│   ├── open_items_archive.md                     ← 已闭环归档骨架
+//	│   ├── open_items.md                             ← 未闭环账本骨架（单文件三区）
 //	│   └── <step-id>/                                ← per-step 子目录
 //	│       └── timeline.jsonl                        ← 逐条 tool_call 事件日志
 //	└── workspace/sessions/<session-id>/              ← persistv2 session
@@ -119,8 +118,7 @@ func TestSessionArtifacts_SingleStepLandsAllFiles(t *testing.T) {
 	}
 	checks := []check{
 		{filepath.Join(sharedDir, "task_context.md"), "贯穿事实板骨架", false},
-		{filepath.Join(sharedDir, "open_items.md"), "未闭环账本骨架", false},
-		{filepath.Join(sharedDir, "open_items_archive.md"), "已闭环归档骨架", false},
+		{filepath.Join(sharedDir, "open_items.md"), "未闭环账本骨架（单文件三区）", false},
 		{stepDir, "step 子目录", true},
 		{filepath.Join(stepDir, "timeline.jsonl"), "step timeline 事件日志（逐条 tool_call）", false},
 		{sessionDir, "persistv2 session 目录", true},

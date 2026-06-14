@@ -43,29 +43,33 @@ func TestSubAgentTool_Parameters_InstructionRequired(t *testing.T) {
 	if !ok {
 		t.Fatal("expected properties map")
 	}
-	if _, ok := props["instruction"]; !ok {
-		t.Fatal("expected instruction property")
-	}
-	if _, ok := props["tools"]; !ok {
-		t.Fatal("expected tools property")
-	}
-	if _, ok := props["context"]; !ok {
-		t.Fatal("expected context property")
+	for _, want := range []string{"instruction", "role", "background", "tools", "context", "run_in_background"} {
+		if _, ok := props[want]; !ok {
+			t.Fatalf("expected %q property in schema", want)
+		}
 	}
 
 	required, ok := schema["required"].([]any)
 	if !ok {
 		t.Fatal("expected required array")
 	}
-	found := false
+	wantRequired := map[string]bool{"instruction": true}
+	gotRequired := map[string]bool{}
 	for _, r := range required {
-		if r == "instruction" {
-			found = true
-			break
+		if s, ok := r.(string); ok {
+			gotRequired[s] = true
 		}
 	}
-	if !found {
-		t.Fatal("instruction should be in required")
+	for k := range wantRequired {
+		if !gotRequired[k] {
+			t.Fatalf("missing required field %q", k)
+		}
+	}
+	// role / background 仅为可选三要素，不应被强制必填
+	for _, banned := range []string{"role", "background"} {
+		if gotRequired[banned] {
+			t.Fatalf("%q must be optional, not required", banned)
+		}
 	}
 }
 
@@ -136,8 +140,8 @@ func TestSubAgentTool_BashViaPolicy(t *testing.T) {
 		Instruction: "test bash forwarding",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -176,7 +180,7 @@ func TestSubAgentTool_ChildInheritsBash(t *testing.T) {
 		Instruction: "parent with bash",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			AllowBash:            true,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -207,8 +211,8 @@ func TestSubAgentTool_ChildInheritsBash(t *testing.T) {
 		Instruction: "child with inherited bash policy",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -245,8 +249,8 @@ func TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic(t *testing.T) {
 		Instruction: "test",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -268,8 +272,8 @@ func TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic(t *testing.T) {
 		Instruction: "test",
 		ToolNames:   []string{"bash", "read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})

@@ -60,14 +60,14 @@ func (a *Agent) writeV2StepAttemptResult(stepID, stepName, attemptID string, sta
 		title = stepID
 	}
 	res := &persistv2.StepAttemptResult{
-		SessionID:     sessionID,
-		TurnID:        turnID,
-		StepID:        stepID,
-		AttemptID:     attemptID,
-		Status:        attemptStatus,
-		ShortSummary:  strings.TrimSpace(outcome.ShortSummary),
-		LongSummary:   strings.TrimSpace(outcome.LongSummary),
-		OpenQuestions: builtin_tools.CloneStringSlice(outcome.OpenQuestions),
+		SessionID:       sessionID,
+		TurnID:          turnID,
+		StepID:          stepID,
+		AttemptID:       attemptID,
+		Status:          attemptStatus,
+		ShortSummary:    strings.TrimSpace(outcome.ShortSummary),
+		LongSummary:     strings.TrimSpace(outcome.LongSummary),
+		OpenQuestions:   builtin_tools.CloneStringSlice(outcome.OpenQuestions),
 		Warnings:        nil,
 		ToolCallsDigest: builtin_tools.CloneStringSlice(outcome.ToolCallsDigest),
 		Display: &persistv2.StepAttemptDisplay{
@@ -87,4 +87,3 @@ func (a *Agent) writeV2StepAttemptResult(stepID, stepName, attemptID string, sta
 		a.emitPersistenceError("write_step_attempt_result", err)
 	}
 }
-

@@ -17,7 +17,7 @@ func TestSharedFileLimitBytes(t *testing.T) {
 	}{
 		{"zero uses default", 0, min(hard, int(float64(defaultContextWindowTokens)*0.40*defaultCharsPerToken))},
 		{"huge window → hard cap", 10_000_000, hard},
-		{"128k window → 40% = 20480 == hard", 128_000, hard},               // 128000*0.4*4 = 204800 > 20480
+		{"128k window → 40% = 20480 == hard", 128_000, hard},              // 128000*0.4*4 = 204800 > 20480
 		{"small 8k window → dynamic < hard", 8_000, 8_000 * 4 * 40 / 100}, // 12800
 	}
 	for _, tc := range cases {

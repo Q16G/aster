@@ -108,4 +108,3 @@ func TestStepTimelineRelPath(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
-

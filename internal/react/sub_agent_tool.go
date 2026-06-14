@@ -38,9 +38,17 @@ func (t *SubAgentTool) Parameters() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"role": map[string]any{
+				"type":        "string",
+				"description": "可选：子 Agent 身份/职业定位，一句话画出是什么角色，限定其判断的语义维度（例如某专业域的资深从业者）；不要把规矩/输出要求写进来。",
+			},
+			"background": map[string]any{
+				"type":        "string",
+				"description": "可选：子 Agent 背景知识与熟悉度，描述这位角色懂什么、做过什么、对什么有偏好；不要把任务上下文、路径等具体值写进来。",
+			},
 			"instruction": map[string]any{
 				"type":        "string",
-				"description": "子 Agent 的完整指令，包含角色定义、任务目标、执行约束和输出要求。",
+				"description": "子 Agent 的指令性约束：按什么规矩干、偏好、强约定与输出要求；身份和背景请走 role / background 字段，不要混进此处。",
 			},
 			"tools": map[string]any{
 				"type":        "array",
@@ -97,6 +105,8 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	if err != nil {
 		return nil, fmt.Errorf("instruction is required")
 	}
+	role := strings.TrimSpace(argx.OptionalText(args, "role"))
+	background := strings.TrimSpace(argx.OptionalText(args, "background"))
 	toolNames := argx.StringSlice(args["tools"])
 	explicitContext := argx.OptionalText(args, "context")
 	handoffContext := argx.OptionalText(args, "__handoff_context__")
@@ -109,6 +119,8 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 
 	childDef := AgentDefinition{
 		Name:        childName,
+		Role:        role,
+		Background:  background,
 		Instruction: instruction,
 		ToolNames:   t.resolveChildToolNames(toolNames),
 		IsSubAgent:  true,

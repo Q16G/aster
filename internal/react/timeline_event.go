@@ -92,6 +92,8 @@ const stepTimelineDigestMaxEntries = 200
 // reduceStepTimelineToolCallsDigest 对 step timeline 做规则归约，产出工具调用摘要：
 // [工具] args_digest → result_digest（错误时 → error: 摘要）。runtime 归约是 tool_calls_digest
 // 的权威来源（模型自报仅作兜底）。旧格式事件（无 Tool 一等字段）跳过。
+// 去重后超过 stepTimelineDigestMaxEntries 时截断并追加标记条目——否则截断的 digest 看起来
+// 仍然「丰富」，下游「digest 不足才回读 timeline」的判据会漏掉超限部分的调用。
 func reduceStepTimelineToolCallsDigest(sharedDir, stepID string) []string {
 	if sharedDir == "" || stepID == "" {
 		return nil
@@ -127,11 +129,46 @@ func reduceStepTimelineToolCallsDigest(sharedDir, stepID string) []string {
 		}
 		seen[entry] = struct{}{}
 		out = append(out, entry)
-		if len(out) >= stepTimelineDigestMaxEntries {
-			break
-		}
+	}
+	if len(out) > stepTimelineDigestMaxEntries {
+		total := len(out)
+		out = out[:stepTimelineDigestMaxEntries]
+		out = append(out, fmt.Sprintf("（[截断] 工具调用归约共 %d 条，仅内联前 %d 条；完整事件见 timeline 文件）", total, stepTimelineDigestMaxEntries))
 	}
 	return out
+}
+
+// stepTimelineToolCallCount 统计 step timeline 中 tool_call 事件数；数到 limit 即提前返回，
+// 供闸门类只需「执行量是否达阈值」的判定使用。
+func stepTimelineToolCallCount(sharedDir, stepID string, limit int) int {
+	if sharedDir == "" || stepID == "" || limit <= 0 {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "timeline.jsonl"))
+	if err != nil {
+		return 0
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var ev TimelineEvent
+		if json.Unmarshal([]byte(line), &ev) != nil {
+			continue
+		}
+		if ev.Type != "tool_call" || strings.TrimSpace(ev.Tool) == "" {
+			continue
+		}
+		count++
+		if count >= limit {
+			return count
+		}
+	}
+	return count
 }
 
 func appendStepTimeline(sharedDir, stepID string, event *TimelineEvent) error {

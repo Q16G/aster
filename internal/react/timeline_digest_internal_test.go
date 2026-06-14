@@ -1,7 +1,9 @@
 package react
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,5 +53,45 @@ func TestReduceStepTimelineToolCallsDigest(t *testing.T) {
 func TestReduceStepTimelineToolCallsDigest_MissingFile(t *testing.T) {
 	if got := reduceStepTimelineToolCallsDigest(t.TempDir(), "nope"); got != nil {
 		t.Fatalf("expected nil for missing timeline, got %v", got)
+	}
+}
+
+func TestReduceStepTimelineToolCallsDigest_TruncationMarker(t *testing.T) {
+	sharedDir := filepath.Join(t.TempDir(), "shared")
+	stepID := "step-cap"
+
+	appendRange := func(start, n int) {
+		t.Helper()
+		for i := start; i < start+n; i++ {
+			ev := newToolCallTimelineEvent(
+				fmt.Sprintf("c%d", i), "bash",
+				map[string]any{"command": fmt.Sprintf("echo %d", i)},
+				fmt.Sprintf("out-%d", i), "", "", time.Millisecond,
+			)
+			if err := appendStepTimeline(sharedDir, stepID, ev); err != nil {
+				t.Fatalf("append timeline: %v", err)
+			}
+		}
+	}
+
+	// 恰好达上限：不追加标记。
+	appendRange(0, stepTimelineDigestMaxEntries)
+	digest := reduceStepTimelineToolCallsDigest(sharedDir, stepID)
+	if len(digest) != stepTimelineDigestMaxEntries {
+		t.Fatalf("expected %d entries, got %d", stepTimelineDigestMaxEntries, len(digest))
+	}
+	if strings.Contains(digest[len(digest)-1], "[截断]") {
+		t.Fatalf("at-cap digest must not carry truncation marker, got %q", digest[len(digest)-1])
+	}
+
+	// 超上限：截断 + 末尾标记含总数。
+	appendRange(stepTimelineDigestMaxEntries, 5)
+	digest = reduceStepTimelineToolCallsDigest(sharedDir, stepID)
+	if len(digest) != stepTimelineDigestMaxEntries+1 {
+		t.Fatalf("expected %d entries incl marker, got %d", stepTimelineDigestMaxEntries+1, len(digest))
+	}
+	marker := digest[len(digest)-1]
+	if !strings.Contains(marker, "[截断]") || !strings.Contains(marker, fmt.Sprintf("共 %d 条", stepTimelineDigestMaxEntries+5)) {
+		t.Fatalf("unexpected truncation marker: %q", marker)
 	}
 }

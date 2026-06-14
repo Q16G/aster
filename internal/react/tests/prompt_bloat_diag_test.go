@@ -21,8 +21,8 @@ func TestPromptBloat_AgentBrowserImpact(t *testing.T) {
 	ctx := context.Background()
 
 	// --- Injected section size comparison ---
-	auditSkills := []string{"security-code-analysis", "result-with-file"}
-	browserSkills := []string{"security-code-analysis", "result-with-file", "agent-browser"}
+	auditSkills := []string{"project-framework-analysis", "result-with-file"}
+	browserSkills := []string{"project-framework-analysis", "result-with-file", "agent-browser"}
 
 	auditSection, err := svc.BuildInjectedSkillsSection(ctx, nil, auditSkills)
 	if err != nil {

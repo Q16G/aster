@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	. "aster/internal/react"
 	"aster/internal/ai/openai"
 	"aster/internal/builtin_tools"
+	. "aster/internal/react"
 )
 
 // TestSessionArtifacts_LiveZenSingleStep 用真实 LLM（opencode zen，OpenAI 风格）
@@ -150,8 +150,7 @@ func TestSessionArtifacts_LiveZenSingleStep(t *testing.T) {
 	}
 	checks := []check{
 		{filepath.Join(sharedDir, "task_context.md"), "贯穿事实板骨架", false},
-		{filepath.Join(sharedDir, "open_items.md"), "未闭环账本骨架", false},
-		{filepath.Join(sharedDir, "open_items_archive.md"), "已闭环归档骨架", false},
+		{filepath.Join(sharedDir, "open_items.md"), "未闭环账本骨架（单文件三区）", false},
 		{sessionDir, "persistv2 session 目录", true},
 		{filepath.Join(sessionDir, "events.jsonl"), "事件流（append-only WAL）", false},
 		{filepath.Join(sessionDir, "snapshot.json"), "状态快照（materialized view）", false},

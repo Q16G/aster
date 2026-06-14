@@ -102,7 +102,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 		"step_result_path":   "",
 		"step_contexts_path": "",
 		"skills_context": &SkillsPromptContext{
-			Table: "| name | description |\n|------|-------------|\n| web-security-testing | Web 安全渗透测试 |",
+			Table: "| name | description |\n|------|-------------|\n| sql-injection-comprehensive | SQL 注入综合检测 |",
 		},
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 	if !strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
 		t.Fatal("expected rendered <SKILLS_INDEX> block in prompt when skills_context is provided")
 	}
-	if !strings.Contains(prompt, "web-security-testing") {
+	if !strings.Contains(prompt, "sql-injection-comprehensive") {
 		t.Fatal("expected skill table content in prompt")
 	}
 }

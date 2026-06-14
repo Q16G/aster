@@ -33,8 +33,15 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptPar
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
 	stepFilePath := ""
+	openItemsLedgerPath := ""
+	taskContextPath := ""
 	if a.workspaceRuntime != nil {
-		stepFilePath = stepFileAbs(a.workspaceRuntime.SharedDir(), snap.CurrentStepID)
+		sharedDir := a.workspaceRuntime.SharedDir()
+		stepFilePath = stepFileAbs(sharedDir, snap.CurrentStepID)
+		if strings.TrimSpace(sharedDir) != "" {
+			openItemsLedgerPath = filepath.Join(sharedDir, openItemsFileName)
+			taskContextPath = filepath.Join(sharedDir, taskContextFileName)
+		}
 	}
 
 	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
@@ -44,6 +51,8 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptPar
 		SkillsContext:          skillsContext,
 		CurrentStep:            currentStep,
 		CurrentStepFilePath:    stepFilePath,
+		OpenItemsLedgerPath:    openItemsLedgerPath,
+		TaskContextPath:        taskContextPath,
 		DependencyPlanItems:    dependencyItems,
 		HasCurrentStep:         currentStep != nil,
 		HasDependencyPlanItems: len(dependencyItems) > 0,

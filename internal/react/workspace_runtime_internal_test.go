@@ -23,9 +23,8 @@ func TestEnsureSharedScaffoldCreatesFiles(t *testing.T) {
 
 	sharedDir := filepath.Join(rootDir, "shared")
 	cases := map[string][]string{
-		"task_context.md":       {"# 贯穿全程关键事实", "## 输入事实", "## 执行中补充"},
-		"open_items.md":         {"## 未解决", "## 不可解局限"},
-		"open_items_archive.md": {"## 已闭环"},
+		"task_context.md": {"# 贯穿全程关键事实", "## 输入事实", "## 执行中补充"},
+		"open_items.md":   {"## 未解决", "## 不可解局限", "## 已闭环"},
 	}
 	for name, wantHeaders := range cases {
 		data, err := os.ReadFile(filepath.Join(sharedDir, name))

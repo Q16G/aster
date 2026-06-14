@@ -213,6 +213,8 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		WithTool(&orderedTool{name: builtin_tools.RgToolName}),
 		WithTool(&orderedTool{name: builtin_tools.SkillToolName}),
 		WithTool(&orderedTool{name: builtin_tools.SubAgentToolName}),
+		WithTool(&orderedTool{name: builtin_tools.SubAgentStatusToolName}),
+		WithTool(&orderedTool{name: builtin_tools.AwaitSubAgentsToolName}),
 		WithTool(&orderedTool{name: "mcp_some_server_tool"}),
 		WithTool(&orderedTool{name: "custom_unknown_tool"}),
 	)
@@ -220,17 +222,49 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	allowedSet := map[string]struct{}{
+	commonAllowed := map[string]struct{}{
 		builtin_tools.ReadFileToolName:  {},
 		builtin_tools.ListFilesToolName: {},
 		builtin_tools.RgToolName:        {},
 		builtin_tools.BashToolName:      {},
 	}
+	commonForbidden := []string{
+		builtin_tools.SkillToolName,
+		builtin_tools.HumanConfirmToolName,
+		builtin_tools.UpdateCurrentStepToolName,
+		builtin_tools.UpdateTaskStatusToolName,
+		builtin_tools.TaskStatusQueryToolName,
+		builtin_tools.TaskPlannerToolName,
+		builtin_tools.ListSkillsToolName,
+		builtin_tools.EjectSkillToolName,
+		"mcp_some_server_tool",
+		"custom_unknown_tool",
+	}
 
-	for _, phase := range []builtin_tools.AgentPhase{
-		builtin_tools.AgentPhasePlan,
-		builtin_tools.AgentPhaseStepReplan,
-	} {
+	phaseAllowed := map[builtin_tools.AgentPhase]map[string]struct{}{
+		// planner 阶段开放 sub_agent 委派族，支持调研深化的并行委派。
+		builtin_tools.AgentPhasePlan: {
+			builtin_tools.ReadFileToolName:       {},
+			builtin_tools.ListFilesToolName:      {},
+			builtin_tools.RgToolName:             {},
+			builtin_tools.BashToolName:           {},
+			builtin_tools.SubAgentToolName:       {},
+			builtin_tools.SubAgentStatusToolName: {},
+			builtin_tools.AwaitSubAgentsToolName: {},
+		},
+		builtin_tools.AgentPhaseStepReplan: commonAllowed,
+	}
+	phaseForbidden := map[builtin_tools.AgentPhase][]string{
+		// plan 阶段允许 sub_agent，因此从 forbidden 列表中剔除该三件。
+		builtin_tools.AgentPhasePlan: commonForbidden,
+		builtin_tools.AgentPhaseStepReplan: append(append([]string{}, commonForbidden...),
+			builtin_tools.SubAgentToolName,
+			builtin_tools.SubAgentStatusToolName,
+			builtin_tools.AwaitSubAgentsToolName,
+		),
+	}
+
+	for phase, allowedSet := range phaseAllowed {
 		tools, allowed := agent.BuildFunctionTools(phase)
 		var names []string
 		for _, tool := range tools {
@@ -246,19 +280,7 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 			}
 		}
 
-		for _, forbidden := range []string{
-			builtin_tools.SkillToolName,
-			builtin_tools.SubAgentToolName,
-			builtin_tools.HumanConfirmToolName,
-			builtin_tools.UpdateCurrentStepToolName,
-			builtin_tools.UpdateTaskStatusToolName,
-			builtin_tools.TaskStatusQueryToolName,
-			builtin_tools.TaskPlannerToolName,
-			builtin_tools.ListSkillsToolName,
-			builtin_tools.EjectSkillToolName,
-			"mcp_some_server_tool",
-			"custom_unknown_tool",
-		} {
+		for _, forbidden := range phaseForbidden[phase] {
 			if _, ok := allowed[forbidden]; ok {
 				t.Errorf("phase %s: tool %q must be blocked but was in allowed set", phase, forbidden)
 			}

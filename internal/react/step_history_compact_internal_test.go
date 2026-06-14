@@ -304,8 +304,8 @@ func TestStripImagesFromExcerpt_DoesNotMutateOriginal(t *testing.T) {
 
 func TestShortenOldToolResults_ChatContextImageOnly(t *testing.T) {
 	tc := &ai.FunctionTool{
-		Id:   "call-imgonly",
-		Type: "function",
+		Id:       "call-imgonly",
+		Type:     "function",
 		Function: &ai.FunctionDetail{Name: "screenshot", Arguments: "{}"},
 	}
 	assistant := ai.NewAIMsgInfo("")
@@ -340,8 +340,8 @@ func TestShortenOldToolResults_ChatContextImageOnly(t *testing.T) {
 
 func TestShortenOldToolResults_ChatContextPreservesDetail(t *testing.T) {
 	tc := &ai.FunctionTool{
-		Id:   "call-detail",
-		Type: "function",
+		Id:       "call-detail",
+		Type:     "function",
 		Function: &ai.FunctionDetail{Name: "tool", Arguments: "{}"},
 	}
 	assistant := ai.NewAIMsgInfo("")

@@ -161,7 +161,7 @@ func TestBuildIntentClassificationPrompt_Injection(t *testing.T) {
 		t.Fatalf("BuildIntentClassificationPrompt: %v", err)
 	}
 	for _, want := range []string{
-		"全量安全审计",   // GoalUnderstanding
+		"全量安全审计",      // GoalUnderstanding
 		"我系统里装了 jadx", // LatestInput
 	} {
 		if !strings.Contains(parts.User, want) {

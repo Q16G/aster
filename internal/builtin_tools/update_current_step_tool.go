@@ -13,6 +13,9 @@ import (
 type UpdateCurrentStepTool struct {
 	ctx               ToolContext
 	ChildAgentChecker func() []string
+	// StepFileChecker 在 status=completed 提交前校验 step 过程文件与实际进度一致，
+	// 返回非 nil error 时拒绝提交（由 runtime 注入，nil 跳过）。
+	StepFileChecker func(stepID string) error
 }
 
 func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
@@ -157,6 +160,12 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	target := prev.CurrentStep()
 	if target == nil {
 		return "", fmt.Errorf("current step is empty, wait for runtime planning first")
+	}
+
+	if status == PlanStepCompleted && t.StepFileChecker != nil {
+		if err := t.StepFileChecker(strings.TrimSpace(target.ID)); err != nil {
+			return "", err
+		}
 	}
 
 	artifactDir := resolveStepArtifactDir(prev.PlanVersion, strings.TrimSpace(target.ID))

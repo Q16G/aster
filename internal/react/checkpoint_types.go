@@ -12,7 +12,7 @@ import (
 // It intentionally mirrors the JSON payload written by artifactWriter so it can be
 // used for both write and resume load.
 // plan 条目本体不再内联于 checkpoint：workspace/planner.jsonl 是 plan 唯一真相源
-//（plan 提交全量 + step 终态增量 append，经 builtin_tools.LoadPlannerJournal 重放）。
+// （plan 提交全量 + step 终态增量 append，经 builtin_tools.LoadPlannerJournal 重放）。
 type planCurrentCheckpoint struct {
 	SessionID         string                         `json:"session_id,omitempty"`
 	Phase             builtin_tools.AgentPhase       `json:"phase,omitempty"`

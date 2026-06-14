@@ -1148,8 +1148,22 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 		default:
 			return true
 		}
-	case builtin_tools.AgentPhasePlan,
-		builtin_tools.AgentPhaseStepReplan,
+	case builtin_tools.AgentPhasePlan:
+		switch toolName {
+		case builtin_tools.ReadFileToolName,
+			builtin_tools.ListFilesToolName,
+			builtin_tools.RgToolName,
+			builtin_tools.BashToolName,
+			// planner 阶段开放子 Agent 委派族，供专业视角差异、独立可并行调研子问题、
+			// 长耗时大上下文调研场景按需委派；step 阶段的执行委派职责不变。
+			builtin_tools.SubAgentToolName,
+			builtin_tools.SubAgentStatusToolName,
+			builtin_tools.AwaitSubAgentsToolName:
+			return true
+		default:
+			return false
+		}
+	case builtin_tools.AgentPhaseStepReplan,
 		builtin_tools.AgentPhaseFinalAnswer,
 		builtin_tools.AgentPhaseIntentClassification:
 		switch toolName {

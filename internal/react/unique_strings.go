@@ -24,4 +24,3 @@ func mergeUniqueStrings(base []string, extra []string) []string {
 	}
 	return out
 }
-

@@ -21,9 +21,9 @@ type safeTool struct {
 	counter *atomic.Int32
 }
 
-func (t *safeTool) Name() string        { return t.name }
-func (t *safeTool) Description() string  { return t.name + " desc" }
-func (t *safeTool) Parameters() any      { return map[string]any{"type": "object"} }
+func (t *safeTool) Name() string          { return t.name }
+func (t *safeTool) Description() string   { return t.name + " desc" }
+func (t *safeTool) Parameters() any       { return map[string]any{"type": "object"} }
 func (t *safeTool) ConcurrencySafe() bool { return true }
 func (t *safeTool) Execute(_ context.Context, _ map[string]any) (string, error) {
 	if t.counter != nil {
@@ -41,8 +41,8 @@ type unsafeTool struct {
 }
 
 func (t *unsafeTool) Name() string        { return t.name }
-func (t *unsafeTool) Description() string  { return t.name + " desc" }
-func (t *unsafeTool) Parameters() any      { return map[string]any{"type": "object"} }
+func (t *unsafeTool) Description() string { return t.name + " desc" }
+func (t *unsafeTool) Parameters() any     { return map[string]any{"type": "object"} }
 func (t *unsafeTool) Execute(_ context.Context, _ map[string]any) (string, error) {
 	return t.result, nil
 }
