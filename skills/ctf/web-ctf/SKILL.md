@@ -1,7 +1,6 @@
 ---
 name: web-ctf
 description: Web 方向 CTF 解题 — 对给定靶机 URL 做黑盒侦察、识别考点、构造利用链并捕获 flag。
-tags: ctf,web,exploit,flag,blackbox
 when-to-use: 当用户需要解 Web 方向 CTF 题、给出 CTF 靶机 URL 要求拿 flag 时加载此 skill
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true

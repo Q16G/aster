@@ -28,11 +28,11 @@ func TestWriteManifest_SortedOutput(t *testing.T) {
 	manifestPath := filepath.Join(tmpDir, ".manifest")
 
 	paths := map[string]struct{}{
-		"pentest/agent-browser/SKILL.md":            {},
-		"common/result-with-file/SKILL.md":          {},
-		"code-audit/sast-scan/SKILL.md":             {},
-		"host-defense/baseline-check/SKILL.md":      {},
-		"code-audit/security-code-analysis/SKILL.md": {},
+		"pentest/agent-browser/SKILL.md":                       {},
+		"common/result-with-file/SKILL.md":                     {},
+		"code-audit/sast-scan/SKILL.md":                        {},
+		"host-defense/baseline-check/SKILL.md":                 {},
+		"pentest/sql-injection-comprehensive/SKILL.md":         {},
 	}
 
 	writeManifest(manifestPath, paths)
