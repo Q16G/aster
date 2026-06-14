@@ -1,7 +1,12 @@
 ---
 name: dependency-decompile
-description: 关键路径上无源码依赖的源码恢复 — 当 SCA 盘点、入口点/攻击面分析或数据流追踪遇到一个没有可读源码、又落在关键路径（入口点/信任边界/污点必经路径）上的依赖（编译产物 jar/war/class、二进制库、混淆代码），且不看内部就无法对攻击面/污点链下定论时，优先取官方源码（本地无件可按坐标从 maven/私服联网取件）、取不到再反编译。主闸门=外部可证的关键路径否决（只能用"数据流确认无污点跨入 + 正面证明是标准化通道"来否决，不能用"消费侧没看到 import"否决）+ 决策点（安全/sink 决策在依赖内还是在调用方）；**同厂商自有闭源因入口点/信任边界逻辑封在产物内、消费侧不可观测，归属即触发查证（候选），不据消费侧 import 排除**——豁免须正面举证（已证是标准化通道），不靠"廉价扫描为空"放行。异厂商商业按 (a)/(b) 判：决策在调用方的标准化通道可免、决策在依赖内说不清则反并标法律；产出按取证完整性标注来源与不确定性。
-when-to-use: 当代码审计需要分析一个无可读源码、落在关键路径（入口点/信任边界/污点必经路径）上、且不看内部无法定论的依赖（编译 jar/war/class、二进制库、混淆代码），它不是行为已知的常见公共库、又无法直接读到源码时——主闸门=外部可证的关键路径否决 + 决策点（安全/sink 决策在依赖内 (b) 还是在调用方 (a)）。同厂商自有闭源因入口点/信任边界封在产物内、消费侧 import 不可观测，**归属即触发查证（候选），不要求先证在关键路径、不据消费侧 import 排除**，豁免须正面举证；第三方异厂商商业→落 (a) 决策在调用方的标准化通道可免、落 (b) 决策在依赖内（含 OEM/低代码平台承载鉴权路由、自称标准协议的闭源鉴权 SDK）说不清则反编译并标法律。典型触发面：SCA 盘点出关键路径上的无源码依赖、入口点/中间件逻辑落在无源码依赖里、数据流污点进入无源码依赖
+description: >-
+  关键路径上无源码依赖的源码恢复——把闭源 jar / war / class / dll / so / 混淆包反编译回可读源码，
+  供下游 dataflow-analysis / 入口点审计接力追踪。触发线索：dependency-audit 标记某依赖落在关键路径
+  且无可读源码、入口点 / 信任边界逻辑封在闭源 jar 里（自研鉴权 filter 打进 jar、starter 自动注册的
+  controller）、数据流污点跨入无源码依赖、安全/sink 决策发生在依赖内部（含自称标准协议的闭源鉴权
+  SDK）。反向信号：行为已知的常见公共库（按已知语义推理即可）、官方源码可直接取到、依赖只是被
+  调用的标准化数据/协议通道（如 JDBC 驱动，决策在调用方）。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[artifact_path] [--lang java|python|js|dotnet|native]"
@@ -12,191 +17,296 @@ arguments:
 
 # 无源码依赖反编译（源码恢复）
 
-## 目标与边界
+本能力是 **Cat-B-Cross 反编译工具能力**——接 [dependency-audit](../dependency-audit/SKILL.md) 标记的闭源 / 关键路径依赖，提供源码恢复能力供 [dataflow-analysis](../dataflow-analysis/SKILL.md) / 入口点审计接力。本能力的产物是"可分析的源码 + 来源 / 不确定性标注"，**不做漏洞判定**——判定交回触发它的上游 skill。
 
-本 skill 只做一件事：**当上游审计撞上一个没有可读源码的依赖时，恢复出可分析的源码**，解除"无源码"造成的分析盲区，再把恢复结果接回上游继续审。
+## 1. 触发线索 / 适用信号
 
-边界（别越权）：
-- **不查 CVE / 不做 SCA** —— 那是 `dependency-audit`；它负责发现候选并移交，本 skill 负责恢复源码。
-- **不追源码内污点链** —— 那是 `dataflow-analysis`。
-- 本 skill 的产物是"可分析的源码 + 来源/不确定性标注"，漏洞判定通常交回触发它的上游 skill。
+按"上游触发面 + 制品类型 + 攻击面可见性"维度识别本能力命中场景。
 
-## 三个触发面（需求从哪来）
+### 上游触发面
 
-反编译需求不止来自数据流，下面任一处遇到"无可读源码、又非常见库"的依赖，都应走本能力：
+- **SCA 盘点**：[dependency-audit](../dependency-audit/SKILL.md) 枚举依赖时发现无可读源码、落在关键路径（入口点 / 信任边界 / 污点必经路径）上的依赖，列为反编译候选移交本能力
+- **入口点 / 攻击面分析**：入口点 handler、信任边界上的过滤器 / 拦截器 / 中间件逻辑封在无源码依赖里（典型：自研鉴权 filter 打进闭源 jar、Spring Boot starter 自动注册的 controller / endpoint 逻辑在 jar 内）
+- **数据流追踪**：[dataflow-analysis](../dataflow-analysis/SKILL.md) 的污点传播 / sink 进入无源码依赖，反编译恢复后继续追链路
+- **递归触发**：反编译/恢复产物 A 的源码后，若 A 又引用无可读源码的依赖 B（自研内部模块、私服包、闭源 SDK），B 从本节起点重新过 triage
 
-1. **SCA 盘点（来自 `dependency-audit`）**：枚举依赖时发现**无可读源码**的依赖，除查 CVE 外把它列为**反编译候选**移交本 skill——这是最早能识别候选的环节。决策点 (a)/(b) 定反不反编译、归属调节处置：**同厂商自有闭源归属即候选（不要求先证在关键路径，见下"可见性不对称"）**；第三方异厂商商业落 (a)（决策在调用方）可免、落 (b)（决策在依赖内）说不清则照样候选并标法律；**仅当外部可证不在关键路径（数据流确认无污点跨入 + 正面证明是标准化通道）才不移交**。
-2. **入口点 / 攻击面分析（来自 `project-framework-analysis` / `security-code-analysis`）**：入口点 handler、或信任边界上的过滤器/拦截器/中间件逻辑**封在无源码依赖里**（典型：自研鉴权 filter 打进闭源 jar），不反编译看清它实际做了什么，入口点判定与信任边界就是盲的。
-3. **数据流追踪（来自 `dataflow-analysis`）**：污点传播/sink 进入无源码依赖，反编译恢复后再继续追链路，别直接判 `unresolved_gaps`。
-4. **反编译/恢复产物内部新发现的无源码依赖（递归触发面）**：恢复出 A 的源码后，若 A 又引用无可读源码的依赖 B（自研内部模块、私服包、闭源 SDK），B 从下文「触发 triage」起点重新过一遍——先过"常见公共库 → 不反编译"等默认筛子，再按归属即触发、(a)/(b) 判定，覆盖不足留缺口，**不得因 B 是"依赖的依赖"停在第一层**。
+### 制品类型维度
 
-**攻击面可见性不对称（贯穿上面各触发面的关键判据）**：触发面 3 的"数据流污点跨入依赖"是**外部可观测**的——调用点能看到污点进了哪个依赖。但触发面 1/2 关心的**入口点与信任边界逻辑**（starter 自动注册的 controller、自研 filter/拦截器打进 jar、编程式注册的 route）是**封在产物内部、消费侧 import 分析看不见的**（"starter 盲区"只是其一个特例）。**推论：对同厂商自有闭源依赖，"用消费侧 import 证明它不在关键路径"是循环的——不打开就证不了**，故归属本身即触发查证，不能据消费侧分析把它排除掉。**对触发面 4 的 dep-of-dep（B 封在 A 产物内、消费侧连 import 都看不到），可见性不对称是双重的，更不能据消费侧分析排除。**
+- Java：jar / war / aar / class
+- Android：APK / dex（外层包 + dex 字节码）
+- .NET：DLL / EXE
+- Go：编译产物（含符号表 vs 已 strip）
+- Native：so / dylib / dll
+- Python：`.pyc` / `.pyo` 已编译模块
 
-## 触发 triage（默认不反编译，反编译是少数例外）
+### 攻击面可见性不对称（关键判据）
 
-**绝大多数依赖都不该反编译**：要么是行为已知的常见库（按已知语义推理即可），要么能直接取到官方源码——这两类都不反编译。反编译有成本、产物还带混淆不确定性，只对"**落在关键路径上、又取不到源码、且安全/sink 决策发生在它内部（不看内部就无法对攻击面/污点链下定论）**"的少数依赖才做。**重要性闸门（是否在关键路径）只能用外部可证的事实来否决**——即"数据流确认无污点跨入" + "正面证明依赖只是标准化数据/协议通道（如 JDBC 驱动）"；**不能用"消费侧没看到 import / 看不见内部"来否决**。安全/sink 决策在依赖内部（鉴权/路由/过滤/sink 在 jar 里完成，含自称标准协议的闭源鉴权 SDK）的才反编译。**同厂商自有闭源：因入口点封在产物内、消费侧不可观测，归属本身即触发查证（候选），不要求先证在关键路径**——它是反编译主战场；第三方异厂商商业（如商业 OEM 平台）也不因"异厂商"豁免。命中某个触发面后，按以下顺序判断，命中即停：
+- "数据流污点跨入依赖"**外部可观测**——调用点能看到污点进了哪个依赖
+- "入口点与信任边界逻辑"**封在产物内部、消费侧 import 分析看不见**（starter 盲区、自研 filter 打进 jar、编程式注册的 route 都属此类）
 
-1. **是行为已知的常见公共库吗？**（如 Spring、Jackson、fastjson、commons-*、Netty、lombok 等）
-   是 → **不反编译**：按已知语义推理其 source/sink/副作用；若关注其已知漏洞，交 `dependency-audit` 查 CVE。
-2. **本机已落盘有现成源码吗？**（这一步只翻本地，0 外联）
-   有 → **取源码，不反编译**。官方/原始源码无混淆、名/行号可信，优先级高于反编译：
-   - Java：`find ~/.m2 ~/.gradle -name '*-sources.jar' 2>/dev/null` 查本地缓存；jar/war 同目录、`WEB-INF/lib` 旁、解包目录里找配套 `-sources.jar`。
-   - Python：很多 wheel/包目录里直接带 `.py` 源（非纯 `.pyc`），优先读这些。
-   - JS：包内随附的 `.map` source map、或未压缩（非 `.min`）的发布文件。
-   - native / .NET：随附调试符号（`.pdb` / DWARF）。
+推论：对同厂商自有闭源，"用消费侧 import 证明它不在关键路径"是循环的——不打开就证不了。
 
-   本机没有 → **不在这一步联网取件**（取件有成本、有外联，只对已确定要看的件才值得）。继续往下走第 3/4 步定性与决策点；触发取件的条件分两类：**同厂商自有闭源、本地又无件 → 归属即触发取件**（内部不可观测、不要求先证 (b)，否则证不了就是循环依赖）；**第三方依赖 → 判为关键路径 + (b) 须看内部、本地又无件才取件**。均 sources 优先，见「捷径 D」。
-3. **是常见公共库还是非公共库？**（仅凭名称/坐标分不清是常见库还是私有封装；这一步只判"公不公共"，归属同/异厂商留第 4 步）→ 先做**轻量探查**定性，别直接整包反编译、也别跳过。按从便宜到贵的顺序：
-   - **先从消费侧的 import / 包名推导（最便宜，根本不碰 jar）**：`rg '^import' 项目源码`，看实际引用了哪些外部包、用在哪（入口点/sink 附近才重要）、被多少文件引用（用得越多攻击面越大）；包名前缀直接暗示性质——私有前缀（`org.<项目名>.*` / `com.<公司名>.*` 等非知名命名空间）多为非公共封装，`org.apache.*` / `com.google.*` / `org.springframework.*` 等是公共库。**注意 starter 盲区**：Spring Boot starter 会自动注册自带的 controller/endpoint（逻辑在 jar 内、项目源码里看不到对应 import），所以 import 计数低的 starter 仍可能暴露大量 web 面——这类要结合入口点/框架枚举（见 `project-framework-analysis`）判断，别只按 import 数定攻击面。
-   - 再看 jar 内廉价元信息（全离线）：`unzip -p x.jar 'META-INF/maven/*/pom.properties'` 取 `groupId/artifactId/version`（定坐标金标准），`META-INF/MANIFEST.MF` 的 Vendor / Implementation-Title 辅证。
-   - 仍拿不准 → 用 `javap -p` 或**只反编译几个代表性类**速看（不整包反编译），据此定性：是常见库 → 回第 1 步当常见库处理；非公共库、无源码 → 进第 4 步定重要性与归属。
-4. **非公共库、又取不到源码 → 按三步定：先重要性（是否在关键路径，但只能用外部可证事实否决）→ 再看决策点 (a)/(b)（安全/sink 决策在依赖内还是在调用方，这是反不反编译的真正开关）→ 归属调节处置（优先级/法律）。注意：同厂商自有闭源因内部不可观测，归属本身即触发查证、不要求先证在关键路径——见下方主闸门段**。
+### 反向信号（不命中本能力）
 
-   **主闸门 = 重要性（是否在关键路径），但它是一道只能用外部可证事实触发的否决性筛子**——只能筛掉、不能单独定"该反编译"，且**"不在关键路径"这一结论本身必须外部可证**（数据流确认无污点跨入 + 正面证明它只是标准化通道），**不能用"消费侧没看到 import / 看不见内部"来下**。在关键路径上"反不反编译"由下一步决策点 (a)/(b) 拍板：
-   - **外部可证不在关键路径**（数据流确认无污点途经、且正面证明它仅标准化通道，典型：已证的纯标准化 util/数据通道）→ **不反编译**，无论同厂商还是第三方商业。这才是"不重要就不反编译"。
-   - **同厂商自有闭源 = 默认查证（不是例外，是常态）**：入口点/信任边界封在产物内、消费侧 import 看不见，"在不在关键路径"无法据消费侧排除（循环依赖）→ **归属即触发，当候选去看**（欠覆盖优于漏判），**不得**默认判它"不在关键路径 → 不反编译"。第三方异厂商商业的"位置拿不准"同样**偏放行当候选**，与下面 `unknown` 归属同口径。
-   - **在关键路径**（承载或途经鉴权/路由/过滤/sink）→ 进入下面的**决策点 (a)/(b) 判定（再由归属调节处置，见后）**，**核心标准是"安全/sink 判定发生在这个依赖内部、还是在调用方代码里"——看决策点在哪，不是看它标不标准**：
-     - **(a) 决策在调用方，依赖只是被调用的标准化数据/协议通道**（如 JDBC 驱动：在 SQL sink 路径上，但"拼什么 SQL、用不用参数化"的决定在调用方，驱动只按 JDBC 规范执行）→ 依赖本身不是"需看内部的目标面"，**靠已知语义/文档/CVE 说清即可、不反编译且不留缺口**。**注意举证责任：判 (a) 的依据是"正面证明决策在调用方"（已知语义/标准规范/CVE 可佐证），不是"廉价扫描没扫到入口点/安全逻辑"——后者证不了它不是 (b)，见「捷径的边界」。**
-     - **(b) 安全/sink 决策发生在依赖内部**（鉴权/授权/路由/过滤/sink 判定在 jar 里完成）→ 不看内部就不知道它实际怎么判，"行为已知"不成立，**必须看清内部**（取到 sources 则读源码、取不到才反编译，殊途同归都是看清它实际怎么判）。若本地无件，先按坐标取件（sources 优先，拿到官方源码免反编译；拿不到拉 plain jar 反编译，见「捷径 D」）再决定；**取件也拿不到才留显式缺口，不许靠"已知语义"清场**。**关键：闭源组件即便自称实现标准协议（如某商业 OAuth/JWT 校验 jar、标准协议的鉴权 SDK），只要授权决策在它内部，就是 (b)——"协议标准"不等于"已知它真按标准做了、没夹私货或后门"，不看内部就证不了**。与归属无关——同厂商还是第三方都按 (a)/(b) 判。
+- 行为已知的常见公共库（Spring、Jackson、fastjson、commons-*、Netty、lombok 等）——按已知语义推理即可，已知漏洞交 [dependency-audit](../dependency-audit/SKILL.md) 查 CVE
+- 官方源码可直接取到（本机 `~/.m2`/`~/.gradle` 已有 `-sources.jar`、包目录里有未压缩源、随附 source map 或调试符号）——直接读源码，优先级高于反编译产物
+- vulnerable function 在项目源码里直接 grep 即命中——不需要打开依赖内部
+- 依赖只是被调用的标准化数据/协议通道（如 JDBC 驱动，决策在调用方）——靠已知语义/标准规范/CVE 说清即可
 
-   **归属是调节器**（决定优先级、法律谨慎，不改 (a)/(b) 的反不反编译结论）。用已有的极低成本读取定归属，无需新增能力：`unzip -p x.jar META-INF/MANIFEST.MF` 看 `Implementation-Vendor`/`Vendor`；`pom.properties` 的 `groupId` 是否 = 项目自身前缀/项目私服（如自研 nexus）；包内 `LICENSE`/`NOTICE` 是否标第三方商业或专有许可（如 BCL、达梦专有）。据归属调节处置：
-   - **同厂商自有（含同厂商自研的商业闭源）** → **归属即触发查证（候选），不要求先证在关键路径**——入口点/信任边界封在产物内、消费侧不可观测，承载项目自身业务/鉴权逻辑（典型：同厂商 starter 自动注册的 web 端点、自研鉴权 filter），是**反编译主战场**，优先且无法律顾虑。查证时仍**先白嫖信息→精准下刀→最后整包**（直接按下方「捷径」省力路径、仍不够走「Java playbook」），廉价信号用于精准定位、不是少看。**要免（落 (a)、纯标准化通道）必须正面举证决策在调用方，不能靠"廉价扫描为空"放行**——别因"同厂商"就把它的标准化 util 也整包反编译，但也别用"没扫到"假装它是 (a)。
-   - **第三方异厂商商业闭源** → 同样按 (a)/(b) 判：决策在调用方的标准化基础设施（如 DB 驱动）落 (a) 可免；**但只要安全/sink 决策在它内部就落 (b)（典型：项目构建在某商业低代码/OEM 平台上，鉴权/路由/渲染封在厂商 jar 里；或自称标准协议的闭源鉴权 SDK），不该因"异厂商"或"不是整个应用核心"就豁免**——说不清就**反编译**（最后手段），并显式标注**法律风险（EULA 可能禁逆向）**与不确定性。
-   - **归属 `unknown`（Vendor/坐标缺失、拿不准）且在关键路径** → **偏放行当候选去看**，不要因为定不了归属就掉进缝里跳过。
+---
 
-   **关键约束（与下方「捷径的边界」同口径）**：关键路径上落 (b) 的依赖、**以及同厂商自有闭源归属即候选但未查清内部（既未完整排除入口点、也未正面证明落 (a)）的**，**若选择不反编译，等于没看它内部 → 那条穿过它的污点/攻击面问题必须留 `needs_review`/显式缺口交回上游，绝不能用"走 CVE / 行为已知"假性闭环冒充安全**。CVE 扫描只覆盖"已知漏洞"，不覆盖"这个闭源组件在我污点路径上实际做了什么"；对 (b) 类，下"not_vulnerable"的前提是已反编译并读过目标面。（(a) 类的依赖不是目标面，安全结论落在调用方代码——无需反编译该依赖即可对穿过它的链下定论、不留缺口；本约束只针对 (b) 类。）**(a) 豁免是按当前污点/sink 问题限定的**：只是说"在这条链上它不是决策者"，**不等于该闭源依赖全局可信**——它是否被投毒/夹后门/有额外外联是另一类威胁（供应链），归 `dependency-audit`/SCA 查 CVE 与来源，不在本条污点判定的豁免范围。
+## 2. 造成原因
 
-## 反编译捷径与快捷判定（离线优先，能不反编译就不反编译）
+**本能力 n/a**（原因：反编译工具不针对单漏洞，无成因可写。本能力只是"解除无源码盲区"，漏洞成因由触发它的上游 skill 承担——SQLi 看对应 SQL 注入审计 skill / [dataflow-analysis](../dataflow-analysis/SKILL.md)；鉴权绕过看 business-logic-auth-review；以此类推）。
 
-反编译有成本、产物还可能失真，下面这些**极低成本的本地动作**经常让你少反编译甚至不反编译。按"先白嫖信息 → 再精准下刀 → 最后才整包"的顺序用——**捷径 A/B/C 全程离线、不碰外网**；当本地确实拿不到、且该依赖须看内部（**同厂商自有闭源归属即触发、不要求先证 (b)；第三方判为 (b) 才触发**）时，才动用**会发起外联**的「捷径 D：按坐标网络取件」。
+---
 
-### 捷径 A：不反编译就拿到等价信息
+## 3. 领域 source-sink 数据流模型
 
-- **`pom.properties` 一键定坐标**：`unzip -p x.jar 'META-INF/maven/*/pom.properties'` 直接拿 `groupId/artifactId/version`，据此判常见库 / 找本地 `-sources.jar`，比看 MANIFEST 猜准得多。
-- **翻本地缓存，源码可能早在硬盘上**：`find ~/.m2 ~/.gradle -name '*-sources.jar' 2>/dev/null` —— 命中直接 unzip 读，0 反编译。
-- **`spring.factories` / `META-INF/spring/*.imports` 明文列自动注册点**：`unzip -p starter.jar 'META-INF/spring*'` —— starter 自动装配的 AutoConfiguration / Controller 类名在这明文列着，直接破"import 计数看不到的 starter 盲区"，定位 jar 内 endpoint 不用反编译整包。
+**本能力 n/a**（原因：反编译只恢复源码，不做数据流追踪——跨函数 / 跨文件 / 跨依赖的 source-to-sink 追踪由 [dataflow-analysis](../dataflow-analysis/SKILL.md) 接力。本能力的产物是"反编译后的可读源码"，作为 dataflow-analysis 的新 SSA IR 加载源）。
 
-### 捷径 B：只取"够用的信息"，不反编译方法体
+---
 
-- **javap 三连，决定要不要深挖**：
-  - `javap -p X.class` → 类/方法/字段签名，看 API 形状（够判 source/sink 角色就停）。
-  - `javap -v X.class` → 常量池 + class 版本号（major 61 = JDK17…）+ **注解**（不反编译就看到 `@RestController`/`@RequestMapping`，立判是否 web 入口）。
-  - `javap -c X.class` → 字节码，留给关键逻辑的交叉验证（见取证完整性）。
-- **strings/rg 在 `.class` 二进制里搜常量先定位**（最被低估的捷径）：你要找的往往就是"哪个类拼了这条 SQL / 执行了命令 / 配了这条路由"。`strings x.jar | rg -i 'select |exec|/api/|password'`，或对解包后的类目录 `rg -a <关键字>` —— 命中哪个类，只反编译那一个。
+## 4. 常见类型
 
-### 捷径 C：确需反编译，走精准不走整包
+**本能力 n/a**（原因：反编译工具不针对漏洞分类。攻击变体属于具体漏洞的属性，由对应漏洞维度 skill 列出）。
 
-- **只反编译目标类**：`unzip x.jar 'com/foo/Target.class'` 单取出来再喂反编译器；大 jar 几千类，整包全是噪音。
-- **jadx 加速**：`jadx --no-res --no-imports -j <核数> -d out x.jar`（跳资源、多线程，大 jar 快数倍）。
-- **混淆专项**：`jadx --deobf` 自动给 `a.b.c` 生成稳定名，跨类追踪不再对着混淆名抓瞎。
+---
 
-### 捷径 D：按坐标网络取件（本地无件、且该依赖须看内部时）
+## 5. 入口点定位
 
-本地翻遍都没有 jar/源码、且该依赖须看内部——**默认就按坐标去取**（本地 `.m2` → 配置好的私服/镜像 → 公共仓），**sources 优先**：拿到官方 sources 即 0 反编译且可信。触发条件：**同厂商自有闭源（典型：项目自研内部模块、私服上的自研包）归属即触发取件，不要求先证它落 (b)**——内部不可观测，不打开就证不了 (b)，先证 (b) 才取件就是循环依赖；**第三方依赖则落关键路径 + (b) 才取**。无需任何开关；**默认按单坐标、按需拉，不无脑全量预取**（每次取件都是一次外联，少拉减少外联足迹）——仅当已确定多个件都要看时，才考虑一次性批量取 sources（见步骤 3 的例外）。
+本能力的"入口点"是"需反编译的制品"——按制品类型 + 关键路径维度判优先级。
 
-**取件前先过防误拉闸门（强制，排在取件动作之前）**：坐标的 `groupId:artifactId` 是否命中本 reactor 某个兄弟 module（groupId + artifactId 双比，别只比 artifactId——不同 groupId 下可能撞名）、其 `src/main` 是否就在仓库里？**是 → 直接 read 源码，禁止拉 jar 反编译**（源码比反编译产物可信、且免外联）。**例外**：若现场审计的产物（war/jar）打包的可能是旧版/不同 build 的该模块、与仓库当前 `src` 不一致，则**以产物为准**（必要时仍反编译产物核对），别被"仓库里有 src"误导成已覆盖。
+> 下列制品类型 / 项目栈仅作类似示例 不限于此；以目标实际栈为准。
 
-1. **定坐标 groupId/artifactId/version**（本地无 jar 时按可信度递降）：
-   - Maven 消费方 `pom.xml` 的 `<dependency>`；version 常是 `${x.version}`/父 pom 占位符 → **优先在项目根 `mvn help:effective-pom` 解平展取真实值**（裸读 pom 会拿到假版本，是最常见取错件的坑；effective-pom 自身失败时再退到裸读 + 占位符人工解析）。
-   - 多模块 reactor 中目标是兄弟 module → 坐标取**该 module 自己的 pom.xml**（含从父 pom 继承的 groupId，金标准）。
-   - Gradle → `build.gradle(.kts)` 的 `implementation 'g:a:v'` / `gradle.lockfile` / `gradle dependencies` 输出。
-   - 兜底：有半残 jar 时仍用 `pom.properties`/`MANIFEST` 反推坐标。
-2. **仓库/凭证不硬编码 URL，但注意 `dependency:get` 的仓库盲区**：私服/镜像/凭证让构建工具自己读 `~/.m2/settings.xml`（mirrors/servers/proxies）、项目 `pom.xml` 的 `<repositories>`、gradle `repositories{}`/`~/.gradle/gradle.properties`。skill 不解析 URL、**不回显/不记录凭证**。⚠️ **关键坑**：`mvn dependency:get` 设计成可脱离 project 跑，**单跑时通常只认 settings.xml 的 repo/mirror，不吃某个 pom 里声明的 `<repositories>`**——私服只在项目 pom 声明、没进 settings.xml 时会 404。
-3. **取件命令（默认单坐标、按需；sources 优先 → plain jar → curl 兜底）**：
-   - **主路径 = 单坐标取 sources**：`mvn dependency:get -Dartifact=g:a:v -Dclassifier=sources`（成功即跳反编译）。**解仓库盲区**：私服没进 settings.xml 时，从步骤 1 已跑的 `effective-pom` 里的 `<repositories>` 读出私服 URL，显式补 `-DremoteRepositories=id::default::https://<私服>/.../maven-public`（`id::default::url` 是各版本通吃的写法；较新 dependency-plugin 也接受省略 layout 的 `id::::url`）——不靠批量 resolve 去解盲区。
-   - **sources 取不到再取 plain jar**：`mvn dependency:get -Dartifact=g:a:v`（同样按需带 `-DremoteRepositories`）。落点 `~/.m2/repository`，再 `find` 取出 → 反编译。
-   - **（例外）批量取 sources**：仅当**已确定多个 (b) 件都要看**时，可在项目根一次性 `mvn dependency:resolve -Dclassifier=sources`（吃 effective repositories、自然解盲区，但**是全量、外联较多**，不作默认）。
-   - **gradle 项目**：gradle 没有"下载外部依赖 sources"的一行命令（`sourcesJar` task 只产**当前模块自己**的源码 jar，对外部依赖无效，别用）。最简：拿到坐标直接走上面的 `mvn dependency:get`（gradle 用的也是 maven 仓库）；或用 IDE / init-script 拉 sources。
-   - `mvn` 不可用才退到 `curl` 按 `groupId/带斜杠/artifactId/version/artifact-version[-sources].jar` 拼标准路径（需已知私服 base URL）。
-4. **取不到怎么办**：私服 404/401、版本解析失败、断网 → **不许直接结束**，按 fallback 段留 `needs_review` + 显式缺口并写明原因。
-5. **可信度（取件成功 ≠ 可信）**：
-   - 拉到的 **plain jar 反编译产物**照旧受 (b) 的"必须完整覆盖目标面"约束，不因"拉到了"降覆盖。
-   - 拉到的 **`-sources.jar` 与现场部署的 `.class` 未必同源同版本**（私服 sources 与 binary 分别发布、旧版、被篡改都可能）——对 (b) 类关键件，若 sources 来源/版本存疑，**与实际 class（`javap`/字节码）抽样交叉核对**再下结论（同「取证完整性」交叉验证口径）；SNAPSHOT 件标快照时间。
-6. **法律与合规外联**：拉到第三方商业件，反编译仍标 EULA（可能禁逆向）风险。⚠️ **取件会发起外联**——在网络隔离的审计/渗透交付场景，自动对客户私服或公网仓库发请求可能违反隔离要求、或在公网留下暴露被审计方的请求记录；environment 明确要求隔离时，operator 应知悉并据交付约定决定是否放行。
+### 按制品类型定位
 
-### 快捷判定矩阵（极低成本信号 → 一眼定动作）
+| 制品类型 | 典型位置 | 工具与产物 |
+|---|---|---|
+| **Java jar / war / aar** | `WEB-INF/lib/*.jar`、`~/.m2/repository`、私服坐标 | jadx / CFR / Procyon / Fernflower → `.java` 源 |
+| **Android APK / dex** | APK 包外层 + 内嵌 `classes*.dex` | `apktool` 解资源 + JADX 反编译 dex → `.java` 源 |
+| **.NET DLL / EXE** | 项目 `bin/`、IIS 部署目录、`packages/` | ILSpy / dnSpy → C# 源 |
+| **Go 编译产物** | 单个可执行文件（含符号 vs 已 strip） | 含符号表：`go-decompile` 系工具 + Ghidra；已 strip：Ghidra + 手工签名识别 |
+| **Native so / dylib / dll** | `lib*.so` / `*.dylib` / `*.dll`，应用打包目录或系统库 | Ghidra / IDA Pro / Binary Ninja → 反汇编 + 反编译伪代码 |
+| **Python `.pyc` / `.pyo`** | `__pycache__/`、site-packages | `uncompyle6` / `decompyle3`（强依赖字节码版本） |
 
-| 信号（成本极低） | 判定 |
-|---|---|
-| `pom.properties` 命中公共坐标 / 包名 `org.apache.*`·`com.google.*`·`org.springframework.*` | 公共库 → 不反编译 |
-| 本地缓存或包内有配套 `-sources.jar` | 取源码 → 不反编译 |
-| 本地无 jar/源码 + 须看内部（自有闭源归属即触发、不要求先证 (b)；第三方落 (b) 才触发） | 按坐标取件（捷径 D）：sources 优先 → 失败取 plain jar 反编译 → 仍失败 `needs_review` |
-| 包名私有前缀 `org.<项目>.*`·`com.<公司>.*` 且无公共坐标 | 非公共库 → 须按 Vendor/坐标二次定归属（别把异厂商私有命名空间误当同厂商）；落**同厂商自有闭源即候选查证**（归属即触发、不要求先证在关键路径）；要免须正面证明它是落 (a) 的纯标准化通道，不靠"没扫到"放行 |
-| `MANIFEST` Vendor / `pom` groupId = 项目自身前缀或同厂商私服 | 同厂商自有闭源 → **归属即候选查证**（入口点封在产物内、消费侧不可观测，不据 import 排除）；仅当正面证明落 (a)（决策在调用方的纯标准化通道）才免反编译 |
-| `MANIFEST` Vendor / 坐标 = 外部厂商 + 商业/专有许可（BCL、专有等） | 第三方异厂商商业 → 不在关键路径、或在关键路径但落 (a)（安全/sink 决策在调用方、依赖仅标准化通道，行为可由已知语义/CVE 说清）则免反编译（走 `dependency-audit`）；落 (b)（鉴权/路由/sink 决策在 jar 内，含自称标准协议的闭源安全 SDK）则反编译并标法律 |
-| 类名 `a.a.a`/`o0Oo` + 字符串常量被加密/缺失 | 混淆 → 是强信号但不是开关；仍按重要性 + 决策点 (a)/(b) 定、归属调节，关键路径上落 (b) 要看的才上 `--deobf` |
-| import 计数高且在 sink/入口点附近 | 攻击面大 → 优先 |
-| import 计数低但 `spring.factories` 注册了 Controller | starter 盲区 → 仍要看 |
+### 按项目结构定位
 
-### 捷径的边界：定性可抽样，定论必须覆盖重点（强约束）
+- **Java Web**：先解 war/ear——`unzip -o app.war -d app_war`，关注 `WEB-INF/lib/*.jar`（依赖）与 `WEB-INF/classes/`（自身字节码）；嵌套 fat-jar 同理逐层 `unzip`
+- **本地根本没有这个 jar**（典型：自研内部模块/私服包只在依赖声明里、不在产物里）→ 先按坐标取件（见 §8 「按坐标网络取件」），sources 优先；取到 plain jar 再反编译
+- **Android**：APK 同时含资源与 dex，资源走 apktool、代码走 JADX；两者输出可合并到同一目录
+- **Go / Native**：先 `file` 看产物类型与是否 strip，`strings` / `nm -D` / `objdump -d` 做符号与反汇编速查
 
-捷径是为了**更快定位重点**，不是为了**少看**。抽样 / 单类反编译 / `javap` 速看只支持「**路由定性**」——判断是不是自研、要不要继续深挖；**不支持下否定结论**。四条闸门：
+### 关键路径优先级
 
-- **"非漏洞 / 行为安全 / 无此能力"这类否定结论，前提是已把触发本次恢复的目标面完整反编译并读过**：即那个入口点 handler、命中的 sink 类、信任边界上的鉴权/过滤/加解密逻辑所在类**及其调用链**，而不是"我抽看的那几个类没发现问题"。目标面没覆盖到，就**没有资格判 `not_vulnerable`**。
-- **"jar 内无入口点 / 无安全决策 → 免反编译"这类否定结论，同样不能靠廉价信号扫描为空**：`spring.factories`/`META-INF/spring imports`、`javap -v` 注解、`strings` 对**"找到入口点"是强信号、对"证明没有入口点"是弱信号**——程序化注册（编程式注册 route/endpoint）、消费方 `@ComponentScan` 扫到 jar 内包、非注解路由都**绕过这些廉价信号、扫描看不见**。所以廉价信号只用于**精准定位下刀**。**自有闭源要"免"，门槛是严格的两条之一（纯 util 也不例外）**：(1) **完整覆盖入口点机制**——`spring.factories`/`*.imports` + 全类注解枚举（`javap -v` 遍历，非抽样）+ 程序化注册搜索（`rg` 找 `registerBean`/`addHandler`/`ServletContext`/`@ComponentScan` 命中包等）都做过、能正面排除自注册入口点；**或** (2) **从调用方侧正面证明它落 (a)**（决策在调用方、依赖仅被当标准化通道调用）。两条都不满足 → 不得据"没扫到"放行，自有闭源回到"归属即候选查证"，继续覆盖到能排除为止、否则留缺口。**注意 (a) 不覆盖"自带入口点"维度**：一个 jar 可能既没被当 sink 调用（谈不上 (a)/(b)）、又自注册 web 入口点，这种只能靠 (1) 排除。
-- **覆盖不全 / 反编译失败 / 关键字符串被加密解不出 → 判 `needs_review`，并写明"已覆盖 X、未覆盖 Y、缺失原因"**，把未覆盖目标当作缺口**交回上游**继续追，绝不用"局部无发现"替代完整结论。同口径见 `dataflow-analysis`「别因看不到就直接判 unresolved」、`common/closure-verification.md`「降级 ≠ 删除、宁可 suspected 不夸大」。
-- 一句话：**捷径帮你"快速找到该看的"，但"该看的"必须真看到**；快不等于可以漏，欠覆盖优于误判无害。
+本能力对每个制品按下列维度排优先级（详细 triage 见 [references/triage-decision.md](references/triage-decision.md)）：
 
-## Java playbook（主战场）
+- 同厂商自有闭源 → 归属即触发查证（候选），不要求先证在关键路径——反编译主战场
+- 第三方异厂商商业 + 决策在依赖内 (b)（含 OEM / 低代码平台承载鉴权路由、自称标准协议的闭源鉴权 SDK） → 反编译并标法律
+- 第三方异厂商商业 + 决策在调用方 (a)（标准化数据 / 协议通道，如 JDBC 驱动） → 不反编译，靠已知语义 + CVE 说清
+- 归属 `unknown` + 在关键路径 → 偏放行当候选
 
-Java Web 审计里最常见：依赖只有编译 jar/war/class、或框架把逻辑封进自研 jar。
+---
 
-1. **定位与解包**
-   - war/ear 先解包：`unzip -o app.war -d app_war`，关注 `WEB-INF/lib/*.jar`（依赖）与 `WEB-INF/classes/`（自身字节码）。
-   - 嵌套 fat-jar 同理逐层 `unzip`。
-   - **本地根本没有这个 jar**（典型：自研内部模块/私服包只在依赖声明里、不在产物里）→ 先按坐标取件（「捷径 D」），sources 优先；取到 plain jar 再进下一步。
-2. **优先 sources.jar**（同 triage 第 2 步）：本机已落盘或取件拿到，都直接 read_file，跳过反编译。
-3. **反编译器（jadx 首选；需要交叉对照时再上第二个，先探本机可用性 `command -v`）**：
-   - jadx：`jadx -d out_src app.jar`（整包反编译，可读性好，首选；加速/混淆/单类参数见上方「捷径 C」）。
-   - 第二反编译器（jadx 还原可疑、需比对字节码语义时用）：本机若装了 CFR `java -jar cfr.jar app.jar --outputdir out_src` 或 Procyon `java -jar procyon-decompiler.jar app.jar -o out_src`；都没装可退到 IntelliJ IDEA 自带的 fernflower——`find /Applications ~ -name 'java-decompiler*.jar' 2>/dev/null` 定位后 `java -cp <jar> org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler <in.jar> <outdir>`。
-   - 单类速查签名/常量/字节码：`javap -p -c -constants Target.class`（无需整包反编译，定位某个方法时最快）。
-4. **反编译后**：`rg` 在 `out_src` 里定位上游关心的类/方法/调用链（source、sink、鉴权、过滤、加解密等），按需 read_file 精读。
-5. **混淆处理**：若类名/方法名被混淆成 `a.b.c`，**标注"名字不可信"**，改按结构、字符串常量、调用关系、常量池来识别语义，不要拿混淆名当语义证据。
+## 6. 跨框架代码变体
 
-## 其余语言（轻量带过，确需才深入）
+**本能力 n/a**（原因：反编译针对二进制制品而非框架代码模式——反编译工具按字节码格式 / 制品类型选择，与"该制品是 Spring / Django / Gin 还是 Express"无关。反编译产物里的代码 pattern 由触发它的上游 skill 按对应漏洞维度的跨框架变体表去识别）。
 
-- **Python**：`.pyc` → `decompyle3` / `uncompyle6`（与字节码版本强相关，高版本可能失败，需本机已装）；失败回退到 triage 第 2 步——先在本地包目录找随包 `.py` 源，本机没有且该包须看内部（同厂商自有闭源归属即触发、不要求先证 (b)；第三方落 (b) 才触发）时再按坐标取件（机制不同：Python 用 `pip download` 取 sdist，不走 `mvn`；口径一致：先本地、本地无再按坐标取，源码优先）。
-- **JS**：压缩/混淆代码 → 优先找配套 `.map` source map 还原；无 map 则 `prettier` 美化 + 反混淆，仅恢复到能读懂控制流即可。
-- **.NET**：`ilspycmd Target.dll -o out_src`（ILSpy 命令行）。
-- **native（.so/.dll/可执行）**：先 `strings` / `nm -D` / `objdump -d` 做符号与反汇编速查；确有深挖必要再上 Ghidra headless（`analyzeHeadless`）——成本高，仅在该依赖确属分析关键路径时。
+---
 
-## 工具不可用时的 fallback（不许直接结束）
+## 7. 思考检查点
 
-沿用 `dataflow-analysis` 的口径：反编译器没装 / 反编译失败 / **取件失败（私服 404/401、版本解析失败、断网未联通）**，**都不能直接判"无法分析"留空**。至少做最低限度结构盘点：
+加载本能力时按这些问题思考：
 
-- Java：`javap -p`（看类/方法签名）、`unzip -p app.jar META-INF/MANIFEST.MF`（看版本/主类/依赖声明）、`strings` 抓常量字符串（SQL 片段、URL、命令、密钥特征）。
-- 显式声明：`decompile_available: false`、取件是否尝试过及失败原因、用了哪些 fallback 手段、已尽力提取到的信息、仍缺失的部分。
-- **不留空、不伪造**——拿不到就如实写拿不到（含"私服取件失败"），绝不编造"看起来该是这样"的方法体。
+- 这个制品反编译产出是否会被实际消费？——同厂商自有闭源因入口点封在产物内、消费侧不可观测，归属即触发；第三方依赖须先证落 (b) 决策在依赖内才触发。详见 [references/triage-decision.md](references/triage-decision.md) 维度 4
+- 反编译质量是否足以追内部数据流？——是否已混淆（Proguard / R8 / ConfuserEx）、优化级别 -O3、native AOT、Go 已 strip；混淆等级会决定是否值得开 `--deobf` 还是要标 `static-unknown`
+- 是否值得这次反编译的成本？——反编译有时间 / 上下文成本，产物还带不确定性；与项目漏洞总量对比、与上游触发面的紧迫性对比；维度 1（常见公共库）/ 维度 2（本机已有源码）/ 维度 4.2 落 (a) 任一命中即不反编译，详见 triage 详表
+- 反编译产物是否需要写入仓库——law 边界（第三方商业件 EULA 可能禁逆向）、隔离要求（取件会发起外联）、产物存储位置；按 `## 产物契约` 落 `shared/decompiled/<package>-<version>/`
+- 反编译后的代码引用时是否标"反编译产物"——避免与项目真实源码混淆；混淆环境下方法名 / 局部变量名可能非原始、行号非源始行号；按 [common/closure-verification.md](../../common/closure-verification.md) §取证完整性
 
-## 恢复后如何接回上游
+---
 
-- 把恢复源码当作**带不确定性的源码**投喂回触发它的上游分析：SCA 候选 → 看清依赖真实行为；入口点/中间件 → 还原信任边界与鉴权逻辑；数据流 → 续追 source/sink/调用边界。
-- 不要把反编译当独立任务的终点；目标始终是**解除上游那一步的"无源码"盲区**，让原分析能继续闭环。
-- **恢复源码里若再引用无源码的自研/闭源依赖**：把它当作本 skill 的新输入，回到「触发 triage」起点同样判（重要性主闸门 + (a)/(b) + 归属调节），落 (b) 或自有闭源未查清内部的同样留显式缺口。**递归边界由现有主闸门收敛**（落 (a)、或外部可证不在关键路径即停），不会无限展开。
+## 8. 检测方法论 / 数据流追踪
 
-## 取证完整性（强约束）
+### 触发条件判定（与 dependency-audit 协作）
 
-引用恢复代码做证据时，必须遵守 `common/closure-verification.md` 的取证完整性条款（用 read_file 复用其正文，勿在此复制）：
+只对"关键路径 + 闭源 + 可达性不可静态判定"的依赖反编译。详细 triage 决策树（包括决策点 (a)/(b)、归属调节、捷径边界四闸门）见 [references/triage-decision.md](references/triage-decision.md)。
 
-- **标注来源**：如"反编译自 `app.war!WEB-INF/lib/foo.jar` 的 `com.x.Bar#doFilter`，工具 = jadx"。
-- **取件来源分两类标**：
-  - 拉到的**官方 `-sources.jar` = 可信源码**，无混淆、名/行号可信，标"取自 `<私服/中央仓>` 坐标 `g:a:v` 的 sources"。
-  - 拉到的 **plain jar 反编译产物**，与本地反编译同口径，标"取自 `<仓库>` 坐标 `g:a:v` + 反编译工具"，并保留混淆不确定性。
-  - SNAPSHOT 件标快照时间（可能与构建时不一致）。
-- **标注不确定性**：混淆环境下方法名/局部变量名可能非原始、行号非源始行号。
-- **不得伪装成项目源码**：反编译产物与项目真实源码必须可区分，绝不冒充。
+主要分支概述（顺序仅作建议，可按现场调整）：
 
-## 发现即落行（coverage-ledger/findings）
+1. **行为已知的常见公共库** → 不反编译，按已知语义推理；已知漏洞交 [dependency-audit](../dependency-audit/SKILL.md) 查 CVE
+2. **本机已落盘的官方源码** → 取源码读，0 反编译；翻 `~/.m2`、`~/.gradle`、包目录、source map、调试符号
+3. **轻量探查定性**（公不公共）→ `rg` import / 包名前缀 / `pom.properties` / `MANIFEST.MF` / `javap -p` 单类速看
+4. **非公共库 + 取不到源码**：按"关键路径 + 决策点 (a)/(b) + 归属"三步定动作——同厂商自有闭源归属即触发查证；第三方落 (b) 触发；落 (a) 免反编译
 
-仅当你在恢复代码中**直接确认**了漏洞/需复核项时，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/dependency-decompile.jsonl`；若只是完成源码恢复、判定交回上游 skill，则由上游落库，避免双重记账。
+### 工具选择
 
-一发现一行，**绝不写区间/计数/抽样**，字段：
+按制品类型选定工具，**先探本机可用性**（`command -v <tool>`）：
+
+| 语言 / 制品 | 主要工具 | 备选 / 交叉验证 |
+|---|---|---|
+| Java jar / war / class | jadx（首选，可读性好）| CFR / Procyon / IntelliJ Fernflower（交叉对照时用） |
+| Java 单类速查 | `javap -p -c -constants Target.class`（签名 / 字节码 / 常量池） | `javap -v`（常量池 + 注解，破 starter 盲区） |
+| Android APK / dex | apktool（解资源）+ JADX（反编译 dex） | dex2jar + jadx 兜底 |
+| .NET DLL / EXE | `ilspycmd Target.dll -o out_src`（ILSpy 命令行） | dnSpy（GUI 复核） |
+| Go 含符号表 | `go-decompile` 系 + Ghidra 辅助 | Ghidra `analyzeHeadless` |
+| Go 已 strip / Native so / dylib / dll | Ghidra headless（`analyzeHeadless`） | IDA Pro / Binary Ninja（深挖时） |
+| Python `.pyc` / `.pyo` | `decompyle3` / `uncompyle6`（与字节码版本强相关） | 失败回退：在包目录找随包 `.py` 源 |
+
+### 反编译流程
+
+1. **制品定位**：按 §5 找到目标制品物理路径（解包 war / ear、定位 jar/dll/so）
+2. **本地无件兜底**：若该依赖须看内部但本地无件，按坐标取件——sources 优先（mvn `dependency:get -Dclassifier=sources` → `pip download` 取 sdist → npm registry tarball），sources 失败再取 plain jar 反编译；详细取件路径与防误拉闸门见下「按坐标网络取件」
+3. **工具选定**：按制品类型 + 混淆等级（普通反编译器 vs 加 `--deobf`）
+4. **反编译输出**：
+   - Java：`jadx --no-res --no-imports -j <核数> -d out app.jar`（跳资源、多线程，大 jar 快数倍）；混淆 `jadx --deobf` 自动给 `a.b.c` 生成稳定名
+   - 单类精准反编译：`unzip x.jar 'com/foo/Target.class'` 单取出来再喂反编译器；大 jar 几千类整包全是噪音
+5. **SHA256 比对**（why：避免供应商被替换）：反编译前对原制品做 `sha256sum`，与 SCA 阶段记录的 hash 比对；不一致 → 标"供应链可疑"
+6. **写入仓库**：按 `## 产物契约` 落 `shared/decompiled/<package>-<version>/` 目录，与项目源码分离
+7. **标注来源**：每段引用都标"反编译自 xxx.class，工具 = jadx，方法名可能经混淆"——按 [common/closure-verification.md](../../common/closure-verification.md) §取证完整性
+
+### 按坐标网络取件（捷径 D）
+
+本地翻遍都没有 jar/源码、且该依赖须看内部时，按坐标去取——**sources 优先**（拿到官方 sources 即 0 反编译且可信）：
+
+- 触发条件：同厂商自有闭源归属即触发；第三方依赖落 (b) 才触发
+- 取件前过**防误拉闸门**：坐标的 `groupId:artifactId` 是否命中本 reactor 某个兄弟 module？是 → 直接 read 源码，禁止拉 jar 反编译（why：源码比反编译产物可信、且免外联）。例外：现场产物（war/jar）可能打包旧版/不同 build 的该模块 → 以产物为准
+- **定坐标**：Maven 用 `mvn help:effective-pom` 解平展（裸读 pom 会拿到假版本，是最常见取错件的坑）；Gradle 用 `build.gradle(.kts)` / `gradle.lockfile`
+- **私服 / 凭证**：让构建工具自己读 `~/.m2/settings.xml` / 项目 `<repositories>` / Gradle `repositories{}`；本能力不解析 URL、**不回显 / 不记录凭证**
+- **取件命令**：`mvn dependency:get -Dartifact=g:a:v -Dclassifier=sources`；私服没进 settings.xml 时显式补 `-DremoteRepositories=id::default::https://<私服>/...`（解 `dependency:get` 的仓库盲区——单跑时通常只认 settings.xml 的 repo/mirror）
+- **Python**：`pip download` 取 sdist（机制不同：不走 mvn，口径一致——先本地、本地无再按坐标取，源码优先）
+- **取件成功 ≠ 可信**：plain jar 反编译产物照旧受 (b) 的"必须完整覆盖目标面"约束；`-sources.jar` 与现场部署的 `.class` 未必同源同版本——对 (b) 类关键件，sources 来源 / 版本存疑时与实际 class（`javap`/字节码）抽样交叉核对；SNAPSHOT 件标快照时间
+- **外联与隔离**：取件会发起外联——在网络隔离的审计/渗透交付场景，自动对客户私服或公网仓库发请求可能违反隔离要求或在公网留下暴露被审计方的请求记录；environment 明确要求隔离时按交付约定决定是否放行
+- **取不到怎么办**：私服 404/401、版本解析失败、断网 → 按 `## 产物契约` 留 `needs_review` + 显式缺口并写明原因，不直接结束
+
+### 接力 dataflow-analysis
+
+反编译后把产物路径告知 [dataflow-analysis](../dataflow-analysis/SKILL.md)，作为新的 SSA IR 加载源——`rg` 在反编译输出目录里定位上游关心的类 / 方法 / 调用链（source、sink、鉴权、过滤、加解密等），按需 `read_file` 精读。
+
+### 基线检查项
+
+> 以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标制品动态调整，按三态标注（`[x]` / `[-]` / `[+]`）处置。
+
+- [ ] 上游触发面已明确（SCA 候选 / 入口点 / 数据流 / 递归触发面）
+- [ ] 按 [references/triage-decision.md](references/triage-decision.md) 过完维度 1-4，明确"为何要反编译此件"或"为何不反编译"
+- [ ] 本地缓存 / 包目录 / source map / 调试符号已翻过（0 外联，sources 优先）
+- [ ] 本地无件且须看内部 → 按坐标取件，sources 优先 → 失败取 plain jar
+- [ ] 防误拉闸门已过（不把仓库内有 src 的兄弟 module 当外部依赖反编译）
+- [ ] 工具选定与制品类型匹配（不混淆用普通反编译，混淆开 `--deobf`）
+- [ ] 原制品 SHA256 已记录，与 SCA 阶段 hash 比对
+- [ ] 产物落 `shared/decompiled/<package>-<version>/` 目录，未与项目源码混入
+- [ ] manifest.jsonl 已 append 元数据行（package / version / hash / decompiler / 触发原因）
+- [ ] 引用反编译代码做证据时已标"反编译自 xxx，工具 = X，方法名可能经混淆"
+- [ ] 混淆环境下方法名 / 局部变量名标"名字不可信"，按结构 / 字符串常量 / 调用关系识别语义
+- [ ] 反编译失败 / 取件失败 → 已落 `needs_review` + 显式缺口，未直接判"无法分析"留空
+
+### 产物契约（必须遵守）
+
+> **why**：反编译产物是下游 [dataflow-analysis](../dataflow-analysis/SKILL.md) / 上游审计 skill 的接口，结构 / 命名 / 来源标注缺失会让下游无法回溯源头、无法判断混淆不确定性、无法与项目真实源码区分。这是审计可追溯的硬底线，属交付契约不属检查建议。
+
+**目录结构**：
+- 反编译产物落到 `shared/decompiled/<package_name>-<version>/` 目录
+- 目录命名按"包名 + 版本"——同厂商自有件 `<groupId>-<artifactId>-<version>`；第三方件以 Maven 坐标为准
+- 与项目真实源码（`src/`）物理分离，避免与项目源码混淆
+
+**manifest 落行**：每次反编译 append 一行 metadata 到 `shared/decompiled/manifest.jsonl`：
 
 ```json
-{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+{
+  "package": "com.example.foo-bar",
+  "version": "1.2.3",
+  "artifact_sha256": "...",
+  "decompiler": "jadx 1.4.7",
+  "decompiled_at": "<ISO8601 timestamp>",
+  "key_path_reason": "同厂商自有闭源，归属即触发；入口点封在 jar 内、消费侧不可观测"
+}
 ```
 
-- `id` 带前缀全局唯一（如 `dec-001`）。
-- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
-- `source` / `file_location` 标注反编译来源（含产物路径与工具）；混淆环境下 `confidence` 酌情降级。
-- 下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。
+字段约束：
+- `package` 与 `version` 必填，对应取件坐标或现场制品标识
+- `artifact_sha256` 填原制品 hash（反编译前 `sha256sum` 取得），用于供应链一致性校验
+- `decompiler` 填实际工具名 + 版本
+- `key_path_reason` 写**为什么这件值得反编译**——具体到触发面、归属判定、决策点 (a)/(b) 结论；不写"看起来该反"之类模糊表达
+- 来源不确定时标"取自 `<私服/中央仓>` 坐标 `g:a:v` 的 sources"或"反编译自 `app.war!WEB-INF/lib/foo.jar`，工具 = jadx"
+- 拉到的 plain jar 反编译产物保留混淆不确定性；SNAPSHOT 件标快照时间
+
+**取证完整性**：引用反编译代码做证据时遵循 [common/closure-verification.md](../../common/closure-verification.md) §取证完整性——不在此复述，按 §6.4 引用：
+- 标注来源（产物路径 + 反编译工具）
+- 标注不确定性（混淆环境下方法名 / 局部变量名可能非原始、行号非源始行号）
+- 不得伪装成项目真实源码
+
+**发现接回上游**：
+- 反编译只是恢复源码，漏洞判定通常交回触发它的上游 skill 落库
+- 仅当本能力在恢复代码中**直接确认**了漏洞/需复核项时，append 一行 jsonl 到 `shared/coverage-ledger/findings/dependency-decompile.jsonl`（避免双重记账）
+- 字段约束沿用 sast-scan 同口径：`id` 带 `dec-` 前缀全局唯一；`status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`；`source` / `file_location` 标注反编译来源（含产物路径与工具）；混淆环境下 `confidence` 酌情降级
+
+---
+
+## 9. 闭环要求（必须遵守）
+
+**本能力 n/a**（原因：反编译不做漏洞判定，无 confirmed / suspected / not_vulnerable 三态。漏洞判定的闭环由触发它的上游 skill 承担——上游引用 [common/closure-verification.md](../../common/closure-verification.md)。本能力的"交付契约"是 `## 8 产物契约` 段的目录结构 + manifest 落行 + 来源标注，不在此重复闭环判定语义）。
+
+---
+
+## 10. 具象化反例库
+
+**本能力 n/a**（原因：反编译工具不针对单漏洞，FP / FN 由具体漏洞维度 skill 列出。本能力的"失败模式"在 §11 静态分析边界统一表达——混淆 / 加壳 / native AOT / 取件失败等情形必须标 `static-unknown` 或 `decompile-incomplete`，不能默认为安全）。
+
+---
+
+## 11. 静态分析边界
+
+> 反编译的能力上限是**还原可分析的源码**，不是"看清所有代码"。下面这些情形反编译质量受限，**必须明确标注**，不允许默认为"该制品无问题"或 not_vulnerable。
+
+### 反编译能力受限的情形
+
+1. **代码混淆（Proguard / R8 / ConfuserEx 等）**
+   - 现象：类名 `a.a.a`、方法名 `o0Oo`、字符串常量加密 / 缺失
+   - 处置：标 `static-unknown` + 标注混淆等级；开 `--deobf` 自动给稳定名但语义仍不可信；改按结构、字符串常量、调用关系、常量池识别语义，**不要拿混淆名当语义证据**
+
+2. **激进优化级别**
+   - native：`-O3` 编译后内联 / 循环展开 / 死代码删除，反编译伪代码与源码结构差距大
+   - Go AOT：编译已 strip 符号；只能靠 Ghidra + 手工签名识别
+   - .NET AOT / IL2CPP：托管语言原生 IL 信息丢失，ILSpy 失效
+   - 处置：标 `decompile-incomplete` + 标注优化级别；反编译产物只能作"辅助参考"，不作单独定论依据
+
+3. **加密 / 加壳**
+   - 现象：APK 加固（爱加密 / 360 加固 / 梆梆）、.NET 加壳（ConfuserEx 抗调试）、native UPX / VMProtect
+   - 处置：标"反编译失败 + 原因"（壳类型 / 加固厂商），**不能默认 not_vulnerable**；按 [references/triage-decision.md](references/triage-decision.md) 四闸门——降级为 `needs_review` 而非"无法分析留空"
+
+4. **native 代码（C / Rust 编译后无符号）**
+   - 现象：`.so` / `.dylib` / `.dll` 编译产物，无调试符号、无 RTTI
+   - 反编译质量受限：Ghidra / IDA 输出的伪代码是"语义近似"而非真实源码——指针类型 / 结构体 / 函数边界都需人工矫正
+   - 处置：仅作辅助；定论必须配合符号交叉验证（`strings` / `nm -D` / `objdump -d`）
+
+5. **取件失败 / 反编译器不可用**
+   - 现象：私服 404/401、版本解析失败、断网、反编译器没装、反编译过程 OOM / 超时
+   - 处置：按 §8 fallback 段——至少做最低限度结构盘点（`javap -p`、`MANIFEST.MF`、`strings`），显式声明 `decompile_available: false` + 已尝试手段 + 仍缺失部分；不留空、不伪造、不直接结束
+
+6. **跨制品边界（递归触发面）**
+   - 反编译出的源码 A 又引用无可读源码的依赖 B（依赖的依赖）
+   - 处置：B 从 §1 触发线索重新过 triage，不得因 B 是"依赖的依赖"停在第一层；递归边界由 triage 主闸门收敛（落 (a) 或外部可证不在关键路径即停）
+
+### 白盒底线
+
+**不假装看到看不到的代码**。本能力的可观测能力到反编译产物的可读源码为止——混淆名不是语义、伪代码不是真源、取件失败不等于安全。
+
+- 反编译产物 + 关键路径上落 (b) 的依赖、以及同厂商自有闭源归属即候选但未查清内部的 → 不得用"走 CVE / 行为已知"假性闭环冒充安全
+- 反编译失败 / 覆盖不全 / 关键字符串被加密解不出 → 判 `needs_review`，写明"已覆盖 X、未覆盖 Y、缺失原因"，把未覆盖目标当作缺口交回上游
+- 不留空、不伪造——拿不到就如实写拿不到（含"私服取件失败"），绝不编造"看起来该是这样"的方法体
+
+---
+
+## 12. 修复建议
+
+**本能力 n/a**（原因：反编译工具不针对漏洞，无修复路径可写。各漏洞修复路径由对应单漏洞维度 skill 给出——例如 SQLi 修复参对应 SQL 注入审计 skill / pentest 链路上的 §12；鉴权绕过参 business-logic-auth-review §12；以此类推）。
+
+---
+
+## 相关文件
+
+- [references/triage-decision.md](references/triage-decision.md) — 完整 triage 决策树（维度 1-4、决策点 (a)/(b)、归属调节、快捷判定矩阵、捷径边界四闸门）
+- [common/closure-verification.md](../../common/closure-verification.md) — 取证完整性 / 闭环判定共享口径
+- [../dependency-audit/SKILL.md](../dependency-audit/SKILL.md) — SCA 候选 / CVE 查询上游
+- [../dataflow-analysis/SKILL.md](../dataflow-analysis/SKILL.md) — 反编译产物的下游消费者（污点链续追）
+- [../sast-scan/SKILL.md](../sast-scan/SKILL.md) — 粗筛产物作为本能力的另一条触发面

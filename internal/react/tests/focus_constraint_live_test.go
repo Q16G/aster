@@ -16,7 +16,7 @@ import (
 
 // TestFocusConstraint_PlannerLive 使用真实 LLM 验证用户聚焦约束是否生效。
 // 构造一个带 SKILLS_INDEX 的审计场景，用户明确说"重点关注 RCE 和 SQL 注入"，
-// 验证 planner 不会为 auth-authz、client-side-sec、config-sec 等非聚焦方向的子清单安排步骤。
+// 验证 planner 不会为 session-security、csp-audit、secret-detection 等非聚焦方向的能力安排步骤。
 //
 // 启用方式：SASTPRO_REACT_LIVE_TEST=1 go test ./internal/react/tests/... -run TestFocusConstraint -v
 func TestFocusConstraint_PlannerLive(t *testing.T) {
@@ -43,16 +43,17 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 
 	// 构造 skills index (模拟真实场景，包含多个维度的 skill)
 	skillsCtx := &SkillsPromptContext{
-		Table: `| name | description | when-to-use | status |
-|------|-------------|-------------|--------|
-| project-framework-analysis | 项目结构识别 + 攻击面盘点 | 进入代码审计阶段首先加载 | available |
-| sast-scan | 结构化漏洞扫描（RCE/SQLi/XXE/SSRF/XSS） | 需要静态分析扫描代码漏洞时 | available |
-| dataflow-analysis | 跨函数数据流验证 | 验证 source-to-sink 可达性 | available |
-| auth-authz | 认证授权子清单 — 认证/授权/IDOR/会话安全 | 聚焦审计认证授权维度，或项目有登录、会话管理、权限判断时 | available |
-| client-side-sec | 客户端安全子清单 — CSP/DOM XSS/postMessage | 聚焦审计客户端安全，或项目有前端安全敏感 JS 逻辑时 | available |
-| config-sec | 配置安全子清单 — 密钥泄露/安全头/危险配置 | 聚焦审计配置安全，或项目有配置文件或安全响应头设置时 | available |
-| dependency-audit | 依赖/供应链审计 | 存在 pom.xml/package.json 等依赖文件时 | available |
-| stored-xss-detection | 存储型 XSS 检测 | 存在数据写入后读出并渲染的流程时 | available |`,
+		Table: `| name | description | status |
+|------|-------------|--------|
+| project-framework-analysis | 项目结构识别 + 攻击面盘点；进入代码审计阶段首先加载 | available |
+| sast-scan | 结构化漏洞扫描（RCE/SQLi/XXE/SSRF/XSS）；需要静态分析扫描代码漏洞时 | available |
+| dataflow-analysis | 跨函数数据流验证；验证 source-to-sink 可达性 | available |
+| business-logic-auth-review | 业务逻辑越权与权限边界白盒审计；项目含 IDOR / 权限判断 / owner 字段时 | available |
+| session-security | 会话安全白盒审计；项目含 Cookie / Session / 登录流程时 | available |
+| csp-audit | CSP 策略静态审计；项目含 Content-Security-Policy 响应头声明时 | available |
+| secret-detection | 硬编码密钥 / 凭据检测；项目含 .env / application.properties 时 | available |
+| dependency-audit | 依赖/供应链审计；存在 pom.xml/package.json 等依赖文件时 | available |
+| stored-xss-detection | 存储型 XSS 检测；存在数据写入后读出并渲染的流程时 | available |`,
 	}
 
 	// Agent instruction (来自 code-audit profile v3，含项目结构识别和用户意图优先条款)
@@ -107,9 +108,10 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 
 	// 基本验证：响应不应包含非聚焦方向的步骤关键词
 	nonFocusKeywords := []string{
-		"auth-authz", "认证授权",
-		"client-side", "客户端安全", "CSP",
-		"config-sec", "配置安全", "密钥泄露",
+		"business-logic-auth-review", "权限边界",
+		"session-security", "会话安全",
+		"csp-audit", "Content-Security-Policy",
+		"secret-detection", "硬编码密钥",
 		"dependency-audit", "依赖审计", "供应链",
 		"stored-xss", "存储型 XSS",
 	}

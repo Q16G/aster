@@ -29,7 +29,7 @@ skills/
 
 | 类别 | 数量 | 用途 |
 |---|---|---|
-| `code-audit/` | 17 | 静态代码审计（CSP / 配置 / 鉴权 / 业务逻辑等专项） |
+| `code-audit/` | 13 | 静态代码审计（CSP / 配置 / 鉴权 / 业务逻辑等专项） |
 | `pentest/` | 28 | 动态渗透测试（注入 / IDOR / SSRF / 文件上传等漏洞类） |
 | `host-defense/` | 5 | 主机防御侧（基线检查 / 应急响应 / 入侵检测） |
 | `common/` | 3 | 共享基础设施（result-with-file 元 skill / agent-browser / graybox-p0 入口） |
@@ -45,19 +45,20 @@ skills/
 
 | 我想做… | 加载 skill |
 |---|---|
-| 代码审计入门编排 | `code-audit/security-code-analysis`（如果存在）或对应专项 |
-| CSP 策略审计 | `code-audit/csp-audit`（子 skill，由 `client-side-sec` 加载） |
+| 项目首次接入、识别技术栈/入口点 | `code-audit/project-framework-analysis` |
+| 大型项目漏洞候选粗筛 | `code-audit/sast-scan` |
+| 跨函数 source→sink 数据流追踪 | `code-audit/dataflow-analysis` |
+| CSP 策略审计 | `code-audit/csp-audit` |
+| 存储型 XSS | `code-audit/stored-xss-detection` |
 | SQL 注入检测 | `pentest/sql-injection-comprehensive` |
 | IDOR / 越权 | `pentest/idor-detection` + `code-audit/business-logic-auth-review` |
-| 灰盒测试编排入口 | `common/graybox-p0` |
 | 结果落盘 | `common/result-with-file` |
 
-## 父 skill / 子 skill 关系
+## 原子 skill（v3.1）
 
-- **父 skill**：`user-invocable: true`，承担「清单分发」，下方表格列出每项检查角度对应的子 skill。例如 `client-side-sec` 分发到 `csp-audit` + `client-js-audit`。
-- **子 skill**：`user-invocable: false`，由父 skill 用 `skill` 工具加载，包含具体规则与案例库。
+v3 重构后已淘汰「父 skill 路由 + 子 skill 执行」两层结构（路由属 agent profile 职责，详见 SKILL_SPEC.md §六 / §七）。**所有 SKILL.md 都是领域原子能力**——任意 agent 都能独立 `load_skill` 调用，单文件可读懂完整检测能力。
 
-具体改造范例：见 [`code-audit/client-side-sec/SKILL.md`](code-audit/client-side-sec/SKILL.md)（父）+ [`code-audit/csp-audit/SKILL.md`](code-audit/csp-audit/SKILL.md)（子）。
+`code-audit/` 全部 skill 按 [SKILL_SPEC.md §6.2 白盒 12 段骨架](SKILL_SPEC.md) 组织；`pentest/` 全部 skill 按 §6.1 黑盒 12 段骨架组织。两套模板见 [`CODE_AUDIT_SKILL_TEMPLATE.md`](CODE_AUDIT_SKILL_TEMPLATE.md) / [`PENTEST_SKILL_TEMPLATE.md`](PENTEST_SKILL_TEMPLATE.md)。
 
 ## 提交前自检
 

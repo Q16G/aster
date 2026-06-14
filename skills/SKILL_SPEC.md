@@ -70,15 +70,13 @@ skills/
 
 ```yaml
 ---
-name: client-side-sec
+name: csp-audit
 description: >-
-  客户端安全子清单 — 逐项排查 CSP 策略、客户端 JS 安全。
-  当需要聚焦审计客户端安全维度，或项目有前端 JS 安全敏感逻辑、CSP 设置、DOM 操作、postMessage 时使用。
-allowed-tools: bash,read_file,list_files,rg,list_skills
+  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽 source-list，
+  比对最小权限基线。代码里出现 `Content-Security-Policy` 响应头声明、`<meta http-equiv="CSP">`、
+  Spring `Headers().contentSecurityPolicy()`、Express `helmet.csp()`、Django `CSP_*` 设置时使用。
+allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
-argument-hint: "[target_path]"
-arguments:
-  - target_path
 ---
 ```
 

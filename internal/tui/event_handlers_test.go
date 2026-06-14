@@ -111,7 +111,11 @@ func TestHandleAgentEventStateChangePrefersStatusSummary(t *testing.T) {
 	}
 }
 
-func TestHandleAgentEventStepReplanPhaseShowsPanelAndThinkContent(t *testing.T) {
+// TestHandleAgentEventStepReplanPhaseInsertsBannerAndStreamsThinkToMain
+// 验证 step_replan 阶段:
+// 1. EventTypeStateChange 在主聊天区插入一条 phase banner part
+// 2. EventTypeThink 的 reasoning_content 走主区 thinking 流(不再分流到下方面板)
+func TestHandleAgentEventStepReplanPhaseInsertsBannerAndStreamsThinkToMain(t *testing.T) {
 	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -124,8 +128,18 @@ func TestHandleAgentEventStepReplanPhaseShowsPanelAndThinkContent(t *testing.T) 
 	if m.statusText != "evaluating plan..." {
 		t.Fatalf("expected step_replan status text, got %q", m.statusText)
 	}
-	if !m.thinkingPanel.visible {
-		t.Fatal("expected thinking panel to be visible during step_replan")
+
+	var bannerFound bool
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner && p.PhaseBanner != nil && p.PhaseBanner.Phase == "step_replan" {
+			bannerFound = true
+			if p.PhaseBanner.Label != "Step Replan" {
+				t.Fatalf("expected banner label \"Step Replan\", got %q", p.PhaseBanner.Label)
+			}
+		}
+	}
+	if !bannerFound {
+		t.Fatal("expected phase banner part for step_replan in main chat")
 	}
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -134,10 +148,141 @@ func TestHandleAgentEventStepReplanPhaseShowsPanelAndThinkContent(t *testing.T) 
 			"think_content": "旧计划未覆盖新增验证缺口，需要补一轮验证",
 		},
 	})
+	m.chat.FlushThinking()
 
-	view := m.thinkingPanel.View()
-	if !strings.Contains(view, "旧计划未") || !strings.Contains(view, "需要") || !strings.Contains(view, "补一轮验证") {
-		t.Fatalf("expected replan think content in panel, got %q", view)
+	var sawThinking bool
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypeThinking && p.Thinking != nil && strings.Contains(p.Thinking.Content, "旧计划未覆盖新增验证缺口") {
+			sawThinking = true
+		}
+	}
+	if !sawThinking {
+		t.Fatal("expected step_replan think content streamed into main chat thinking part")
+	}
+}
+
+// TestHandleAgentEventPhaseChangeFlushesPriorThinkingBeforeBanner 验证 phase 切换时
+// 上一阶段还在飘的 thinking buffer 先落盘成 part,再插入 banner——
+// 否则旧 thinking 会被后续 AppendThinkingForAgent flush 到 banner 之后,
+// 导致"旧推理出现在新阶段标题下方"的视觉错位。
+func TestHandleAgentEventPhaseChangeFlushesPriorThinkingBeforeBanner(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeStateChange,
+		Payload: map[string]any{"phase": "step"},
+	})
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeThink,
+		GroupID: "g-step-1",
+		Payload: map[string]any{"think_content": "step 阶段的思考"},
+	})
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeStateChange,
+		Payload: map[string]any{"phase": "step_replan"},
+	})
+
+	parts := m.chat.Parts()
+	var stepThinkingIdx, stepReplanBannerIdx = -1, -1
+	for i, p := range parts {
+		switch p.Type {
+		case PartTypeThinking:
+			if p.Thinking != nil && strings.Contains(p.Thinking.Content, "step 阶段的思考") {
+				stepThinkingIdx = i
+			}
+		case PartTypePhaseBanner:
+			if p.PhaseBanner != nil && p.PhaseBanner.Phase == "step_replan" {
+				stepReplanBannerIdx = i
+			}
+		}
+	}
+	if stepThinkingIdx < 0 {
+		t.Fatal("expected prior-phase thinking to be flushed into a part")
+	}
+	if stepReplanBannerIdx < 0 {
+		t.Fatal("expected step_replan banner part")
+	}
+	if stepThinkingIdx >= stepReplanBannerIdx {
+		t.Fatalf("expected prior thinking (idx=%d) BEFORE step_replan banner (idx=%d)", stepThinkingIdx, stepReplanBannerIdx)
+	}
+}
+
+// TestHandleAgentEventNoBannerWhenPhaseAlreadySet 模拟 session restore 之后
+// m.runtimePhase 已被同步成上次持久化的 banner phase 的场景:
+// 此时 live StateChange 与上次相同时不应再插入重复 banner。
+func TestHandleAgentEventNoBannerWhenPhaseAlreadySet(t *testing.T) {
+	m := NewModel(ModelDeps{})
+	m.runtimePhase = "step_replan" // 模拟 session_lifecycle 恢复后的同步
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeStateChange,
+		Payload: map[string]any{"phase": "step_replan"},
+	})
+
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner {
+			t.Fatalf("expected no banner when runtimePhase already matches restored phase, got %+v", p.PhaseBanner)
+		}
+	}
+}
+
+// TestHandleAgentEventPhaseBannerCarriesEventIteration 验证 banner 的 iter 来自
+// event.Iteration 自身,而不是依赖跨事件的 m.runtimeIteration 状态——
+// 这保证 banner 永远反映 *本次 StateChange* 对应的迭代号,没有 race / stale 风险。
+func TestHandleAgentEventPhaseBannerCarriesEventIteration(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeStateChange,
+		Iteration: 7,
+		Payload:   map[string]any{"phase": "step_replan"},
+	})
+
+	var got int
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner && p.PhaseBanner != nil {
+			got = p.PhaseBanner.Iteration
+		}
+	}
+	if got != 7 {
+		t.Fatalf("expected banner Iteration=7 from event.Iteration, got %d", got)
+	}
+}
+
+// TestHandleAgentEventPhaseChangeInsertsBannerOnlyOnTransition 验证
+// 重复 EventTypeStateChange 携带相同 phase 时不重复插入 banner。
+func TestHandleAgentEventPhaseChangeInsertsBannerOnlyOnTransition(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	for i := 0; i < 3; i++ {
+		m.handleAgentEvent(&react.AgentOutputEvent{
+			Type:    react.EventTypeStateChange,
+			Payload: map[string]any{"phase": "step_replan"},
+		})
+	}
+
+	count := 0
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one banner for repeated same-phase events, got %d", count)
+	}
+
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:    react.EventTypeStateChange,
+		Payload: map[string]any{"phase": "step"},
+	})
+	count = 0
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected banner count=2 after phase change, got %d", count)
 	}
 }
 
@@ -384,7 +529,7 @@ func TestHandleAgentEventTaskItemUpdatesCorrectAgentPlan(t *testing.T) {
 // step_replan / thinking / final_answer leaking into the main agent's runtime
 // panel and status line. Sub-agent phase activity must only produce parts
 // attributed to that sub-agent (collapsed behind its card); it must NOT touch
-// the global thinkingPanel, runtimePhase, statusText, or hadFinalAnswerDuringRun.
+// the main chat phase banner, runtimePhase, statusText, or hadFinalAnswerDuringRun.
 func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
 	m := NewModel(ModelDeps{
 		AgentCtx: &AgentExecContext{
@@ -403,28 +548,27 @@ func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
 	if m.runtimePhase != "" {
 		t.Fatalf("sub-agent StateChange must not set runtimePhase, got %q", m.runtimePhase)
 	}
-	if m.thinkingPanel.visible {
-		t.Fatal("sub-agent StateChange must not show the main thinking panel")
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner {
+			t.Fatal("sub-agent StateChange must not insert a phase banner into the main chat")
+		}
 	}
 	if m.statusText != "ready-sentinel" {
 		t.Fatalf("sub-agent StateChange must not overwrite statusText, got %q", m.statusText)
 	}
 
-	// 2. Sub-agent thinking — must go to its own buffer, not the panel.
+	// 2. Sub-agent thinking — must go to its own buffer, not the main area.
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type:      react.EventTypeThink,
 		AgentName: sub,
 		GroupID:   "g-sub-1",
 		Payload:   map[string]any{"think_content": "子agent内部推理片段"},
 	})
-	if len(m.thinkingPanel.entries) != 0 {
-		t.Fatalf("sub-agent thinking must not push panel entries, got %d", len(m.thinkingPanel.entries))
-	}
 	if m.statusText != "ready-sentinel" {
 		t.Fatalf("sub-agent thinking must not overwrite statusText, got %q", m.statusText)
 	}
 
-	// 3. Sub-agent step_replan result — part attributed, no panel entry.
+	// 3. Sub-agent step_replan result — part attributed, no banner.
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type:      react.EventTypeStepReplanResult,
 		AgentName: sub,
@@ -434,9 +578,6 @@ func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
 			"replan_reason": "子agent需要补一轮验证",
 		},
 	})
-	if len(m.thinkingPanel.entries) != 0 {
-		t.Fatalf("sub-agent step_replan must not push panel entries, got %d", len(m.thinkingPanel.entries))
-	}
 
 	// 4. Sub-agent final_answer result — must not set the root's run flag.
 	m.handleAgentEvent(&react.AgentOutputEvent{
@@ -446,9 +587,6 @@ func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
 	})
 	if m.hadFinalAnswerDuringRun {
 		t.Fatal("sub-agent final_answer must not set hadFinalAnswerDuringRun")
-	}
-	if m.thinkingPanel.visible || len(m.thinkingPanel.entries) != 0 {
-		t.Fatalf("sub-agent final_answer must not touch the panel (visible=%v entries=%d)", m.thinkingPanel.visible, len(m.thinkingPanel.entries))
 	}
 
 	// The sub-agent's thinking, replan and final_answer must exist as parts
@@ -488,7 +626,7 @@ func TestSubAgentPhaseEventsDoNotLeakIntoMainArea(t *testing.T) {
 
 // TestRootPhaseEventsStillDriveMainPanel is the control case for
 // TestSubAgentPhaseEventsDoNotLeakIntoMainArea: the root agent's phase events
-// must continue to drive the global panel, status line, and run flag.
+// must continue to drive the main chat banner, status line, and run flag.
 func TestRootPhaseEventsStillDriveMainPanel(t *testing.T) {
 	m := NewModel(ModelDeps{
 		AgentCtx: &AgentExecContext{
@@ -504,8 +642,14 @@ func TestRootPhaseEventsStillDriveMainPanel(t *testing.T) {
 	if m.runtimePhase != "step_replan" {
 		t.Fatalf("expected root runtimePhase=step_replan, got %q", m.runtimePhase)
 	}
-	if !m.thinkingPanel.visible {
-		t.Fatal("expected root step_replan to show the thinking panel")
+	var bannerSeen bool
+	for _, p := range m.chat.Parts() {
+		if p.Type == PartTypePhaseBanner && p.PhaseBanner != nil && p.PhaseBanner.Phase == "step_replan" {
+			bannerSeen = true
+		}
+	}
+	if !bannerSeen {
+		t.Fatal("expected root step_replan to insert a phase banner into the main chat")
 	}
 	if m.statusText != "evaluating plan..." {
 		t.Fatalf("expected root step_replan status text, got %q", m.statusText)
@@ -677,7 +821,7 @@ func TestBuildSidebarSnapshot_SessionFE413AAB(t *testing.T) {
 			{ID: "recon-1", Step: "全局侦察", Status: "completed"},
 			{ID: "scan-vuln", Step: "SAST 漏洞扫描", Status: "completed"},
 			{ID: "auth-review", Step: "认证授权审计", Status: "completed"},
-			{ID: "config-sec", Step: "安全配置审计", Status: "completed"},
+			{ID: "config-audit", Step: "安全配置审计", Status: "completed"},
 			{ID: "dep-audit", Step: "依赖审计", Status: "completed"},
 			{ID: "biz-logic", Step: "业务逻辑审计", Status: "completed"},
 			{ID: "dataflow-check", Step: "数据流验证", Status: "completed"},
