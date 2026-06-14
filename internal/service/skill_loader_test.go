@@ -352,7 +352,7 @@ func TestImportSkillsFromMultipleSources_ExactCount(t *testing.T) {
 	}
 
 	knownEmbedded := map[string]bool{
-		"sast-scan": true, "security-code-analysis": true, "dataflow-analysis": true,
+		"sast-scan": true, "recon-methodology": true, "dataflow-analysis": true,
 		"agent-browser": true, "baseline-check": true,
 	}
 	for _, s := range skills {

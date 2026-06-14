@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	skillspkg "aster/skills"
 )
 
 func TestBuildSkillsTableWithStatus(t *testing.T) {
@@ -211,18 +209,18 @@ func TestBuildSkillsTableWithStatus_AllowedSkillNamesOverrideAgentVisibility(t *
 
 	for _, skill := range []*MCPSkill{
 		{
-			Name:         "security-code-analysis",
-			Description:  "白盒总控",
-			Instructions: "whitebox",
-			Enabled:      &enabled,
-			Agent:        "code-audit",
-		},
-		{
-			Name:         "web-security-testing",
-			Description:  "黑盒总控",
-			Instructions: "blackbox",
+			Name:         "sql-injection-comprehensive",
+			Description:  "SQL 注入综合检测",
+			Instructions: "blackbox sqli",
 			Enabled:      &enabled,
 			Agent:        "pentest",
+		},
+		{
+			Name:         "sast-scan",
+			Description:  "结构化漏洞扫描",
+			Instructions: "whitebox sast",
+			Enabled:      &enabled,
+			Agent:        "code-audit",
 		},
 		{
 			Name:         "result-with-file",
@@ -240,7 +238,7 @@ func TestBuildSkillsTableWithStatus_AllowedSkillNamesOverrideAgentVisibility(t *
 	table, err := svc.BuildSkillsTableWithStatus(
 		context.Background(),
 		"graybox-test",
-		[]string{"security-code-analysis", "web-security-testing", "result-with-file"},
+		[]string{"sql-injection-comprehensive", "sast-scan", "result-with-file"},
 		nil,
 	)
 	if err != nil {
@@ -248,8 +246,8 @@ func TestBuildSkillsTableWithStatus_AllowedSkillNamesOverrideAgentVisibility(t *
 	}
 
 	for _, expected := range []string{
-		"security-code-analysis",
-		"web-security-testing",
+		"sql-injection-comprehensive",
+		"sast-scan",
 		"result-with-file",
 	} {
 		if !strings.Contains(table, expected) {
@@ -265,7 +263,7 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
 	}
 
-	skills, err := svc.LoadSkills(context.Background(), []string{"sast-scan", "graybox-p0"})
+	skills, err := svc.LoadSkills(context.Background(), []string{"sast-scan", "recon-methodology"})
 	if err != nil {
 		t.Fatalf("LoadSkills failed: %v", err)
 	}
@@ -273,7 +271,7 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		t.Fatalf("expected 2 skills, got %d", len(skills))
 	}
 
-	var foundGraybox bool
+	var foundRecon bool
 	var foundSAST bool
 	for _, skill := range skills {
 		if skill.Agent != "all" {
@@ -291,96 +289,20 @@ func TestImportEmbeddedSkills_V2FieldsPopulated(t *testing.T) {
 		switch skill.Name {
 		case "sast-scan":
 			foundSAST = true
-		case "graybox-p0":
-			foundGraybox = true
+		case "recon-methodology":
+			foundRecon = true
 		}
 	}
-	if !foundSAST || !foundGraybox {
-		t.Fatalf("expected embedded imports to include sast-scan and graybox-p0, got %+v", skills)
+	if !foundSAST || !foundRecon {
+		t.Fatalf("expected embedded imports to include sast-scan and recon-methodology, got %+v", skills)
 	}
 }
 
-func TestImportEmbeddedSkills_SecuritySemanticsGuardrails(t *testing.T) {
-	svc := NewSkillServiceWithMemory()
-	_, err := svc.ImportEmbeddedSkills(context.Background())
-	if err != nil {
-		t.Fatalf("ImportEmbeddedSkills failed: %v", err)
-	}
-
-	skills, err := svc.LoadSkills(context.Background(), []string{
-		"security-code-analysis",
-		"graybox-p0",
-		"result-with-file",
-	})
-	if err != nil {
-		t.Fatalf("LoadSkills failed: %v", err)
-	}
-	if len(skills) != 3 {
-		t.Fatalf("expected 3 skills, got %d", len(skills))
-	}
-
-	byName := make(map[string]*Skill, len(skills))
-	for _, skill := range skills {
-		byName[skill.Name] = skill
-	}
-
-	audit := byName["security-code-analysis"]
-	if audit == nil {
-		t.Fatal("security-code-analysis not loaded")
-	}
-	for _, needle := range []string{
-		"当前任务确属 pure code-audit",
-		"存在可行动的运行目标",
-		"不得在最终报告里直接落 `confirmed`",
-	} {
-		if !strings.Contains(audit.Instructions, needle) {
-			t.Fatalf("security-code-analysis must keep pure-static confirmed guardrail %q, got:\n%s", needle, audit.Instructions)
-		}
-	}
-
-	graybox := byName["graybox-p0"]
-	if graybox == nil {
-		t.Fatal("graybox-p0 not loaded")
-	}
-	for _, needle := range []string{
-		"白盒可达性已确认（纯静态证据，不等于动态 `confirmed`）",
-		"不得直接照抄成报告 `confirmed`",
-		"尚无动态可观测效果",
-	} {
-		if !strings.Contains(graybox.Instructions, needle) {
-			t.Fatalf("graybox-p0 must keep dynamic confirmed guardrail %q, got:\n%s", needle, graybox.Instructions)
-		}
-	}
-
-	resultWithFile := byName["result-with-file"]
-	if resultWithFile == nil {
-		t.Fatal("result-with-file not loaded")
-	}
-	for _, needle := range []string{
-		"仅适用于 pure code-audit 报告",
-		"graybox / pentest / 有可运行目标的报告里，`confirmed` 仍要求运行时效果证据",
-		"只能用于 pure code-audit 报告",
-	} {
-		if !strings.Contains(resultWithFile.Instructions, needle) {
-			t.Fatalf("result-with-file must keep static confirmed scope guardrail %q, got:\n%s", needle, resultWithFile.Instructions)
-		}
-	}
-
-	templateBytes, err := skillspkg.EmbeddedSkills.ReadFile("common/result-with-file/reference/code-audit-template.md")
-	if err != nil {
-		t.Fatalf("read code-audit template failed: %v", err)
-	}
-	template := string(templateBytes)
-	for _, needle := range []string{
-		"仅 pure code-audit 报告",
-		"总结论里的 `confirmed` 仍需运行时效果证据",
-		"静态 POC 仅作白盒佐证",
-	} {
-		if !strings.Contains(template, needle) {
-			t.Fatalf("code-audit template must keep static confirmed scope guardrail %q, got:\n%s", needle, template)
-		}
-	}
-}
+// TestImportEmbeddedSkills_SecuritySemanticsGuardrails 已删除（D4）：
+// v3 重构后 security-code-analysis / graybox-p0 父 skill 已被拆解；guardrail 文本迁移到
+// internal/tui/config.go 的 defaultAgentFiles["graybox-test.yaml"] / ["code-audit.yaml"] /
+// ["pentest.yaml"] profile 字符串里。已无 SKILL.md 端被测对象。如需对 profile 字符串
+// 做契约断言，应新建 internal/tui/config_test.go 而非保留本测试。
 
 func TestImportEmbeddedSkills_AllHaveAgent(t *testing.T) {
 	svc := NewSkillServiceWithMemory()
