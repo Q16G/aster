@@ -56,7 +56,7 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			"depth_gaps": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项（shallow_only 未深度确认 / 分析链条断裂 / 悬而未决判断 / 低价值项占位 / 抽样冒充全量）。即使轴①为空也须独立判定。",
+				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项 —— " + DepthSmellsEnumeration + "。即使轴①为空也须独立判定。",
 			},
 			"new_surfaces": map[string]any{
 				"type":        "array",

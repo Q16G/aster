@@ -81,7 +81,7 @@ planner（任务规划）：把用户意图转化为可执行的最小计划。�
 - step 卡片含 `coverage_checklist` 时按状态归置：`verified` / `referenced_prior_coverage` 不计；`uncovered` 按性质归维度（没做→①；没追透→②；新面→③）；`justified_skip` 仍过下方"逐条复核归置"中"受阻且影响后续"判据。自标 `verified` 但无证据 → 计为缺口。checklist 缺失时退回 `<OPEN_ITEMS_LEDGER>` 本 step 新增条目 / `key_facts` / timeline 判定。
 
 **维度②  深度/质量**
-- **深度气味.** 命中任一即计为缺口：结论停在半路（shallow_only / provisional / 需确认未落定）；分析链条断裂（定位到终点未回溯触发点，每对"触发点—终点"独立成行）；悬而未决判断未给定论；低价值项占位挤掉高价值分析；抽样冒充全量。
+- **深度气味.** 命中任一即计为缺口：{{.DEPTH_SMELLS}}。
 - 与维度①互斥；即使维度①无缺口，命中深度气味仍须计入。
 
 **维度③  泛化扩面**

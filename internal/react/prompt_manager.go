@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+
+	"aster/internal/builtin_tools"
 )
 
 type ThinkActPromptInput struct {
@@ -353,6 +355,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"IS_REPLAN_PHASE":      true,
 		"IS_SUB_AGENT":         input.IsSubAgent,
 		"CAN_SPAWN_SUBAGENT":   false,
+		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
 		// 共享区直接维护文件的绝对路径下沉到 system 模板，承担"哪个文件由本相位
 		// 直接落盘"的稳定契约——user 模板里的同名条目已删除（见 step_replan_user.prompt）。
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsPath),
@@ -424,6 +427,7 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 		"USER_INPUT_TURN":      input.UserInputTurn,
 		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
+		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
 		// 共享区直接维护文件的绝对路径下沉到 system 模板（与 step_replan 相位共享同一段）。
 		// plan 相位主要维护 task_context.md 的 `## 输入事实` 和（regen 期间）账本三区。
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),

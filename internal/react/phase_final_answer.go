@@ -22,7 +22,7 @@ type FinalAnswerModelOutput struct {
 	NextGoal     string `json:"next_goal"`
 	// IncompleteItems 轴①存在性/完成度：当前诉求范围内、根本没做的项。
 	IncompleteItems []string `json:"incomplete_items"`
-	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（shallow_only 未深度确认、分析链条断裂、悬而未决、低价值项占位、抽样冒充全量）。
+	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（判据枚举见 builtin_tools.DepthSmellsEnumeration）。
 	DepthGaps []string `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化：对照整体诉求全集、尚未被任何已完成工作覆盖的面（聚焦约束下方向外的新面填此字段但不单独驱动 replan）。
 	NewSurfaces []string `json:"new_surfaces"`
