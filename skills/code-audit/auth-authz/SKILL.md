@@ -1,7 +1,6 @@
 ---
 name: auth-authz
 description: 认证授权子清单 — 逐项排查登录语义、Cookie/Session 鉴权、IDOR/ownership、会话安全。
-tags: code-audit,authn,authz,idor,session
 when-to-use: 当需要聚焦审计认证授权维度，或项目存在登录、会话管理、权限判断、角色分级、资源归属检查时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true

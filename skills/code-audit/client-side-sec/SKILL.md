@@ -1,7 +1,6 @@
 ---
 name: client-side-sec
 description: 客户端安全子清单 — 逐项排查 CSP 策略、客户端 JS 安全。
-tags: code-audit,csp,xss,dom,javascript,client-side
 when-to-use: 当需要聚焦审计客户端安全维度，或项目有前端 JS 安全敏感逻辑、CSP 设置、DOM 操作、postMessage 时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true

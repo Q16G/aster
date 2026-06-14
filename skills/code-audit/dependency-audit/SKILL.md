@@ -1,7 +1,6 @@
 ---
 name: dependency-audit
 description: 依赖安全审计 — 检查第三方依赖的已知漏洞（SCA）
-tags: code-audit,sca,dependency,trivy
 when-to-use: 当需要检查项目依赖是否存在已知安全漏洞时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true

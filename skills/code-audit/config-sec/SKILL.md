@@ -1,7 +1,6 @@
 ---
 name: config-sec
 description: 配置安全子清单 — 逐项排查敏感信息、安全头、危险配置。
-tags: code-audit,config,secret,header,security-config
 when-to-use: 当需要聚焦审计配置安全维度，或项目存在配置文件、Web 响应头设置、数据库连接配置时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
