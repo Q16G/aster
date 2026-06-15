@@ -1549,6 +1549,9 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 }
 
 func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
+	// 本测试断言 step_replan LLM 路径的每步调用语义；plan-once-execute-many gate
+	// 默认会跳过 LLM replan，需显式关闭以保留旧路径行为。
+	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -1627,6 +1630,9 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 // 重编排路径：旧 legacy-step 在 step-1 完成后被 step_replan 直接替换为 step-2，相位机不
 // 经过 Plan 相位（planner 只在初始规划时被调用一次）。
 func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
+	// 本测试断言 step_replan LLM 路径的"直达 Step 重编排"行为；plan-once-execute-many gate
+	// 默认会跳过 LLM replan，需显式关闭以保留旧路径行为。
+	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
 		if e != nil {
@@ -2160,6 +2166,9 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 }
 
 func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
+	// 本测试用 step_replan LLM 路径串联多 step；plan-once-execute-many gate 默认会跳过
+	// LLM replan 改变模型调用计数，需显式关闭以保留旧路径行为。
+	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
 	wsRoot := t.TempDir()
 	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
 

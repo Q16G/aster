@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,7 +68,36 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		return a.applyReplanResult(stepID, nil, nil, nil, snapshot, "")
 	}
 
-	// Scheme A: always run the StepReplan LLM loop.
+	// Plan-once-execute-many gate（纯客观信号，零 LLM）：
+	// 未命中任一触发条件时直接走 applyReplanResult 的 no-op 分支转入下一 step，
+	// 命中则保留下方完整 step_replan LLM 路径。bypass 不渲染 prompt、不发 LLM。
+	// 触发条件：
+	//   1) plan 耗尽（无下一可跑 step）
+	//   2) 当前 step status == failed
+	//   3) 心跳：连续跳过 K 步后强制升级
+	// 环境变量 STEP_REPLAN_BYPASS_DISABLED=true 时整段失效（紧急回滚开关）。
+	if !stepReplanBypassDisabled() {
+		escalate, reason := a.shouldEscalateStepReplan(snapshot, rawOutcome)
+		if !escalate {
+			a.consecutiveStepsSinceReplan++
+			a.emitRuntimeLog("info", "step_replan bypassed by gate", snapshot, map[string]any{
+				"event":                          "step_replan_bypassed",
+				"step_id":                        stepID,
+				"reason":                         "no_escalation_signal",
+				"consecutive_steps_since_replan": a.consecutiveStepsSinceReplan,
+			})
+			return a.applyReplanResult(stepID, nil, nil, nil, snapshot, "")
+		}
+		a.emitRuntimeLog("info", "step_replan escalated to LLM", snapshot, map[string]any{
+			"event":                          "step_replan_escalated",
+			"step_id":                        stepID,
+			"reason":                         reason,
+			"consecutive_steps_since_replan": a.consecutiveStepsSinceReplan,
+		})
+		a.consecutiveStepsSinceReplan = 0
+	}
+
+	// Scheme A: 命中 gate 触发条件时（或开关关闭时）走完整 StepReplan LLM loop。
 	//
 	// Rationale: the old fast-path skip logic only relied on self-reported signals like
 	// open_questions/warnings/unresolved, which can be under-reported and cause replan to
@@ -361,6 +391,51 @@ func replanViaLabel(newPlan []*builtin_tools.PlanItem, rc *builtin_tools.ReplanC
 	default:
 		return "none"
 	}
+}
+
+// shouldEscalateStepReplan 用纯客观信号判定本次 step_replan 是否需要升级为完整 LLM 调用。
+// 三条触发条件按检查代价从低到高排列：
+//   - step_error：当前 step 失败，必须 replan 调整路线
+//   - heartbeat：连续跳过 K 步后强制升级，防止 plan 越走越偏
+//   - plan_exhausted：plan 中无下一可跑 step，必须 replan 补充
+//
+// 返回 (false, "") 表示可以跳过 LLM 调用直接进入下一 step。
+func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, rawOutcome *builtin_tools.StepOutcome) (bool, string) {
+	if rawOutcome != nil && rawOutcome.Status == builtin_tools.StepOutcomeFailed {
+		return true, "step_error"
+	}
+	if k := stepReplanHeartbeatK(); k > 0 && a.consecutiveStepsSinceReplan >= k {
+		return true, "heartbeat"
+	}
+	if strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(snapshot.Plan)) == "" {
+		return true, "plan_exhausted"
+	}
+	return false, ""
+}
+
+// stepReplanBypassDisabled 是 plan-once-execute-many gate 的紧急回滚开关。
+// 置位时所有 step 都走完整 LLM replan（等价于旧行为）。
+func stepReplanBypassDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("STEP_REPLAN_BYPASS_DISABLED"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// stepReplanHeartbeatK 返回心跳兜底阈值：连续跳过 K 步后强制升级一次完整 replan。
+// 默认 5，可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。<=0 视作禁用心跳。
+func stepReplanHeartbeatK() int {
+	const defaultK = 5
+	v := strings.TrimSpace(os.Getenv("STEP_REPLAN_HEARTBEAT_K"))
+	if v == "" {
+		return defaultK
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultK
+	}
+	return n
 }
 
 func (a *Agent) checkChildAgentsCompletion() *builtin_tools.ReplanContext {
