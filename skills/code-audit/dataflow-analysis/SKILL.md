@@ -1,12 +1,9 @@
 ---
 name: dataflow-analysis
 description: >-
-  跨漏洞数据流追踪工具能力（基于 SyntaxFlow / yak MCP 的 SSA 引擎）——对已知 source / sink
-  做跨函数 source-to-sink 静态可达性证明，承接 [sast-scan](../sast-scan/SKILL.md) `needs_dataflow_confirmation`
-  桶候选升级，并为单漏洞 skill 提供「链路证明」素材。本能力不绑定具体漏洞类型，source-sink 集合
-  按调用者意图动态决定；代码里 source 与 sink 都已定位但跨函数链路（Controller → Service → DAO）
-  未证、存在 ORM / 自定义封装层数据流不可见、依赖反编译产物需追内部传播、或多 sink 共享同一
-  source 池的交叉端点需统一确认时使用。
+  跨函数白盒数据流追踪——基于 SyntaxFlow / yak MCP 的 SSA 引擎，对已知 source / sink 证明跨函数
+  source→sink 静态可达性，产出链路证据。source-sink 集合按调用者意图动态决定，不绑定具体漏洞
+  类型。
 allowed-tools: bash,read_file,list_files,rg
 mcp: [syntaxflow, yak]
 user-invocable: true

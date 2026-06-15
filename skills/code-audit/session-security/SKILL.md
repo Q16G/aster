@@ -1,13 +1,9 @@
 ---
 name: session-security
 description: >-
-  会话 / Cookie / JWT 白盒安全审计——按代码层追踪 session ID 生成强度、Cookie 属性（HttpOnly / Secure /
-  SameSite）、登录 / 注销时的 session 重建与失效、JWT 签名算法与 secret 强度 / 撤销机制、"记住我" 长期 token、
-  多租户 / 多用户 session 隔离。代码里出现登录端点（`/login` / `/auth/*`）、`HttpSecurity.sessionManagement()` /
-  Spring Session、Express `express-session` / `cookie-session`、Django `SESSION_*` settings、Laravel
-  `config/session.php`、自实现 Cookie 鉴权（`new Cookie("token", value)`）、JWT 库（`jsonwebtoken` /
-  `jjwt` / `pyjwt` / `golang-jwt`）、自定义 token 生成（`SecureRandom` / `uuid` / `crypto.randomBytes`）、
-  多角色登录（cookie 含 tenant_id / role）、"记住我" 时使用。
+  会话 / Cookie / JWT 白盒安全审计——按代码层追踪 session ID 生成强度、Cookie 属性（HttpOnly /
+  Secure / SameSite）、登录与注销时的 session 重建与失效、JWT 签名算法与 secret 强度 / 撤销机制、
+  "记住我" 长期 token、多租户 / 多用户 session 隔离。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

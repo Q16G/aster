@@ -1,12 +1,8 @@
 ---
 name: dependency-decompile
 description: >-
-  关键路径上无源码依赖的源码恢复——把闭源 jar / war / class / dll / so / 混淆包反编译回可读源码，
-  供下游 dataflow-analysis / 入口点审计接力追踪。触发线索：dependency-audit 标记某依赖落在关键路径
-  且无可读源码、入口点 / 信任边界逻辑封在闭源 jar 里（自研鉴权 filter 打进 jar、starter 自动注册的
-  controller）、数据流污点跨入无源码依赖、安全/sink 决策发生在依赖内部（含自称标准协议的闭源鉴权
-  SDK）。反向信号：行为已知的常见公共库（按已知语义推理即可）、官方源码可直接取到、依赖只是被
-  调用的标准化数据/协议通道（如 JDBC 驱动，决策在调用方）。
+  闭源依赖源码恢复——把闭源 jar / war / class / dll / so / 混淆包反编译成可读源码，归集到
+  `shared/decompiled/`。本能力不做漏洞判定。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[artifact_path] [--lang java|python|js|dotnet|native]"

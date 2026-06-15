@@ -1,13 +1,8 @@
 ---
 name: sast-scan
 description: >-
-  多语言多介质静态扫描（基于本地 Semgrep 规则）——覆盖源码 / XML 配置 / 模板，产出按
-  high_confidence / needs_dataflow_confirmation / high_noise 三桶分类的**漏洞候选清单**，作为下游
-  dataflow-analysis 与单漏洞维度 skill（stored-xss-detection / business-logic-auth-review /
-  secret-detection 等）的输入，缩减深挖探索面。项目体量较大（文件数 > 数千、monorepo、`list_files`
-  截断）或含 `*Mapper.xml` / `application*.yml` / 模板目录 / 危险依赖（mybatis-spring、sequelize、
-  gorm raw 通道等）等粗筛收益高的介质，且尚未建立漏洞候选集时使用。本能力只产出候选、不下
-  confirmed 结论；跨函数链路追踪与单类漏洞判定走对应下游 skill。
+  多语言多介质静态粗筛——基于本地 Semgrep 规则扫描源码 / XML 配置 / 模板，产出按
+  high_confidence / needs_dataflow_confirmation / high_noise 分桶的漏洞候选清单。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"

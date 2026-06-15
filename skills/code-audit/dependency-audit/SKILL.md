@@ -2,12 +2,7 @@
 name: dependency-audit
 description: >-
   依赖安全审计（SCA）——按依赖清单 / 锁文件提取 SBOM，匹配已知 CVE 库（NVD / GitHub Advisory），
-  并对每个命中判定 vulnerable code 是否在项目实际消费路径上（关键路径判据）。项目根含
-  `pom.xml` / `build.gradle` / `package.json` / `package-lock.json` / `yarn.lock` / `go.mod` /
-  `go.sum` / `requirements*.txt` / `Pipfile*` / `poetry.lock` / `composer.json` / `Gemfile.lock` /
-  `Cargo.toml` / `Cargo.lock` 等依赖清单或锁文件、`Dockerfile` 含 `FROM <image>:<tag>` 基础镜像、
-  `*.jar` / `node_modules/` 等已构建产物时使用。关键路径上的闭源依赖会作为反编译候选移交
-  `dependency-decompile` 追内部数据流。
+  对每个命中判定 vulnerable code 是否在项目实际消费路径上（关键路径判据）。
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"

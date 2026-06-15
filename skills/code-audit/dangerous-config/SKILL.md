@@ -2,14 +2,7 @@
 name: dangerous-config
 description: >-
   危险配置静态值审计——对照最小权限基线检查配置文件字面量，覆盖调试模式、默认凭据、过宽 CORS、
-  弱 TLS、上传限制缺失、错误页堆栈泄露、Actuator/Admin 端点未鉴权、反序列化危险默认、XML 外部实体、
-  WebSocket 跨源、Cookie 加密 Key 默认值、日志敏感字段、限流/WAF 默认关闭等多种配置类目。项目含
-  `application*.yml` / `*.properties` / `web.xml` / `nginx.conf` / `apache.conf` / `Caddyfile` /
-  Spring `@ConfigurationProperties` / Django `settings.py` / `config/*.json` / `.env` /
-  `docker-compose*.yml` / `k8s/*.yaml` / Tomcat `server.xml` / Spring Boot Actuator 依赖、或出现
-  CORS / TLS / 调试 / 上传 / 日志相关配置项时使用。本能力只覆盖**配置项静态值**——硬编码凭据 /
-  密钥归 [secret-detection](../secret-detection/SKILL.md)；HTTP 响应头归
-  [security-header-audit](../security-header-audit/SKILL.md)。
+  弱 TLS、Actuator / Admin 端点未鉴权、反序列化危险默认、XXE、上传限制缺失等类目。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

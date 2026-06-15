@@ -1,13 +1,9 @@
 ---
 name: stored-xss-detection
 description: >-
-  存储型 XSS 白盒数据流审计——按"用户输入 → 持久层（DB / 文件 / Redis）→ 回读 → 模板/前端输出"
-  跨持久层介质追踪 source-sink 可达性，识别 encoder 与输出上下文（HTML body / attr / JS / URL / CSS）
-  不匹配、富文本白名单缺口、Markdown 渲染保留原始 HTML、二阶回读路径漏 sanitize 等真洞。
-  代码里出现展示用户输入字段（评论 / 标题 / 备注 / 文档名 / 富文本编辑器内容）+ 服务端模板输出
-  (Thymeleaf `th:utext` / Freemarker `<#noautoesc>` / Django `|safe` / EJS `<%- %>`) 或前端 raw 渲染
-  (`innerHTML` / `dangerouslySetInnerHTML` / `v-html`) 时使用；项目结构含 `*Mapper.xml` 写入用户字段、
-  `templates/` 服务端模板目录、Vue/React SSR 源码、富文本编辑器（Quill / TipTap）后端时高命中。
+  存储型 XSS 白盒数据流审计——按"用户输入 → 持久层（DB / 文件 / Redis）→ 回读 → 模板 / 前端
+  输出"跨持久层介质追 source-sink 可达性，识别 encoder 与输出上下文（HTML body / attr / JS / URL /
+  CSS）不匹配、富文本白名单缺口、Markdown 渲染保留原始 HTML、二阶回读路径漏 sanitize。
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"

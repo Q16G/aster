@@ -1,12 +1,8 @@
 ---
 name: client-js-audit
 description: >-
-  客户端 JS 安全白盒审计——覆盖 DOM XSS（客户端 source 流到客户端 sink）/ Token 与凭据客户端存储泄露 /
-  postMessage 跨源通信 / 客户端安全决策（鉴权 / 加解密 / feature flag）四个维度。项目含 SPA 框架
-  （Vue / React / Angular / Svelte）、直接 DOM 操作（`innerHTML` / `document.write` / `eval` /
-  `Function` / `setTimeout(string)`）、postMessage handler、客户端路由 hash / search 决策、前端
-  鉴权或权限判断、Token / 密钥相关代码（`localStorage` / `sessionStorage` / cookie 读写）、前端含敏感
-  加签 / 加密算法时使用。
+  客户端 JS 安全白盒审计——覆盖 DOM XSS（客户端 source 流到客户端 sink）、Token 与凭据客户端
+  存储泄露、postMessage 跨源通信、客户端安全决策（鉴权 / 加解密 / feature flag）四个维度。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

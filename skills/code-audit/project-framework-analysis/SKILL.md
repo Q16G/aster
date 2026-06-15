@@ -1,12 +1,9 @@
 ---
 name: project-framework-analysis
 description: >-
-  审计早期的项目框架与攻击面侦察——识别技术栈/分层、枚举入口点与路由、盘点中间件信任边界、
-  梳理认证会话架构与数据归属字段、识别框架对 source/sink/分发/过滤的自有封装、标注闭源依赖
-  位置，产出"项目框架图"供下游审计能力按入口点对账。**本能力不做漏洞判定**，只产出供下游
-  消费。目标项目首次接入审计、用户给的是项目根目录（而非单文件半径）、`shared/project-framework.md`
-  尚未存在、多语言或多模块或未知技术栈时使用。已显式给出栈+入口点、或单文件/PR diff 半径时
-  不命中本能力。
+  项目框架与攻击面侦察——识别技术栈与分层、枚举入口点与路由、盘点中间件信任边界、梳理认证
+  会话架构与数据归属字段、识别框架对 source/sink/分发/过滤的自有封装、标注闭源依赖位置，产出
+  项目框架图。本能力不做漏洞判定。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path]"

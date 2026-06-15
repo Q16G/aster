@@ -1,10 +1,8 @@
 ---
 name: csp-audit
 description: >-
-  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽 source-list，
-  比对最小权限基线。代码里出现 `Content-Security-Policy` 响应头声明、`<meta http-equiv="Content-Security-Policy">`、
-  Spring `Headers().contentSecurityPolicy()`、Express `helmet.contentSecurityPolicy()`、
-  Django `CSP_*` 设置、Rails `content_security_policy` block、nginx `add_header Content-Security-Policy` 时使用。
+  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽
+  source-list / 缺 frame-ancestors，比对最小权限基线。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

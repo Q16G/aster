@@ -1,15 +1,8 @@
 ---
 name: secret-detection
 description: >-
-  敏感信息静态扫描（白盒）——系统性识别仓库 / 配置 / CI / git 历史里的硬编码凭据（密码 /
-  API Key / OAuth Secret / JWT Secret / 数据库连接串 / 私钥 / Cookie 加密 Key / IV / Cloud
-  Access Key 等）。代码出现 `password=` / `apikey=` / `secret=` / `token=` / `private_key=`
-  / `client_secret=` 等字面量赋值；配置文件 `.env*` / `application*.{yml,properties}` /
-  `config.yaml` / `secrets.json` / `web.xml` 含凭据字段；提交里有 `*.pem` / `*.key` /
-  `*.p12` / `*.pfx` / `*.crt` 私钥文件；docker-compose / k8s manifest 含 `env:` 明文凭据；
-  CI 配置 `.github/workflows/*.yml` / `.gitlab-ci.yml` / `Jenkinsfile` 含未走 secret 的密钥；
-  shell 脚本含 `export TOKEN=xxx` 时使用。与 [dangerous-config](../dangerous-config/SKILL.md)
-  分工：凭据 / 密码 / 密钥归本能力；调试模式、默认危险配置、弱 TLS / 过宽 CORS 归 dangerous-config。
+  硬编码凭据 / 密钥白盒扫描——系统识别仓库 / 配置 / CI / git 历史里的密码、API Key、OAuth
+  Secret、JWT Secret、数据库连接串、私钥、Cookie 加密 Key、IV、Cloud Access Key 等敏感字面量。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path]"

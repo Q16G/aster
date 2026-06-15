@@ -37,7 +37,7 @@ skills/
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `name` | string | skill 标识，等于目录名，kebab-case |
-| `description` | string | "做什么 + 何时用"——把触发线索折叠进描述。建议 ≤ 1536 字符（Anthropic 上限）。多行折叠推荐 `>-` YAML 多行风格 |
+| `description` | string | **只写"本能力做什么"** —— 一句话客观描述能力本身（覆盖什么维度 / 产出什么 / 用什么机制）。**目标 ≤ 200 字 / 1-2 句**（上限 1536 字符，仅作硬边界）。**禁止**把 §1 触发线索（"X 时使用"、grep pattern、文件名约定枚举）写进 description，**禁止**写"归属 / 边界 / 与 Y skill 协作"等跨 skill 路由话术——这些信息在 §1 / §5 / §11 段。多行折叠用 `>-` YAML 风格 |
 | `allowed-tools` | csv | 允许调用的工具集（如 `bash,read_file,list_files,rg,list_skills`） |
 | `user-invocable` | bool | 是否允许用户用 `/<name>` 直接触发；子 skill 设 `false`，父/独立 skill 通常 `true` |
 
@@ -72,12 +72,25 @@ skills/
 ---
 name: csp-audit
 description: >-
-  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽 source-list，
-  比对最小权限基线。代码里出现 `Content-Security-Policy` 响应头声明、`<meta http-equiv="CSP">`、
-  Spring `Headers().contentSecurityPolicy()`、Express `helmet.csp()`、Django `CSP_*` 设置时使用。
+  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽
+  source-list / 缺 frame-ancestors，比对最小权限基线。
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---
+```
+
+**反例**（前 v3.1 版本的常见写法，已禁止）：
+
+```yaml
+# ❌ 把触发线索堆进 description
+description: >-
+  Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval。
+  代码里出现 `Content-Security-Policy` 响应头声明、Spring `Headers().contentSecurityPolicy()`、
+  Express `helmet.csp()`、Django `CSP_*` 设置、nginx `add_header CSP` 时使用。# ← 触发枚举属于 §1
+
+# ❌ 写跨 skill 边界
+description: >-
+  危险配置静态值审计……凭据/密钥归 secret-detection、HTTP 响应头归 security-header-audit。# ← 路由属于 §1 / §5
 ```
 
 ## 四、正文写作风格（核心）
@@ -101,7 +114,7 @@ Anthropic skill-creator 原文："If you find yourself writing ALWAYS or NEVER i
 - ✅ checklist 写成「基线 + 自适应」：基线规范已知项，模型可基于代码事实裁剪/补充（详见 4.3）
 - ✅ 不变量优先于步骤：写「最终产物应满足 X」比「先做 A 再做 B 最后做 C」更鲁棒
 - ✅ 主文件目标 < 500 行（Anthropic 官方建议）；超出走 `references/` 拆分；reference > 300 行带 TOC
-- ✅ description 写**触发线索**（"项目有 CSP 配置时""出现 SQL 拼接时"），不要纯定义
+- ✅ description **只写能力本身**（"做什么 / 覆盖什么 / 产出什么"），1-2 句话客观陈述，目标 ≤ 200 字。触发线索 / grep pattern / 文件名枚举属于 §1，**不**塞进 description；跨 skill 边界 / 路由话术属于 §1 / §5 / §11，**不**塞进 description
 
 ### 4.3 基线 checklist 措辞模板
 

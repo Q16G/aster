@@ -1,12 +1,9 @@
 ---
 name: security-header-audit
 description: >-
-  HTTP 安全响应头白盒静态审计——对照基线检查 HSTS / X-Frame-Options / X-Content-Type-Options /
-  Referrer-Policy / Permissions-Policy / COOP / COEP / CORP / CORS / CSP 声明存在性 等是否声明、
-  值是否符合最小权限基线、是否覆盖所有响应路径（含 4xx / 5xx）。代码里出现 `response.setHeader(...)` /
-  Spring `WebSecurityConfig.headers()` / helmet 中间件 / Express `app.use(helmet())` / Django `SECURE_*`
-  设置、Nginx `add_header` / Caddy `header` 指令、API Gateway 或 CDN header 配置时使用。
-  适用：Web 应用 / SPA + API / SSR / 静态资源服务器 / 反向代理 header 配置审计。
+  HTTP 安全响应头白盒审计——对照基线检查 HSTS / X-Frame-Options / X-Content-Type-Options /
+  Referrer-Policy / Permissions-Policy / COOP / COEP / CORP / CORS / CSP 声明存在性是否齐全、
+  值是否符合最小权限基线、是否覆盖所有响应路径（含 4xx / 5xx）。
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 ---

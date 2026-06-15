@@ -1,13 +1,9 @@
 ---
 name: business-logic-auth-review
 description: >-
-  业务逻辑越权 / 权限边界 / IDOR 白盒审计——按 source-sink 数据流追踪用户可控
-  resource_id / target_user / batch_ids / amount / state 等字段是否经过归属判定、角色判定、
-  状态前提与数量上限。代码里看到 controller 接收 resource_id / owner_id / target_user 等可
-  控字段、Service 层做 `currentUser.id != resource.ownerId` 类校验、Mapper 含按用户过滤的
-  WHERE、admin/operator/owner 角色分层、Spring Security `@PreAuthorize` / Shiro
-  `@RequiresPermissions` / Sa-Token `@SaCheckPermission` / Django `permission_required` 注解、
-  Laravel Gate / Policy 注册时使用。适用：代码审计 / SAST / 数据流验证。
+  业务逻辑越权与权限边界白盒审计——追用户可控 resource_id / owner_id / batch_ids / amount /
+  state 等字段是否经归属判定、角色判定、状态前提与数量上限，覆盖水平 IDOR / 垂直越权 / 状态机
+  绕过 / 批量越权 / 金额数量篡改 / 多租户穿透。
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path] [--focus idor|vertical|state-machine|batch|amount]"
