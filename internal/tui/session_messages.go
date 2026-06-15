@@ -330,6 +330,28 @@ func mergeRecoveryParts(existing []DisplayPart, recovery []persistedPart) []Disp
 					})
 				}
 			}
+		case "step_triage":
+			if rp.Content != "" {
+				var st StepTriagePart
+				if json.Unmarshal([]byte(rp.Content), &st) == nil {
+					existing = append(existing, DisplayPart{
+						Type:       PartTypeStepTriage,
+						Time:       rp.Time,
+						StepTriage: &st,
+					})
+				}
+			}
+		case "phase_banner":
+			if rp.Content != "" {
+				var pb PhaseBannerPart
+				if json.Unmarshal([]byte(rp.Content), &pb) == nil && pb.Phase != "" {
+					existing = append(existing, DisplayPart{
+						Type:        PartTypePhaseBanner,
+						Time:        rp.Time,
+						PhaseBanner: &pb,
+					})
+				}
+			}
 		case "step_result":
 			if rp.Content != "" {
 				var sr StepResultPart

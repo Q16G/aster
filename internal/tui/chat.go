@@ -445,6 +445,10 @@ func partAgentName(p DisplayPart) string {
 		if p.StepReplan != nil {
 			return p.StepReplan.AgentName
 		}
+	case PartTypeStepTriage:
+		if p.StepTriage != nil {
+			return p.StepTriage.AgentName
+		}
 	case PartTypeStepSummary:
 		if p.StepSummary != nil {
 			return p.StepSummary.AgentName
@@ -456,6 +460,10 @@ func partAgentName(p DisplayPart) string {
 	case PartTypeFinalAnswer:
 		if p.FinalAnswer != nil {
 			return p.FinalAnswer.AgentName
+		}
+	case PartTypePhaseBanner:
+		if p.PhaseBanner != nil {
+			return p.PhaseBanner.AgentName
 		}
 	}
 	return ""
@@ -1154,13 +1162,36 @@ func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 		return m.renderStepSummaryPart(idx, part, maxWidth)
 	case PartTypeStepReplan:
 		return m.renderStepReplanPart(idx, part, maxWidth)
+	case PartTypeStepTriage:
+		return m.renderStepTriagePart(idx, part, maxWidth)
 	case PartTypeFinalAnswer:
 		return m.renderFinalAnswerPart(idx, part, maxWidth)
 	case PartTypeSubAgent:
 		return m.renderSubAgentPart(idx, part, maxWidth)
+	case PartTypePhaseBanner:
+		return m.renderPhaseBannerPart(part, maxWidth)
 	default:
 		return ""
 	}
+}
+
+func (m *ChatModel) renderPhaseBannerPart(part DisplayPart, maxWidth int) string {
+	b := part.PhaseBanner
+	if b == nil {
+		return ""
+	}
+	label := b.Label
+	if label == "" {
+		label = phaseLabel(b.Phase)
+	}
+	text := "▸ " + label
+	if b.Iteration > 0 {
+		text += fmt.Sprintf(" · iter %d", b.Iteration)
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("11")).
+		Bold(true)
+	return style.Render(truncateDisplayWidth(text, maxWidth))
 }
 
 func (m *ChatModel) renderUserPart(part DisplayPart, maxWidth int) string {
@@ -1491,6 +1522,80 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 		for _, warning := range r.Warnings {
 			body.WriteString("\n  • " + warning)
 		}
+	}
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(borderColor).
+		PaddingLeft(1).
+		Width(maxWidth)
+	return headerStyle.Render(header) + "\n" + style.Render(wrapText(body.String(), maxWidth-4))
+}
+
+// renderStepTriagePart 渲染 Triage 廉价决策的 UI 卡片。结构参考 renderStepReplanPart 但更瘦:
+// Triage 不涉及 plan / next_goal / surfaces 等重产出字段。
+func (m *ChatModel) renderStepTriagePart(idx int, part DisplayPart, maxWidth int) string {
+	r := part.StepTriage
+	if r == nil {
+		return ""
+	}
+	expanded := m.toolExpanded[idx]
+	selected := m.focused && idx == m.cursor
+
+	// continue 路径用 ✓(通过/确认),replan 路径用 ↻(重新)
+	// 视觉上与 StepReplan 的 icon (always ↻) + 颜色变化保持区分度
+	icon := "✓"
+	color := toolCompletedColor
+	if r.Suggestion == "replan" {
+		icon = "↻"
+		color = lipgloss.Color("11")
+	}
+
+	summaryText := strings.TrimSpace(r.Reason)
+	if summaryText == "" {
+		switch r.Suggestion {
+		case "replan":
+			summaryText = "需要重规划"
+		case "continue":
+			summaryText = "继续当前计划"
+		default:
+			summaryText = "triage: " + r.Suggestion
+		}
+	}
+
+	if !expanded {
+		summary := "step_triage"
+		if r.StepName != "" {
+			summary += ": " + r.StepName
+		}
+		summary += " — " + truncateDisplayWidth(summaryText, 60)
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected {
+			style = style.Bold(true)
+		}
+		line := truncateDisplayWidth(icon+" "+summary, maxWidth)
+		return style.Render(line)
+	}
+
+	borderColor := color
+	if selected {
+		borderColor = lipgloss.Color("15")
+	}
+	headerStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	header := icon + " step_triage"
+	if r.StepName != "" {
+		header += ": " + r.StepName
+	}
+
+	var body strings.Builder
+	body.WriteString("Decision: ")
+	body.WriteString(r.Suggestion)
+	if r.Reason != "" {
+		body.WriteString("\n\nReason:\n" + r.Reason)
+	}
+	if r.DurationMs > 0 {
+		body.WriteString(fmt.Sprintf("\n\nDuration: %d ms", r.DurationMs))
 	}
 
 	style := lipgloss.NewStyle().

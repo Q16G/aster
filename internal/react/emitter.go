@@ -34,6 +34,7 @@ const (
 	EventTypeStepFinish        EventType = "step_finish"
 	EventTypeHistoryCompacted  EventType = "history_compacted"
 	EventTypeStepSummaryResult EventType = "step_summary_result"
+	EventTypeStepTriageResult  EventType = "step_triage_result"
 	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
 	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"

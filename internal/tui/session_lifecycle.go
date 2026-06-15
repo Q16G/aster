@@ -125,8 +125,17 @@ func (m *Model) switchSession(idOrPrefix string) {
 			parts, err := loadSessionDisplayParts(m.store.BaseDir(), s.ID)
 			m.chat = NewChatModel()
 			m.updateLayout()
+			m.runtimePhase = ""
 			if err == nil && len(parts) > 0 {
 				m.chat.SetParts(parts)
+				// 把 runtimePhase 同步到恢复出的最后一个 banner 的 phase,
+				// 否则首个 live StateChange 会被当作"phase 变化"而插入重复 banner。
+				for i := len(parts) - 1; i >= 0; i-- {
+					if parts[i].Type == PartTypePhaseBanner && parts[i].PhaseBanner != nil {
+						m.runtimePhase = parts[i].PhaseBanner.Phase
+						break
+					}
+				}
 			}
 
 			if s.AgentName != "" && m.profileRegistry != nil {

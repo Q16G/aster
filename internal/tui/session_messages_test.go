@@ -261,6 +261,36 @@ func TestMergeRecoveryPartsPlanAgentItemDoesNotCrossAgent(t *testing.T) {
 	}
 }
 
+// TestMergeRecoveryPartsRestoresPhaseBanner 验证 phase_banner 持久化记录在
+// session reload 时能正确还原成 PartTypePhaseBanner,否则 reload 后所有
+// 阶段边界都会消失。
+func TestMergeRecoveryPartsRestoresPhaseBanner(t *testing.T) {
+	existing := []DisplayPart{
+		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "go"}},
+	}
+	bannerJSON, _ := json.Marshal(PhaseBannerPart{
+		Phase:     "step_replan",
+		Label:     "Step Replan",
+		Iteration: 12,
+		AgentName: "root",
+	})
+	recovery := []persistedPart{
+		{Type: "phase_banner", Name: "step_replan", AgentName: "root", Content: string(bannerJSON), Time: time.Unix(20, 0)},
+	}
+
+	merged := mergeRecoveryParts(existing, recovery)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 parts after merge, got %d", len(merged))
+	}
+	pb := merged[1]
+	if pb.Type != PartTypePhaseBanner || pb.PhaseBanner == nil {
+		t.Fatalf("expected recovered phase banner, got %+v", pb)
+	}
+	if pb.PhaseBanner.Phase != "step_replan" || pb.PhaseBanner.Iteration != 12 || pb.PhaseBanner.Label != "Step Replan" {
+		t.Fatalf("phase banner round-trip lost fields: %+v", pb.PhaseBanner)
+	}
+}
+
 func TestMergeRecoveryPartsRestoresStepResult(t *testing.T) {
 	existing := []DisplayPart{
 		{Type: PartTypeUser, Time: time.Unix(10, 0), User: &UserPart{Content: "hello"}},

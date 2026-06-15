@@ -71,6 +71,7 @@ type AgentPhase string
 const (
 	AgentPhaseStep                 AgentPhase = "step"
 	AgentPhasePlan                 AgentPhase = "plan"
+	AgentPhaseStepTriage           AgentPhase = "step_triage"
 	AgentPhaseStepReplan           AgentPhase = "step_replan"
 	AgentPhaseFinalAnswer          AgentPhase = "final_answer"
 	AgentPhaseIntentClassification AgentPhase = "intent_classification"
