@@ -236,7 +236,10 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 				continue
 			}
 
-			canonical := dep
+			canonical := canonicalizePlanIDToken(dep)
+			if canonical == "" {
+				canonical = dep
+			}
 			if _, ok := idSet[canonical]; !ok {
 				if resolved, ok := stepToID[dep]; ok {
 					canonical = resolved
@@ -265,10 +268,7 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 }
 
 func canonicalPlanItemID(raw string, index int, used map[string]int) string {
-	candidate := strings.ToLower(strings.TrimSpace(raw))
-	candidate = strings.ReplaceAll(candidate, " ", "-")
-	candidate = nonPlanIDCharRE.ReplaceAllString(candidate, "-")
-	candidate = strings.Trim(candidate, "-_")
+	candidate := canonicalizePlanIDToken(raw)
 	if candidate == "" {
 		candidate = fmt.Sprintf("task-%d", index+1)
 	}
@@ -278,6 +278,17 @@ func canonicalPlanItemID(raw string, index int, used map[string]int) string {
 	}
 	used[candidate] = 1
 	return candidate
+}
+
+// canonicalizePlanIDToken applies the same lower-case + sanitize rules used to
+// mint plan IDs. It is shared by canonicalPlanItemID and the depends_on lookup
+// so user-supplied references like "P1-XSS-DEEP" resolve to the canonical
+// "p1-xss-deep" stored in the plan.
+func canonicalizePlanIDToken(raw string) string {
+	candidate := strings.ToLower(strings.TrimSpace(raw))
+	candidate = strings.ReplaceAll(candidate, " ", "-")
+	candidate = nonPlanIDCharRE.ReplaceAllString(candidate, "-")
+	return strings.Trim(candidate, "-_")
 }
 
 func validatePlanDependencyGraph(items []*PlanItem) error {
