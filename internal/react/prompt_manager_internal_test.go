@@ -475,6 +475,44 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 	}
 }
 
+// TestPromptManager_StepReplanGlobalLedgerSubitemPerAxis 校验三轴各自补的「账本全局」子项
+// 都已写入 prompt：维度① 账本未解决全集逐条 actionability、维度② 账本 finding-depth、
+// 维度③ 全局视角差集。这是修复 b3c06685 误判（账本沉淀项 step_replan 软闸放过、final_answer 兜底）
+// 的回归基线——任一关键判据词缺失 → 三轴又被绑回 per-card，软闸再次失能。
+func TestPromptManager_StepReplanGlobalLedgerSubitemPerAxis(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildStepReplanPrompt(StepReplanPromptInput{
+		CurrentGoal: "测试目标",
+	})
+	if err != nil {
+		t.Fatalf("BuildStepReplanPrompt failed: %v", err)
+	}
+	rendered := parts.Joined()
+	// 维度①：账本 ## 未解决 全集 + "实质覆盖"（pending 闭环口径，仅记录/复述不算）
+	for _, needle := range []string{"账本 `## 未解决` 全集", "实质覆盖", "仅记录/复述不算"} {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("step_replan dim①必须含账本全集子项 (missing %q), got:\n%s", needle, rendered)
+		}
+	}
+	// 维度②：finding-depth 缺口语义（pending 仅记录/复述，未推到可决策深度）
+	for _, needle := range []string{"finding-depth", "未把 finding 推到可决策深度"} {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("step_replan dim②必须含 finding-depth 子项 (missing %q), got:\n%s", needle, rendered)
+		}
+	}
+	// 维度③：全局视角差集，明确为首条 bullet 而非 intro 段
+	if !strings.Contains(rendered, "**全局视角差集.**") {
+		t.Fatalf("step_replan dim③ must lead with 全局视角差集 bullet, got:\n%s", rendered)
+	}
+	// §缺口区分承接：括注扩成两类来源，避免新增全局子项缺口被误指向本 step
+	if !strings.Contains(rendered, "账本全局子项缺口的证据来源") {
+		t.Fatalf("step_replan must distinguish global-ledger gap source step in §缺口区分承接, got:\n%s", rendered)
+	}
+}
+
 func TestPromptManager_ThinkActConcurrentCoverageViaTaskContext(t *testing.T) {
 	manager, err := newDefaultPromptManager()
 	if err != nil {
