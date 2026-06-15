@@ -166,8 +166,8 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, "至少 3 步") {
 		t.Fatalf("task_planner must not retain the hard minimum 3-step rule, got:\n%s", with)
 	}
-	if !strings.Contains(with, "4-8 步") {
-		t.Fatalf("task_planner should align recon-first planning around 4-8 steps, got:\n%s", with)
+	if !strings.Contains(with, "首个可决策的中间产出") {
+		t.Fatalf("task_planner should anchor recon-first planning to the first decision-grade intermediate output, got:\n%s", with)
 	}
 
 	// 顶层 planner 兜底回流回合（!UserInputTurn 但仍是顶层）：终态段仍渲染——守卫
@@ -435,8 +435,9 @@ func TestPromptManager_StepReplanLedgerAndFactBoardContract(t *testing.T) {
 			t.Fatalf("step_replan must inject ledger + fact board with bake contract (missing %q), got:\n%s", needle, with)
 		}
 	}
-	// AI 直接维护共享区：边裁定边落盘 + 提交前落盘终态 + 禁 emoji；指令机制残留禁入。
-	for _, needle := range []string{"直接补正", "边裁定边落盘", "落盘终态", "禁止静默消失", "禁止 emoji"} {
+	// AI 直接维护共享区：提交前落盘终态 + 禁 emoji；指令机制残留禁入。
+	// "边裁定边落盘" 已按规则 15（不写手段，只声明终态）从 prompt 移除。
+	for _, needle := range []string{"直接补正", "落盘终态", "禁止静默消失", "禁止 emoji"} {
 		if !strings.Contains(with, needle) {
 			t.Fatalf("step_replan must render direct shared-area maintenance (missing %q), got:\n%s", needle, with)
 		}
