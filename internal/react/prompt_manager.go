@@ -2,6 +2,7 @@ package react
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"text/template"
@@ -57,18 +58,18 @@ type StepReplanPromptInput struct {
 	CurrentGoal       any
 	GoalUnderstanding string
 	InputTimeline     any
-	// CurrentStepCard 是当前 step 产出的 plan_item 卡片投影（替代旧 STEP_OUTCOME/
-	// CURRENT_STEP 全量注入）；PlanOverview 是全部步骤的 slim 全量卡片（去 digest，
-	// 含产出小字段与文件指针）。账本与事实板全文默认注入（设计 3.1）。
-	CurrentStepCard    any
-	PlanOverview       any
-	OpenItemsLedger    string
-	TaskContextBoard   string
-	StepFileContent    string
-	StepResultPath     string
-	StepContextsPath   string
-	StepTranscriptPath string
-	StepTimelinePath   string
+	// ReviewWindow 是「自上次 LLM replan 边界以来已完成的 step」区间多卡（最右一卡 Latest=true 标识本回合刚跑完）。
+	// 替代旧 CurrentStepCard 单卡：plan-once-execute-many gate 下被跳过的 K-1 个 step 也以同构卡片入 prompt，
+	// 让模型用统一格式核验整个复核区间。PlanOverview 是全部步骤的 slim 全量卡片（去 digest，含产出小字段与文件指针）；
+	// 账本与事实板全文默认注入（设计 3.1）。
+	ReviewWindow        any
+	PlanOverview        any
+	PriorBoundaryStepID string
+	OpenItemsLedger     string
+	TaskContextBoard    string
+	StepFileContent     string
+	StepContextsPath    string
+	StepTranscriptPath  string
 	// OpenItemsPath / TaskContextPath / StepFilePath 是本相位直接维护的三个共享区
 	// 文件绝对路径（账本单文件三区 / 事实板 / step 过程文件），供落盘补正直接寻址。
 	OpenItemsPath   string
@@ -362,21 +363,24 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
 		"STEP_FILE_PATH":    strings.TrimSpace(input.StepFilePath),
 	}
+	cardsJSON, reviewTotal, reviewShown, reviewTruncated := serializeReviewWindow(input.ReviewWindow)
 	userData := map[string]any{
 		"CURRENT_GOAL":             fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
 		"INPUT_TIMELINE":           prettyJSON(input.InputTimeline),
-		"CURRENT_STEP_CARD":        prettyJSON(input.CurrentStepCard),
+		"REVIEW_WINDOW_CARDS":      cardsJSON,
+		"REVIEW_WINDOW_TOTAL":      reviewTotal,
+		"REVIEW_WINDOW_SHOWN":      reviewShown,
+		"REVIEW_WINDOW_TRUNCATED":  reviewTruncated,
 		"PLAN_OVERVIEW":            prettyJSON(input.PlanOverview),
 		"OPEN_ITEMS_LEDGER":        strings.TrimSpace(input.OpenItemsLedger),
 		"TASK_CONTEXT_BOARD":       strings.TrimSpace(input.TaskContextBoard),
 		"STEP_FILE_CONTENT":        strings.TrimSpace(input.StepFileContent),
 		"HAS_STEP_FILE_CONTENT":    strings.TrimSpace(input.StepFileContent) != "",
-		"STEP_RESULT_PATH":         input.StepResultPath,
 		"STEP_CONTEXTS_PATH":       input.StepContextsPath,
 		"STEP_TRANSCRIPT_PATH":     input.StepTranscriptPath,
-		"STEP_TIMELINE_PATH":       input.StepTimelinePath,
+		"PRIOR_BOUNDARY_STEP_ID":   strings.TrimSpace(input.PriorBoundaryStepID),
 		"PLANNER_JOURNAL_PATH":     input.PlannerJournalPath,
 		"HAS_PLANNER_JOURNAL_PATH": strings.TrimSpace(input.PlannerJournalPath) != "",
 		"PLANNER_JOURNAL":          strings.TrimSpace(input.PlannerJournal),
@@ -387,6 +391,45 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools,
 	}
 	return renderPromptParts("step_replan", m.planningSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
+}
+
+// serializeReviewWindow 把 ReviewWindow（*reviewWindow / map / nil / 任意值）摊平为
+// (cardsJSON, total, shown, truncated) 四元组，供模板渲染。
+// - reviewWindow 形态：取其 Cards / TotalCards / OmittedCount 字段；
+// - map[string]any 兼容（测试 fixture 常以 payload map 直接传单卡）：被视作单卡 JSON 数组；
+// - 切片形态：按 JSON 数组渲染，total=shown=len，无截断元信息；
+// - 其它（含 nil / 空 cards）：cardsJSON="[]"，truncated=false。
+func serializeReviewWindow(value any) (string, int, int, bool) {
+	if value == nil {
+		return "[]", 0, 0, false
+	}
+	switch v := value.(type) {
+	case *reviewWindow:
+		if v == nil || len(v.Cards) == 0 {
+			return "[]", 0, 0, false
+		}
+		raw, err := json.Marshal(v.Cards)
+		if err != nil {
+			return "[]", v.TotalCards, len(v.Cards), v.OmittedCount > 0
+		}
+		return string(raw), v.TotalCards, len(v.Cards), v.OmittedCount > 0
+	case reviewWindow:
+		return serializeReviewWindow(&v)
+	case []*replanStepCard:
+		if len(v) == 0 {
+			return "[]", 0, 0, false
+		}
+		raw, _ := json.Marshal(v)
+		return string(raw), len(v), len(v), false
+	default:
+		// 测试 fixture 兼容：任何 JSON 可序列化值（含 map[string]any 表示的单卡）一律
+		// 包成单元素数组，保持 <REVIEW_WINDOW_CARDS> 始终是 JSON 数组的契约。
+		raw, err := json.Marshal([]any{v})
+		if err != nil {
+			return "[]", 0, 0, false
+		}
+		return string(raw), 1, 1, false
+	}
 }
 
 func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (PromptParts, error) {

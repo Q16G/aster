@@ -22,11 +22,10 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 
 	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "继续推进",
-		"current_step_card":  map[string]any{"id": "step-1", "step": "执行", "status": "completed", "short_summary": "done"},
+		"review_window":      map[string]any{"id": "step-1", "step": "执行", "status": "completed", "short_summary": "done"},
 		"plan_overview":      []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
 		"open_items_ledger":  "## 未解决\n\n## 不可解局限\n",
 		"task_context_board": "# 贯穿全程关键事实\n",
-		"step_result_path":   "/tmp/test/result.json",
 		"step_contexts_path": "/tmp/test/step_contexts.jsonl",
 	})
 	if err != nil {
@@ -34,7 +33,7 @@ func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
 	}
 	prompt := parts.Joined()
 
-	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "PLAN_OVERVIEW", "OPEN_ITEMS_LEDGER", "TASK_CONTEXT_BOARD"} {
+	for _, marker := range []string{"CURRENT_GOAL", "REVIEW_WINDOW_CARDS", "PLAN_OVERVIEW", "OPEN_ITEMS_LEDGER", "TASK_CONTEXT_BOARD"} {
 		if !strings.Contains(prompt, marker) {
 			t.Fatalf("expected marker %s in prompt, got:\n%s", marker, prompt)
 		}
@@ -49,17 +48,17 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 
 	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal": "分析代码",
-		"current_step_card": map[string]any{
+		"review_window": map[string]any{
 			"id":            "step-1",
 			"step":          "执行分析",
 			"status":        "completed",
 			"short_summary": "分析完成",
 			"key_facts":     []string{"fact-a", "fact-b"},
+			"result_file":   "/workspace/steps/step-1/result.json",
+			"timeline_file": "/workspace/shared/step-1/timeline.jsonl",
 		},
 		"plan_overview":      []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
-		"step_result_path":   "/workspace/steps/step-1/result.json",
 		"step_contexts_path": "/workspace/step_contexts.jsonl",
-		"step_timeline_path": "/workspace/shared/step-1/timeline.jsonl",
 	})
 	if err != nil {
 		t.Fatalf("buildStepReplanPrompt failed: %v", err)
@@ -68,24 +67,24 @@ func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
 
 	// 卡片应为未转义 JSON 对象，不得二次序列化为字符串。
 	if strings.Contains(prompt, `"{\"`) || strings.Contains(prompt, `\"}"`) {
-		t.Fatalf("CURRENT_STEP_CARD appears double-serialized (escaped quotes inside string):\n%s", prompt)
+		t.Fatalf("REVIEW_WINDOW_CARDS appears double-serialized (escaped quotes inside string):\n%s", prompt)
 	}
 	if !strings.Contains(prompt, `"status"`) {
-		t.Fatalf("CURRENT_STEP_CARD should contain unescaped JSON key \"status\", got:\n%s", prompt)
+		t.Fatalf("REVIEW_WINDOW_CARDS should contain unescaped JSON key \"status\", got:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, `"short_summary"`) {
-		t.Fatalf("CURRENT_STEP_CARD should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
+		t.Fatalf("REVIEW_WINDOW_CARDS should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
 	}
 
-	// Step result path and step contexts path should render
+	// 每卡内联 result_file / timeline_file 指针；step_contexts_path 仍以顶层段渲染。
 	if !strings.Contains(prompt, "/workspace/steps/step-1/result.json") {
-		t.Fatalf("expected STEP_RESULT_PATH in prompt, got:\n%s", prompt)
+		t.Fatalf("expected per-card result_file pointer in prompt, got:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "/workspace/step_contexts.jsonl") {
 		t.Fatalf("expected STEP_CONTEXTS_PATH in prompt, got:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "/workspace/shared/step-1/timeline.jsonl") {
-		t.Fatalf("expected STEP_TIMELINE_PATH in prompt, got:\n%s", prompt)
+		t.Fatalf("expected per-card timeline_file pointer in prompt, got:\n%s", prompt)
 	}
 }
 
@@ -97,7 +96,7 @@ func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
 
 	parts, err := agent.BuildStepReplanPrompt(map[string]any{
 		"current_goal":       "侦察完成",
-		"current_step_card":  map[string]any{"id": "step-1", "step": "侦察", "status": "completed", "short_summary": "done"},
+		"review_window":      map[string]any{"id": "step-1", "step": "侦察", "status": "completed", "short_summary": "done"},
 		"plan_overview":      []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
 		"step_result_path":   "",
 		"step_contexts_path": "",

@@ -763,7 +763,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 							"required": []string{"id", "step", "status", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-								"step": map[string]any{"type": "string", "description": "一条 step 是一个可独立验收的成果单元，标记完成时只声明一件被验证达成的事；一条描述若声明了多件各自可独立验收、各自可独立失败的事，按每件成果拆成多条 step。粒度上限：一条 step 约 3 次工具调用完成、>5 必拆；step 文案出现\"并且/同时/+/以及\"等并列连接，或试图合并多个独立检查类目（如同时涉及 XSS、SSRF、CORS 等不同类目）→ 视为粒度过大必须拆分；同一动作作用于多个对象按对象逐条拆，不在一条内列清单。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
+								"step": map[string]any{"type": "string", "description": "一条 step = 一个具体工件 + 一个可独立验收的产出。命中任一即必拆：①文案动作对象包含 ≥2 个不同具体工件名 → 按工件逐条拆；②文案描述 ≥2 个相互独立可验收的产出（含\"X 综合处理：枚举…分析…验证…\"类复合动词标签遮蔽形态，壳词不计单产出）→ 按产出拆为多条；③以\"全部 / 所有 / 各种 + 类目\"无锚点收口 → 先 enumerate 再按工件逐条。step 内的工具调用序列共同服务于该 step 单一产出口径——同对象同维度复读（含同文件分页 / 同 grep 反复缩窄）属同闭包合法重复不算多产出；序列里出现服务于另一独立可验收产出的调用即按 ② 拆。合法豁免：单步内联完整清单并附\"对账该清单全部 N 项\" / 指向承载完整清单的产物文件并附\"对账该文件全部 N 项\"。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
 								"status": map[string]any{
 									"type":        "string",
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},

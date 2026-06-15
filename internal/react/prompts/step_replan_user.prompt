@@ -16,12 +16,15 @@
 {{.INPUT_TIMELINE}}
 </INPUT_TIMELINE>
 
-## 当前 step 产出（plan_item 卡片：内联小字段 + 文件指针）
-<CURRENT_STEP_CARD>
-{{.CURRENT_STEP_CARD}}
-</CURRENT_STEP_CARD>
+## 复核区间卡片（自上次重编排以来已完成的 step 区间；JSON 数组旧 → 新；`latest:true` 标识本回合刚跑完）
+{{- if .REVIEW_WINDOW_TRUNCATED}}
+（共 {{.REVIEW_WINDOW_TOTAL}} 张，仅展示最近 {{.REVIEW_WINDOW_SHOWN}} 张；更早 step 详见下方 `<PLANNER_JOURNAL>` 与 `<PLAN_OVERVIEW>`。）
+{{- end}}
+<REVIEW_WINDOW_CARDS>
+{{.REVIEW_WINDOW_CARDS}}
+</REVIEW_WINDOW_CARDS>
 {{- if .HAS_STEP_FILE_CONTENT}}
-当前 step 过程文件（step.md，执行节点的人类可读总结）：
+当前 step（区间最右一卡）过程文件（step.md，执行节点的人类可读总结）：
 <STEP_FILE>
 {{.STEP_FILE_CONTENT}}
 </STEP_FILE>
@@ -54,22 +57,17 @@
 {{.SKILLS_CONTEXT.Table}}
 </SKILLS_INDEX>
 {{- end}}
-{{- if or .STEP_RESULT_PATH .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .STEP_TIMELINE_PATH .HAS_PLANNER_JOURNAL_PATH}}
+{{- if or .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .HAS_PLANNER_JOURNAL_PATH}}
 
 ## 可按需回读的文件（受核验依据与回读预算约束）
-{{- if .STEP_TIMELINE_PATH}}
-- 当前 step timeline 事件日志（无损兜底来源，逐条工具调用事件 jsonl）：`{{.STEP_TIMELINE_PATH}}`
-{{- end}}
+注：每张复核卡片自带 `result_file` / `timeline_file` / `coverage_file` 指针，按需顺该卡指针回读对应 step 产物。
 {{- if .HAS_PLANNER_JOURNAL_PATH}}
 - 计划全量历史 journal 文件指针（`<PLANNER_JOURNAL>` 已被超限截断，按本路径补读完整内容）：`{{.PLANNER_JOURNAL_PATH}}`
-{{- end}}
-{{- if .STEP_RESULT_PATH}}
-- 当前 step result 文件（结构化原始结果）：`{{.STEP_RESULT_PATH}}`
 {{- end}}
 {{- if .STEP_CONTEXTS_PATH}}
 - 全局 step contexts 索引（所有已执行 step 的执行记录与产出指针）：`{{.STEP_CONTEXTS_PATH}}`
 {{- end}}
 {{- if .STEP_TRANSCRIPT_PATH}}
-- 当前 step 执行对话记录（体量大，仅摘要不足时读）：`{{.STEP_TRANSCRIPT_PATH}}`
+- 当前 step（区间最右一卡）执行对话记录（体量大，仅摘要不足时读）：`{{.STEP_TRANSCRIPT_PATH}}`
 {{- end}}
 {{- end}}

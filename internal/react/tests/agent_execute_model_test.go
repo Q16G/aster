@@ -2398,11 +2398,11 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 		t.Fatalf("expected success, got %#v", runResult)
 	}
 
-	// Find the step_replan system messages (they contain CURRENT_STEP_CARD).
+	// Find the step_replan system messages (they contain REVIEW_WINDOW_CARDS).
 	// The sequence is: step phase call(s), step_replan round 1, step_replan round 2, final_answer.
 	var replanSystemMsgs []string
 	for _, sys := range client.systemMessages {
-		if strings.Contains(sys, "CURRENT_STEP_CARD") {
+		if strings.Contains(sys, "REVIEW_WINDOW_CARDS") {
 			replanSystemMsgs = append(replanSystemMsgs, sys)
 		}
 	}
@@ -2420,7 +2420,7 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 
 	// Verify critical markers are present in round 2
 	round2 := replanSystemMsgs[1]
-	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP_CARD", "落盘终态", "should_replan"} {
+	for _, marker := range []string{"CURRENT_GOAL", "REVIEW_WINDOW_CARDS", "落盘终态", "should_replan"} {
 		if !strings.Contains(round2, marker) {
 			t.Errorf("round-2 system prompt missing marker %q", marker)
 		}

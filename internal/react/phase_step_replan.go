@@ -96,6 +96,13 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		})
 		a.consecutiveStepsSinceReplan = 0
 	}
+	// 构造复核窗口：以上一次 LLM replan 边界为左侧开区间，含本回合 current 在内的所有
+	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
+	// bypass 关闭时（每步走 LLM）窗口稳定为 1 张卡（边界=上一步）。
+	priorBoundaryStepID := a.lastReplanBoundaryStepID
+	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, workspaceSharedDir)
+	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
+	a.lastReplanBoundaryStepID = stepID
 
 	// Scheme A: 命中 gate 触发条件时（或开关关闭时）走完整 StepReplan LLM loop。
 	//
@@ -103,21 +110,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// open_questions/warnings/unresolved, which can be under-reported and cause replan to
 	// "never trigger". We intentionally trade cost for correctness here.
 
-	stepResultPath := a.resolveStepResultPath(stepID, rawOutcome)
-	// 覆盖清单超阈值时落盘并以指针入卡（persistCoverageChecklist 幂等，烘焙路径的同名调用不冲突）。
-	stepCoveragePath := ""
-	if rel := a.persistCoverageChecklist(stepID, rawOutcome); rel != "" {
-		stepCoveragePath = filepath.Join(a.workspaceRootDir, rel)
-	}
+	// 全局指针/共享区路径（与窗口无关，保留在顶层 payload）：
 	stepContextsPath := a.resolveStepContextsPath()
-	stepTranscriptPath := ""
-	if ref := strings.TrimSpace(a.lastStepTranscriptBlobRef); ref != "" && a.v2Store != nil {
-		stepTranscriptPath = a.v2Store.BlobPath(ref)
-	}
-	stepTimelinePath := ""
-	if stepTimelineExists(workspaceSharedDir, stepID) {
-		stepTimelinePath = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
-	}
 	openItemsPath := ""
 	taskContextPath := ""
 	if workspaceSharedDir != "" {
@@ -130,6 +124,12 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if isTruncatedForPrompt(plannerJournal) {
 		plannerJournalPath = resolvePlannerJournalPointer(a.workspaceRootDir)
 	}
+	// 当前 step 的 transcript blob 路径属于"最后一卡"的辅助维度，整体指针下沉到 reviewWin 不便表达，
+	// 仍以顶层路径形式注入（最后一卡 = current）。
+	stepTranscriptPath := ""
+	if ref := strings.TrimSpace(a.lastStepTranscriptBlobRef); ref != "" && a.v2Store != nil {
+		stepTranscriptPath = a.v2Store.BlobPath(ref)
+	}
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
@@ -137,25 +137,24 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":         snapshot.CurrentGoal,
-		"goal_understanding":   snapshot.GoalUnderstanding,
-		"input_timeline":       snapshot.InputTimeline,
-		"current_step_card":    buildReplanStepCard(current, rawOutcome, workspaceSharedDir, stepResultPath, stepCoveragePath),
-		"plan_overview":        ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
-		"planner_journal_path": plannerJournalPath,
-		"planner_journal":      plannerJournal,
-		"open_items_ledger":    readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"task_context_board":   readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"step_file_content":    readSharedStepFileForPrompt(workspaceSharedDir, stepID),
-		"step_result_path":     stepResultPath,
-		"step_contexts_path":   stepContextsPath,
-		"step_transcript_path": stepTranscriptPath,
-		"step_timeline_path":   stepTimelinePath,
-		"open_items_path":      openItemsPath,
-		"task_context_path":    taskContextPath,
-		"step_file_path":       stepFileAbs(workspaceSharedDir, stepID),
-		"skills_context":       skillsCtx,
-		"available_tools":      functionToolsToAvailableInfo(fnTools),
+		"current_goal":            snapshot.CurrentGoal,
+		"goal_understanding":      snapshot.GoalUnderstanding,
+		"input_timeline":          snapshot.InputTimeline,
+		"review_window":           reviewWin,
+		"plan_overview":           ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path":    plannerJournalPath,
+		"planner_journal":         plannerJournal,
+		"open_items_ledger":       readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"task_context_board":      readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
+		"step_contexts_path":      stepContextsPath,
+		"step_transcript_path":    stepTranscriptPath,
+		"open_items_path":         openItemsPath,
+		"task_context_path":       taskContextPath,
+		"step_file_path":          stepFileAbs(workspaceSharedDir, stepID),
+		"prior_boundary_step_id":  priorBoundaryStepID,
+		"skills_context":          skillsCtx,
+		"available_tools":         functionToolsToAvailableInfo(fnTools),
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
@@ -511,6 +510,32 @@ const (
 	coverageChecklistInlineMaxBytes = 2048
 )
 
+// resolveCoverageFile 返回覆盖清单的相对路径（`shared/<stepID>/coverage.json`），只读不写：
+//   - 清单为空或工作区缺失：返回 ""；
+//   - 清单可内联（数量与字节都未超阈值）：返回 ""，调用方继续内联渲染；
+//   - 清单需落盘但文件已存在（stat 命中）：直接返回 rel 路径，**跳过 WriteFile**；
+//   - 清单需落盘但文件缺失：兜底调 persistCoverageChecklist 写一次再返回 rel。
+//
+// 设计意图：review_window 多卡场景下，历史卡的 outcome 已经 freeze（step 完成 + outcome 烘焙后
+// 不再变更），重复 MarshalIndent/WriteFile 是无收益的 IO（还会刷历史文件 mtime，干扰外部观察）。
+// latest 卡仍走 persistCoverageChecklist 强制写一次（latest 的 outcome 在本回合刚生成可能尚未落盘）。
+func (a *Agent) resolveCoverageFile(stepID string, outcome *builtin_tools.StepOutcome) string {
+	if a == nil || a.workspaceRuntime == nil || outcome == nil || len(outcome.CoverageChecklist) == 0 {
+		return ""
+	}
+	if len(outcome.CoverageChecklist) <= coverageChecklistInlineMaxItems {
+		data, err := json.MarshalIndent(outcome.CoverageChecklist, "", "  ")
+		if err == nil && len(data) <= coverageChecklistInlineMaxBytes {
+			return ""
+		}
+	}
+	abs := filepath.Join(a.workspaceRuntime.SharedDir(), stepID, "coverage.json")
+	if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+		return fmt.Sprintf("shared/%s/coverage.json", stepID)
+	}
+	return a.persistCoverageChecklist(stepID, outcome)
+}
+
 // persistCoverageChecklist 在覆盖清单超阈值时落地 shared/<stepID>/coverage.json 并返回相对路径；
 // 未超阈值或无清单时返回空（保持内联）。落盘失败只记日志，不阻塞 step 收尾。
 func (a *Agent) persistCoverageChecklist(stepID string, outcome *builtin_tools.StepOutcome) string {
@@ -629,8 +654,9 @@ func normalizeStringSlice(in []string) []string {
 	return out
 }
 
-// replanStepCard 是当前 step 产出的判定视图（plan_item 卡片形态：内联小字段 + 指针），
-// 替代旧的 STEP_OUTCOME 全量注入。
+// replanStepCard 是 step 产出的判定视图（plan_item 卡片形态：内联小字段 + 指针），
+// 替代旧的 STEP_OUTCOME 全量注入。区间复核（review_window）下被批量生成，
+// Latest=true 用于标识本回合刚跑完的那一张卡（区间最右）。
 type replanStepCard struct {
 	ID                string                                `json:"id"`
 	Step              string                                `json:"step"`
@@ -646,6 +672,38 @@ type replanStepCard struct {
 	ResultFile        string                                `json:"result_file,omitempty"`
 	TimelineFile      string                                `json:"timeline_file,omitempty"`
 	CoverageFile      string                                `json:"coverage_file,omitempty"`
+	Latest            bool                                  `json:"latest,omitempty"`
+}
+
+// reviewWindowMaxCardsBaseline 是区间多卡软上限的下界。plan_exhausted 触发时窗口可能远超
+// heartbeat K，须截断保最新 N 张并在模板提示更早 step 从 PLANNER_JOURNAL / PLAN_OVERVIEW 回读。
+// 实际上限由 reviewWindowMaxCards() 动态计算，跟随 STEP_REPLAN_HEARTBEAT_K 联动，避免用户调大 K
+// 时（如 K=10）反而频繁截断的反直觉行为。
+const reviewWindowMaxCardsBaseline = 8
+
+// reviewWindowMaxCards 计算复核窗口的卡片软上限：
+//
+//	上限 = max(heartbeat_K + 3, baseline=8)
+//
+// "+3" 是安全余量：K 心跳触发后通常窗口正好 K 张，但 plan_exhausted 时可能多带几个尾部 step。
+// 心跳被禁用（K<=0）时退化为 baseline。
+func reviewWindowMaxCards() int {
+	k := stepReplanHeartbeatK()
+	if k <= 0 {
+		return reviewWindowMaxCardsBaseline
+	}
+	if dyn := k + 3; dyn > reviewWindowMaxCardsBaseline {
+		return dyn
+	}
+	return reviewWindowMaxCardsBaseline
+}
+
+// reviewWindow 是 review_window_cards 的渲染容器：携带截断元信息（共多少张/展示多少张）
+// 供模板顶部提示展示，模板可通过 .Cards 迭代每张卡。
+type reviewWindow struct {
+	Cards        []*replanStepCard `json:"cards"`
+	TotalCards   int               `json:"total_cards"`
+	OmittedCount int               `json:"omitted_count,omitempty"`
 }
 
 func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, sharedDir, resultPath, coveragePath string) *replanStepCard {
@@ -675,6 +733,111 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 		card.TimelineFile = filepath.Join(sharedDir, card.ID, "timeline.jsonl")
 	}
 	return card
+}
+
+// buildReviewWindow 收集"自上次 LLM replan 边界以来已完成的 step"区间多卡（含本回合 current）。
+//
+// 边界语义：boundaryStepID 是上一次 LLM replan 触发那一刻的 current stepID（含），
+// 窗口取 plan 中所有索引 > boundary 且 status ∈ {completed, failed} 的 item。
+// boundary 为空 / 找不到时回退为 -1，窗口含全部 completed/failed step（首跑或 resume 场景）。
+// 最后一张卡的 Latest=true，模板据此渲染"↑ 刚完成"提示。
+//
+// 超过 reviewWindowMaxCards 时截断保最新 N 张并写入 OmittedCount，模板提示更早 step
+// 走 PLANNER_JOURNAL / PLAN_OVERVIEW 回读，避免 plan_exhausted 跨越全 plan 时 token 爆炸。
+func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, sharedDir string) *reviewWindow {
+	plan := snapshot.Plan
+	if len(plan) == 0 {
+		return &reviewWindow{}
+	}
+	boundaryIdx := -1
+	if bid := strings.TrimSpace(boundaryStepID); bid != "" {
+		for i, it := range plan {
+			if it != nil && strings.TrimSpace(it.ID) == bid {
+				boundaryIdx = i
+				break
+			}
+		}
+	}
+	var windowItems []*builtin_tools.PlanItem
+	for i := boundaryIdx + 1; i < len(plan); i++ {
+		it := plan[i]
+		if it == nil {
+			continue
+		}
+		switch it.Status {
+		case builtin_tools.PlanStepCompleted, builtin_tools.PlanStepFailed:
+			windowItems = append(windowItems, it)
+		}
+	}
+	if len(windowItems) == 0 {
+		return &reviewWindow{}
+	}
+	total := len(windowItems)
+	omitted := 0
+	maxCards := reviewWindowMaxCards()
+	if total > maxCards {
+		omitted = total - maxCards
+		windowItems = windowItems[total-maxCards:]
+	}
+	cards := make([]*replanStepCard, 0, len(windowItems))
+	lastIdx := len(windowItems) - 1
+	for i, item := range windowItems {
+		stepID := strings.TrimSpace(item.ID)
+		outcome := findOutcome(snapshot.StepOutcomes, stepID)
+		if outcome == nil {
+			// 没有 outcome 的 completed/failed 项极罕见（理论上 step 完成必写 outcome）；
+			// 留指针级别条目避免静默丢失：用 status_summary 占位，下游可由账本/journal 补全。
+			cards = append(cards, &replanStepCard{
+				ID:            stepID,
+				Step:          strings.TrimSpace(item.Step),
+				Status:        strings.TrimSpace(string(item.Status)),
+				StatusSummary: "outcome missing; consult planner_journal / plan_overview",
+			})
+			continue
+		}
+		// latest 卡（区间最右）：outcome 在本回合刚生成，走强制 persist 保证落盘最新；
+		// 历史卡：outcome 已 freeze，走 resolveCoverageFile 复用既有文件、跳过冗余 WriteFile。
+		var coverageRel string
+		if i == lastIdx {
+			coverageRel = a.persistCoverageChecklist(stepID, outcome)
+		} else {
+			coverageRel = a.resolveCoverageFile(stepID, outcome)
+		}
+		card := buildReplanStepCard(item, outcome, sharedDir,
+			a.resolveStepResultPath(stepID, outcome),
+			a.absolutizeCoverageRel(coverageRel),
+		)
+		if card == nil {
+			continue
+		}
+		cards = append(cards, card)
+	}
+	if len(cards) == 0 {
+		return &reviewWindow{}
+	}
+	cards[len(cards)-1].Latest = true
+	return &reviewWindow{
+		Cards:        cards,
+		TotalCards:   total,
+		OmittedCount: omitted,
+	}
+}
+
+// absolutizeCoverageRel 把 persistCoverageChecklist / resolveCoverageFile 返回的相对路径
+// （`shared/<stepID>/coverage.json`）拼成绝对路径，与 resolveStepResultPath 返回的绝对路径风格对齐——
+// 模型按 prompt 内指针回读时不再受 cwd 影响。空串保持空串。
+func (a *Agent) absolutizeCoverageRel(rel string) string {
+	rel = strings.TrimSpace(rel)
+	if rel == "" || a == nil {
+		return ""
+	}
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	if a.workspaceRootDir == "" {
+		return rel
+	}
+	return filepath.Join(a.workspaceRootDir, rel)
 }
 
 // sharedFileLimitBytes 根据 contextWindowTokens 计算共享区大文件的注入字节上限：
@@ -885,7 +1048,7 @@ func submitReplanPlanItemSchema() map[string]any {
 		"required": []string{"id", "step", "status", "depends_on"},
 		"properties": map[string]any{
 			"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-			"step": map[string]any{"type": "string", "description": "一条 step 是一个可独立验收的成果单元，标记完成时只声明一件被验证达成的事；一条描述若声明了多件各自可独立验收、各自可独立失败的事，按每件成果拆成多条 step。粒度上限：一条 step 约 3 次工具调用完成、>5 必拆；step 文案出现\"并且/同时/+/以及\"等并列连接，或试图合并多个独立检查类目（如同时涉及 XSS、SSRF、CORS 等不同类目）→ 视为粒度过大必须拆分；同一动作作用于多个对象按对象逐条拆，不在一条内列清单。不得为空，可引用 OI-id 与已确认事实值。"},
+			"step": map[string]any{"type": "string", "description": "一条 step = 一个具体工件 + 一个可独立验收的产出。命中任一即必拆：①文案动作对象包含 ≥2 个不同具体工件名 → 按工件逐条拆；②文案描述 ≥2 个相互独立可验收的产出（含\"X 综合处理：枚举…分析…验证…\"类复合动词标签遮蔽形态，壳词不计单产出）→ 按产出拆为多条；③以\"全部 / 所有 / 各种 + 类目\"无锚点收口 → 先 enumerate 再按工件逐条。step 内的工具调用序列共同服务于该 step 单一产出口径——同对象同维度复读（含同文件分页 / 同 grep 反复缩窄）属同闭包合法重复不算多产出；序列里出现服务于另一独立可验收产出的调用即按 ② 拆。合法豁免：单步内联完整清单并附\"对账该清单全部 N 项\" / 指向承载完整清单的产物文件并附\"对账该文件全部 N 项\"。不得为空，可引用 OI-id 与已确认事实值。"},
 			"status": map[string]any{
 				"type":        "string",
 				"enum":        []string{"pending"},
