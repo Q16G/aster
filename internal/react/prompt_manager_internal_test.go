@@ -166,8 +166,11 @@ func TestPromptManager_TaskPlannerTaskContextWriteGate(t *testing.T) {
 	if strings.Contains(with, "至少 3 步") {
 		t.Fatalf("task_planner must not retain the hard minimum 3-step rule, got:\n%s", with)
 	}
-	if !strings.Contains(with, "首个可决策的中间产出") {
-		t.Fatalf("task_planner should anchor recon-first planning to the first decision-grade intermediate output, got:\n%s", with)
+	if !strings.Contains(with, "未观测面禁止预占位") {
+		t.Fatalf("task_planner should retain the semantic kernel guarding against pre-occupation of unobserved surfaces, got:\n%s", with)
+	}
+	if !strings.Contains(with, "按分类维度并列") {
+		t.Fatalf("task_planner should retain the specific anti-pattern callout for parallel-by-category pre-occupation, got:\n%s", with)
 	}
 
 	// 顶层 planner 兜底回流回合（!UserInputTurn 但仍是顶层）：终态段仍渲染——守卫
@@ -867,8 +870,8 @@ func TestBuildTaskPlannerPrompt_InjectsSharedFilePaths(t *testing.T) {
 }
 
 // TestPlanningSystemPromptContainsGranularityClauses 锁定 planning_system.prompt 的
-// step 粒度纪律——对齐 yaklang `generate_plan.go` 的「约 3 步 / >5 必拆 / 禁并列连接 / 按对象拆」
-// 四条硬约束；同时禁止旧的「同一动作跨多个对象 → 一条内联完整清单」豁免条款回流。
+// step 粒度纪律——按语义本质判据组装：粒度纪律总纲 / 粒度预算 / 塌缩反模式三型 / 粒度自检。
+// 旧的表面判据（连接符黑名单、固定步数）与已被替换的 Recon-First 自检条款一律列入 forbidden 防回流。
 // 两相位（plan 与 step_replan）共用同一 system prompt，须同时渲染出粒度条款。
 func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 	manager, err := newDefaultPromptManager()
@@ -899,17 +902,30 @@ func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 	}
 
 	required := []string{
-		"约 3 次工具调用",
-		">5 必拆",
-		"并且 / 同时 / + / 以及",
-		"按操作对象",
-		"不在一条内列清单",
-		"粒度自检",
+		"粒度纪律（总纲，硬约束）",
+		"单产出闭包（硬约束）",
+		"服务于另一独立可验收产出",
+		"塌缩反模式（硬约束）",
+		"多工件同动",
+		"多产出复合",
+		"复合动词标签遮蔽",
+		"粒度自检（硬约束）",
+		// 「按工件 / 逐条拆」拆为轻锚，避免与"分条拆""按对象逐条拆"等等价措辞冲撞
+		"按工件",
+		"逐条拆",
 	}
 	forbidden := []string{
-		// 旧豁免条款：同一动作跨多个对象（逐一处理 A/B/C）→ 一条内联完整清单
+		// 旧豁免条款：同一动作跨多个对象（逐一处理 A/B/C）回流锁点
 		"逐一处理 A/B/C",
-		"一条内联完整清单",
+		// 旧表面判据：连接符黑名单 / 固定步数估算 / 工具调用次数预算，已替换为语义本质判据
+		"约 3 次工具调用",
+		"并且 / 同时 / + / 以及",
+		"粒度预算（硬约束）",
+		">5 必拆",
+		"≤3 健康",
+		"估算工具调用次数",
+		// 旧 Recon-First 自检条目，已并入 §粒度自检 + §未观测面禁止预占位
+		"Recon-First 自检",
 	}
 
 	for _, tc := range cases {
@@ -935,12 +951,22 @@ func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 // 同时禁止旧豁免条款（"同一种处理作用于多个对象算一件事可在一条内把对象列成清单"）回流。
 func TestBuildSubmitPlanFunctionTool_StepDescriptionContainsGranularityConstraints(t *testing.T) {
 	required := []string{
+		"一个具体工件 + 一个可独立验收的产出",
+		"按工件逐条拆",
+		"复合动词标签遮蔽",
+		"服务于另一独立可验收产出",
+		"对账该清单全部 N 项",
+	}
+	forbiddenList := []string{
+		// 旧豁免条款：同一动作作用于多个对象算一件事可在一条内把对象列成清单
+		"算一件事可在一条内把对象列成清单",
+		// 旧表面判据：连接符黑名单 / 固定数字阈值，已替换为语义本质判据
 		"约 3 次工具调用",
 		">5 必拆",
-		"并且/同时",
-		"按对象逐条拆",
+		"并且/同时/+/以及",
+		// 领域词：勿在 schema 描述中暴露具体漏洞类型枚举
+		"XSS、SSRF、CORS",
 	}
-	forbidden := "算一件事可在一条内把对象列成清单"
 
 	for _, tc := range []struct {
 		name    string
@@ -976,8 +1002,10 @@ func TestBuildSubmitPlanFunctionTool_StepDescriptionContainsGranularityConstrain
 				t.Fatalf("%s step description missing %q, got: %s", tc.name, needle, desc)
 			}
 		}
-		if strings.Contains(desc, forbidden) {
-			t.Fatalf("%s step description must drop legacy exemption %q, got: %s", tc.name, forbidden, desc)
+		for _, banned := range forbiddenList {
+			if strings.Contains(desc, banned) {
+				t.Fatalf("%s step description must drop legacy phrase %q, got: %s", tc.name, banned, desc)
+			}
 		}
 	}
 }
