@@ -215,6 +215,7 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		WithTool(&orderedTool{name: builtin_tools.SubAgentToolName}),
 		WithTool(&orderedTool{name: builtin_tools.SubAgentStatusToolName}),
 		WithTool(&orderedTool{name: builtin_tools.AwaitSubAgentsToolName}),
+		WithTool(&orderedTool{name: builtin_tools.HumanConfirmToolName}),
 		WithTool(&orderedTool{name: "mcp_some_server_tool"}),
 		WithTool(&orderedTool{name: "custom_unknown_tool"}),
 	)
@@ -230,7 +231,6 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 	}
 	commonForbidden := []string{
 		builtin_tools.SkillToolName,
-		builtin_tools.HumanConfirmToolName,
 		builtin_tools.UpdateCurrentStepToolName,
 		builtin_tools.UpdateTaskStatusToolName,
 		builtin_tools.TaskStatusQueryToolName,
@@ -243,11 +243,13 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 
 	phaseAllowed := map[builtin_tools.AgentPhase]map[string]struct{}{
 		// planner 阶段开放 sub_agent 委派族，支持调研深化的并行委派。
+		// planner 阶段开放 sub_agent 委派族 + human_confirm 澄清通道。
 		builtin_tools.AgentPhasePlan: {
 			builtin_tools.ReadFileToolName:       {},
 			builtin_tools.ListFilesToolName:      {},
 			builtin_tools.RgToolName:             {},
 			builtin_tools.BashToolName:           {},
+			builtin_tools.HumanConfirmToolName:   {},
 			builtin_tools.SubAgentToolName:       {},
 			builtin_tools.SubAgentStatusToolName: {},
 			builtin_tools.AwaitSubAgentsToolName: {},
@@ -255,9 +257,10 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		builtin_tools.AgentPhaseStepReplan: commonAllowed,
 	}
 	phaseForbidden := map[builtin_tools.AgentPhase][]string{
-		// plan 阶段允许 sub_agent，因此从 forbidden 列表中剔除该三件。
+		// plan 阶段允许 sub_agent + human_confirm，从 forbidden 列表中剔除。
 		builtin_tools.AgentPhasePlan: commonForbidden,
 		builtin_tools.AgentPhaseStepReplan: append(append([]string{}, commonForbidden...),
+			builtin_tools.HumanConfirmToolName,
 			builtin_tools.SubAgentToolName,
 			builtin_tools.SubAgentStatusToolName,
 			builtin_tools.AwaitSubAgentsToolName,

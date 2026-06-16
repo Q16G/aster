@@ -399,140 +399,10 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 }
 
 const submitPlanToolName = "submit_plan"
-const requestClarificationToolName = "request_clarification"
-
-func buildRequestClarificationFunctionTool() *ai.FunctionTool {
-	return &ai.FunctionTool{
-		Type: "function",
-		Function: &ai.FunctionDetail{
-			Name:        requestClarificationToolName,
-			Description: "仅当输入存在会实质改变计划方向/范围、且无法靠 read_file/rg/bash 自行查清的歧义时，向用户发起一次澄清提问。能靠工具查清的不要问。",
-			Parameters: map[string]any{
-				"type":     "object",
-				"required": []string{"questions"},
-				"properties": map[string]any{
-					"questions": map[string]any{
-						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "需要用户澄清的问题，聚焦、可一次问清；可一次列多个子问。",
-					},
-					"reason": map[string]any{
-						"type":        "string",
-						"description": "为何必须澄清（说明该歧义会如何实质改变计划），帮助用户理解。",
-					},
-				},
-			},
-		},
-	}
-}
-
-type clarificationArgs struct {
-	Questions []string `json:"questions"`
-	Reason    string   `json:"reason"`
-}
-
-func parseClarificationArgs(args any) (*clarificationArgs, error) {
-	var data []byte
-	switch v := args.(type) {
-	case string:
-		data = []byte(v)
-	case []byte:
-		data = v
-	default:
-		var err error
-		data, err = json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("request_clarification: marshal args failed: %w", err)
-		}
-	}
-	var result clarificationArgs
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("request_clarification: parse args failed: %w", err)
-	}
-	cleaned := result.Questions[:0]
-	for _, q := range result.Questions {
-		if q = strings.TrimSpace(q); q != "" {
-			cleaned = append(cleaned, q)
-		}
-	}
-	result.Questions = cleaned
-	if len(result.Questions) == 0 {
-		return nil, fmt.Errorf("request_clarification: questions is empty")
-	}
-	return &result, nil
-}
-
-// handleClarificationToolCall 处理 planner 的 request_clarification 调用：
-// 经 OnHumanInput 同步问答通道把问题发给用户，回答作为工具结果写回 stepHistory，
-// 下一轮 planner 据此重做理解与规划。无人工通道或用户取消时优雅降级，不阻塞。
-// 不再用代码硬上限限制澄清轮数：靠 prompt 的「聚焦、能一次问清就一次问清」纪律
-// 与用户主动取消（OnHumanInput 返回空/错误）约束。
-func (a *Agent) handleClarificationToolCall(ctx context.Context, tc *ai.FunctionTool) {
-	callID := strings.TrimSpace(tc.Id)
-	parsed, parseErr := parseClarificationArgs(tc.Function.Arguments)
-	if parseErr != nil {
-		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil, "",
-			fmt.Sprintf("request_clarification 参数无效: %s\n请基于最合理假设继续，并把假设写入 goal_understanding。", parseErr.Error()), false)
-		return
-	}
-
-	onHumanInput := a.GetOnHumanInput()
-	if onHumanInput == nil {
-		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
-			"当前无人工交互通道，无法澄清。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
-		return
-	}
-
-	question := strings.Join(parsed.Questions, "\n")
-	if reason := strings.TrimSpace(parsed.Reason); reason != "" {
-		question = "需要澄清以下问题以确定计划方向：\n" + question + "\n\n（原因：" + reason + "）"
-	} else {
-		question = "需要澄清以下问题以确定计划方向：\n" + question
-	}
-
-	requestID := uuid.NewString()
-	snapshot := a.state.Snapshot()
-	ctxMap := map[string]any{
-		"request_id": requestID,
-		"input_type": "text",
-		"questions":  parsed.Questions,
-		"reason":     parsed.Reason,
-		"phase":      "plan_clarification",
-	}
-	if a.emitter != nil {
-		a.emitter.EmitHumanRequest(snapshot.Iteration, requestID, question, ctxMap)
-	}
-	pausedSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
-		Task:     "等待规划澄清",
-		Status:   builtin_tools.TaskStatusPaused,
-		Message:  question,
-		Progress: -1,
-	})
-	if a.emitter != nil {
-		a.emitter.EmitStateChange(pausedSnap)
-	}
-
-	answer, err := onHumanInput(ctx, question, ctxMap)
-	resumeSnap := a.state.UpdateTaskStatus(builtin_tools.TaskStatusUpdate{
-		Task:     "规划澄清结束",
-		Status:   builtin_tools.TaskStatusRunning,
-		Progress: -1,
-	})
-	if a.emitter != nil {
-		a.emitter.EmitStateChange(resumeSnap)
-	}
-	if err != nil || strings.TrimSpace(answer) == "" {
-		a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
-			"用户未提供澄清（取消或留空）。请基于最合理假设继续规划，并把所用假设显式写入 goal_understanding 的「隐含需求与假设」。", "", false)
-		return
-	}
-	a.AICallProxyWriteToolResult(callID, requestClarificationToolName, "", nil,
-		fmt.Sprintf("用户澄清回复：\n%s\n\n请据此重做输入理解（更新 goal_understanding）并规划。", strings.TrimSpace(answer)), "", false)
-}
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool(), buildRequestClarificationFunctionTool())
+	fnTools = append(fnTools, buildSubmitPlanFunctionTool())
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
 	input.HasAvailableTools = len(input.AvailableTools) > 0
@@ -686,11 +556,6 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				}
 				return parsed, nil
 			}
-			if tc.Function.Name == requestClarificationToolName {
-				a.handleClarificationToolCall(ctx, tc)
-				anyUsefulTool = true
-				continue
-			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
 				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
@@ -699,7 +564,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 			} else {
 				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "",
 					fmt.Sprintf("工具 %q 在当前 plan 阶段不可用。本阶段可用工具：%s。若已具备规划所需信息，请直接调用 submit_plan 提交计划。",
-						strings.TrimSpace(tc.Function.Name), strings.Join(sortedToolNames(allowedTools, submitPlanToolName, requestClarificationToolName), ", ")),
+						strings.TrimSpace(tc.Function.Name), strings.Join(sortedToolNames(allowedTools, submitPlanToolName), ", ")),
 					false)
 			}
 		}

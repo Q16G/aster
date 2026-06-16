@@ -1160,6 +1160,10 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 			builtin_tools.SubAgentStatusToolName,
 			builtin_tools.AwaitSubAgentsToolName:
 			return true
+		case builtin_tools.HumanConfirmToolName:
+			// 澄清通道仅主 Agent 的 plan 阶段可用：子 Agent 没有人机交互通道，
+			// 应基于最合理假设推进并把假设写入 goal_understanding。
+			return a.cfg != nil && !a.cfg.IsSubAgent
 		default:
 			return false
 		}
