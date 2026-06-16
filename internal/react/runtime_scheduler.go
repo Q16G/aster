@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
@@ -618,6 +619,23 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						anyUsefulTool = true
 						continue
 					}
+					// 粒度机械校验（P3 最小化兜底，与 prompt 侧 §粒度纪律 / §塌缩反模式 同口径）：
+					// step 文案承载多句堆叠（中文分号 `；` 出现）或超长（runes > planItemStepMaxRunes）
+					// 时几乎必然塌缩——绕开 LLM 自检直接 reject 让其拆。失败时同样走 retry 通道。
+					if granErr := validatePlanItemsGranularity(parsed.Plan); granErr != nil {
+						submitRetries++
+						if submitRetries > maxSubmitRetries {
+							return nil, fmt.Errorf("submit_plan granularity check failed after %d retries: %w", maxSubmitRetries, granErr)
+						}
+						a.AICallProxyWriteToolResult(
+							strings.TrimSpace(tc.Id), submitPlanToolName,
+							"", nil, "",
+							fmt.Sprintf("submit_plan 粒度校验失败：%s\n请把违例的 step 按工件/产出拆为多条独立可验收子项（一对象一动作一产出）后重新调用 submit_plan。", granErr.Error()),
+							false,
+						)
+						anyUsefulTool = true
+						continue
+					}
 				}
 				// 子 Agent 完成性守卫：规划期委派的子 Agent 全部结束并归并产出后才允许
 				// submit_plan（「规划期委派」契约的机械兜底；step 相位由 ChildAgentChecker
@@ -811,6 +829,39 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 			},
 		},
 	}
+}
+
+// planItemStepMaxRunes 是单条 step 文案的字符上限——超过则机械判定塌缩（多句堆叠或长描述塞多事）。
+// 经验值：120 字符足够承载"动词 + 单工件 + 单产出 + 验收"标准句式（30-80 字），>120 一般有多句。
+const planItemStepMaxRunes = 120
+
+// validatePlanItemsGranularity 对 plan items 做两条机械粒度兜底检查（与 §粒度纪律 / §塌缩反模式 同口径）：
+//  1. step 文案 runes 数 ≤ planItemStepMaxRunes
+//  2. step 文案不含中文分号 `；`（多句堆叠的强信号）
+//
+// 返回首条违例的 error 描述。校验失败由调用方走 submit_plan 的 retry 通道让 LLM 拆条重试。
+// 这是对 prompt 侧自检（A-M + N0-N5 + P1/P2 计 20+ 条规则）的机械兜底——LLM 自觉失败时的最后一刀。
+func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		step := strings.TrimSpace(item.Step)
+		if step == "" {
+			continue
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = "<unnamed>"
+		}
+		if strings.Contains(step, "；") {
+			return fmt.Errorf("step %q 文案包含中文分号 `；`（多句堆叠塌缩信号）——一条 step = 一个具体工件 + 一个可独立验收的产出，按工件/产出拆为多条", id)
+		}
+		if runeCount := utf8.RuneCountInString(step); runeCount > planItemStepMaxRunes {
+			return fmt.Errorf("step %q 文案长度 %d > %d 字符上限（超长几乎必然塞多事）——按工件/产出拆为多条单一动作的 step", id, runeCount, planItemStepMaxRunes)
+		}
+	}
+	return nil
 }
 
 func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {

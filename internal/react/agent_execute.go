@@ -1163,8 +1163,18 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 		default:
 			return false
 		}
-	case builtin_tools.AgentPhaseStepReplan,
-		builtin_tools.AgentPhaseFinalAnswer,
+	case builtin_tools.AgentPhaseStepReplan:
+		switch toolName {
+		case builtin_tools.ReadFileToolName,
+			builtin_tools.ListFilesToolName,
+			builtin_tools.RgToolName,
+			builtin_tools.BashToolName,
+			submitReplanToolName:
+			return true
+		default:
+			return false
+		}
+	case builtin_tools.AgentPhaseFinalAnswer,
 		builtin_tools.AgentPhaseIntentClassification:
 		switch toolName {
 		case builtin_tools.ReadFileToolName,

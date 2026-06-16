@@ -466,10 +466,12 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 		Payload: map[string]any{
 			"step_id":       strings.TrimSpace(stepID),
 			"step_name":     strings.TrimSpace(stepName),
-			"should_replan": result.ShouldReplan,
-			"replan_reason": strings.TrimSpace(result.ReplanReason),
-			"next_goal":     strings.TrimSpace(result.NextGoal),
-			"plan_size":     len(result.Plan),
+			"should_replan":         result.ShouldReplan,
+			"replan_reason":         strings.TrimSpace(result.ReplanReason),
+			"next_goal":             strings.TrimSpace(result.NextGoal),
+			"incomplete_items_size": len(result.IncompleteItems),
+			"depth_gaps_size":       len(result.DepthGaps),
+			"new_surfaces_size":     len(result.NewSurfaces),
 		},
 	})
 }

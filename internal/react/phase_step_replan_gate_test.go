@@ -130,8 +130,8 @@ func TestShouldEscalateStepReplan_NilOutcomeNoCrash(t *testing.T) {
 // TestStepReplanHeartbeatK_DefaultAndOverride 验证心跳阈值的默认值与环境变量覆盖。
 func TestStepReplanHeartbeatK_DefaultAndOverride(t *testing.T) {
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "")
-	if got := stepReplanHeartbeatK(); got != 5 {
-		t.Fatalf("default heartbeat K expected 5, got %d", got)
+	if got := stepReplanHeartbeatK(); got != 2 {
+		t.Fatalf("default heartbeat K expected 2, got %d", got)
 	}
 
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "3")
@@ -140,8 +140,8 @@ func TestStepReplanHeartbeatK_DefaultAndOverride(t *testing.T) {
 	}
 
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "not-a-number")
-	if got := stepReplanHeartbeatK(); got != 5 {
-		t.Fatalf("invalid value falls back to default 5, got %d", got)
+	if got := stepReplanHeartbeatK(); got != 2 {
+		t.Fatalf("invalid value falls back to default 2, got %d", got)
 	}
 }
 
@@ -165,9 +165,30 @@ func TestStepReplanBypassDisabled_EnvValues(t *testing.T) {
 	}
 }
 
-// TestShouldEscalateStepReplan_HeartbeatDisabled 验证 K<=0 时心跳禁用。
-func TestShouldEscalateStepReplan_HeartbeatDisabled(t *testing.T) {
+// TestShouldEscalateStepReplan_HeartbeatEveryStep 验证 K=0 时每步必触发心跳（零跳过容忍）。
+func TestShouldEscalateStepReplan_HeartbeatEveryStep(t *testing.T) {
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0")
+	a := &Agent{consecutiveStepsSinceReplan: 0}
+	snapshot := builtin_tools.StateSnapshot{
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "s1", Step: "a", Status: builtin_tools.PlanStepCompleted},
+			{ID: "s2", Step: "b", Status: builtin_tools.PlanStepPending},
+		},
+	}
+	outcome := &builtin_tools.StepOutcome{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted}
+
+	escalate, reason := a.shouldEscalateStepReplan(snapshot, outcome)
+	if !escalate {
+		t.Fatalf("expected escalate=true at K=0 (every-step heartbeat), got false")
+	}
+	if reason != "heartbeat" {
+		t.Fatalf("expected reason=heartbeat, got %q", reason)
+	}
+}
+
+// TestShouldEscalateStepReplan_HeartbeatDisabled 验证 K<0 时心跳禁用（K=0 不再禁用，每步触发）。
+func TestShouldEscalateStepReplan_HeartbeatDisabled(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
 	a := &Agent{consecutiveStepsSinceReplan: 99}
 	snapshot := builtin_tools.StateSnapshot{
 		Plan: []*builtin_tools.PlanItem{
@@ -179,6 +200,6 @@ func TestShouldEscalateStepReplan_HeartbeatDisabled(t *testing.T) {
 
 	escalate, reason := a.shouldEscalateStepReplan(snapshot, outcome)
 	if escalate {
-		t.Fatalf("expected escalate=false when heartbeat disabled, got true reason=%q", reason)
+		t.Fatalf("expected escalate=false when heartbeat disabled (K<0), got true reason=%q", reason)
 	}
 }

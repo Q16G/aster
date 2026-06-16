@@ -1626,12 +1626,13 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	}
 }
 
-// TestExecute_StepSummaryReplansBeforeRunningOldPendingStep 校验 step_replan 直达 Step
-// 重编排路径：旧 legacy-step 在 step-1 完成后被 step_replan 直接替换为 step-2，相位机不
-// 经过 Plan 相位（planner 只在初始规划时被调用一次）。
+// TestExecute_StepSummaryReplansBeforeRunningOldPendingStep 校验 step_replan 三轴决策路径：
+// step-1 完成后 step_replan 提交 should_replan=true + 三轴缺口，agent 把 ReplanContext 回流
+// 给 planner，由 planner 产出含 step-2 的新 plan（取代 legacy-step）。planner 被调用两次
+// （初始 + 回流编排）。
 func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
-	// 本测试断言 step_replan LLM 路径的"直达 Step 重编排"行为；plan-once-execute-many gate
-	// 默认会跳过 LLM replan，需显式关闭以保留旧路径行为。
+	// 本测试断言 step_replan LLM 路径的「三轴→回流 planner→新 plan」行为；
+	// plan-once-execute-many gate 默认会跳过 LLM replan，需显式关闭以保留 LLM 路径。
 	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
@@ -1650,6 +1651,14 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 					{ID: "legacy-step", Step: "过时旧待办", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
 				},
 			},
+			{
+				NeedsPlanning: false,
+				Explanation:   "回流编排：替换 legacy-step 为 step-2",
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "完成已有步骤", Status: builtin_tools.PlanStepCompleted},
+					{ID: "step-2", Step: "围绕新缺口补齐验证", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
+				},
+			},
 		},
 	}
 	client := &executeModelTestClient{
@@ -1665,20 +1674,13 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
-				// step_replan 直接产出重编排后的完整 pending 集（替换 legacy-step）。
+				// step_replan 提交三轴缺口，触发 ReplanContext 回流 planner。
 				toolCalls: []*ai.FunctionTool{
-					mustBuildToolCall(t, "call-submit-replan-1", "submit_plan", map[string]any{
-						"should_replan": true,
-						"replan_reason": "旧计划未覆盖新增验证缺口",
-						"next_goal":     "围绕新缺口补齐验证",
-						"plan": []any{
-							map[string]any{
-								"id":         "step-2",
-								"step":       "围绕新缺口补齐验证",
-								"status":     "pending",
-								"depends_on": []any{"step-1"},
-							},
-						},
+					mustBuildToolCall(t, "call-submit-replan-1", "submit_replan", map[string]any{
+						"should_replan":    true,
+						"replan_reason":    "旧计划未覆盖新增验证缺口",
+						"next_goal":        "围绕新缺口补齐验证",
+						"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
 					}),
 				},
 			},
@@ -1694,11 +1696,10 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 			},
 			{
 				toolCalls: []*ai.FunctionTool{
-					mustBuildToolCall(t, "call-submit-replan-2", "submit_plan", map[string]any{
+					mustBuildToolCall(t, "call-submit-replan-2", "submit_replan", map[string]any{
 						"should_replan": false,
 						"replan_reason": "",
 						"next_goal":     "",
-						"plan":          []any{},
 					}),
 				},
 			},
@@ -1733,14 +1734,14 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if client.calls != 5 {
 		t.Fatalf("expected 5 model calls (step+replan+step+replan+final), got %d", client.calls)
 	}
-	// 直达 Step 路径下 planner 只在初始规划被调用一次，不再回流 Plan 相位重新编排。
-	if planner.calls != 1 {
-		t.Fatalf("expected planner called once (direct re-plan via step_replan), got %d", planner.calls)
+	// 三轴决策路径下 planner 被调用两次：初始规划 + step_replan 触发的回流编排。
+	if planner.calls != 2 {
+		t.Fatalf("expected planner called twice (initial + replan reflow), got %d", planner.calls)
 	}
 
 	snapshot := agent.State()
 	if snapshot.PlanVersion != 2 {
-		t.Fatalf("expected plan version 2 after direct re-plan, got %d", snapshot.PlanVersion)
+		t.Fatalf("expected plan version 2 after replan reflow, got %d", snapshot.PlanVersion)
 	}
 	if snapshot.ReplanContext != nil {
 		t.Fatalf("expected replan context cleared after replanned plan finishes, got %+v", snapshot.ReplanContext)

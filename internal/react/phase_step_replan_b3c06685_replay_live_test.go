@@ -206,9 +206,17 @@ func TestStepReplanB3c06685Replay_LiveFromENV(t *testing.T) {
 		ai.NewSystemMsgInfo(parts.SystemRules),
 		ai.NewUserMsgInfo(parts.User),
 	}
-	tool := buildSubmitReplanFunctionTool()
+	submitToolInst := newSubmitReplanTool()
+	fnTool := &ai.FunctionTool{
+		Type: "function",
+		Function: &ai.FunctionDetail{
+			Name:        submitToolInst.Name(),
+			Description: submitToolInst.Description(),
+			Parameters:  submitToolInst.Parameters(),
+		},
+	}
 
-	choices, err := client.ChatEx(ctx, msgs, tool)
+	choices, err := client.ChatEx(ctx, msgs, fnTool)
 	if err != nil {
 		t.Fatalf("live ChatEx failed: %v", err)
 	}
@@ -217,38 +225,37 @@ func TestStepReplanB3c06685Replay_LiveFromENV(t *testing.T) {
 	}
 	msg := choices[0].Message
 
-	var submitArgs any
+	var submitArgs map[string]any
 	for _, tc := range msg.ToolCalls {
 		if tc == nil || tc.Function == nil {
 			continue
 		}
-		if strings.TrimSpace(tc.Function.Name) == submitPlanToolName {
-			submitArgs = tc.Function.Arguments
+		if strings.TrimSpace(tc.Function.Name) == submitReplanToolName {
+			if m, ok := tc.Function.Arguments.(map[string]any); ok {
+				submitArgs = m
+			}
 			break
 		}
 	}
 	if submitArgs == nil {
-		t.Fatalf("model did not call submit_plan; content=%q reasoning=%q tool_calls=%d",
+		t.Fatalf("model did not call submit_replan; content=%q reasoning=%q tool_calls=%d",
 			truncate(asString(msg.Content), 800), truncate(msg.ReasoningOutput, 800), len(msg.ToolCalls))
 	}
 
-	decision, parseErr := parseSubmitReplanArgs(submitArgs)
-	if parseErr != nil {
-		// 即使 schema 校验失败也要把模型原始决策打印出来，便于人工裁定。
+	if _, err := submitToolInst.Execute(context.Background(), submitArgs); err != nil {
 		raw, _ := json.Marshal(submitArgs)
-		t.Fatalf("parseSubmitReplanArgs failed: %v\nraw args=%s", parseErr, string(raw))
+		t.Fatalf("Execute failed: %v\nraw args=%s", err, string(raw))
+	}
+	decision := submitToolInst.getResult()
+	if decision == nil {
+		t.Fatalf("no result stored after Execute")
 	}
 
 	t.Logf("[replay] should_replan=%v", decision.ShouldReplan)
 	t.Logf("[replay] replan_reason=%s", decision.ReplanReason)
 	t.Logf("[replay] next_goal=%s", decision.NextGoal)
-	t.Logf("[replay] plan_size=%d", len(decision.Plan))
-	for i, item := range decision.Plan {
-		if item == nil {
-			continue
-		}
-		t.Logf("[replay] plan[%d] id=%s step=%s", i, item.ID, truncate(item.Step, 200))
-	}
+	t.Logf("[replay] incomplete_items=%d depth_gaps=%d new_surfaces=%d",
+		len(decision.IncompleteItems), len(decision.DepthGaps), len(decision.NewSurfaces))
 	if msg.ReasoningOutput != "" {
 		t.Logf("[replay] reasoning=%s", truncate(msg.ReasoningOutput, 2000))
 	}

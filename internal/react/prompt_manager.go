@@ -218,9 +218,8 @@ type PromptManager interface {
 type defaultPromptManager struct {
 	thinkActSystemTmpl *template.Template
 	thinkActUserTmpl   *template.Template
-	// planningSystemTmpl 是 plan / step_replan 共用的 system 模板（单文件，
-	// IS_REPLAN_PHASE 分阶段渲染）；两相位的 user 模板仍各自独立。
 	planningSystemTmpl             *template.Template
+	stepReplanSystemTmpl           *template.Template
 	stepReplanUserTmpl             *template.Template
 	finalAnswerSystemTmpl          *template.Template
 	finalAnswerUserTmpl            *template.Template
@@ -250,6 +249,9 @@ func newDefaultPromptManager() (PromptManager, error) {
 		return nil, err
 	}
 	if m.planningSystemTmpl, err = parse("planning_system", planningSystemPrompt); err != nil {
+		return nil, err
+	}
+	if m.stepReplanSystemTmpl, err = parse("step_replan_system", stepReplanSystemPrompt); err != nil {
 		return nil, err
 	}
 	if m.stepReplanUserTmpl, err = parse("step_replan_user", stepReplanUserPrompt); err != nil {
@@ -353,7 +355,6 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
-		"IS_REPLAN_PHASE":      true,
 		"IS_SUB_AGENT":         input.IsSubAgent,
 		"CAN_SPAWN_SUBAGENT":   false,
 		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
@@ -390,7 +391,7 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"AVAILABLE_TOOLS":          input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools,
 	}
-	return renderPromptParts("step_replan", m.planningSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
+	return renderPromptParts("step_replan", m.stepReplanSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
 }
 
 // serializeReviewWindow 把 ReviewWindow（*reviewWindow / map / nil / 任意值）摊平为
@@ -465,7 +466,6 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
 		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
 		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
-		"IS_REPLAN_PHASE":      false,
 		"IS_SUB_AGENT":         input.IsSubAgent,
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 		"USER_INPUT_TURN":      input.UserInputTurn,

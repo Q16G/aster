@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"aster/internal/ai"
@@ -15,15 +16,94 @@ import (
 	"aster/internal/runtimelog"
 )
 
+const submitReplanToolName = "submit_replan"
+
+// submitReplanTool 是 step_replan 阶段专属的提交工具，实现 Tool 接口。
+// Execute 完成参数解析与基本校验，成功时存储三轴结果；
+// 失败时返回 error，由 executeToolCall 写入 tool result，模型自动重试。
+type submitReplanTool struct {
+	mu     sync.Mutex
+	result *stepReplanModelOutput
+}
+
+func newSubmitReplanTool() *submitReplanTool {
+	return &submitReplanTool{}
+}
+
+func (t *submitReplanTool) Name() string { return submitReplanToolName }
+
+func (t *submitReplanTool) Description() string {
+	return "完成复核与重编排后提交本轮决策；提交前账本 / 归档 / 事实板终态已成立。"
+}
+
+func (t *submitReplanTool) Parameters() any {
+	return map[string]any{
+		"type":     "object",
+		"required": []string{"should_replan", "replan_reason", "next_goal"},
+		"properties": map[string]any{
+			"should_replan": map[string]any{
+				"type":        "boolean",
+				"description": "存在可行动缺口且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
+			},
+			"replan_reason": map[string]any{
+				"type":        "string",
+				"description": "should_replan=true 时填一句人类可读的缺口总括；false 时填空字符串。",
+			},
+			"next_goal": map[string]any{
+				"type":        "string",
+				"description": "should_replan=true 时填明确的下一轮目标；false 时填空字符串。",
+			},
+			"incomplete_items": map[string]any{
+				"type":        "array",
+				"description": "轴①存在性：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含「做了但不扎实」（属 depth_gaps）。",
+				"items":       map[string]any{"type": "string"},
+			},
+			"depth_gaps": map[string]any{
+				"type":        "array",
+				"description": "轴②深度/质量：本 step 声明目标内、做了但不扎实的项（static_only 未确认 / sink 未追到 source / 悬而未决判断 / 水货占位挤掉高价值分析 / 抽样冒充全量），驱动深挖。即使轴①为空也须独立判定。",
+				"items":       map[string]any{"type": "string"},
+			},
+			"new_surfaces": map[string]any{
+				"type":        "array",
+				"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列时轻量去重偏放行：只剔除明确同 (检查维度×资产) 对、前提未变、已扎实覆盖的重叠，拿不准保留；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束，意图外/明确不做项降级沉回 `## 不可解局限`。",
+				"items":       map[string]any{"type": "string"},
+			},
+		},
+	}
+}
+
+func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	data, err := json.Marshal(args)
+	if err != nil {
+		return "", fmt.Errorf("submit_replan: marshal args failed: %w", err)
+	}
+	var result stepReplanModelOutput
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("submit_replan: parse args failed: %w", err)
+	}
+	if result.ShouldReplan && strings.TrimSpace(result.NextGoal) == "" {
+		return "", fmt.Errorf("submit_replan: should_replan=true but next_goal is empty")
+	}
+	r := result
+	t.mu.Lock()
+	t.result = &r
+	t.mu.Unlock()
+	return `{"ok":true}`, nil
+}
+
+func (t *submitReplanTool) getResult() *stepReplanModelOutput {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.result
+}
+
 type stepReplanModelOutput struct {
-	ShouldReplan bool   `json:"should_replan"`
-	ReplanReason string `json:"replan_reason"`
-	NextGoal     string `json:"next_goal"`
-	// Plan 是 step_replan 直接产出的重编排 pending 步骤集（替代旧三轴输出）：
-	// should_replan=true 时必填非空；只输出重规划后的 pending 步骤（保留 / 新增 / 调整），
-	// completed / in_progress 项由系统自动承接、不在此复述；status 一律 pending；
-	// depends_on 可引用已完成步骤 id；步骤文案可引用 OI-id 与事实板已确认值。
-	Plan []*builtin_tools.PlanItem `json:"plan"`
+	ShouldReplan    bool     `json:"should_replan"`
+	ReplanReason    string   `json:"replan_reason"`
+	NextGoal        string   `json:"next_goal"`
+	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性缺口
+	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度缺口
+	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③扩面缺口
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -133,8 +213,13 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
+	submitTool := newSubmitReplanTool()
+	if err := a.registerTool(submitTool); err != nil {
+		return fmt.Errorf("register submit_replan tool: %w", err)
+	}
+	defer a.unregisterTool(submitReplanToolName)
+
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
-	fnTools = append(fnTools, buildSubmitReplanFunctionTool())
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":            snapshot.CurrentGoal,
@@ -159,9 +244,6 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
 	}
-
-	const maxSubmitRetries = 3
-	submitRetries := 0
 
 	for round := 0; ; round++ {
 		if ctx.Err() != nil {
@@ -195,35 +277,17 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 			if tc == nil || tc.Function == nil {
 				continue
 			}
-			if tc.Function.Name == submitPlanToolName {
-				decision, parseErr := parseSubmitReplanArgs(tc.Function.Arguments)
-				var mergedPlan []*builtin_tools.PlanItem
-				if parseErr == nil && decision.ShouldReplan {
-					// merge 后再 normalize：检查新 pending 是否依赖了 merge 后实际不存在的 id
-					// 或形成环（merge 把 completed/in_progress 也作为合法依赖锚点）；失败也走
-					// 同一个 retry 通道，避免静默 bail 到 phase_error → final_answer 错误终态。
-					merged := mergeReplannedPlan(snapshot.Plan, decision.Plan)
-					if _, normErr := builtin_tools.NormalizePlanItems(merged, true); normErr != nil {
-						parseErr = fmt.Errorf("plan merge 后结构校验失败: %w（请检查 depends_on 是否引用了不存在的 id 或形成循环）", normErr)
-					} else {
-						mergedPlan = merged
-					}
+			if tc.Function.Name == submitReplanToolName {
+				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+					return err
 				}
-				if parseErr != nil {
-					submitRetries++
-					if submitRetries > maxSubmitRetries {
-						return fmt.Errorf("submit_plan replan failed after %d retries: %w", maxSubmitRetries, parseErr)
-					}
-					a.AICallProxyWriteToolResult(
-						strings.TrimSpace(tc.Id), submitPlanToolName,
-						"", nil, "",
-						fmt.Sprintf("submit_plan 参数校验失败: %s\n请修正后重新调用 submit_plan。", parseErr.Error()),
-						false,
-					)
+				decision := submitTool.getResult()
+				if decision == nil {
+					// Execute 返回 error，executeToolCall 已写 tool result，模型自动重试。
 					anyUsefulTool = true
 					continue
 				}
-				return a.applyReplanDecision(stepID, decision, mergedPlan, snapshot)
+				return a.applyReplanDecision(stepID, *decision, snapshot)
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
@@ -240,14 +304,22 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 }
 
-// applyReplanDecision 仅做应用：mergedPlan 已经由主循环（runStepReplanPhase）做完
-// merge + normalize 校验；should_replan=false 时 mergedPlan 为 nil。直达 Step 路径下
-// 不构造带三轴的 ReplanContext。
-func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, mergedPlan []*builtin_tools.PlanItem, snapshot builtin_tools.StateSnapshot) error {
+// applyReplanDecision 根据三轴决策构造 ReplanContext 路由回 planner；
+// should_replan=false 时无重编排，继续执行下一个可跑 step 或走向 final_answer。
+func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	if !decision.ShouldReplan {
 		return a.applyReplanResult(stepID, &decision, nil, nil, snapshot, "")
 	}
-	return a.applyReplanResult(stepID, &decision, mergedPlan, nil, snapshot, "")
+	rc := &builtin_tools.ReplanContext{
+		SourceStepID:    stepID,
+		Reason:          decision.ReplanReason,
+		NextGoal:        decision.NextGoal,
+		IncompleteItems: builtin_tools.NewAxisItems(decision.IncompleteItems),
+		DepthGaps:       builtin_tools.NewAxisItems(decision.DepthGaps),
+		NewSurfaces:     builtin_tools.NewAxisItems(decision.NewSurfaces),
+		ReplacePending:  true,
+	}
+	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
 }
 
 // applyReplanResult 收尾 step_replan 阶段。三类入参互斥地决定下一步流转：
@@ -403,7 +475,7 @@ func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, r
 	if rawOutcome != nil && rawOutcome.Status == builtin_tools.StepOutcomeFailed {
 		return true, "step_error"
 	}
-	if k := stepReplanHeartbeatK(); k > 0 && a.consecutiveStepsSinceReplan >= k {
+	if k := stepReplanHeartbeatK(); k >= 0 && a.consecutiveStepsSinceReplan >= k {
 		return true, "heartbeat"
 	}
 	if strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(snapshot.Plan)) == "" {
@@ -423,9 +495,11 @@ func stepReplanBypassDisabled() bool {
 }
 
 // stepReplanHeartbeatK 返回心跳兜底阈值：连续跳过 K 步后强制升级一次完整 replan。
-// 默认 5，可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。<=0 视作禁用心跳。
+// 默认 2，可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。
+// 触发语义：consecutiveStepsSinceReplan >= K 时升级——K=0 即每步必触发（零跳过容忍），
+// K=2 即跳过 2 步后第 3 步触发（默认）。负值视作禁用心跳，仅靠 plan_exhausted / step_error 升级。
 func stepReplanHeartbeatK() int {
-	const defaultK = 5
+	const defaultK = 2
 	v := strings.TrimSpace(os.Getenv("STEP_REPLAN_HEARTBEAT_K"))
 	if v == "" {
 		return defaultK
@@ -685,8 +759,8 @@ const reviewWindowMaxCardsBaseline = 8
 //
 //	上限 = max(heartbeat_K + 3, baseline=8)
 //
-// "+3" 是安全余量：K 心跳触发后通常窗口正好 K 张，但 plan_exhausted 时可能多带几个尾部 step。
-// 心跳被禁用（K<=0）时退化为 baseline。
+// "+3" 是安全余量：K 心跳触发后通常窗口正好 K+1 张，但 plan_exhausted 时可能多带几个尾部 step。
+// 心跳禁用（K<0）或 K=0（每步触发、单卡窗口）时退化为 baseline。
 func reviewWindowMaxCards() int {
 	k := stepReplanHeartbeatK()
 	if k <= 0 {
@@ -1005,119 +1079,3 @@ func readSharedStepFileForPrompt(sharedDir, stepID string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// buildSubmitReplanFunctionTool 构造 step_replan 阶段的 submit_plan 工具。
-// 参数契约真相源在 schema；本函数 description 字段仅承担调用时机判据。
-func buildSubmitReplanFunctionTool() *ai.FunctionTool {
-	return &ai.FunctionTool{
-		Type: "function",
-		Function: &ai.FunctionDetail{
-			Name:        submitPlanToolName,
-			Description: "完成复核与重编排后提交本轮决策；提交前账本 / 归档 / 事实板终态已成立。",
-			Parameters: map[string]any{
-				"type":     "object",
-				"required": []string{"should_replan", "replan_reason", "next_goal", "plan"},
-				"properties": map[string]any{
-					"should_replan": map[string]any{
-						"type":        "boolean",
-						"description": "存在可行动缺口且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
-					},
-					"replan_reason": map[string]any{
-						"type":        "string",
-						"description": "should_replan=true 时填一句人类可读的缺口总括；false 时填空字符串。",
-					},
-					"next_goal": map[string]any{
-						"type":        "string",
-						"description": "should_replan=true 时填明确的下一轮目标；false 时填空字符串。",
-					},
-					"plan": map[string]any{
-						"type":        "array",
-						"description": "重编排后的完整 pending 步骤集。should_replan=true 时非空；false 时为空数组。步骤文案可引用账本条目 OI-id 与事实板已确认值；不得出现能力索引中的名称。",
-						"items":       submitReplanPlanItemSchema(),
-					},
-				},
-			},
-		},
-	}
-}
-
-// submitReplanPlanItemSchema 是 step_replan 提交的 plan item schema。
-// status 收窄为 pending：已完成 / 进行中项由系统自动承接、不在 plan 中复述。
-func submitReplanPlanItemSchema() map[string]any {
-	return map[string]any{
-		"type":     "object",
-		"required": []string{"id", "step", "status", "depends_on"},
-		"properties": map[string]any{
-			"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-			"step": map[string]any{"type": "string", "description": "一条 step = 一个具体工件 + 一个可独立验收的产出。命中任一即必拆：①文案动作对象包含 ≥2 个不同具体工件名 → 按工件逐条拆；②文案描述 ≥2 个相互独立可验收的产出（含\"X 综合处理：枚举…分析…验证…\"类复合动词标签遮蔽形态，壳词不计单产出）→ 按产出拆为多条；③以\"全部 / 所有 / 各种 + 类目\"无锚点收口 → 先 enumerate 再按工件逐条。step 内的工具调用序列共同服务于该 step 单一产出口径——同对象同维度复读（含同文件分页 / 同 grep 反复缩窄）属同闭包合法重复不算多产出；序列里出现服务于另一独立可验收产出的调用即按 ② 拆。合法豁免：单步内联完整清单并附\"对账该清单全部 N 项\" / 指向承载完整清单的产物文件并附\"对账该文件全部 N 项\"。不得为空，可引用 OI-id 与已确认事实值。"},
-			"status": map[string]any{
-				"type":        "string",
-				"enum":        []string{"pending"},
-				"description": "重编排步骤一律 pending。已完成 / 进行中项由系统自动承接，不在 plan 中复述。",
-			},
-			"depends_on": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "前置依赖的步骤 id 列表，可引用已完成步骤 id；不得引用无效 id 或形成循环依赖。",
-			},
-		},
-	}
-}
-
-func parseSubmitReplanArgs(args any) (stepReplanModelOutput, error) {
-	var data []byte
-	switch v := args.(type) {
-	case string:
-		data = []byte(v)
-	case []byte:
-		data = v
-	default:
-		var err error
-		data, err = json.Marshal(v)
-		if err != nil {
-			return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: marshal args failed: %w", err)
-		}
-	}
-	var result stepReplanModelOutput
-	if err := json.Unmarshal(data, &result); err != nil {
-		return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: parse args failed: %w", err)
-	}
-	if result.ShouldReplan {
-		if strings.TrimSpace(result.NextGoal) == "" {
-			return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: should_replan=true but next_goal is empty")
-		}
-		if len(result.Plan) == 0 {
-			return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: should_replan=true but plan is empty（请直接产出重编排后的 pending 步骤集，completed 项无需复述）")
-		}
-		// 单 plan 内的最小本地校验：每条 item 必须有 id / step / status 三个非空字段，
-		// 且 id 在 new plan 内不重复。merge 后的跨 plan 校验（depends_on 引用未知 id /
-		// 环依赖）由主循环 runStepReplanPhase 用 NormalizePlanItems 兜底——这里不能用
-		// NormalizePlanItems 直接校验，因为新 plan 的 depends_on 可能合法地引用旧 plan
-		// 的 completed step（id 在合并后才出现）。
-		seenIDs := make(map[string]struct{}, len(result.Plan))
-		for _, item := range result.Plan {
-			if item == nil {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 含空条目")
-			}
-			id := strings.TrimSpace(item.ID)
-			if id == "" {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 id 为空")
-			}
-			if _, dup := seenIDs[id]; dup {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 id 重复: %q", id)
-			}
-			seenIDs[id] = struct{}{}
-			if strings.TrimSpace(item.Step) == "" {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 %q 的 step 为空", id)
-			}
-			if strings.TrimSpace(string(item.Status)) == "" {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 %q 的 status 为空", id)
-			}
-			// runtime 兜底（语义口径由 schema 承担）：重编排项必须为 pending；
-			// completed / in_progress 项由系统自动承接，模型若复述会被 mergeReplannedPlan 静默吞噉。
-			if builtin_tools.PlanStepStatus(strings.TrimSpace(string(item.Status))) != builtin_tools.PlanStepPending {
-				return stepReplanModelOutput{}, fmt.Errorf("submit_plan replan: plan 项 %q status 必须为 pending（当前 %q）", id, item.Status)
-			}
-		}
-	}
-	return result, nil
-}
