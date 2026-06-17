@@ -99,6 +99,23 @@ func (m *ChatModel) setFocused(v bool) {
 	m.focused = v
 }
 
+// setToolExpanded flips the expand/collapse flag for parts[idx] and marks the
+// part dirty so the Renderer's fragment cache invalidates it on the next
+// pass. Direct writes to m.toolExpanded outside this helper would leave the
+// cached fragment intact (the renderer keys on id+version+width and the
+// expand flag is none of those), producing the F2 bug where Enter/Space on
+// StepResult/StepSummary/FinalAnswer/Plan/SubAgent cards had no visual effect.
+func (m *ChatModel) setToolExpanded(idx int, v bool) {
+	if idx < 0 || idx >= m.store.Len() {
+		return
+	}
+	if m.toolExpanded[idx] == v {
+		return
+	}
+	m.toolExpanded[idx] = v
+	m.store.MarkDirty(m.store.At(idx).ID)
+}
+
 func (m *ChatModel) SetSize(w, h int) {
 	if m.width == w && m.height == h {
 		return
@@ -818,7 +835,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 					}
 				}
 				if t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
-					m.toolExpanded[m.cursor] = !m.toolExpanded[m.cursor]
+					m.setToolExpanded(m.cursor, !m.toolExpanded[m.cursor])
 					m.refreshContent()
 					m.scrollToCursor()
 					m.syncAutoFollowFromViewport()
