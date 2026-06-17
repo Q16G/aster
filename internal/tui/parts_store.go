@@ -22,6 +22,12 @@ type PartsStore struct {
 	spawnByCallID map[string]agentSpawnInfo
 	agentParent   map[string]agentSpawnInfo
 
+	// idxByCallID maps a Tool or SubAgent part's CallID to its parts index.
+	// Maintained on every write that introduces or replaces such a part so
+	// UpdateToolByCallID / future lookup paths run in O(1) instead of the
+	// pre-Stage-3 reverse scan over the whole timeline.
+	idxByCallID map[string]int
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -36,7 +42,25 @@ func NewPartsStore() *PartsStore {
 		streamingByAgent: make(map[string]*strings.Builder),
 		spawnByCallID:    make(map[string]agentSpawnInfo),
 		agentParent:      make(map[string]agentSpawnInfo),
+		idxByCallID:      make(map[string]int),
 	}
+}
+
+// partCallID returns the CallID a part identifies itself by, or "" when the
+// part type has no CallID concept. Centralised so index maintenance and
+// lookups agree on which fields carry the join key.
+func partCallID(p DisplayPart) string {
+	switch p.Type {
+	case PartTypeTool:
+		if p.Tool != nil {
+			return p.Tool.CallID
+		}
+	case PartTypeSubAgent:
+		if p.SubAgent != nil {
+			return p.SubAgent.CallID
+		}
+	}
+	return ""
 }
 
 // Len returns the number of parts currently stored.
@@ -51,7 +75,8 @@ func (s *PartsStore) At(i int) DisplayPart { return s.parts[i] }
 func (s *PartsStore) Snapshot() []DisplayPart { return s.parts }
 
 // Append adds a DisplayPart and assigns a fresh ID if the caller did not
-// provide one. The assigned ID is returned for convenience.
+// provide one. The assigned ID is returned for convenience. Side indexes
+// (idxByCallID) are maintained synchronously so subsequent lookups are O(1).
 func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if p.ID == 0 {
 		s.nextID++
@@ -62,7 +87,11 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if p.Version == 0 {
 		p.Version = 1
 	}
+	idx := len(s.parts)
 	s.parts = append(s.parts, p)
+	if cid := partCallID(p); cid != "" {
+		s.idxByCallID[cid] = idx
+	}
 	return p.ID
 }
 
@@ -78,18 +107,48 @@ func (s *PartsStore) Replace(i int, fn func(*DisplayPart)) {
 
 // SetAll replaces the entire slice, used by SetParts on session load. ID/
 // Version back-fill is the caller's responsibility (ChatModel.SetParts does
-// it before handing the slice over).
+// it before handing the slice over). Side indexes are rebuilt from scratch
+// so a freshly loaded session has identical lookup semantics to a live one.
 func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.parts = parts
+	s.idxByCallID = make(map[string]int, len(parts))
 	var maxID uint64
-	for _, p := range parts {
+	for i, p := range parts {
 		if p.ID > maxID {
 			maxID = p.ID
+		}
+		if cid := partCallID(p); cid != "" {
+			s.idxByCallID[cid] = i
 		}
 	}
 	if maxID > s.nextID {
 		s.nextID = maxID
 	}
+}
+
+// IndexByCallID returns the parts index for the most recent part registered
+// under callID. The second return is false when no Tool or SubAgent part with
+// that CallID has been recorded.
+func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
+	i, ok := s.idxByCallID[callID]
+	return i, ok
+}
+
+// UpdateToolByCallID mutates the ToolPart belonging to callID via the closure.
+// Returns true on success, false when no Tool part is registered under that
+// callID. The caller is responsible for any Version bump on the part (Stage 3
+// keeps this manual; Stage 4 will fold it into Renderer invalidation).
+func (s *PartsStore) UpdateToolByCallID(callID string, fn func(*ToolPart)) bool {
+	idx, ok := s.idxByCallID[callID]
+	if !ok || idx < 0 || idx >= len(s.parts) {
+		return false
+	}
+	p := &s.parts[idx]
+	if p.Type != PartTypeTool || p.Tool == nil {
+		return false
+	}
+	fn(p.Tool)
+	return true
 }
 
 // StreamingBuilder returns the in-progress text stream buffer for agentName,
