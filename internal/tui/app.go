@@ -540,7 +540,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderScheduled = false
 		m.chat.FlushRender()
 		if m.subAgentPanelVisible() {
-			m.refreshSubAgentPanel()
+			if cur := m.chat.store.SubAgentVersion(); cur != m.subAgentPanelVer {
+				m.refreshSubAgentPanel()
+				m.subAgentPanelVer = cur
+			}
 		}
 		return m, nil
 
