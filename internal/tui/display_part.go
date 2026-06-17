@@ -28,6 +28,19 @@ type DisplayPart struct {
 	Type PartType  `json:"type"`
 	Time time.Time `json:"time"`
 
+	// ID is a process-local, monotonically increasing identifier assigned by
+	// ChatModel.newPart() at insertion time. It is the stable identity used by
+	// the renderer's fragment cache and the store's dirty set; slice index
+	// remains the ordinal/timeline position but is not the identity. ID is
+	// omitempty in JSON so historical session files without an ID round-trip
+	// unchanged (SetParts back-fills missing IDs on load).
+	ID uint64 `json:"id,omitempty"`
+	// Version is the content revision counter for this part. Any in-place
+	// mutation that affects rendered output (thinking append, tool result
+	// update, expand/collapse toggle) must bump Version so the renderer's
+	// fragment cache invalidates the cached fragment for this ID.
+	Version uint32 `json:"version,omitempty"`
+
 	User        *UserPart        `json:"user,omitempty"`
 	Text        *TextPart        `json:"text,omitempty"`
 	Tool        *ToolPart        `json:"tool,omitempty"`
