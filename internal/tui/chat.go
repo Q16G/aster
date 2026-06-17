@@ -112,6 +112,7 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 	if part.Time.IsZero() {
 		part.Time = time.Now()
 	}
+	part = m.newPart(part)
 	m.parts = append(m.parts, part)
 	idx := len(m.parts) - 1
 	m.cursor = idx
@@ -176,11 +177,11 @@ func (m *ChatModel) AppendStream(agentName, delta string) {
 func (m *ChatModel) FlushStream(agentName string) bool {
 	flushed := false
 	if b, ok := m.streamingByAgent[agentName]; ok && b.Len() > 0 {
-		m.parts = append(m.parts, DisplayPart{
+		m.parts = append(m.parts, m.newPart(DisplayPart{
 			Type: PartTypeText,
 			Time: time.Now(),
 			Text: &TextPart{Content: b.String(), AgentName: agentName},
-		})
+		}))
 		flushed = true
 	}
 	m.dropStreamBuilder(agentName)
@@ -316,11 +317,11 @@ func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
 		}
 	}
 
-	m.parts = append(m.parts, DisplayPart{
+	m.parts = append(m.parts, m.newPart(DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     time.Now(),
 		Thinking: &ThinkingPart{Content: content, GroupID: groupID, AgentName: agentName},
-	})
+	}))
 	m.dropThinking(agentName)
 	m.markDirty()
 	return true
