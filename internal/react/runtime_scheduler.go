@@ -483,7 +483,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					a.AICallProxyWriteToolResult(
 						strings.TrimSpace(tc.Id), submitPlanToolName,
 						"", nil, "",
-						fmt.Sprintf("submit_plan 参数校验失败: %s\n请修正后重新调用 submit_plan。", parseErr.Error()),
+						fmt.Sprintf("submit_plan 参数校验失败（第 %d/%d 次重试）：%s", submitRetries, maxSubmitRetries, parseErr.Error()),
 						false,
 					)
 					anyUsefulTool = true
@@ -498,7 +498,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						a.AICallProxyWriteToolResult(
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
-							fmt.Sprintf("submit_plan plan 结构校验失败: %s\n请修正 depends_on 引用后重新调用 submit_plan。", normErr.Error()),
+							fmt.Sprintf("submit_plan plan 结构校验失败（第 %d/%d 次重试）：%s\n请按报错指示修正 plan 结构（含 step_id 唯一性、depends_on 引用闭包等）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, normErr.Error()),
 							false,
 						)
 						anyUsefulTool = true
@@ -516,7 +516,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						a.AICallProxyWriteToolResult(
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
-							fmt.Sprintf("submit_plan 粒度校验失败：%s\n请把违例的 step 按工件/产出拆为多条独立可验收子项（一对象一动作一产出）后重新调用 submit_plan。", granErr.Error()),
+							fmt.Sprintf("submit_plan 粒度校验失败（第 %d/%d 次重试）：%s\n请把违例的 step 按工件/产出拆为多条独立可验收子项（一对象一动作一产出）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, granErr.Error()),
 							false,
 						)
 						anyUsefulTool = true
@@ -534,7 +534,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						a.AICallProxyWriteToolResult(
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
-							fmt.Sprintf("仍有后台子 Agent 运行中：%s。请先调用 await_subagents 等待其全部结束、把有价值产出按入板闸门归并进 `## 执行中补充` 后再 submit_plan。", strings.Join(running, ", ")),
+							fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：仍有后台子 Agent 运行中：%s。请先调用 await_subagents 等待其全部结束、把有价值产出按入板闸门归并进 `## 执行中补充` 后再 submit_plan。", submitRetries, maxSubmitRetries, strings.Join(running, ", ")),
 							false,
 						)
 						anyUsefulTool = true
@@ -558,7 +558,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 							a.AICallProxyWriteToolResult(
 								strings.TrimSpace(tc.Id), submitPlanToolName,
 								"", nil, "",
-								"共享区终态未成立：task_context.md 的 `## 输入事实` 为空。请把用户输入中确定的具体操作事实逐条写入该节（每行 `- 名称: 值`）后重新调用 submit_plan。",
+								fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：共享区终态未成立：task_context.md 的 `## 输入事实` 为空。请把用户输入中确定的具体操作事实逐条写入该节（每行 `- 名称: 值`）后重新调用 submit_plan。", submitRetries, maxSubmitRetries),
 								false,
 							)
 							anyUsefulTool = true
@@ -768,19 +768,40 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 		return nil, fmt.Errorf("submit_plan: parse args failed: %w", err)
 	}
 	if result.NeedsPlanning && len(result.Plan) == 0 {
-		return nil, fmt.Errorf("submit_plan: needs_planning=true but plan is empty")
+		return nil, fmt.Errorf(
+			"submit_plan: needs_planning=true 但 plan 为空。\n%s\n"+
+				"请根据任务实际状态二选一修正：补全 plan 字段走「需要规划」分支"+
+				"（遵循 Atomic Step Contract：单 step 单 object 单 action 单 acceptance）；"+
+				"或把 needs_planning 改为 false 并把对用户的完整答复写入 direct_response 走「不需要规划」分支",
+			submitPlanShapeReminder)
 	}
 	if requireGoalUnderstanding && result.NeedsPlanning && strings.TrimSpace(result.GoalUnderstanding) == "" {
-		return nil, fmt.Errorf("submit_plan: needs_planning=true but goal_understanding is empty（请先完成输入理解的七要素结构化复述，填入 goal_understanding 再提交）")
+		return nil, fmt.Errorf("submit_plan: needs_planning=true 但 goal_understanding 为空。" +
+			"请先按七要素结构化复述输入（核心目标 / 范围边界 / 约束 / 交付物与验收标准 / 显式聚焦 / 隐含需求与假设 / 未决歧义），" +
+			"填入 goal_understanding 字段后重新调用")
 	}
 	if result.NeedsPlanning && !result.Simple && strings.TrimSpace(result.CurrentPhase) == "" {
-		return nil, fmt.Errorf("submit_plan: needs_planning=true 且非 simple 任务时 current_phase 必填（一句话语义描述当前深度优先阶段，内联具体对象/工件名）")
+		return nil, fmt.Errorf("submit_plan: needs_planning=true 且非 simple 任务时 current_phase 必填。" +
+			"请用一句话描述当前深度优先阶段（格式「<对象> 的 <深度推进目标>」，内联具体对象/工件名）后重新调用")
 	}
 	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
-		return nil, fmt.Errorf("submit_plan: needs_planning=false but direct_response is empty")
+		return nil, fmt.Errorf(
+			"submit_plan: needs_planning=false 但 direct_response 为空。\n%s\n"+
+				"请根据任务实际状态二选一修正：补全 direct_response 字段（对用户的完整答复）"+
+				"走「不需要规划」分支；或把 needs_planning 改为 true 并把计划步骤写入 plan "+
+				"走「需要规划」分支",
+			submitPlanShapeReminder)
 	}
 	return &result, nil
 }
+
+// submitPlanShapeReminder 列出 submit_plan 的两种合法形态。
+// 校验失败时随 error 文本带回给 LLM,目的是让模型先看到「合法形态」全貌、
+// 再根据本次错误自决回到哪条分支,避免在 needs_planning=true/false 之间反复翻转死锁。
+const submitPlanShapeReminder = "" +
+	"submit_plan 的两种合法形态：\n" +
+	"- 需要规划：needs_planning=true，plan 写入计划步骤列表\n" +
+	"- 不需要规划：needs_planning=false，direct_response 写入对用户的完整答复"
 
 type PlannerInputOptions struct {
 	HandoffContext     string
