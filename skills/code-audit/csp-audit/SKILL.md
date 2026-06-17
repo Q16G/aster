@@ -3,6 +3,7 @@ name: csp-audit
 description: >-
   Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽
   source-list / 缺 frame-ancestors，比对最小权限基线。
+when-to-use: 当项目设置了 CSP header 或 CSP meta 标签时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

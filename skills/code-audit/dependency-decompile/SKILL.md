@@ -3,6 +3,7 @@ name: dependency-decompile
 description: >-
   闭源依赖源码恢复——把闭源 jar / war / class / dll / so / 混淆包反编译成可读源码，归集到
   `shared/decompiled/`。本能力不做漏洞判定。
+when-to-use: 当代码审计需要分析一个无可读源码、落在关键路径（入口点/信任边界/污点必经路径）上、且不看内部无法定论的依赖（编译 jar/war/class、二进制库、混淆代码），它不是行为已知的常见公共库、又无法直接读到源码时——主闸门是是否在关键路径 + 决策点（安全/sink 决策在依赖内 (b) 还是在调用方 (a)），归属只调节处置：同厂商自有→反编译主战场；第三方异厂商商业→落 (a) 决策在调用方的标准化通道可免、落 (b) 决策在依赖内（含 OEM/低代码平台承载鉴权路由、自称标准协议的闭源鉴权 SDK）说不清则反编译并标法律。典型触发面：SCA 盘点出关键路径上的无源码依赖、入口点/中间件逻辑落在无源码依赖里、数据流污点进入无源码依赖
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[artifact_path] [--lang java|python|js|dotnet|native]"

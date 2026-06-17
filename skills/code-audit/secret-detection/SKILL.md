@@ -3,6 +3,7 @@ name: secret-detection
 description: >-
   硬编码凭据 / 密钥白盒扫描——系统识别仓库 / 配置 / CI / git 历史里的密码、API Key、OAuth
   Secret、JWT Secret、数据库连接串、私钥、Cookie 加密 Key、IV、Cloud Access Key 等敏感字面量。
+when-to-use: 当需要检查代码中是否存在硬编码的密钥、API Key、密码等敏感信息时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path]"

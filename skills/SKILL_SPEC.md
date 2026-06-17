@@ -38,10 +38,11 @@ skills/
 |---|---|---|
 | `name` | string | skill 标识，等于目录名，kebab-case |
 | `description` | string | **只写"本能力做什么"** —— 一句话客观描述能力本身（覆盖什么维度 / 产出什么 / 用什么机制）。**目标 ≤ 200 字 / 1-2 句**（上限 1536 字符，仅作硬边界）。**禁止**把 §1 触发线索（"X 时使用"、grep pattern、文件名约定枚举）写进 description，**禁止**写"归属 / 边界 / 与 Y skill 协作"等跨 skill 路由话术——这些信息在 §1 / §5 / §11 段。多行折叠用 `>-` YAML 风格 |
+| `when-to-use` | string | **何时触发 / 适用信号** —— 写可被路由面直接使用的场景、入口类型、代码/流量信号；与 `description` 正交，不重复"做什么" |
 | `allowed-tools` | csv | 允许调用的工具集（如 `bash,read_file,list_files,rg,list_skills`） |
 | `user-invocable` | bool | 是否允许用户用 `/<name>` 直接触发；子 skill 设 `false`，父/独立 skill 通常 `true` |
 
-> 历史 SKILL.md 中可能仍残留 `tags` / 独立的 `when-to-use` 字段：解析器会忽略这两项以兼容存量，**新增 skill 不要再写**，把"何时用"折叠进 `description`。
+> `when-to-use` 是技能表路由面字段，新增 / 改造 skill 必须填写；不要把"何时用"折叠进 `description`。
 
 ### 可选字段
 
@@ -74,6 +75,7 @@ name: csp-audit
 description: >-
   Content Security Policy 策略静态审计——分解 directive、识别 unsafe-inline / unsafe-eval / 过宽
   source-list / 缺 frame-ancestors，比对最小权限基线。
+when-to-use: 当项目设置了 CSP header 或 CSP meta 标签时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---
@@ -324,9 +326,9 @@ done
 
 | 项 | Anthropic 官方 | 本项目 | 理由 |
 |---|---|---|---|
-| frontmatter 必填字段 | name / description（折叠 when-to-use）/ 可选 allowed-tools | name / description / allowed-tools / user-invocable 共 4 字段 | aster 额外需要 allowed-tools 系统级权限管控、user-invocable 分发机制；其他字段对齐 Anthropic |
+| frontmatter 必填字段 | name / description（或 description + when-to-use）/ 可选 allowed-tools | name / description / when-to-use / allowed-tools / user-invocable 共 5 字段 | aster 额外需要独立 when-to-use 路由面、allowed-tools 系统级权限管控、user-invocable 分发机制；其他字段对齐 Anthropic |
 | 主文件行数上限 | 建议 < 500 | 同 | 直接采纳 |
-| description 字符上限 | description + when_to_use 合计 1536 | description 自身 ≤ 1536（折叠 when-to-use） | 直接采纳上限，对齐折叠风格 |
+| description 字符上限 | description + when_to_use 合计 1536 | description 与 when-to-use 分列维护，合计不超过运行时上限 | 直接采纳上限，同时保留独立路由触发面 |
 | 编号步骤 vs 指南 | 任务型 skill 用编号步骤，知识型用"指南 + why" | 同 | 直接采纳 |
 | 三态标注 | 官方未规定 | `[x] done` / `[-] n/a (原因)` / `[+] added (来源)` | 项目特有"基线 + 上下文自适应"的可追溯落地形式 |
 | 父子 skill 分层 | Anthropic 鼓励 progressive disclosure 但未强制分层 | v3 重构淘汰父 skill / 路由 skill，所有 SKILL.md 都是原子能力 | 父 skill 实质是 agent profile，分层违背 progressive disclosure |
@@ -337,8 +339,8 @@ done
 新增或修改 SKILL.md 时，发起 PR 前过一遍：
 
 **通用项**：
-- [ ] frontmatter 4 必填字段齐全（name / description / allowed-tools / user-invocable），全 kebab-case；不写 `tags` / 独立 `when-to-use`，把"何时用"折叠进 description
-- [ ] description ≤ 1536 字符（中文按字数估算）——把"做什么 + 何时用"折叠在一起
+- [ ] frontmatter 5 必填字段齐全（name / description / when-to-use / allowed-tools / user-invocable），全 kebab-case
+- [ ] description + when-to-use 合计 ≤ 1536 字符（中文按字数估算）；description 写"做什么"，when-to-use 写"何时用"
 - [ ] 主文件 < 500 行；超长内容拆到 `references/`
 - [ ] 无「固定检查项」「必检项」「按以下 checklist 逐项执行」「确保覆盖完整」字样
 - [ ] 含 checklist 的章节使用三态标注（`[x]` / `[-]` / `[+]`）说明

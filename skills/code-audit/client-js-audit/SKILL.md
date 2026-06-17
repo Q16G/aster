@@ -3,6 +3,7 @@ name: client-js-audit
 description: >-
   客户端 JS 安全白盒审计——覆盖 DOM XSS（客户端 source 流到客户端 sink）、Token 与凭据客户端
   存储泄露、postMessage 跨源通信、客户端安全决策（鉴权 / 加解密 / feature flag）四个维度。
+when-to-use: 当项目前端存在安全敏感 JS 逻辑（token 存储/DOM 操作/postMessage/eval/innerHTML）时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

@@ -4,6 +4,7 @@ description: >-
   跨函数白盒数据流追踪——基于 SyntaxFlow / yak MCP 的 SSA 引擎，对已知 source / sink 证明跨函数
   source→sink 静态可达性，产出链路证据。source-sink 集合按调用者意图动态决定，不绑定具体漏洞
   类型。
+when-to-use: 当需要对 SAST 候选集做数据流确认、验证污点传播可达性，或需要分析 request→session、cookie→auth、owner→mapper 等跨函数调用链路时
 allowed-tools: bash,read_file,list_files,rg
 mcp: [syntaxflow, yak]
 user-invocable: true

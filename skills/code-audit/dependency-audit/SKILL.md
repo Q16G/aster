@@ -3,6 +3,7 @@ name: dependency-audit
 description: >-
   依赖安全审计（SCA）——按依赖清单 / 锁文件提取 SBOM，匹配已知 CVE 库（NVD / GitHub Advisory），
   对每个命中判定 vulnerable code 是否在项目实际消费路径上（关键路径判据）。
+when-to-use: 当需要检查项目依赖是否存在已知安全漏洞时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"

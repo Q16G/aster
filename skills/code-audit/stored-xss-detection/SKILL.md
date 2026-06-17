@@ -4,6 +4,7 @@ description: >-
   存储型 XSS 白盒数据流审计——按"用户输入 → 持久层（DB / 文件 / Redis）→ 回读 → 模板 / 前端
   输出"跨持久层介质追 source-sink 可达性，识别 encoder 与输出上下文（HTML body / attr / JS / URL /
   CSS）不匹配、富文本白名单缺口、Markdown 渲染保留原始 HTML、二阶回读路径漏 sanitize。
+when-to-use: 当需要专门分析“用户输入 -> 持久化 -> 二次展示”链路，或者普通 XSS sink 规则不足以确认高危 XSS 时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path]"

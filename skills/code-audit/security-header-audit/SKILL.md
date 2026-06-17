@@ -4,6 +4,7 @@ description: >-
   HTTP 安全响应头白盒审计——对照基线检查 HSTS / X-Frame-Options / X-Content-Type-Options /
   Referrer-Policy / Permissions-Policy / COOP / COEP / CORP / CORS / CSP 声明存在性是否齐全、
   值是否符合最小权限基线、是否覆盖所有响应路径（含 4xx / 5xx）。
+when-to-use: 当项目为 Web 应用且存在 HTTP 响应头设置或 Cookie 安全属性设置时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 ---

@@ -20,8 +20,8 @@
 ---
 name: <skill-name>                              # kebab-case，等于目录名
 description: >-
-  <一句话讲做什么，跟上一句触发线索（"代码里看到 X 时"/"项目结构含 Y 时"/"依赖含 Z 时"）>。
-  适用：<白盒典型场景，如"代码审计 / SAST / 数据流验证">。
+  <一句话讲本能力做什么：覆盖什么审计维度 / 产出什么证据 / 使用什么机制>。
+when-to-use: <何时触发 / 适用信号，与 description 正交>
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: false
 ---
@@ -34,7 +34,7 @@ user-invocable: false
 name: sql-injection-static-audit
 description: >-
   SQL 注入白盒数据流审计——按 source / sink 追踪静态可达性，识别 ORM raw 通道 / 字段名拼接 / 二阶注入。
-  代码里看到字符串拼接进 SQL、ORM `.raw()` 调用、Mapper XML 用 `${}` 时使用。
+when-to-use: 当代码中存在 SQL 字符串拼接、ORM raw 调用、Mapper XML `${}` 或动态表名/字段名拼接时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: false
 ---

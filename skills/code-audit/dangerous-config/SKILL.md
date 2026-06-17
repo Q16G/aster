@@ -3,6 +3,7 @@ name: dangerous-config
 description: >-
   危险配置静态值审计——对照最小权限基线检查配置文件字面量，覆盖调试模式、默认凭据、过宽 CORS、
   弱 TLS、Actuator / Admin 端点未鉴权、反序列化危险默认、XXE、上传限制缺失等类目。
+when-to-use: 当项目存在框架配置文件（php.ini / web.xml / application.yml / nginx.conf 等）时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

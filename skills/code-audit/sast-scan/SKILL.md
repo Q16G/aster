@@ -3,6 +3,7 @@ name: sast-scan
 description: >-
   多语言多介质静态粗筛——基于本地 Semgrep 规则扫描源码 / XML 配置 / 模板，产出按
   high_confidence / needs_dataflow_confirmation / high_noise 分桶的漏洞候选清单。
+when-to-use: 当需要对代码进行静态安全扫描、建立高价值漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"

@@ -4,6 +4,7 @@ description: >-
   项目框架与攻击面侦察——识别技术栈与分层、枚举入口点与路由、盘点中间件信任边界、梳理认证
   会话架构与数据归属字段、识别框架对 source/sink/分发/过滤的自有封装、标注闭源依赖位置，产出
   项目框架图。本能力不做漏洞判定。
+when-to-use: 当开始一次全量代码安全审计、需要先识别项目结构与攻击面、为后续分析建立共享侦察上下文时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path]"

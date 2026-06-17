@@ -4,6 +4,7 @@ description: >-
   会话 / Cookie / JWT 白盒安全审计——按代码层追踪 session ID 生成强度、Cookie 属性（HttpOnly /
   Secure / SameSite）、登录与注销时的 session 重建与失效、JWT 签名算法与 secret 强度 / 撤销机制、
   "记住我" 长期 token、多租户 / 多用户 session 隔离。
+when-to-use: 当项目存在 Session ID 生成、session 生命周期管理、Cookie 安全属性设置时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 ---

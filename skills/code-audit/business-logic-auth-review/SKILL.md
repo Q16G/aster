@@ -4,6 +4,7 @@ description: >-
   业务逻辑越权与权限边界白盒审计——追用户可控 resource_id / owner_id / batch_ids / amount /
   state 等字段是否经归属判定、角色判定、状态前提与数量上限，覆盖水平 IDOR / 垂直越权 / 状态机
   绕过 / 批量越权 / 金额数量篡改 / 多租户穿透。
+when-to-use: 当项目存在登录、session、cookie、controller/service/mapper 链路，且需要补充业务逻辑与权限边界复核时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true
 argument-hint: "[target_path] [--focus idor|vertical|state-machine|batch|amount]"
