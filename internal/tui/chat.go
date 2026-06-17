@@ -334,25 +334,19 @@ func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
 		m.UpdateLastTool(fn)
 		return
 	}
-	for i := len(m.store.parts) - 1; i >= 0; i-- {
-		if m.store.parts[i].Type == PartTypeTool && m.store.parts[i].Tool != nil && m.store.parts[i].Tool.CallID == callID {
-			fn(m.store.parts[i].Tool)
-			m.refreshContent()
-			return
-		}
+	if m.store.UpdateToolByCallID(callID, fn) {
+		m.refreshContent()
 	}
 }
 
 func (m *ChatModel) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)) {
-	for i := len(m.store.parts) - 1; i >= 0; i-- {
-		if m.store.parts[i].Type == PartTypeSubAgent && m.store.parts[i].SubAgent != nil && m.store.parts[i].SubAgent.CallID == callID {
-			fn(m.store.parts[i].SubAgent)
-			toolTime := m.partTimeByCallID(callID, "")
-			m.store.parts[i].SubAgent.Duration = time.Since(toolTime)
-			m.refreshContent()
-			return
-		}
+	idx := m.store.UpdateSubAgentByCallID(callID, fn)
+	if idx < 0 {
+		return
 	}
+	toolTime := m.partTimeByCallID(callID, "")
+	m.store.parts[idx].SubAgent.Duration = time.Since(toolTime)
+	m.refreshContent()
 }
 
 func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {

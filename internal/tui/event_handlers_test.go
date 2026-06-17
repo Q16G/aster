@@ -1695,6 +1695,7 @@ func TestParentStepCompleteDoesNotCancelRunningBgSubAgent(t *testing.T) {
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
 	}
+	m.chat.store.RebuildIndex()
 
 	// Parent marks the dispatch step completed while the bg agent runs on.
 	m.handleAgentEvent(&react.AgentOutputEvent{

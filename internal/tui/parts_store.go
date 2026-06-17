@@ -134,6 +134,19 @@ func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
 	return i, ok
 }
 
+// RebuildIndex rebuilds idxByCallID from the current parts slice. Production
+// code keeps the index in sync via Append/Replace/SetAll; tests that mutate
+// parts directly (e.g. seed a timeline by assigning store.parts) must call
+// this before any index-driven lookup or update.
+func (s *PartsStore) RebuildIndex() {
+	s.idxByCallID = make(map[string]int, len(s.parts))
+	for i, p := range s.parts {
+		if cid := partCallID(p); cid != "" {
+			s.idxByCallID[cid] = i
+		}
+	}
+}
+
 // UpdateToolByCallID mutates the ToolPart belonging to callID via the closure.
 // Returns true on success, false when no Tool part is registered under that
 // callID. The caller is responsible for any Version bump on the part (Stage 3
@@ -149,6 +162,23 @@ func (s *PartsStore) UpdateToolByCallID(callID string, fn func(*ToolPart)) bool 
 	}
 	fn(p.Tool)
 	return true
+}
+
+// UpdateSubAgentByCallID mutates the SubAgentPart belonging to callID via the
+// closure. Returns the parts index on success and -1 when no SubAgent part is
+// registered under that callID. The index is returned so callers can do
+// follow-up reads (duration calc, summary lookup) without re-scanning.
+func (s *PartsStore) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)) int {
+	idx, ok := s.idxByCallID[callID]
+	if !ok || idx < 0 || idx >= len(s.parts) {
+		return -1
+	}
+	p := &s.parts[idx]
+	if p.Type != PartTypeSubAgent || p.SubAgent == nil {
+		return -1
+	}
+	fn(p.SubAgent)
+	return idx
 }
 
 // StreamingBuilder returns the in-progress text stream buffer for agentName,
