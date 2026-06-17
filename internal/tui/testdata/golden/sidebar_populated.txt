@@ -1,0 +1,24 @@
+│ ▸ Session                        
+│   Agent: code-audit              
+│   Provider: Anthropic            
+│   Model: claude-sonnet-4-6       
+│                                  
+│ ▸ Context                        
+│   Status: running                
+│   Tokens: 12.3k                  
+│     in: 8.0k  out: 4.3k          
+│     cached: 2.1k  written: 1.2k  
+│     reasoning: 0.5k              
+│   Cost: $0.04                    
+│                                  
+│ ▸ MCP (1/3)                      
+│   ● filesystem (7)               
+│   ◐ github                       
+│   ✗  playwright                  
+│                                  
+│ ▸ Todo [1/3]                     
+│   ✓  recon repo                  
+│   ▸  analyze findings            
+│   ○ draft report                 
+│                                  
+│                                  
