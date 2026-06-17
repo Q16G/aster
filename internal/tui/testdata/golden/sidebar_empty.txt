@@ -1,0 +1,24 @@
+│ ▸ Session                        
+│                                  
+│ ▸ Context                        
+│   Status: idle                   
+│   Tokens:                        
+│   Cost:                          
+│                                  
+│ ▸ MCP                            
+│   (no servers)                   
+│                                  
+│ ▸ Getting Started                
+│   No provider configured.        
+│   Use /provider to set up.       
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
+│                                  
