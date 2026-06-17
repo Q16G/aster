@@ -1,0 +1,14 @@
+│ ▸ 子 Agent                         
+│ ▸ ● scan repo for TODOs [5.0s]     
+│     rg + filter                    
+│   ◐ summarize README [2.0s]        
+│     read + condense                
+│                                    
+│                                    
+│                                    
+│                                    
+│                                    
+│                                    
+│                                    
+│                                    
+│                                    
