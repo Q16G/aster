@@ -886,6 +886,11 @@ func (m *ChatModel) refreshContent() {
 		return
 	}
 
+	// Drain the store's dirty set into the renderer cache so this pass sees
+	// fresh fragments for any part that was appended, mutated, or whose
+	// selection state flipped via setCursor/setFocused.
+	m.renderer.drainStore(m.store)
+
 	var sb strings.Builder
 	m.partLineOffsets = make([]int, len(m.store.parts))
 	lineCount := 0
@@ -913,14 +918,17 @@ func (m *ChatModel) refreshContent() {
 		switch turn.Type {
 		case TurnTypeUser:
 			for _, ip := range parts {
+				ip := ip
 				m.partLineOffsets[ip.Index] = lineCount
-				rendered := m.renderPart(ip.Index, ip.Part)
+				rendered, lc := m.renderer.fragmentFor(ip.Part, m.width, func() string {
+					return m.renderPart(ip.Index, ip.Part)
+				})
 				if rendered == "" {
 					continue
 				}
 				sb.WriteString(rendered)
 				sb.WriteString("\n")
-				lineCount += strings.Count(rendered, "\n") + 1
+				lineCount += lc
 			}
 		case TurnTypeAssistant:
 			m.renderAssistantTurn(&sb, parts, &lineCount)
@@ -990,12 +998,15 @@ func (m *ChatModel) renderAssistantTurn(sb *strings.Builder, parts []IndexedPart
 			continue
 		}
 
-		m.partLineOffsets[ip.Index] = *lineCount
-		rendered := m.renderPart(ip.Index, ip.Part)
+		idx, part := ip.Index, ip.Part
+		m.partLineOffsets[idx] = *lineCount
+		rendered, lc := m.renderer.fragmentFor(part, m.width, func() string {
+			return m.renderPart(idx, part)
+		})
 		if rendered != "" {
 			sb.WriteString(rendered)
 			sb.WriteString("\n")
-			*lineCount += strings.Count(rendered, "\n") + 1
+			*lineCount += lc
 		}
 		i++
 	}
