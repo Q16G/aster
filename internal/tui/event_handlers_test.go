@@ -1651,6 +1651,7 @@ func TestToolEndCancelsSubAgentItemsWithNonJSONResult(t *testing.T) {
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
 	}
+	m.chat.store.RebuildIndex()
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
 		Type:      react.EventTypeToolEnd,

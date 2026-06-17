@@ -372,23 +372,7 @@ func (m *ChatModel) isRootAgentPlan(p *PlanPart) bool {
 // same call_id — gating ensures a "skill-" child only binds to a skill spawn and
 // a "sub-" child only to a sub_agent spawn.
 func (m *ChatModel) lookupSpawnByChild(agentName string) (agentSpawnInfo, bool) {
-	if info, ok := m.store.spawnByCallID[agentName]; ok {
-		return info, true
-	}
-	token := childAgentCallToken(agentName)
-	if token == "" {
-		return agentSpawnInfo{}, false
-	}
-	wantSub := strings.HasPrefix(agentName, "sub-")
-	for callID, info := range m.store.spawnByCallID {
-		if info.SubScheme != wantSub {
-			continue
-		}
-		if strings.HasPrefix(callID, token) {
-			return info, true
-		}
-	}
-	return agentSpawnInfo{}, false
+	return m.store.LookupSpawnByChild(agentName)
 }
 
 // partAgentName returns the producing agent's name for parts that carry one.
@@ -468,40 +452,26 @@ func (m *ChatModel) SubAgentSummaries() []SubAgentPart {
 
 // lastUserPartIndex returns the index of the most recent user message part, or
 // -1 when none exists. It marks the start of the current turn: everything after
-// it belongs to the turn the user just kicked off.
+// it belongs to the turn the user just kicked off. Backed by the store's
+// incrementally maintained lastUserIdx (O(1)).
 func (m *ChatModel) lastUserPartIndex() int {
-	for i := len(m.store.parts) - 1; i >= 0; i-- {
-		if m.store.parts[i].Type == PartTypeUser {
-			return i
-		}
-	}
-	return -1
+	return m.store.LastUserIndex()
 }
 
 // HasSubAgentsThisTurn reports whether the current turn spawned any sub-agent,
 // regardless of whether it is still running. Unlike HasRunningSubAgents this
 // keeps the panel visible after the children settle, matching the Todo nesting
 // which also survives termination. A new user turn naturally drops the previous
-// turn's cards because lastUserPartIndex advances past them.
+// turn's cards because lastUserIdx advances past them.
 func (m *ChatModel) HasSubAgentsThisTurn() bool {
-	for i := m.lastUserPartIndex() + 1; i < len(m.store.parts); i++ {
-		if p := m.store.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
-			return true
-		}
-	}
-	return false
+	return len(m.store.subAgentIdxThisTurn) > 0
 }
 
 // SubAgentCardsThisTurn returns every sub-agent card spawned in the current turn
-// (running and terminal) in timeline order, for the right-side panel.
+// (running and terminal) in timeline order, for the right-side panel. Backed by
+// the store's incrementally maintained subAgentIdxThisTurn (O(M)).
 func (m *ChatModel) SubAgentCardsThisTurn() []SubAgentPart {
-	var out []SubAgentPart
-	for i := m.lastUserPartIndex() + 1; i < len(m.store.parts); i++ {
-		if p := m.store.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
-			out = append(out, *p.SubAgent)
-		}
-	}
-	return out
+	return m.store.SubAgentsThisTurn()
 }
 
 // childTitle returns the display name of the sub-agent spawned by callID.
@@ -519,26 +489,10 @@ func (m *ChatModel) childTitle(callID string) string {
 
 // partsForChild returns the indices of parts belonging to the sub-agent spawned
 // by callID: the spawning SubAgent card itself plus every attributed part whose
-// producing agent resolves (via lookupSpawnByChild) back to that callID.
+// producing agent resolves back to that callID. Backed by the store's
+// incrementally maintained childPartsByCallID (O(K), K = parts owned by child).
 func (m *ChatModel) partsForChild(callID string) []int {
-	if callID == "" {
-		return nil
-	}
-	var idxs []int
-	for i, p := range m.store.parts {
-		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
-			idxs = append(idxs, i)
-			continue
-		}
-		name := partAgentName(p)
-		if name == "" {
-			continue
-		}
-		if info, ok := m.lookupSpawnByChild(name); ok && info.CallID == callID {
-			idxs = append(idxs, i)
-		}
-	}
-	return idxs
+	return m.store.PartsForChild(callID)
 }
 
 // PlanForChild returns the latest PlanPart owned by the sub-agent spawned by

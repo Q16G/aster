@@ -22,6 +22,7 @@ func TestPlanForChildResolvesByCallID(t *testing.T) {
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
 	}
+	m.store.RebuildIndex()
 
 	if got := m.PlanForChild("call_aaa1234"); got != childPlan {
 		t.Fatalf("PlanForChild = %v, want child plan", got)
@@ -54,6 +55,7 @@ func TestSidebarTodoFiltersByViewingChild(t *testing.T) {
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
 	}
+	m.chat.store.RebuildIndex()
 
 	mainSnap := m.buildSidebarSnapshot()
 	if len(mainSnap.PlanItems) != 4 {
@@ -106,6 +108,7 @@ func TestSidebarTodoNoCrossAgentStepCollision(t *testing.T) {
 		{Type: PartTypePlan, Plan: planA},
 		{Type: PartTypePlan, Plan: planB},
 	}
+	m.chat.store.RebuildIndex()
 
 	// Main view: root(2) + A(2) + B(2) = 6, no bloat, nesting at most one level deep.
 	mainSnap := m.buildSidebarSnapshot()
@@ -183,6 +186,7 @@ func TestRenderTodoVisual(t *testing.T) {
 		)
 	}
 	m.chat.store.parts = parts
+	m.chat.store.RebuildIndex()
 
 	render := func(snap SidebarSnapshot) string {
 		sb := &strings.Builder{}
@@ -292,6 +296,7 @@ func TestSidebarTodoOrphanOrderDeterministic(t *testing.T) {
 		{Type: PartTypePlan, Plan: orphanB},
 		{Type: PartTypePlan, Plan: orphanA},
 	}
+	m.chat.store.RebuildIndex()
 
 	// Run several times: map order is randomized per iteration, so a flaky
 	// (unsorted) implementation would eventually reorder the orphans.
@@ -443,6 +448,7 @@ func TestTodoFixesBeforeAfter(t *testing.T) {
 		}})
 	}
 	m.chat.store.parts = parts
+	m.chat.store.RebuildIndex()
 
 	oldMain := legacyBuildTodo(&m, "")
 	newMain := m.buildSidebarSnapshot().PlanItems
