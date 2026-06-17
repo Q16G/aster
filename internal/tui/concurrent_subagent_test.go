@@ -26,8 +26,8 @@ func TestChildAgentCallToken(t *testing.T) {
 // captured at tool_start, using the truncated token embedded in the child name.
 func TestLookupSpawnByChild(t *testing.T) {
 	m := NewChatModel()
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentStepID: "step-A", CallID: "call_aaa1234", SubScheme: true}
-	m.agentSpawnByCallID["call_skill_99"] = agentSpawnInfo{ParentStepID: "step-S", CallID: "call_skill_99", SubScheme: false}
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentStepID: "step-A", CallID: "call_aaa1234", SubScheme: true}
+	m.store.spawnByCallID["call_skill_99"] = agentSpawnInfo{ParentStepID: "step-S", CallID: "call_skill_99", SubScheme: false}
 
 	if info, ok := m.lookupSpawnByChild("sub-call_aaa"); !ok || info.ParentStepID != "step-A" {
 		t.Fatalf("sub child: got (%+v, %v), want step-A", info, ok)
@@ -86,7 +86,7 @@ func TestConcurrentSubAgentPlanAttribution(t *testing.T) {
 		"sub-call_bbb": "step-B",
 	}
 	seen := map[string]bool{}
-	for _, p := range m.chat.parts {
+	for _, p := range m.chat.store.parts {
 		if p.Type != PartTypePlan || p.Plan == nil {
 			continue
 		}
@@ -125,7 +125,7 @@ func TestConcurrentSubAgentStreamingAttribution(t *testing.T) {
 	}
 
 	got := map[string]string{}
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeText && p.Text != nil {
 			got[p.Text.AgentName] = p.Text.Content
 		}
@@ -161,7 +161,7 @@ func TestResultFallbackPerAgentIsolation(t *testing.T) {
 	})
 
 	var rootText *TextPart
-	for _, p := range m.chat.parts {
+	for _, p := range m.chat.store.parts {
 		if p.Type == PartTypeText && p.Text != nil && p.Text.Content == "root final answer" {
 			rootText = p.Text
 		}

@@ -13,11 +13,11 @@ import (
 func TestPlanForChildResolvesByCallID(t *testing.T) {
 	m := NewChatModel()
 	m.rootAgentName = "root"
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
 
 	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "root-1", Step: "root step"}}}
 	childPlan := &PlanPart{AgentName: "sub-call_aaa", ParentStepID: "root-1", Items: []PlanItemView{{ID: "a-1", Step: "child step"}}}
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
@@ -39,7 +39,7 @@ func TestPlanForChildResolvesByCallID(t *testing.T) {
 func TestSidebarTodoFiltersByViewingChild(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.chat.rootAgentName = "root"
-	m.chat.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentStepID: "root-1", CallID: "call_aaa1234", SubScheme: true}
+	m.chat.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentStepID: "root-1", CallID: "call_aaa1234", SubScheme: true}
 
 	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{
 		{ID: "root-1", Step: "派 A"},
@@ -49,7 +49,7 @@ func TestSidebarTodoFiltersByViewingChild(t *testing.T) {
 		{ID: "a-1", Step: "定位"},
 		{ID: "a-2", Step: "确认"},
 	}}
-	m.chat.parts = []DisplayPart{
+	m.chat.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
@@ -81,8 +81,8 @@ func TestSidebarTodoFiltersByViewingChild(t *testing.T) {
 func TestSidebarTodoNoCrossAgentStepCollision(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.chat.rootAgentName = "root"
-	m.chat.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "2", CallID: "call_aaa1234", SubScheme: true}
-	m.chat.agentSpawnByCallID["call_bbb1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "2", CallID: "call_bbb1234", SubScheme: true}
+	m.chat.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "2", CallID: "call_aaa1234", SubScheme: true}
+	m.chat.store.spawnByCallID["call_bbb1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "2", CallID: "call_bbb1234", SubScheme: true}
 
 	// Root item id "1" deliberately collides with each child's item id "1"; only
 	// the differing text must keep it from being deduped away.
@@ -99,7 +99,7 @@ func TestSidebarTodoNoCrossAgentStepCollision(t *testing.T) {
 		{ID: "1", Step: "扫描B"},
 		{ID: "2", Step: "解析B"},
 	}}
-	m.chat.parts = []DisplayPart{
+	m.chat.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_bbb1234", Status: "running"}},
 		{Type: PartTypePlan, Plan: rootPlan},
@@ -170,7 +170,7 @@ func TestRenderTodoVisual(t *testing.T) {
 	}}
 	parts := []DisplayPart{{Type: PartTypePlan, Plan: rootPlan}}
 	for _, s := range sibs {
-		m.chat.agentSpawnByCallID[s.callID] = agentSpawnInfo{ParentAgent: "code-audit", ParentStepID: "2", CallID: s.callID, SubScheme: true}
+		m.chat.store.spawnByCallID[s.callID] = agentSpawnInfo{ParentAgent: "code-audit", ParentStepID: "2", CallID: s.callID, SubScheme: true}
 		parts = append(parts,
 			DisplayPart{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: s.callID, Status: "running"}},
 			DisplayPart{Type: PartTypePlan, Plan: &PlanPart{
@@ -182,7 +182,7 @@ func TestRenderTodoVisual(t *testing.T) {
 			}},
 		)
 	}
-	m.chat.parts = parts
+	m.chat.store.parts = parts
 
 	render := func(snap SidebarSnapshot) string {
 		sb := &strings.Builder{}
@@ -236,7 +236,7 @@ func TestSidebarTodoRebuildsSpawnMapOnLoad(t *testing.T) {
 	m.chat.SetParts(parts)
 
 	for _, id := range []string{"call_aaa1234", "call_bbb1234"} {
-		info, ok := m.chat.agentSpawnByCallID[id]
+		info, ok := m.chat.store.spawnByCallID[id]
 		if !ok {
 			t.Fatalf("SetParts did not rebuild spawn entry for %q", id)
 		}
@@ -287,7 +287,7 @@ func TestSidebarTodoOrphanOrderDeterministic(t *testing.T) {
 	orphanA := &PlanPart{AgentName: "sub-call_aaa", ParentAgent: "code-audit", ParentStepID: "99", Items: []PlanItemView{
 		{ID: "1", Step: "孤儿A"},
 	}}
-	m.chat.parts = []DisplayPart{
+	m.chat.store.parts = []DisplayPart{
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: orphanB},
 		{Type: PartTypePlan, Plan: orphanA},
@@ -433,7 +433,7 @@ func TestTodoFixesBeforeAfter(t *testing.T) {
 	}}
 	parts := []DisplayPart{{Type: PartTypePlan, Plan: rootPlan}}
 	for _, s := range sibs {
-		m.chat.agentSpawnByCallID[s.callID] = agentSpawnInfo{ParentAgent: "code-audit", ParentStepID: "2", CallID: s.callID, SubScheme: true}
+		m.chat.store.spawnByCallID[s.callID] = agentSpawnInfo{ParentAgent: "code-audit", ParentStepID: "2", CallID: s.callID, SubScheme: true}
 		parts = append(parts, DisplayPart{Type: PartTypePlan, Plan: &PlanPart{
 			AgentName: s.agent, ParentAgent: "code-audit", ParentStepID: "2",
 			Items: []PlanItemView{
@@ -442,7 +442,7 @@ func TestTodoFixesBeforeAfter(t *testing.T) {
 			},
 		}})
 	}
-	m.chat.parts = parts
+	m.chat.store.parts = parts
 
 	oldMain := legacyBuildTodo(&m, "")
 	newMain := m.buildSidebarSnapshot().PlanItems
@@ -477,7 +477,7 @@ func TestTodoFixesBeforeAfter(t *testing.T) {
 	}
 
 	// 修复前：直接塞 parts（绕过重建）→ spawn map 空 → 无法下钻（PlanForChild 返回 nil）。
-	m2.chat.parts = legacyParts
+	m2.chat.store.parts = legacyParts
 	beforeDrill := "  (下钻失败：PlanForChild 解析不到子 agent，面板为空)"
 	if cp := m2.chat.PlanForChild("call_aaa1234"); cp != nil {
 		beforeDrill = renderItems(legacyBuildTodo(&m2, "call_aaa1234"))
@@ -489,7 +489,7 @@ func TestTodoFixesBeforeAfter(t *testing.T) {
 	m3.chat.SetParts(legacyParts)
 	m3.chat.viewingChild = "call_aaa1234"
 	afterDrill := renderItems(m3.buildSidebarSnapshot().PlanItems)
-	_, rebuilt := m3.chat.agentSpawnByCallID["call_aaa1234"]
+	_, rebuilt := m3.chat.store.spawnByCallID["call_aaa1234"]
 	sideBySide(
 		"场景二·重开旧会话后下钻 sub-call_aaa",
 		"加载时 agentSpawnByCallID 为空；旧逻辑下根本无法下钻。SetParts 现在从子 agent 的 ToolPart 重建 spawn map，下钻恢复且 Todo 正确。",

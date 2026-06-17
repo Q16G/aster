@@ -23,7 +23,7 @@ func TestFlushThinking_AllowsAdjacentIdentical(t *testing.T) {
 	}
 
 	count := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			count++
 		}
@@ -48,7 +48,7 @@ func TestFlushThinking_AllowsDifferentContent(t *testing.T) {
 	}
 
 	count := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			count++
 		}
@@ -65,8 +65,8 @@ func TestFlushThinking_EmptyBuffer(t *testing.T) {
 	if m.FlushThinking() {
 		t.Fatal("FlushThinking on empty buffer should return false")
 	}
-	if len(m.parts) != 0 {
-		t.Fatalf("expected 0 parts, got %d", len(m.parts))
+	if len(m.store.parts) != 0 {
+		t.Fatalf("expected 0 parts, got %d", len(m.store.parts))
 	}
 }
 
@@ -80,7 +80,7 @@ func TestFlushThinking_MergesSameGroupID(t *testing.T) {
 	m.FlushThinking()
 
 	count := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			count++
 			if p.Thinking.Content != "first second" {
@@ -103,7 +103,7 @@ func TestFlushThinking_SeparatesDifferentGroupIDs(t *testing.T) {
 	m.FlushThinking()
 
 	count := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			count++
 		}
@@ -121,7 +121,7 @@ func TestAppendThinkingWithGroupID_SessionSwitch(t *testing.T) {
 	m.AppendThinkingWithGroupID("new", "group-2")
 
 	count := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			count++
 			if p.Thinking.Content != "old " {
@@ -150,7 +150,7 @@ func TestAppendThinkingWithGroupID_ResumeAfterFlush(t *testing.T) {
 	m.AppendThinkingWithGroupID("part2", "group-1")
 
 	thinkingParts := 0
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeThinking {
 			thinkingParts++
 			if p.Thinking.Content != "part1 part2" {
@@ -231,8 +231,8 @@ func TestRenderPlanPart_SubAgentShowsTag(t *testing.T) {
 		Plan: &PlanPart{AgentName: "sub-abc", Items: []PlanItemView{{Step: "sub-step", Status: "pending"}}},
 	})
 
-	rootRender := m.renderPlanPart(0, m.parts[0], 80)
-	subRender := m.renderPlanPart(1, m.parts[1], 80)
+	rootRender := m.renderPlanPart(0, m.store.parts[0], 80)
+	subRender := m.renderPlanPart(1, m.store.parts[1], 80)
 
 	if strings.Contains(rootRender, "(my-agent)") {
 		t.Fatalf("root plan should NOT show agent tag, got %q", rootRender)
@@ -256,8 +256,8 @@ func TestUpdateLastPlanForAgent_MatchesLegacyEmptyAgentName(t *testing.T) {
 		p.Items[0].Status = "done"
 	})
 
-	if m.parts[0].Plan.Items[0].Status != "done" {
-		t.Fatalf("expected legacy plan (empty AgentName) to be updated by root agent, got %q", m.parts[0].Plan.Items[0].Status)
+	if m.store.parts[0].Plan.Items[0].Status != "done" {
+		t.Fatalf("expected legacy plan (empty AgentName) to be updated by root agent, got %q", m.store.parts[0].Plan.Items[0].Status)
 	}
 }
 

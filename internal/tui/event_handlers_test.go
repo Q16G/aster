@@ -1639,7 +1639,7 @@ func TestSidebarSubAgentGroupHeaderNoPerItemPrefix(t *testing.T) {
 func TestToolEndCancelsSubAgentItemsWithNonJSONResult(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.chat.rootAgentName = "root"
-	m.chat.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "1", CallID: "call_aaa1234", SubScheme: true}
+	m.chat.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "1", CallID: "call_aaa1234", SubScheme: true}
 
 	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "1", Step: "派 A", Status: "in_progress"}}}
 	childPlan := &PlanPart{AgentName: "sub-call_aaa", ParentAgent: "root", ParentStepID: "1", Items: []PlanItemView{
@@ -1647,7 +1647,7 @@ func TestToolEndCancelsSubAgentItemsWithNonJSONResult(t *testing.T) {
 		{ID: "a-2", Step: "确认", Status: "pending"},
 		{ID: "a-3", Step: "复核", Status: "in_progress"},
 	}}
-	m.chat.parts = []DisplayPart{
+	m.chat.store.parts = []DisplayPart{
 		{Type: PartTypePlan, Plan: rootPlan},
 		{Type: PartTypePlan, Plan: childPlan},
 	}
@@ -1682,14 +1682,14 @@ func TestToolEndCancelsSubAgentItemsWithNonJSONResult(t *testing.T) {
 func TestParentStepCompleteDoesNotCancelRunningBgSubAgent(t *testing.T) {
 	m := NewModel(ModelDeps{})
 	m.chat.rootAgentName = "root"
-	m.chat.agentSpawnByCallID["call_bg1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "dispatch", CallID: "call_bg1234", SubScheme: true}
+	m.chat.store.spawnByCallID["call_bg1234"] = agentSpawnInfo{ParentAgent: "root", ParentStepID: "dispatch", CallID: "call_bg1234", SubScheme: true}
 
 	rootPlan := &PlanPart{AgentName: "root", Items: []PlanItemView{{ID: "dispatch", Step: "派发后台任务", Status: "in_progress"}}}
 	childPlan := &PlanPart{AgentName: "sub-call_bg", ParentAgent: "root", ParentStepID: "dispatch", Items: []PlanItemView{
 		{ID: "b-1", Step: "采集", Status: "in_progress"},
 		{ID: "b-2", Step: "分析", Status: "pending"},
 	}}
-	m.chat.parts = []DisplayPart{
+	m.chat.store.parts = []DisplayPart{
 		// Background sub-agent card is still "running".
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_bg1234", Status: "running"}},
 		{Type: PartTypePlan, Plan: rootPlan},
