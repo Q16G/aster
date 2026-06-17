@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -48,6 +49,14 @@ func (m SidebarModel) IsFocused() bool {
 }
 
 func (m *SidebarModel) SetSnapshot(snap SidebarSnapshot) {
+	// app.go fires refreshSidebarData from a dozen event hooks; many of those
+	// don't actually change the snapshot (e.g. token-count event when the
+	// counter happens to be identical, or a status flip back to the same
+	// value). Short-circuit when the incoming snapshot equals the current one
+	// so we don't pay for an 8-section refreshView pass we'd throw away.
+	if reflect.DeepEqual(m.snapshot, snap) {
+		return
+	}
 	m.snapshot = snap
 	m.refreshView()
 }
