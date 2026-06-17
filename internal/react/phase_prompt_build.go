@@ -4,40 +4,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"aster/internal/builtin_tools"
 )
 
-func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (string, error) {
+func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, error) {
 	if a == nil || a.promptManager == nil {
-		return "", fmt.Errorf("step replan prompt manager is nil")
+		return PromptParts{}, fmt.Errorf("step replan prompt manager is nil")
 	}
 	var skillsCtx *SkillsPromptContext
 	if sc, ok := payload["skills_context"].(*SkillsPromptContext); ok {
 		skillsCtx = sc
 	}
-	return a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentRole:              strings.TrimSpace(a.cfg.Role),
-		AgentBackground:        strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
-		CurrentGoal:            payload["current_goal"],
-		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
-		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
-		InputTimeline:          payload["input_timeline"],
-		CurrentStep:            payload["current_step"],
-		StepOutcome:            payload["step_outcome"],
-		TaskPlan:               payload["task_plan"],
-		StepOutcomes:           payload["step_outcomes"],
-		CarriedIncompleteItems: payload["carried_incomplete_items"],
-		CarriedDepthGaps:       payload["carried_depth_gaps"],
-		CarriedNewSurfaces:     payload["carried_new_surfaces"],
-		StepResultPath:         stringFromPayload(payload, "step_result_path"),
-		StepContextsPath:       stringFromPayload(payload, "step_contexts_path"),
-		StepTranscriptPath:     stringFromPayload(payload, "step_transcript_path"),
-		StepTimelinePath:       stringFromPayload(payload, "step_timeline_path"),
-		SkillsContext:          skillsCtx,
-		HasSkillsTable:         skillsCtx != nil && skillsCtx.HasTable(),
+	var availableTools []AvailableToolInfo
+	if at, ok := payload["available_tools"].([]AvailableToolInfo); ok {
+		availableTools = at
+	}
+	parts, err := a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
+		AgentRole:           strings.TrimSpace(a.cfg.Role),
+		AgentBackground:     strings.TrimSpace(a.cfg.Background),
+		IsSubAgent:          a.cfg.IsSubAgent,
+		CurrentGoal:         payload["current_goal"],
+		GoalUnderstanding:   stringFromPayload(payload, "goal_understanding"),
+		CurrentPhase:        stringFromPayload(payload, "current_phase"),
+		InputTimeline:       payload["input_timeline"],
+		ReviewWindow:        payload["review_window"],
+		PlanOverview:        payload["plan_overview"],
+		PriorBoundaryStepID: stringFromPayload(payload, "prior_boundary_step_id"),
+		OpenItemsLedger:     stringFromPayload(payload, "open_items_ledger"),
+		TaskContextBoard:    stringFromPayload(payload, "task_context_board"),
+		StepFileContent:     stringFromPayload(payload, "step_file_content"),
+		StepContextsPath:    stringFromPayload(payload, "step_contexts_path"),
+		StepTranscriptPath:  stringFromPayload(payload, "step_transcript_path"),
+		OpenItemsPath:       stringFromPayload(payload, "open_items_path"),
+		TaskContextPath:     stringFromPayload(payload, "task_context_path"),
+		StepFilePath:        stringFromPayload(payload, "step_file_path"),
+		PlannerJournalPath:  stringFromPayload(payload, "planner_journal_path"),
+		PlannerJournal:      stringFromPayload(payload, "planner_journal"),
+		SkillsContext:       skillsCtx,
+		HasSkillsTable:      skillsCtx != nil && skillsCtx.HasTable(),
+		AvailableTools:      availableTools,
+		HasAvailableTools:   len(availableTools) > 0,
 	})
+	if err != nil {
+		return PromptParts{}, err
+	}
+	parts.SystemAgent = a.identityEnvBlock()
+	return parts, nil
 }
 
 func stringFromPayload(payload map[string]any, key string) string {
@@ -47,55 +58,27 @@ func stringFromPayload(payload map[string]any, key string) string {
 	return ""
 }
 
-func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (string, error) {
+func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, error) {
 	if a == nil || a.promptManager == nil {
-		return "", fmt.Errorf("final answer prompt manager is nil")
+		return PromptParts{}, fmt.Errorf("final answer prompt manager is nil")
 	}
-	showPlanSection, _ := payload["show_plan"].(bool)
-	return a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentRole:              strings.TrimSpace(a.cfg.Role),
-		AgentBackground:        strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:       strings.TrimSpace(a.cfg.Instruction),
-		Status:                 payload["status"],
-		StateError:             payload["state_error"],
-		InputTimeline:          payload["input_timeline"],
-		GoalUnderstanding:      stringFromPayload(payload, "goal_understanding"),
-		ShowPlanSection:        showPlanSection,
-		Plan:                   payload["plan"],
-		PlanVersion:            payload["plan_version"],
-		StepOutcomes:           payload["step_outcomes"],
-		Warnings:               payload["warnings"],
-		CarriedIncompleteItems: payload["carried_incomplete_items"],
-		CarriedDepthGaps:       payload["carried_depth_gaps"],
-		CarriedNewSurfaces:     payload["carried_new_surfaces"],
-		WorkspaceSharedDir:     stringFromPayload(payload, "workspace_shared_dir"),
+	parts, err := a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
+		AgentRole:          strings.TrimSpace(a.cfg.Role),
+		AgentBackground:    strings.TrimSpace(a.cfg.Background),
+		Status:             payload["status"],
+		StateError:         payload["state_error"],
+		InputTimeline:      payload["input_timeline"],
+		GoalUnderstanding:  stringFromPayload(payload, "goal_understanding"),
+		PlanItems:          payload["plan_items"],
+		PlannerJournalPath: stringFromPayload(payload, "planner_journal_path"),
+		OpenItemsLedger:    stringFromPayload(payload, "open_items_ledger"),
+		Warnings:           payload["warnings"],
 	})
-}
-
-// axisKind 标识三轴未决盘点的某一轴，用于从 sticky 状态取对应承载项。
-type axisKind int
-
-const (
-	axisIncomplete axisKind = iota
-	axisDepth
-	axisNewSurfaces
-)
-
-// carriedAxisItems 从 sticky 三轴状态取出指定轴的承载项；nil 安全。
-func carriedAxisItems(axes *builtin_tools.ReplanAxes, kind axisKind) []string {
-	if axes == nil {
-		return nil
+	if err != nil {
+		return PromptParts{}, err
 	}
-	switch kind {
-	case axisIncomplete:
-		return axes.IncompleteItems
-	case axisDepth:
-		return axes.DepthGaps
-	case axisNewSurfaces:
-		return axes.NewSurfaces
-	default:
-		return nil
-	}
+	parts.SystemAgent = a.identityEnvBlock()
+	return parts, nil
 }
 
 func prettyJSON(value any) string {

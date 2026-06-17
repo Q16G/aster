@@ -369,19 +369,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeThink:
 		m.flushStreamAndPersist(event.AgentName)
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
-			if isRoot && (m.runtimePhase == "step_replan" || m.runtimePhase == "step_outcomes_reducer") {
-				m.replanThinkBuf.WriteString(thinkDelta)
-				m.thinkingPanel.UpdateLastEntry(m.runtimePhase, formatStepReplanPanelText(m.replanThinkBuf.String()))
-			} else if isRoot && m.isStructuredOutputPhase() {
-				m.thinkingPanel.UpdateLastEntry("thinking", "thinking...")
-			} else {
-				groupID := strings.TrimSpace(event.GroupID)
-				// Backward compatibility: if producer doesn't set group_id, fall back to event_id.
-				if groupID == "" {
-					groupID = strings.TrimSpace(event.EventID)
-				}
-				m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID)
+			groupID := strings.TrimSpace(event.GroupID)
+			// Backward compatibility: if producer doesn't set group_id, fall back to event_id.
+			if groupID == "" {
+				groupID = strings.TrimSpace(event.EventID)
 			}
+			m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID)
 		}
 		if isRoot {
 			m.statusText = "thinking..."
@@ -397,7 +390,6 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				iterText = fmt.Sprintf("iteration %d/%d", current, max)
 			}
 			m.statusText = iterText
-			m.thinkingPanel.PushEntry("iteration", iterText)
 		}
 
 	case react.EventTypeStateChange:
@@ -412,12 +404,14 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.statusText = statusSummary
 		}
 		if phase := payloadString(event.Payload, "phase"); phase != "" {
+			phaseChanged := phase != m.runtimePhase
 			m.runtimePhase = phase
-			m.replanThinkBuf.Reset()
 			phaseStatus := ""
 			switch phase {
 			case "step_replan":
 				phaseStatus = "evaluating plan..."
+			case "step_triage":
+				phaseStatus = "evaluating step..."
 			case "step_summary":
 				phaseStatus = "summarizing step..."
 			case "final_answer":
@@ -429,23 +423,24 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			case "step":
 				phaseStatus = "executing step..."
 			}
-			switch phase {
-			case "step_replan", "step_summary", "final_answer", "step_outcomes_reducer":
-				m.thinkingPanel.Show(phase)
-				if statusSummary != "" {
-					m.thinkingPanel.PushEntry(phase, statusSummary)
-				} else if phaseStatus != "" {
-					m.thinkingPanel.PushEntry(phase, phaseStatus)
+			if phaseChanged {
+				// 先把上一阶段还在飘的 thinking/stream 落盘成 part,
+				// 否则下一次 AppendThinkingForAgent 会把旧 buf flush 到 banner 之后。
+				m.chat.FlushThinking()
+				m.flushStreamAndPersist(event.AgentName)
+				banner := PhaseBannerPart{
+					Phase:     phase,
+					Label:     phaseLabel(phase),
+					Iteration: event.Iteration,
+					AgentName: event.AgentName,
 				}
-				m.updateLayout()
-			default:
-				if phaseStatus != "" {
-					m.thinkingPanel.PushEntry(phase, phaseStatus)
-				}
-				if m.thinkingPanel.visible {
-					m.thinkingPanel.Hide()
-					m.updateLayout()
-				}
+				m.chat.AddPart(DisplayPart{
+					Type:        PartTypePhaseBanner,
+					Time:        time.Now(),
+					PhaseBanner: &banner,
+				})
+				bannerJSON, _ := json.Marshal(banner)
+				m.persistPartWithAgent("phase_banner", phase, event.AgentName, string(bannerJSON))
 			}
 			if statusSummary == "" {
 				m.statusText = phaseStatus
@@ -650,11 +645,6 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		// handled by HumanInputBridge
 
 	case react.EventTypeStepSummaryResult:
-		if isRoot {
-			m.thinkingPanel.PushEntry("step_summary", "step summary completed")
-			m.thinkingPanel.Hide()
-			m.updateLayout()
-		}
 		m.chat.FlushThinking()
 		m.flushStreamAndPersist(event.AgentName)
 		stepID := payloadString(event.Payload, "step_id")
@@ -701,16 +691,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		shouldReplan := payloadBool(event.Payload, "should_replan")
 		replanReason := payloadString(event.Payload, "replan_reason")
 		nextGoal := payloadString(event.Payload, "next_goal")
+		planSize := payloadInt(event.Payload, "plan_size")
 		incompleteItems := payloadStringSlice(event.Payload, "incomplete_items")
 		newSurfaces := payloadStringSlice(event.Payload, "new_surfaces")
 		warnings := payloadStringSlice(event.Payload, "warnings")
-		if isRoot {
-			if shouldReplan {
-				m.thinkingPanel.PushEntry("step_replan", "replan requested")
-			} else {
-				m.thinkingPanel.PushEntry("step_replan", "continue current plan")
-			}
-		}
 		part := StepReplanPart{
 			AgentName:       event.AgentName,
 			StepID:          stepID,
@@ -718,6 +702,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			ShouldReplan:    shouldReplan,
 			ReplanReason:    replanReason,
 			NextGoal:        nextGoal,
+			PlanSize:        planSize,
 			IncompleteItems: incompleteItems,
 			NewSurfaces:     newSurfaces,
 			Warnings:        warnings,
@@ -730,11 +715,30 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		partJSON, _ := json.Marshal(part)
 		m.persistPart("step_replan", stepID, string(partJSON))
 
+	case react.EventTypeStepTriageResult:
+		stepID := payloadString(event.Payload, "step_id")
+		stepName := payloadString(event.Payload, "step_name")
+		suggestion := payloadString(event.Payload, "suggestion")
+		reason := payloadString(event.Payload, "reason")
+		durationMs := payloadInt64(event.Payload, "duration_ms")
+		triagePart := StepTriagePart{
+			AgentName:  event.AgentName,
+			StepID:     stepID,
+			StepName:   stepName,
+			Suggestion: suggestion,
+			Reason:     reason,
+			DurationMs: durationMs,
+		}
+		m.chat.AddPart(DisplayPart{
+			Type:       PartTypeStepTriage,
+			Time:       time.Now(),
+			StepTriage: &triagePart,
+		})
+		triageJSON, _ := json.Marshal(triagePart)
+		m.persistPart("step_triage", stepID, string(triageJSON))
+
 	case react.EventTypeFinalAnswerResult:
 		if isRoot {
-			m.thinkingPanel.PushEntry("final_answer", "answer delivered")
-			m.thinkingPanel.Hide()
-			m.updateLayout()
 			m.hadFinalAnswerDuringRun = true
 		}
 		m.chat.FlushThinking()
@@ -780,22 +784,6 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	case react.EventTypeHistoryCompacted:
 		// no-op
 	}
-}
-
-func (m *Model) isStructuredOutputPhase() bool {
-	switch m.runtimePhase {
-	case "step_replan", "step_summary", "final_answer", "step_outcomes_reducer":
-		return true
-	}
-	return false
-}
-
-func formatStepReplanPanelText(raw string) string {
-	text := strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
-	if text == "" {
-		return "thinking..."
-	}
-	return truncateDisplayWidth(text, 80)
 }
 
 func payloadExternalInterrupt(payload map[string]any) *builtin_tools.ExternalInterrupt {

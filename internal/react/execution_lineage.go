@@ -158,25 +158,6 @@ func (a *Agent) consumeFrozenStepLineage(planVersion int, stepID string) *frozen
 	return lineage
 }
 
-func (a *Agent) executionContextsForPrompt(snapshot builtin_tools.StateSnapshot) []executionContextCard {
-	if a == nil {
-		return nil
-	}
-	current := snapshot.CurrentStep()
-	if current == nil || strings.TrimSpace(current.ID) == "" {
-		return nil
-	}
-	key := frozenLineageKey(snapshot.PlanVersion, strings.TrimSpace(current.ID))
-	if a.frozenLineageByStep == nil {
-		return nil
-	}
-	lineage := a.frozenLineageByStep[key]
-	if lineage == nil || len(lineage.Cards) == 0 {
-		return nil
-	}
-	return lineage.Cards
-}
-
 func selectDirectInheritedContextKeys(records []*builtin_tools.StepContextRecord, namespace string, currentStep *builtin_tools.PlanItem, agent *Agent) []string {
 	namespace = builtin_tools.NormalizeWorkspaceNamespace(namespace)
 	if currentStep == nil {

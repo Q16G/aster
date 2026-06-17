@@ -2,177 +2,11 @@ package react_test
 
 import (
 	"context"
-	"strings"
 	"testing"
-	"time"
 
 	"aster/internal/builtin_tools"
 	. "aster/internal/react"
 )
-
-func TestBuildStepReferences_UsesExplicitAndArtifactsOnly(t *testing.T) {
-	t.Skip("V2 step attempt results no longer generate legacy step reference lists")
-}
-
-func TestBuildStepReplanPrompt_UsesSemanticBlocks(t *testing.T) {
-	agent, err := NewReActAgent("prompt-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":             "继续推进",
-		"current_step":             map[string]any{"id": "step-1", "step": "执行"},
-		"step_outcome":             map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":                []map[string]any{{"id": "step-1", "step": "执行", "status": "completed"}},
-		"step_outcomes":            []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":                 []string{"warn-1"},
-		"carried_incomplete_items": []string{"missing-1"},
-		"step_result_path":         "/tmp/test/result.json",
-		"step_contexts_path":       "/tmp/test/step_contexts.jsonl",
-	})
-	if err != nil {
-		t.Fatalf("buildStepReplanPrompt failed: %v", err)
-	}
-
-	for _, marker := range []string{"CURRENT_GOAL", "CURRENT_STEP", "TASK_PLAN", "STEP_OUTCOME"} {
-		if !strings.Contains(prompt, marker) {
-			t.Fatalf("expected marker %s in prompt, got:\n%s", marker, prompt)
-		}
-	}
-}
-
-func TestBuildStepReplanPrompt_NoDoubleSerializedOutcome(t *testing.T) {
-	agent, err := NewReActAgent("prompt-content-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal": "分析代码",
-		"current_step": map[string]any{"id": "step-1", "step": "执行分析"},
-		"step_outcome": map[string]any{
-			"status":        "completed",
-			"short_summary": "分析完成",
-			"key_facts":     []string{"fact-a", "fact-b"},
-		},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "执行分析", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
-		"step_result_path":   "/workspace/steps/step-1/result.json",
-		"step_contexts_path": "/workspace/step_contexts.jsonl",
-		"step_timeline_path": "/workspace/shared/step-1/timeline.jsonl",
-	})
-	if err != nil {
-		t.Fatalf("buildStepReplanPrompt failed: %v", err)
-	}
-
-	// STEP_OUTCOME should contain a proper JSON object, not a double-quoted string like "{\"status\":...}"
-	if strings.Contains(prompt, `"{\"`) || strings.Contains(prompt, `\"}"`) {
-		t.Fatalf("STEP_OUTCOME appears double-serialized (escaped quotes inside string):\n%s", prompt)
-	}
-	if !strings.Contains(prompt, `"status"`) {
-		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"status\", got:\n%s", prompt)
-	}
-	if !strings.Contains(prompt, `"short_summary"`) {
-		t.Fatalf("STEP_OUTCOME should contain unescaped JSON key \"short_summary\", got:\n%s", prompt)
-	}
-
-	// Step result path and step contexts path should render
-	if !strings.Contains(prompt, "/workspace/steps/step-1/result.json") {
-		t.Fatalf("expected STEP_RESULT_PATH in prompt, got:\n%s", prompt)
-	}
-	if !strings.Contains(prompt, "/workspace/step_contexts.jsonl") {
-		t.Fatalf("expected STEP_CONTEXTS_PATH in prompt, got:\n%s", prompt)
-	}
-	if !strings.Contains(prompt, "/workspace/shared/step-1/timeline.jsonl") {
-		t.Fatalf("expected STEP_TIMELINE_PATH in prompt, got:\n%s", prompt)
-	}
-}
-
-func TestBuildStepReplanPrompt_WithSkillsIndex(t *testing.T) {
-	agent, err := NewReActAgent("skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":       "侦察完成",
-		"current_step":       map[string]any{"id": "step-1", "step": "侦察"},
-		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "侦察", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
-		"step_result_path":   "",
-		"step_contexts_path": "",
-		"skills_context": &SkillsPromptContext{
-			Table: "| name | description |\n|------|-------------|\n| web-security-testing | Web 安全渗透测试 |",
-		},
-	})
-	if err != nil {
-		t.Fatalf("buildStepReplanPrompt failed: %v", err)
-	}
-
-	if !strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
-		t.Fatal("expected rendered <SKILLS_INDEX> block in prompt when skills_context is provided")
-	}
-	if !strings.Contains(prompt, "web-security-testing") {
-		t.Fatal("expected skill table content in prompt")
-	}
-}
-
-func TestBuildStepReplanPrompt_WithoutSkillsIndex(t *testing.T) {
-	agent, err := NewReActAgent("no-skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":       "分析完成",
-		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
-		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
-		"step_result_path":   "",
-		"step_contexts_path": "",
-	})
-	if err != nil {
-		t.Fatalf("buildStepReplanPrompt failed: %v", err)
-	}
-
-	// The principle text references `<SKILLS_INDEX>` in backticks, so check for the actual
-	// rendered block (tag on its own line, not inside backtick-quoted text).
-	if strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
-		t.Fatal("did not expect rendered <SKILLS_INDEX> block in prompt when skills_context is nil")
-	}
-}
-
-func TestBuildStepReplanPrompt_EmptySkillsTable(t *testing.T) {
-	agent, err := NewReActAgent("empty-skills-replan-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt, err := agent.BuildStepReplanPrompt(map[string]any{
-		"current_goal":       "分析完成",
-		"current_step":       map[string]any{"id": "step-1", "step": "分析"},
-		"step_outcome":       map[string]any{"summary": "done", "status": "completed"},
-		"task_plan":          []map[string]any{{"id": "step-1", "step": "分析", "status": "completed"}},
-		"step_outcomes":      []map[string]any{{"step_id": "step-1", "status": "completed"}},
-		"warnings":           []string{},
-		"step_result_path":   "",
-		"step_contexts_path": "",
-		"skills_context":     &SkillsPromptContext{Table: ""},
-	})
-	if err != nil {
-		t.Fatalf("buildStepReplanPrompt failed: %v", err)
-	}
-
-	if strings.Contains(prompt, "\n<SKILLS_INDEX>\n") {
-		t.Fatal("did not expect rendered <SKILLS_INDEX> block when skills_context has empty Table")
-	}
-}
 
 func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
 	agent, err := NewReActAgent("tool-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
@@ -193,151 +27,7 @@ func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
 	}
 }
 
-func TestBuildThinkActPrompt_UsesExpandedSections(t *testing.T) {
-	agent, err := NewReActAgent(
-		"think-act-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	agent.ReplaceState(builtin_tools.StateSnapshot{
-		Phase:         builtin_tools.AgentPhaseStep,
-		Status:        builtin_tools.TaskStatusRunning,
-		CurrentGoal:   "完成代码审查",
-		CurrentStepID: "step-2",
-		InputTimeline: []*builtin_tools.TimelineInput{
-			{Content: "请审查代码", CreatedAt: time.Unix(0, 0)},
-		},
-		Plan: []*builtin_tools.PlanItem{
-			{ID: "step-1", Step: "收集证据", Status: builtin_tools.PlanStepCompleted},
-			{ID: "step-2", Step: "检查结果", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-1"}},
-		},
-		StepOutcomes: []*builtin_tools.StepOutcome{
-			{
-				StepID:        "step-1",
-				Status:        builtin_tools.StepOutcomeCompleted,
-				ShortSummary:  "已收集证据",
-				KeyFacts:      []string{"fact-1"},
-				References:    []string{"shared/step_artifacts/00000000-0000-0000-0000-000000000000_step-1.result.json"},
-				StatusSummary: "第一步已完成",
-				UpdatedAt:     time.Unix(1, 0),
-			},
-			{
-				StepID:       "step-x",
-				Status:       builtin_tools.StepOutcomeCompleted,
-				ShortSummary: "无关步骤",
-				UpdatedAt:    time.Unix(2, 0),
-			},
-		},
-	})
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", nil)
-	for _, marker := range []string{"<CURRENT_STEP>", "<DEPENDENCY_STEP_SUMMARIES>"} {
-		if !strings.Contains(prompt, marker) {
-			t.Fatalf("expected marker %s in prompt, got %s", marker, prompt)
-		}
-	}
-	if strings.Contains(prompt, "<EXECUTION_CONTEXTS>") {
-		t.Fatalf("did not expect execution contexts without frozen lineage, got %s", prompt)
-	}
-	if strings.Contains(prompt, "<LAST_OUTCOME>") || strings.Contains(prompt, "<SELECTED_STEP_SUMMARIES>") {
-		t.Fatalf("expected legacy summary markers removed, got %s", prompt)
-	}
-	if !strings.Contains(prompt, "step-1") {
-		t.Fatalf("expected dependency summary for step-1 in prompt, got %s", prompt)
-	}
-	if strings.Contains(prompt, "step-x") {
-		t.Fatalf("did not expect unrelated summary in prompt, got %s", prompt)
-	}
-	if strings.Contains(prompt, "```json") {
-		t.Fatalf("expected semantic blocks instead of raw runtime json block")
-	}
-}
-
-func TestBuildThinkActPrompt_RendersGenericTaskContextEntries(t *testing.T) {
-	agent, err := NewReActAgent(
-		"generic-ctx-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
-		Entries: []TaskContextEntry{
-			{Label: "项目路径", Value: "/repo/project", Description: "待分析的项目根目录"},
-			{Label: "共享路径", Value: "/tmp/workspace/shared/step-1"},
-		},
-	})
-	if !strings.Contains(prompt, "项目路径: /repo/project") {
-		t.Fatalf("expected generic entry in prompt, got %s", prompt)
-	}
-	if !strings.Contains(prompt, "待分析的项目根目录") {
-		t.Fatalf("expected description in prompt, got %s", prompt)
-	}
-	if !strings.Contains(prompt, "共享路径: /tmp/workspace/shared/step-1") {
-		t.Fatalf("expected generic entry in prompt, got %s", prompt)
-	}
-}
-
-func TestBuildThinkActPrompt_OmitsTaskContextWhenEmpty(t *testing.T) {
-	agent, err := NewReActAgent(
-		"empty-ctx-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{})
-	if strings.Contains(prompt, "### 5.1c 任务上下文") {
-		t.Fatalf("did not expect task context section for empty data, got %s", prompt)
-	}
-}
-
-func TestBuildThinkActPrompt_RendersMultipleTaskContextEntries(t *testing.T) {
-	agent, err := NewReActAgent(
-		"multi-entry-test",
-		&stubChatClient{},
-		WithEmitter(NewDummyEmitter()),
-		WithInstruction("你是代码审查代理"),
-	)
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
-
-	prompt := agent.BuildThinkActPrompt(context.Background(), "", &TaskContextData{
-		Entries: []TaskContextEntry{
-			{Label: "项目路径", Value: "/repo/project"},
-			{Label: "当前路径", Value: "/repo/project/internal/react"},
-			{Label: "编译状态", Value: "ready"},
-			{Label: "阶段说明", Value: "等待当前 step 继续推进。"},
-			{Label: "结构化输入", Value: "{\"ticket\":\"TASK-1\"}"},
-		},
-	})
-
-	for _, expected := range []string{
-		"项目路径: /repo/project",
-		"当前路径: /repo/project/internal/react",
-		"编译状态: ready",
-		"阶段说明: 等待当前 step 继续推进。",
-		"结构化输入: {\"ticket\":\"TASK-1\"}",
-	} {
-		if !strings.Contains(prompt, expected) {
-			t.Fatalf("expected prompt to contain %q, got %s", expected, prompt)
-		}
-	}
-}
-
-func TestSelectDependencyStepSummaryCards_OnlyReturnsDirectDependencies(t *testing.T) {
+func TestSelectDependencyPlanItemCards_OnlyReturnsDependencies(t *testing.T) {
 	current := &builtin_tools.PlanItem{
 		ID:        "step-3",
 		Step:      "实现改动",
@@ -345,19 +35,23 @@ func TestSelectDependencyStepSummaryCards_OnlyReturnsDirectDependencies(t *testi
 		DependsOn: []string{"step-1", "step-2", "step-1"},
 	}
 	snapshot := builtin_tools.StateSnapshot{
-		StepOutcomes: []*builtin_tools.StepOutcome{
-			{StepID: "step-1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "依赖 1", UpdatedAt: time.Unix(1, 0)},
-			{StepID: "step-2", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "依赖 2", UpdatedAt: time.Unix(2, 0)},
-			{StepID: "step-x", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "无关", UpdatedAt: time.Unix(3, 0)},
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "step-1", Step: "依赖 1", Status: builtin_tools.PlanStepCompleted, ShortSummary: "依赖 1 完成", TimelineFile: "shared/step-1/timeline.jsonl"},
+			{ID: "step-2", Step: "依赖 2", Status: builtin_tools.PlanStepCompleted, ShortSummary: "依赖 2 完成"},
+			{ID: "step-x", Step: "无关", Status: builtin_tools.PlanStepCompleted, ShortSummary: "无关"},
+			current,
 		},
 	}
 
-	cards := SelectDependencyStepSummaryCards(snapshot, current)
+	cards := SelectDependencyPlanItemCards(snapshot, current, "/ws/root")
 	if len(cards) != 2 {
-		t.Fatalf("expected 2 dependency summary cards, got %d: %+v", len(cards), cards)
+		t.Fatalf("expected 2 dependency cards, got %d: %+v", len(cards), cards)
 	}
-	if cards[0].StepID != "step-1" || cards[1].StepID != "step-2" {
+	if cards[0].ID != "step-1" || cards[1].ID != "step-2" {
 		t.Fatalf("expected cards ordered by depends_on, got %+v", cards)
+	}
+	if cards[0].TimelineFile != "/ws/root/shared/step-1/timeline.jsonl" {
+		t.Fatalf("expected timeline pointer absolutized, got %q", cards[0].TimelineFile)
 	}
 }
 

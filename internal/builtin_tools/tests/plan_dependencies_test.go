@@ -204,3 +204,55 @@ func TestNormalizePlanItems_HydratesResolvedDependsOn(t *testing.T) {
 		t.Fatalf("expected resolved dependency to point first item")
 	}
 }
+
+// Plan IDs are lower-cased during normalization, but historically depends_on
+// references kept the caller's casing. A user-authored plan with uppercase IDs
+// (e.g. P1-XSS-DEEP) would round-trip the id field through canonicalization to
+// "p1-xss-deep" while depends_on still carried the uppercase token, producing
+// a spurious `unknown dependency` error. Verify references are canonicalized
+// the same way before lookup.
+func TestNormalizePlanItems_DependsOnCaseInsensitive(t *testing.T) {
+	items, err := NormalizePlanItems([]*PlanItem{
+		{ID: "P1-XSS-DEEP", Step: "深挖 XSS", Status: PlanStepInProgress},
+		{ID: "P1-AUTH", Step: "认证审计", Status: PlanStepPending},
+		{
+			ID:        "P1-ANALYSIS",
+			Step:      "分析汇总",
+			Status:    PlanStepPending,
+			DependsOn: []string{"P1-XSS-DEEP", "P1-AUTH"},
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("normalize returned error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+	if items[0].ID != "p1-xss-deep" || items[1].ID != "p1-auth" {
+		t.Fatalf("expected canonical lowercase ids, got %q / %q", items[0].ID, items[1].ID)
+	}
+	wantDeps := []string{"p1-xss-deep", "p1-auth"}
+	if len(items[2].DependsOn) != len(wantDeps) {
+		t.Fatalf("expected %d deps, got %+v", len(wantDeps), items[2].DependsOn)
+	}
+	for i, want := range wantDeps {
+		if items[2].DependsOn[i] != want {
+			t.Fatalf("dep %d: expected %q, got %q", i, want, items[2].DependsOn[i])
+		}
+	}
+	if len(items[2].ResolvedDependsOn) != 2 ||
+		items[2].ResolvedDependsOn[0] != items[0] ||
+		items[2].ResolvedDependsOn[1] != items[1] {
+		t.Fatalf("expected resolved deps to point at the first two items, got %+v", items[2].ResolvedDependsOn)
+	}
+}
+
+func TestNormalizePlanItems_DependsOnUnknownStillErrors(t *testing.T) {
+	_, err := NormalizePlanItems([]*PlanItem{
+		{ID: "a", Step: "前置", Status: PlanStepPending},
+		{ID: "b", Step: "下游", Status: PlanStepPending, DependsOn: []string{"does-not-exist"}},
+	}, true)
+	if err == nil {
+		t.Fatalf("expected unknown dependency error, got nil")
+	}
+}

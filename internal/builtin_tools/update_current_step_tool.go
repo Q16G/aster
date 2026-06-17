@@ -13,6 +13,9 @@ import (
 type UpdateCurrentStepTool struct {
 	ctx               ToolContext
 	ChildAgentChecker func() []string
+	// StepFileChecker 在 status=completed 提交前校验 step 过程文件与实际进度一致，
+	// 返回非 nil error 时拒绝提交（由 runtime 注入，nil 跳过）。
+	StepFileChecker func(stepID string) error
 }
 
 func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
@@ -22,7 +25,7 @@ func NewUpdateCurrentStepTool(ctx ToolContext) *UpdateCurrentStepTool {
 func (t *UpdateCurrentStepTool) Name() string { return UpdateCurrentStepToolName }
 
 func (t *UpdateCurrentStepTool) Description() string {
-	return "写入当前 step 的终态与结果。"
+	return "step 完成或失败后调用，提交当前 step 的结构化终态与结果；这是结束 step 的唯一方式。status=completed 前须完成覆盖对账（仍有 uncovered 项时不得标 completed）。"
 }
 
 func (t *UpdateCurrentStepTool) Parameters() any {
@@ -80,22 +83,36 @@ func (t *UpdateCurrentStepTool) Parameters() any {
 					"type": "string",
 				},
 			},
-			"open_questions": map[string]any{
+			"coverage_checklist": map[string]any{
 				"type":        "array",
-				"description": "未决问题数组，记录信息不足或需要后续确认的事项",
+				"description": "覆盖对账清单。当 step 声明目标含全量量词或存在可枚举清单时必填：执行现场逐项物化对账，每项给出状态与依据",
 				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"tool_calls_digest": map[string]any{
-				"type":        "array",
-				"description": "本 step 工具调用摘要数组，每条格式：[工具名] 关键参数摘要 → 结果要点",
-				"items": map[string]any{
-					"type": "string",
+					"type": "object",
+					"properties": map[string]any{
+						"item": map[string]any{
+							"type":        "string",
+							"description": "对账工作项",
+						},
+						"status": map[string]any{
+							"type":        "string",
+							"enum":        []any{"verified", "uncovered", "justified_skip", "referenced_prior_coverage"},
+							"description": "覆盖状态",
+						},
+						"evidence": map[string]any{
+							"type":        "string",
+							"description": "status=verified 时的工具调用证据要点",
+						},
+						"reason": map[string]any{
+							"type":        "string",
+							"description": "status=justified_skip/uncovered 时的原因",
+						},
+					},
+					"required":             []string{"item", "status"},
+					"additionalProperties": false,
 				},
 			},
 		},
-		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts", "open_questions", "tool_calls_digest"},
+		"required":             []string{"status", "status_summary", "short_summary", "long_summary", "key_facts"},
 		"additionalProperties": false,
 	}
 }
@@ -134,8 +151,10 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 	shortSummary := ToolRuntimeValue(args["short_summary"])
 	longSummary := ToolRuntimeValue(args["long_summary"])
 	keyFacts := normalizeToolStringSlice(args["key_facts"])
-	openQuestions := normalizeToolStringSlice(args["open_questions"])
-	toolCallsDigest := normalizeToolStringSlice(args["tool_calls_digest"])
+	coverageChecklist, err := normalizeCoverageChecklist(args["coverage_checklist"])
+	if err != nil {
+		return "", err
+	}
 
 	prev := t.ctx.Snapshot()
 	target := prev.CurrentStep()
@@ -143,21 +162,26 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		return "", fmt.Errorf("current step is empty, wait for runtime planning first")
 	}
 
-	artifactDir, summaryFile, resultFile := resolveStepArtifactPaths(prev.PlanVersion, strings.TrimSpace(target.ID))
+	if status == PlanStepCompleted && t.StepFileChecker != nil {
+		if err := t.StepFileChecker(strings.TrimSpace(target.ID)); err != nil {
+			return "", err
+		}
+	}
+
+	artifactDir := resolveStepArtifactDir(prev.PlanVersion, strings.TrimSpace(target.ID))
 
 	snapshot := t.ctx.UpdateCurrentStep(CurrentStepUpdate{
-		Status:          status,
-		Summary:         summary,
-		DisplayResult:   displayResult,
-		Result:          result,
-		Error:           errText,
-		References:      references,
-		StatusSummary:   statusSummary,
-		ShortSummary:    shortSummary,
-		LongSummary:     longSummary,
-		KeyFacts:        keyFacts,
-		OpenQuestions:   openQuestions,
-		ToolCallsDigest: toolCallsDigest,
+		Status:            status,
+		Summary:           summary,
+		DisplayResult:     displayResult,
+		Result:            result,
+		Error:             errText,
+		References:        references,
+		StatusSummary:     statusSummary,
+		ShortSummary:      shortSummary,
+		LongSummary:       longSummary,
+		KeyFacts:          keyFacts,
+		CoverageChecklist: coverageChecklist,
 	})
 	t.ctx.GetEmitter().EmitStateChange(snapshot)
 	EmitToolRuntimeInfo(ctx, "step result ready", map[string]any{
@@ -187,8 +211,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		"error":           errText,
 		"references":      references,
 		"artifact_dir":    artifactDir,
-		"summary_file":    summaryFile,
-		"result_file":     resultFile,
 		"phase":           snapshot.Phase,
 		"current_step_id": snapshot.CurrentStepID,
 		"progress":        snapshot.Progress,
@@ -202,8 +224,6 @@ func (t *UpdateCurrentStepTool) Execute(ctx context.Context, args map[string]any
 		"status":          status,
 		"current_step_id": snapshot.CurrentStepID,
 		"artifact_dir":    artifactDir,
-		"summary_file":    summaryFile,
-		"result_file":     resultFile,
 	})
 	return string(out), nil
 }
@@ -212,11 +232,38 @@ func normalizeToolStringSlice(value any) []string {
 	return argx.StringSlice(value)
 }
 
-func resolveStepArtifactPaths(planVersion int, stepID string) (artifactDir string, summaryFile string, resultFile string) {
-	stepID = strings.TrimSpace(stepID)
-	if planVersion <= 0 || stepID == "" {
-		return "", "", ""
+func normalizeCoverageChecklist(value any) ([]CoverageChecklistItem, error) {
+	if value == nil {
+		return nil, nil
 	}
-	artifactDir = "shared/step_artifacts"
-	return artifactDir, summaryFile, resultFile
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal coverage_checklist failed: %w", err)
+	}
+	var items []CoverageChecklistItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("invalid coverage_checklist: %w", err)
+	}
+	out := items[:0]
+	for _, item := range items {
+		item.Item = strings.TrimSpace(item.Item)
+		item.Status = strings.TrimSpace(item.Status)
+		if item.Item == "" || item.Status == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// resolveStepArtifactDir 返回 step 产物目录；summary_file 双写已废弃（产出并入
+// shared/step_<stepID>.md，指针走 plan_item.step_file）。
+func resolveStepArtifactDir(planVersion int, stepID string) string {
+	if planVersion <= 0 || strings.TrimSpace(stepID) == "" {
+		return ""
+	}
+	return "shared/step_artifacts"
 }

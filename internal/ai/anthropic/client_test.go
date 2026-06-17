@@ -33,13 +33,15 @@ func TestChatExWithOptions_BuildsAnthropicCacheableRequest(t *testing.T) {
 		if !ok || len(system) != 2 {
 			t.Fatalf("unexpected system blocks: %#v", req["system"])
 		}
-		firstBlock := system[0].(map[string]any)
-		if firstBlock["type"] != "text" {
-			t.Fatalf("unexpected first system block: %#v", firstBlock)
-		}
-		cacheControl, ok := firstBlock["cache_control"].(map[string]any)
-		if !ok || cacheControl["type"] != "ephemeral" || cacheControl["ttl"] != "5m" {
-			t.Fatalf("unexpected cache_control: %#v", firstBlock["cache_control"])
+		for i, raw := range system {
+			block := raw.(map[string]any)
+			if block["type"] != "text" {
+				t.Fatalf("unexpected system block %d: %#v", i, block)
+			}
+			cacheControl, ok := block["cache_control"].(map[string]any)
+			if !ok || cacheControl["type"] != "ephemeral" || cacheControl["ttl"] != "5m" {
+				t.Fatalf("unexpected cache_control on system block %d: %#v", i, block["cache_control"])
+			}
 		}
 
 		tools, ok := req["tools"].([]any)
@@ -61,6 +63,12 @@ func TestChatExWithOptions_BuildsAnthropicCacheableRequest(t *testing.T) {
 		toolResultMsg := messages[1].(map[string]any)
 		if toolResultMsg["role"] != "user" {
 			t.Fatalf("unexpected tool result role: %#v", toolResultMsg["role"])
+		}
+		// 移动断点:最后一条 message 的末 content block 带 cache_control。
+		lastContent := toolResultMsg["content"].([]any)
+		lastBlock := lastContent[len(lastContent)-1].(map[string]any)
+		if lastCache, ok := lastBlock["cache_control"].(map[string]any); !ok || lastCache["type"] != "ephemeral" {
+			t.Fatalf("expected moving breakpoint on last message block, got %#v", lastBlock)
 		}
 
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -92,7 +100,8 @@ func TestChatExWithOptions_BuildsAnthropicCacheableRequest(t *testing.T) {
 	)
 
 	choices, err := client.ChatExWithOptions(context.Background(), []*ai.MsgInfo{
-		ai.NewSystemMsgInfo("static rules\n<CURRENT_STEP>\ndynamic state"),
+		ai.NewSystemMsgInfo("generic rules block"),
+		ai.NewSystemMsgInfo("agent identity and env block"),
 		ai.NewUserMsgInfo("hello"),
 		ai.NewToolCallResultMsgInfo("tool result", "toolu_1"),
 	}, &ai.RequestOptions{

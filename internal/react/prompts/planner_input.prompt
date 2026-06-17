@@ -1,21 +1,3 @@
-{{- if .AgentRole}}
-<AGENT_ROLE>
-{{.AgentRole}}
-</AGENT_ROLE>
-
-{{end -}}
-{{- if .AgentBackground}}
-<AGENT_BACKGROUND>
-{{.AgentBackground}}
-</AGENT_BACKGROUND>
-
-{{end -}}
-{{- if .AgentInstruction}}
-<AGENT_INSTRUCTION>
-{{.AgentInstruction}}
-</AGENT_INSTRUCTION>
-
-{{end -}}
 {{- if .HandoffContext}}
 <HANDOFF_CONTEXT>
 {{.HandoffContext}}
@@ -31,8 +13,12 @@
 {{- if .TaskItemsJSON}}
 
 <TASK_ITEMS>
+说明：已完成项内联产出小字段（short_summary / key_facts）与文件指针（step_file / result_file / timeline_file），承接与核实直接消费，无需重新发现；tool_calls_digest 顺 timeline_file 指针按需回读，不内联。
 {{.TaskItemsJSON}}
 </TASK_ITEMS>
+{{- end}}
+{{- if .PlannerJournalPath}}
+计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PlannerJournalPath}}`
 {{- end}}
 {{- if .ReplanContextJSON}}
 
@@ -40,28 +26,16 @@
 {{.ReplanContextJSON}}
 </REPLAN_CONTEXT>
 {{- end}}
-{{- if .HasExecutionLine}}
-
-<EXECUTION_LINE>
-{{.ExecutionLineJSON}}
-</EXECUTION_LINE>
-{{- end}}
-{{- if .HasWorkspaceContexts}}
-
-<WORKSPACE_STEP_CONTEXTS>
-{{.WorkspaceContextsJSON}}
-</WORKSPACE_STEP_CONTEXTS>
-{{- end}}
 {{- if .RecoveryContextJSON}}
 
 <RECOVERY_CHILD_AGENTS>
-恢复回合：上一个 step 在中断前未被综合，其子 agent 产出对你不可见。以下为中断点子 agent 现场指针与中断 step 的盘上产出目录，请用文件工具读取后续跑或综合。
+恢复回合：上一个 step 在中断前未被综合，其子 agent 产出对你不可见。以下为中断点子 agent 现场指针与中断 step 的盘上产出目录，据此续跑或综合其产出。
 {{.RecoveryContextJSON}}
 </RECOVERY_CHILD_AGENTS>
 {{- end}}
-{{- if not (or .TaskItemsJSON .ReplanContextJSON .HasExecutionLine .RecoveryContextJSON)}}
+{{- if not (or .TaskItemsJSON .ReplanContextJSON .RecoveryContextJSON)}}
 
 <PLANNING_HINT>
-这是一个全新任务。请先使用工具做轻量调查，了解与任务相关的上下文，然后再调用 submit_plan 提交有针对性的计划。
+这是一个全新任务：无已有执行状态可承接，计划须基于对任务相关上下文的实际了解，而非凭空假设。
 </PLANNING_HINT>
 {{- end}}

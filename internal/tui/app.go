@@ -74,7 +74,6 @@ type Model struct {
 	input           InputModel
 	sidebar         SidebarModel
 	subAgentPanel   SubAgentPanel
-	thinkingPanel   ThinkingPanelModel
 	agentCtx        *AgentExecContext
 	humanBridge     *HumanInputBridge
 	agentRunning    bool
@@ -109,7 +108,6 @@ type Model struct {
 	runtimeProgress         int
 	runtimeGoal             string
 	runtimeWarnings         []string
-	replanThinkBuf          *strings.Builder
 	renderScheduled         bool
 	sessionRestoredOnce     bool
 	mcpLastLogged           map[string]string
@@ -170,7 +168,6 @@ func NewModel(deps ModelDeps) Model {
 		input:           NewInputModel(),
 		sidebar:         NewSidebarModel(),
 		subAgentPanel:   NewSubAgentPanel(),
-		thinkingPanel:   NewThinkingPanelModel(),
 		agentCtx:        deps.AgentCtx,
 		humanBridge:     deps.HumanBridge,
 		profileRegistry: deps.ProfileRegistry,
@@ -180,7 +177,6 @@ func NewModel(deps ModelDeps) Model {
 		credStore:       deps.CredStore,
 		appCfg:          deps.AppCfg,
 		providerCfg:     deps.ProviderCfg,
-		replanThinkBuf:  &strings.Builder{},
 		statusText:      "ready",
 		focus:           FocusInput,
 
@@ -510,7 +506,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hadStreamByAgent = nil
 		m.hadFinalAnswerDuringRun = false
 		m.externalInterrupt = nil
-		m.thinkingPanel.Reset()
+		m.runtimePhase = ""
 		m.clearRetryState()
 		m.runStartTime = time.Now()
 		m.turnStartUsage = m.sessionUsage
@@ -528,7 +524,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentEventMsg:
 		m.handleAgentEvent(msg.Event)
-		if !m.renderScheduled && (m.chat.IsDirty() || m.thinkingPanel.IsDirty()) {
+		if !m.renderScheduled && m.chat.IsDirty() {
 			m.renderScheduled = true
 			return m, renderTickCmd()
 		}
@@ -537,7 +533,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case renderTickMsg:
 		m.renderScheduled = false
 		m.chat.FlushRender()
-		m.thinkingPanel.FlushRender()
 		if m.subAgentPanelVisible() {
 			m.refreshSubAgentPanel()
 		}
@@ -551,7 +546,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AgentDoneMsg:
-		m.thinkingPanel.Hide()
 		m.updateLayout()
 		m.chat.FlushThinking()
 		hadStream := m.flushAllStreamsAndPersist()
@@ -560,6 +554,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearRetryState()
 		m.dialogStack.Clear()
 		m.agentRunning = false
+		m.runtimePhase = ""
 		m.spinner.Stop()
 		m.input.SetEnabled(true)
 		m.pendingInterrupt = nil
@@ -675,7 +670,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.hadStreamByAgent = nil
 			m.hadFinalAnswerDuringRun = false
 			m.externalInterrupt = nil
-			m.thinkingPanel.Reset()
 			m.clearRetryState()
 			m.runStartTime = time.Now()
 			m.turnStartUsage = m.sessionUsage
@@ -1769,8 +1763,7 @@ func (m *Model) updateLayout() {
 	}
 
 	pickerHeight := m.pickerHeight(chatWidth)
-	panelHeight := m.thinkingPanel.Height()
-	chatHeight := mainHeight - inputHeight - pickerHeight - panelHeight
+	chatHeight := mainHeight - inputHeight - pickerHeight
 	if chatHeight < 1 {
 		chatHeight = 1
 	}
@@ -1794,7 +1787,6 @@ func (m *Model) updateLayout() {
 		m.refreshSubAgentPanel()
 	}
 	m.chat.SetSize(contentWidth, chatHeight)
-	m.thinkingPanel.SetWidth(contentWidth)
 	m.input.SetWidth(contentWidth)
 	m.input.SetHeight(inputLines)
 	m.footer.SetWidth(m.width)
@@ -1882,19 +1874,10 @@ func (m Model) View() string {
 	}
 
 	var leftPane string
-	panelView := m.thinkingPanel.View()
 	if pickerView != "" {
-		if panelView != "" {
-			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, panelView, pickerView, inputView)
-		} else {
-			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, pickerView, inputView)
-		}
+		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, pickerView, inputView)
 	} else {
-		if panelView != "" {
-			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, panelView, inputView)
-		} else {
-			leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
-		}
+		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
 	}
 
 	cols := []string{leftPane}

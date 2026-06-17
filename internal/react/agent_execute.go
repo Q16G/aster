@@ -12,6 +12,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/react/persistv2"
+	"aster/internal/runtimelog"
 	"aster/internal/structuredoutput"
 	"aster/internal/utils"
 
@@ -34,6 +35,7 @@ type ExecuteConfig struct {
 	interruptCancel            *interruptCancel
 	resultSource               ResultSource
 	parentWorkspaceRoot        string
+	sourceWorkingDir           string
 	skipIntentClassification   bool
 }
 
@@ -207,6 +209,15 @@ func WithParentWorkspace(rootDir string) ExecuteOption {
 	}
 }
 
+func WithSourceWorkingDir(dir string) ExecuteOption {
+	return func(cfg *ExecuteConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.sourceWorkingDir = normalizeSourceWorkingDir(dir)
+	}
+}
+
 // Execute 执行 Agent
 func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
 	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
@@ -253,6 +264,14 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.workspaceRootDir = normalizeWorkspaceRootDir(workspaceRuntime.RootDir())
 	a.workspaceNamespace = builtin_tools.NormalizeWorkspaceNamespace(workspaceRuntime.Namespace())
 	a.parentWorkspaceRoot = strings.TrimSpace(cfg.parentWorkspaceRoot)
+	sourceWorkingDir := normalizeSourceWorkingDir(cfg.sourceWorkingDir)
+	if sourceWorkingDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			sourceWorkingDir = normalizeSourceWorkingDir(wd)
+		}
+	}
+	a.sourceWorkingDir = sourceWorkingDir
+	a.runtimeRepoContext = detectRuntimeRepoContext(ctx, sourceWorkingDir)
 	if sharedDir := workspaceRuntime.SharedDir(); sharedDir != "" {
 		_ = os.MkdirAll(sharedDir, 0o755)
 		if seeder, ok := workspaceRuntime.(interface{ EnsureSharedScaffold() error }); ok {
@@ -268,6 +287,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.setCurrentRunClient(runClient)
 
 	runBudget := resolveContextBudget(runClient)
+	a.contextWindowTokens = runBudget.ContextWindowTokens
 	if compressor, ok := a.cfg.HistoryCompressor.(*AIHistoryCompressor); ok && compressor != nil {
 		triggerTokens := runBudget.TriggerTokens
 		if triggerTokens <= 0 {
@@ -422,6 +442,12 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	}
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
+	a.currentTaskContext = taskContext
+	a.identityEnvPrompt = ""
+	a.identityEnvBuilt = false
+	a.frozenStepParts = nil
+	a.frozenStepPartsStepID = ""
+	a.frozenStepPartsPlanVer = 0
 	a.lastStepTranscriptBlobRef = ""
 	a.resetRunHandoff()
 	if a.asyncRegistry != nil {
@@ -1122,9 +1148,38 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 		default:
 			return true
 		}
-	case builtin_tools.AgentPhasePlan,
-		builtin_tools.AgentPhaseStepReplan,
-		builtin_tools.AgentPhaseFinalAnswer:
+	case builtin_tools.AgentPhasePlan:
+		switch toolName {
+		case builtin_tools.ReadFileToolName,
+			builtin_tools.ListFilesToolName,
+			builtin_tools.RgToolName,
+			builtin_tools.BashToolName,
+			// planner 阶段开放子 Agent 委派族，供专业视角差异、独立可并行调研子问题、
+			// 长耗时大上下文调研场景按需委派；step 阶段的执行委派职责不变。
+			builtin_tools.SubAgentToolName,
+			builtin_tools.SubAgentStatusToolName,
+			builtin_tools.AwaitSubAgentsToolName:
+			return true
+		case builtin_tools.HumanConfirmToolName:
+			// 澄清通道仅主 Agent 的 plan 阶段可用：子 Agent 没有人机交互通道，
+			// 应基于最合理假设推进并把假设写入 goal_understanding。
+			return a.cfg != nil && !a.cfg.IsSubAgent
+		default:
+			return false
+		}
+	case builtin_tools.AgentPhaseStepReplan:
+		switch toolName {
+		case builtin_tools.ReadFileToolName,
+			builtin_tools.ListFilesToolName,
+			builtin_tools.RgToolName,
+			builtin_tools.BashToolName,
+			submitReplanToolName:
+			return true
+		default:
+			return false
+		}
+	case builtin_tools.AgentPhaseFinalAnswer,
+		builtin_tools.AgentPhaseIntentClassification:
 		switch toolName {
 		case builtin_tools.ReadFileToolName,
 			builtin_tools.ListFilesToolName,
@@ -1192,7 +1247,7 @@ type aiCallProxyResult struct {
 	Compaction    *HistoryCompactionResult
 }
 
-func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, prompt string, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, parts PromptParts, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if a == nil || a.cfg == nil {
 		return nil, fmt.Errorf("agent not initialized")
 	}
@@ -1207,13 +1262,18 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		promptFamily = promptFamilyThinkAct
 	}
 
-	systemMsg := ai.NewSystemMsgInfo(prompt)
-	// State-first: model input is system + in-phase transcript only.
+	// State-first: model input is system(+first user) + in-phase transcript only.
 	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
-	msgs := make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
-	msgs = append(msgs, systemMsg)
-	msgs = append(msgs, a.stepHistory...)
-	requestOptions := a.buildPromptRequestOptions(promptFamily, prompt, true, tools...)
+	msgs := buildOutboundMsgs(parts, a.stepHistory)
+	requestOptions := a.buildPromptRequestOptions(promptFamily, parts, true, tools...)
+	runtimelog.LogJSON("info", map[string]any{
+		"event":         "ai_call_prompt_profile",
+		"prompt_family": promptFamily,
+		"system_hash":   requestOptions.PromptCacheKeyHash,
+		"system_len":    len(parts.SystemJoined()),
+		"user_len":      len(parts.User),
+		"history_msgs":  len(a.stepHistory),
+	})
 
 	// StepHistory compaction: only when approaching the input token budget.
 	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.
@@ -1233,16 +1293,14 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		if estimateHistoryTokens(msgs) >= triggerTokens {
 			// Persist the full transcript snapshot before any in-memory compaction.
 			a.persistStepTranscriptBlob()
-			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, prompt, a.stepHistory)
+			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, parts.Joined(), a.stepHistory)
 			if err != nil {
 				return nil, err
 			}
 			if compacted != nil && len(compacted.StepHistory) > 0 {
 				a.stepHistory = NormalizeHistoryMsgInfos(compacted.StepHistory)
 				a.persistInFlightStepHistory()
-				msgs = make([]*ai.MsgInfo, 0, 1+len(a.stepHistory))
-				msgs = append(msgs, systemMsg)
-				msgs = append(msgs, a.stepHistory...)
+				msgs = buildOutboundMsgs(parts, a.stepHistory)
 			}
 			if compacted != nil && !compacted.CanContinue {
 				return nil, &CompactionTerminatedError{
@@ -1252,6 +1310,10 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 			}
 		}
 	}
+
+	// 非视觉模型：发送前剥离 image_url，避免 DeepSeek 等返回 HTTP 400。
+	// 仅作用于出站副本，a.stepHistory 中的原图保留，切回视觉模型可恢复。
+	msgs = sanitizeOutboundForVision(runClient, msgs)
 
 	const emptyResponseMaxRetries = 5
 

@@ -7,6 +7,7 @@ const (
 	TaskPlannerToolName       = "task_planner"
 	HumanConfirmToolName      = "human_confirm"
 	SubmitFinalAnswerToolName = "submit_final_answer"
+	SubmitIntentToolName      = "submit_intent"
 
 	ListFilesToolName      = "list_files"
 	ReadFileToolName       = "read_file"

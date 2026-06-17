@@ -162,6 +162,14 @@ func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
 		t.Fatalf("new parent: %v", err)
 	}
 	parent.workspaceRootDir = t.TempDir()
+	parent.sourceWorkingDir = "/repo/source"
+	parent.runtimeRepoContext = RuntimeRepoContext{
+		SourceWorkingDir: "/repo/source",
+		RepoRootDir:      "/repo/source",
+		IsGitRepo:        true,
+		Branch:           "feature/root",
+		IsWorktree:       true,
+	}
 
 	factory := NewAgentFactory(
 		WithFactoryDefaultAIClient(&stubClient{}),
@@ -187,6 +195,18 @@ func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
 	}
 	if !strings.HasPrefix(setupA.childName, "sub-") {
 		t.Fatalf("expected sub- prefix, got %q", setupA.childName)
+	}
+	if len(setupA.execOpts) == 0 {
+		t.Fatalf("expected child exec options to be populated")
+	}
+	cfg := &ExecuteConfig{}
+	for _, opt := range setupA.execOpts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+	if cfg.sourceWorkingDir != "/repo/source" {
+		t.Fatalf("expected child to inherit source working dir, got %q", cfg.sourceWorkingDir)
 	}
 }
 
@@ -281,6 +301,74 @@ func TestResolveChildToolNames_FiltersPolicyManagedTools(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResolveChildToolNames_AlwaysIncludesBaselineDomainTools guards the fix
+// for the planner crash: a child delegated with tools:["bash"] used to end up
+// with an empty ToolNames (bash is policy-stripped) and therefore lost
+// read_file/list_files/rg, which the plan/replan prompts structurally rely on.
+// The baseline read-only domain tools must now be present regardless of what
+// the parent requested.
+func TestResolveChildToolNames_AlwaysIncludesBaselineDomainTools(t *testing.T) {
+	parent, err := NewReActAgent("parent", &stubClient{},
+		WithEmitter(NewDummyEmitter()),
+		WithTools(builtin_tools.NewReadFileTool()),
+	)
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryToolRegistry(NewDefaultToolRegistry()),
+	)
+	sub := NewSubAgentTool(parent, factory)
+
+	baseline := []string{
+		builtin_tools.ReadFileToolName,
+		builtin_tools.ListFilesToolName,
+		builtin_tools.RgToolName,
+	}
+
+	t.Run("policy-only request still yields baseline", func(t *testing.T) {
+		got := sub.resolveChildToolNames([]string{"bash"})
+		for _, name := range baseline {
+			if !slices.Contains(got, name) {
+				t.Errorf("expected baseline tool %q in result %v", name, got)
+			}
+		}
+		if slices.Contains(got, builtin_tools.BashToolName) {
+			t.Errorf("bash must remain policy-stripped, got %v", got)
+		}
+	})
+
+	t.Run("no duplicates when baseline already requested", func(t *testing.T) {
+		got := sub.resolveChildToolNames([]string{"bash", "read_file"})
+		count := 0
+		for _, name := range got {
+			if name == builtin_tools.ReadFileToolName {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("read_file must appear exactly once, got %d in %v", count, got)
+		}
+		for _, name := range baseline {
+			if !slices.Contains(got, name) {
+				t.Errorf("expected baseline tool %q in result %v", name, got)
+			}
+		}
+	})
+
+	t.Run("default inheritance path retains baseline", func(t *testing.T) {
+		got := sub.resolveChildToolNames(nil)
+		for _, name := range baseline {
+			if !slices.Contains(got, name) {
+				t.Errorf("expected baseline tool %q in default result %v", name, got)
+			}
+		}
+	})
 }
 
 // TestResolveChildToolNames_ExcludesAgentResidentMCPTools guards the fix for

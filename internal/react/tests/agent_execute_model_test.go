@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -1398,7 +1400,6 @@ func TestExecute_WritesStepReplanEmptyResponseLog(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
-						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
@@ -1461,7 +1462,6 @@ func TestExecute_StepReplanDefaultInnerRetryRemainsThree(t *testing.T) {
 						"summary":        "ok",
 						"display_result": "step ok",
 						"result":         "step ok",
-						"open_questions": []string{"need clarification"},
 					}),
 				},
 			},
@@ -1549,6 +1549,7 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 }
 
 func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 本用例验证 per-step replan 序列，pin per-step
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -1623,7 +1624,12 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	}
 }
 
+// TestExecute_StepSummaryReplansBeforeRunningOldPendingStep 校验 step_replan 三轴决策路径：
+// step-1 完成后 step_replan 提交 should_replan=true + 三轴缺口，agent 把 ReplanContext 回流
+// 给 planner，由 planner 产出含 step-2 的新 plan（取代 legacy-step）。planner 被调用两次
+// （初始 + 回流编排）。
 func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 验证 step-1 后 mid-batch replan，pin per-step
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
 		if e != nil {
@@ -1642,9 +1648,10 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				},
 			},
 			{
-				NeedsPlanning: true,
-				Explanation:   "补齐新缺口",
+				NeedsPlanning: false,
+				Explanation:   "回流编排：替换 legacy-step 为 step-2",
 				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "完成已有步骤", Status: builtin_tools.PlanStepCompleted},
 					{ID: "step-2", Step: "围绕新缺口补齐验证", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
 				},
 			},
@@ -1659,19 +1666,17 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"summary":        "ok1",
 						"display_result": "step1 ok",
 						"result":         "step1 ok",
-						"open_questions": []string{"新增验证缺口需要确认"},
 					}),
 				},
 			},
 			{
+				// step_replan 提交三轴缺口，触发 ReplanContext 回流 planner。
 				toolCalls: []*ai.FunctionTool{
-					mustBuildToolCall(t, "call-submit-replan-1", "submit_plan", map[string]any{
-						"should_replan":    true,
-						"replan_reason":    "旧计划未覆盖新增验证缺口",
-						"next_goal":        "围绕新缺口补齐验证",
-						"incomplete_items": []any{},
-						"new_surfaces":     []any{"missing-1"},
-						"warnings":         []any{"warn-1"},
+					mustBuildToolCall(t, "call-submit-replan-1", "submit_replan", map[string]any{
+						"should_replan":      true,
+						"replan_reason":      "旧计划未覆盖新增验证缺口",
+						"current_phase_done": false,
+						"incomplete_items":   []any{"legacy-step 覆盖的验证面缺失"},
 					}),
 				},
 			},
@@ -1687,13 +1692,10 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 			},
 			{
 				toolCalls: []*ai.FunctionTool{
-					mustBuildToolCall(t, "call-submit-replan-2", "submit_plan", map[string]any{
-						"should_replan":    false,
-						"replan_reason":    "",
-						"next_goal":        "",
-						"incomplete_items": []any{},
-						"new_surfaces":     []any{},
-						"warnings":         []any{},
+					mustBuildToolCall(t, "call-submit-replan-2", "submit_replan", map[string]any{
+						"should_replan": false,
+						"replan_reason": "",
+						"next_goal":     "",
 					}),
 				},
 			},
@@ -1728,19 +1730,14 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if client.calls != 5 {
 		t.Fatalf("expected 5 model calls (step+replan+step+replan+final), got %d", client.calls)
 	}
+	// 三轴决策路径下 planner 被调用两次：初始规划 + step_replan 触发的回流编排。
 	if planner.calls != 2 {
-		t.Fatalf("expected planner called twice, got %d", planner.calls)
-	}
-	if len(planner.inputs) < 2 || !strings.Contains(planner.inputs[1], "<REPLAN_CONTEXT>") {
-		t.Fatalf("expected second planner input to include replan context, got %q", strings.Join(planner.inputs, "\n---\n"))
-	}
-	if !strings.Contains(planner.inputs[1], "\"reason\":\"旧计划未覆盖新增验证缺口\"") {
-		t.Fatalf("expected second planner input to include replan reason, got %q", planner.inputs[1])
+		t.Fatalf("expected planner called twice (initial + replan reflow), got %d", planner.calls)
 	}
 
 	snapshot := agent.State()
 	if snapshot.PlanVersion != 2 {
-		t.Fatalf("expected plan version 2 after replan, got %d", snapshot.PlanVersion)
+		t.Fatalf("expected plan version 2 after replan reflow, got %d", snapshot.PlanVersion)
 	}
 	if snapshot.ReplanContext != nil {
 		t.Fatalf("expected replan context cleared after replanned plan finishes, got %+v", snapshot.ReplanContext)
@@ -1797,8 +1794,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["replan_reason"])); got != "旧计划未覆盖新增验证缺口" {
 		t.Fatalf("expected replan reason in event, got %#v", stepReplanEvent.Payload)
 	}
-	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["next_goal"])); got != "围绕新缺口补齐验证" {
-		t.Fatalf("expected next goal in event, got %#v", stepReplanEvent.Payload)
+	if got, ok := stepReplanEvent.Payload["current_phase_done"].(bool); !ok || got {
+		t.Fatalf("expected current_phase_done=false in event, got %#v", stepReplanEvent.Payload)
 	}
 }
 
@@ -1911,8 +1908,24 @@ func (p *executeModelAgenticPlanner) Plan(ctx context.Context, input string) (*b
 	return nil, fmt.Errorf("should not be called when PlannerPromptBuilder is implemented")
 }
 
-func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (string, error) {
-	return p.prompt, nil
+func (p *executeModelAgenticPlanner) BuildPrompt(input TaskPlannerPromptInput) (PromptParts, error) {
+	return PromptParts{SystemRules: p.prompt, User: "测试输入"}, nil
+}
+
+// seedTaskContextFactsWorkspace 预置一个 `## 输入事实` 已落盘的工作区（模拟模型已按
+// 「共享区终态」契约写入），让脚本化 plan 用例通过 submit_plan 的事实板闸门。
+func seedTaskContextFactsWorkspace(t *testing.T) ExecuteOption {
+	t.Helper()
+	root := t.TempDir()
+	sharedDir := filepath.Join(root, "shared")
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
+		t.Fatalf("mkdir shared dir failed: %v", err)
+	}
+	content := "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: 脚本化测试任务\n\n## 执行中补充\n"
+	if err := os.WriteFile(filepath.Join(sharedDir, "task_context.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write task_context.md failed: %v", err)
+	}
+	return WithWorkspaceSession("seeded-facts-session", root)
 }
 
 func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
@@ -1928,6 +1941,7 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 						},
 						"explanation":        "需要规划",
 						"goal_understanding": "核心目标：执行用户请求",
+						"current_phase":      "执行用户请求",
 					}),
 				},
 			},
@@ -1961,7 +1975,7 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude(), seedTaskContextFactsWorkspace(t))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -2071,13 +2085,12 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "ok",
-						"display_result":    "step ok",
-						"result":            "step ok",
-						"short_summary":     "completed analysis",
-						"tool_calls_digest": []string{"read_file(main.go)", "rg('TODO')"},
-						"key_facts":         []string{"found 3 TODOs"},
+						"status":         "completed",
+						"summary":        "ok",
+						"display_result": "step ok",
+						"result":         "step ok",
+						"short_summary":  "completed analysis",
+						"key_facts":      []string{"found 3 TODOs"},
 					}),
 				},
 			},
@@ -2145,15 +2158,13 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 	if rec.ShortSummary != "completed analysis" {
 		t.Fatalf("expected short_summary='completed analysis', got %q", rec.ShortSummary)
 	}
-	if len(rec.ToolCallsDigest) != 2 {
-		t.Fatalf("expected 2 tool_calls_digest entries, got %d: %v", len(rec.ToolCallsDigest), rec.ToolCallsDigest)
-	}
 	if len(rec.KeyFacts) != 1 || rec.KeyFacts[0] != "found 3 TODOs" {
 		t.Fatalf("expected key_facts=[found 3 TODOs], got %v", rec.KeyFacts)
 	}
 }
 
 func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	wsRoot := t.TempDir()
 	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
 
@@ -2163,12 +2174,11 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-1-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "step1 done",
-						"display_result":    "step1 ok",
-						"result":            "step1 ok",
-						"short_summary":     "first step done",
-						"tool_calls_digest": []string{"bash(ls)"},
+						"status":         "completed",
+						"summary":        "step1 done",
+						"display_result": "step1 ok",
+						"result":         "step1 ok",
+						"short_summary":  "first step done",
 					}),
 				},
 			},
@@ -2178,13 +2188,12 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
-						"status":            "completed",
-						"summary":           "step2 done",
-						"display_result":    "step2 ok",
-						"result":            "step2 ok",
-						"short_summary":     "second step done",
-						"tool_calls_digest": []string{"read_file(a.go)", "read_file(b.go)"},
-						"key_facts":         []string{"fact-a", "fact-b"},
+						"status":         "completed",
+						"summary":        "step2 done",
+						"display_result": "step2 ok",
+						"result":         "step2 ok",
+						"short_summary":  "second step done",
+						"key_facts":      []string{"fact-a", "fact-b"},
 					}),
 				},
 			},
@@ -2263,27 +2272,40 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 	if records[2].ShortSummary != "second step done" {
 		t.Fatalf("expected step-2 short_summary='second step done', got %q", records[2].ShortSummary)
 	}
-	if len(records[2].ToolCallsDigest) != 2 {
-		t.Fatalf("expected step-2 tool_calls_digest len=2, got %d", len(records[2].ToolCallsDigest))
-	}
 	if len(records[2].KeyFacts) != 2 {
 		t.Fatalf("expected step-2 key_facts len=2, got %d", len(records[2].KeyFacts))
 	}
 }
 
-// recordingChatClient wraps executeModelTestClient and captures the system message
-// (msgs[0]) from each ChatEx call, enabling tests to verify that multi-round
-// tool loops retain the full system prompt.
+// recordingChatClient wraps executeModelTestClient and captures the prompt prefix
+// (leading system messages + first user message) from each ChatEx call, enabling
+// tests to verify that multi-round tool loops retain the full prompt prefix.
 type recordingChatClient struct {
 	executeModelTestClient
-	systemMessages []string // Content of msgs[0] from each ChatEx call
+	systemMessages []string // system blocks + first user message of each ChatEx call
 }
 
 func (c *recordingChatClient) ChatEx(ctx context.Context, infos []*ai.MsgInfo, tools ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
-	if len(infos) > 0 && infos[0] != nil {
-		if s, ok := infos[0].Content.(string); ok {
-			c.systemMessages = append(c.systemMessages, s)
+	var prefix []string
+	for _, info := range infos {
+		if info == nil {
+			continue
 		}
+		s, ok := info.Content.(string)
+		if !ok {
+			break
+		}
+		if info.Role == "system" {
+			prefix = append(prefix, s)
+			continue
+		}
+		if info.Role == "user" {
+			prefix = append(prefix, s)
+		}
+		break
+	}
+	if len(prefix) > 0 {
+		c.systemMessages = append(c.systemMessages, strings.Join(prefix, "\n\n"))
 	}
 	return c.executeModelTestClient.ChatEx(ctx, infos, tools...)
 }
@@ -2312,7 +2334,6 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 							"display_result": "found issues",
 							"result":         "result data",
 							"short_summary":  "analysis complete",
-							"open_questions": []string{"need to check middleware"},
 						}),
 					},
 				},
@@ -2373,11 +2394,11 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 		t.Fatalf("expected success, got %#v", runResult)
 	}
 
-	// Find the step_replan system messages (they contain STEP_OUTCOME).
+	// Find the step_replan system messages (they contain REVIEW_WINDOW_CARDS).
 	// The sequence is: step phase call(s), step_replan round 1, step_replan round 2, final_answer.
 	var replanSystemMsgs []string
 	for _, sys := range client.systemMessages {
-		if strings.Contains(sys, "STEP_OUTCOME") {
+		if strings.Contains(sys, "REVIEW_WINDOW_CARDS") {
 			replanSystemMsgs = append(replanSystemMsgs, sys)
 		}
 	}
@@ -2395,7 +2416,7 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 
 	// Verify critical markers are present in round 2
 	round2 := replanSystemMsgs[1]
-	for _, marker := range []string{"CURRENT_GOAL", "STEP_OUTCOME", "JSON-SCHEMA", "should_replan"} {
+	for _, marker := range []string{"CURRENT_GOAL", "REVIEW_WINDOW_CARDS", "落盘终态", "should_replan"} {
 		if !strings.Contains(round2, marker) {
 			t.Errorf("round-2 system prompt missing marker %q", marker)
 		}
@@ -2404,6 +2425,89 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 	// Verify it's not empty
 	if len(round2) < 100 {
 		t.Fatalf("round-2 system prompt suspiciously short (%d bytes), likely empty or truncated", len(round2))
+	}
+}
+
+// TestStepReplan_NoBudgetInterruptOnManyToolRounds 校验取消思考预算后，step_replan
+// 在 12 轮文件工具调用后仍能正常 submit_plan 并直达 Step，不被中段催促降级。
+// 旧实现下 7 轮起就会收到 stepReplanBudgetNotice、9 轮硬退；新实现下 round 不再设上限。
+func TestStepReplan_NoBudgetInterruptOnManyToolRounds(t *testing.T) {
+	const readRounds = 12
+
+	replies := make([]executeModelReply, 0, 3+readRounds)
+	// step phase: step completes
+	replies = append(replies, executeModelReply{
+		toolCalls: []*ai.FunctionTool{
+			mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+				"status":         "completed",
+				"summary":        "done",
+				"display_result": "ok",
+				"result":         "ok",
+				"short_summary":  "step done",
+			}),
+		},
+	})
+	// step_replan: many rounds of read_file before submitting
+	for i := 0; i < readRounds; i++ {
+		replies = append(replies, executeModelReply{
+			toolCalls: []*ai.FunctionTool{
+				mustBuildToolCall(t, fmt.Sprintf("call-read-%d", i), builtin_tools.ReadFileToolName, map[string]any{
+					"path": fmt.Sprintf("/tmp/read-%d.txt", i),
+				}),
+			},
+		})
+	}
+	// step_replan final round: submit_plan should_replan=false
+	replies = append(replies, executeModelReply{
+		toolCalls: []*ai.FunctionTool{
+			mustBuildToolCall(t, "call-submit-replan", "submit_plan", map[string]any{
+				"should_replan": false,
+				"replan_reason": "",
+				"next_goal":     "",
+				"plan":          []any{},
+			}),
+		},
+	})
+	// final_answer
+	replies = append(replies, executeModelReply{
+		content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"no-budget","references":[]}`,
+	})
+
+	client := &executeModelTestClient{replies: replies}
+
+	agent, err := NewReActAgent(
+		"replan-no-budget",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(20),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTools(&noopPhaseTool{name: builtin_tools.ReadFileToolName}),
+		WithTaskPlanner(&executeModelStaticPlanner{
+			result: &builtin_tools.TaskPlannerResult{
+				NeedsPlanning: true,
+				Plan: []*builtin_tools.PlanItem{
+					{ID: "step-1", Step: "分析", Status: builtin_tools.PlanStepPending},
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success after %d step_replan tool rounds, got %#v", readRounds, runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "no-budget" {
+		t.Fatalf("expected final answer 'no-budget', got %q", runResult.Result)
+	}
+	// 全部预设回复都被消费，证明所有 readRounds 工具调用都被实际执行，无 budget notice 中断。
+	if client.calls != len(replies) {
+		t.Fatalf("expected %d model calls (all replies consumed), got %d — budget may have short-circuited", len(replies), client.calls)
 	}
 }
 
@@ -2519,6 +2623,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
+						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2533,6 +2638,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
+						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2591,7 +2697,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	runResult, err := agent.Execute(context.Background(), "test validation retry", WithSkipIntentPrelude())
+	runResult, err := agent.Execute(context.Background(), "test validation retry", WithSkipIntentPrelude(), seedTaskContextFactsWorkspace(t))
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -2693,5 +2799,82 @@ func mustBuildToolCall(t *testing.T, callID string, name string, args map[string
 			Name:      name,
 			Arguments: string(raw),
 		},
+	}
+}
+
+func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
+	submitPlanReply := func(callID string) executeModelReply {
+		return executeModelReply{
+			toolCalls: []*ai.FunctionTool{
+				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
+					"needs_planning": true,
+					"plan": []any{
+						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
+					},
+					"explanation":        "需要规划",
+					"goal_understanding": "核心目标：执行用户请求",
+					"current_phase":      "执行用户请求",
+				}),
+			},
+		}
+	}
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// plan 回合 1-3：事实板为空，submit_plan 被闸门拒绝并要求补写。
+			submitPlanReply("call-submit-1"),
+			submitPlanReply("call-submit-2"),
+			submitPlanReply("call-submit-3"),
+			// plan 回合 4：超过重试上限，闸门降级放行接受计划。
+			submitPlanReply("call-submit-4"),
+			// step 完成。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "ok",
+						"result": "ok", "short_summary": "step done",
+					}),
+				},
+			},
+			// step_replan：不重排。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-replan", "submit_plan", map[string]any{
+						"should_replan": false, "replan_reason": "", "next_goal": "",
+						"incomplete_items": []string{}, "new_surfaces": []string{}, "warnings": []string{},
+					}),
+				},
+			},
+			// final_answer。
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"facts-gate-final","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"facts-gate-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(8),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	// 不预置事实板：闸门应拒绝 3 次后降级放行；回复位次与上述脚本一一对应。
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success after gate degrade-accept, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "facts-gate-final" {
+		t.Fatalf("expected final answer after degrade-accept, got %q", runResult.Result)
+	}
+	if client.calls != len(client.replies) {
+		t.Fatalf("expected %d model calls (3 gate rejections + degrade accept + step + replan + final), got %d", len(client.replies), client.calls)
 	}
 }

@@ -10,13 +10,16 @@ import (
 
 const (
 	promptFamilyThinkAct          = "think_act"
+	promptFamilyTaskPlanner       = "task_planner"
+	promptFamilyStepReplan        = "step_replan"
+	promptFamilyFinalAnswer       = "final_answer"
 	promptFamilyIntentRecognition = "intent_recognition"
 	promptFamilySimpleReply       = "simple_reply"
 	promptFamilyHistoryCompaction = "history_compaction"
 	promptFamilyAgentHandoff      = "agent_handoff"
 )
 
-func (a *Agent) buildPromptRequestOptions(promptFamily string, prompt string, enableCache bool, tools ...*ai.FunctionTool) *ai.RequestOptions {
+func (a *Agent) buildPromptRequestOptions(promptFamily string, parts PromptParts, enableCache bool, tools ...*ai.FunctionTool) *ai.RequestOptions {
 	options := &ai.RequestOptions{
 		PromptFamily: strings.TrimSpace(promptFamily),
 	}
@@ -27,8 +30,7 @@ func (a *Agent) buildPromptRequestOptions(promptFamily string, prompt string, en
 		return ai.NormalizeRequestOptions(options)
 	}
 
-	stablePrefix := extractStablePromptPrefix(promptFamily, prompt)
-	stablePrefixHash := hashText(stablePrefix)
+	stablePrefixHash := hashText(parts.SystemJoined())
 	toolHash := hashToolDefinitions(tools)
 	scope := firstNonEmptyPromptCache(
 		strings.TrimSpace(a.workspaceNamespace),
@@ -51,26 +53,6 @@ func (a *Agent) buildPromptRequestOptions(promptFamily string, prompt string, en
 		options.PromptCacheRetention = pcc.TTL
 	}
 	return ai.NormalizeRequestOptions(options)
-}
-
-func extractStablePromptPrefix(promptFamily string, prompt string) string {
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return ""
-	}
-	if strings.TrimSpace(promptFamily) != promptFamilyThinkAct {
-		return prompt
-	}
-	for _, marker := range []string{
-		"<CURRENT_STEP>",
-		"<DEPENDENCY_STEP_SUMMARIES>",
-		"<EXECUTION_CONTEXTS>",
-	} {
-		if idx := strings.Index(prompt, marker); idx >= 0 {
-			return strings.TrimSpace(prompt[:idx])
-		}
-	}
-	return prompt
 }
 
 func hashToolDefinitions(tools []*ai.FunctionTool) string {

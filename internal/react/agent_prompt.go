@@ -5,77 +5,130 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"aster/internal/builtin_tools"
 )
 
-//go:embed prompts/think_act.prompt
-var thinkActPrompt string
+//go:embed prompts/think_act_system.prompt
+var thinkActSystemPrompt string
 
-func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, taskContext *TaskContextData) string {
+//go:embed prompts/think_act_user.prompt
+var thinkActUserPrompt string
+
+func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptParts {
 	if a == nil || a.promptManager == nil {
-		return ""
+		return PromptParts{}
 	}
 
 	snap := a.state.Snapshot()
 	currentStep := snap.CurrentStep()
-	dependencySummaries := SelectDependencyStepSummaryCards(snap, currentStep)
-	executionContexts := a.executionContextsForPrompt(snap)
-	hasDependencySummaries := len(dependencySummaries) > 0
-	hasExecutionContexts := len(executionContexts) > 0
+	dependencyItems := SelectDependencyPlanItemCards(snap, currentStep, a.workspaceRootDir)
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
 	mcpContext := a.buildMCPPromptContext()
-
-	workspaceSharedDir := ""
-	if a.workspaceRuntime != nil {
-		workspaceSharedDir = a.workspaceRuntime.SharedDir()
-	}
-	if workspaceSharedDir != "" {
-		for i := range dependencySummaries {
-			stepID := dependencySummaries[i].StepID
-			if stepID != "" && stepTimelineExists(workspaceSharedDir, stepID) {
-				dependencySummaries[i].TimelineFile = filepath.Join(workspaceSharedDir, stepID, "timeline.jsonl")
-			}
-		}
-	}
 
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 	canSpawnSubAgent := a.canSpawnSubAgent(ctx)
 
-	prompt, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentRole:               strings.TrimSpace(a.cfg.Role),
-		AgentBackground:         strings.TrimSpace(a.cfg.Background),
-		AgentInstruction:        strings.TrimSpace(a.cfg.Instruction),
-		TaskContext:             taskContext,
-		WorkspaceRootDir:        a.workspaceRootDir,
-		WorkspaceNamespace:      a.workspaceNamespace,
-		WorkspaceSharedDir:      workspaceSharedDir,
-		SkillsContext:           skillsContext,
-		CurrentStep:             currentStep,
-		DependencyStepSummaries: dependencySummaries,
-		ExecutionContexts:       executionContexts,
-		HasCurrentStep:          currentStep != nil,
-		HasDependencySummaries:  hasDependencySummaries,
-		HasExecutionContexts:    hasExecutionContexts,
-		HasSkillsTable:          skillsContext != nil && skillsContext.HasTable(),
-		HasInjectedSkills:       skillsContext != nil && skillsContext.HasInjected(),
-		MCPContext:              mcpContext,
-		HasMCPTable:             mcpContext != nil && mcpContext.HasTable(),
-		ExtraContext:            extra,
-		SupportsVision:          supportsVision,
-		CanSpawnSubAgent:        canSpawnSubAgent,
+	stepFilePath := ""
+	openItemsLedgerPath := ""
+	taskContextPath := ""
+	if a.workspaceRuntime != nil {
+		sharedDir := a.workspaceRuntime.SharedDir()
+		stepFilePath = stepFileAbs(sharedDir, snap.CurrentStepID)
+		if strings.TrimSpace(sharedDir) != "" {
+			openItemsLedgerPath = filepath.Join(sharedDir, openItemsFileName)
+			taskContextPath = filepath.Join(sharedDir, taskContextFileName)
+		}
+	}
+
+	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
+		AgentRole:              strings.TrimSpace(a.cfg.Role),
+		AgentBackground:        strings.TrimSpace(a.cfg.Background),
+		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
+		SkillsContext:          skillsContext,
+		CurrentStep:            currentStep,
+		CurrentStepFilePath:    stepFilePath,
+		OpenItemsLedgerPath:    openItemsLedgerPath,
+		TaskContextPath:        taskContextPath,
+		DependencyPlanItems:    dependencyItems,
+		HasCurrentStep:         currentStep != nil,
+		HasDependencyPlanItems: len(dependencyItems) > 0,
+		HasSkillsTable:         skillsContext != nil && skillsContext.HasTable(),
+		HasInjectedSkills:      skillsContext != nil && skillsContext.HasInjected(),
+		MCPContext:             mcpContext,
+		HasMCPTable:            mcpContext != nil && mcpContext.HasTable(),
+		ExtraContext:           extra,
+		SupportsVision:         supportsVision,
+		CanSpawnSubAgent:       canSpawnSubAgent,
 	})
 	if err == nil {
-		return prompt
+		parts.SystemAgent = a.identityEnvBlock()
+		return parts
 	}
 
 	fallbackState := FormatRuntimeStateJSON(snap, a.workspaceSessionID)
-	if fallbackState == "{}" {
-		return strings.TrimSpace(a.cfg.Instruction)
+	return PromptParts{
+		SystemRules: firstNonEmpty(strings.TrimSpace(a.cfg.Instruction), "你是 step 执行代理，基于运行时状态推进当前 step。"),
+		SystemAgent: a.identityEnvBlock(),
+		User:        fmt.Sprintf("运行时状态：\n%s", fallbackState),
 	}
-	return fmt.Sprintf("%s\n\n运行时状态：\n%s", strings.TrimSpace(a.cfg.Instruction), fallbackState)
+}
+
+// thinkActPartsForStep 返回当前 step 的 think_act PromptParts：首条 user message
+// 按 step 入口冻结（按 stepID + planVersion 键缓存），step 内各轮字节恒定——
+// mid-step 的 skill 加载经 tool result 通道即时生效，§Injected Skills 快照固定在
+// step 入口，消息前缀的移动缓存断点得以全程命中。
+func (a *Agent) thinkActPartsForStep(ctx context.Context, extra string, snapshot builtin_tools.StateSnapshot) PromptParts {
+	stepID := strings.TrimSpace(snapshot.CurrentStepID)
+	if stepID == "" {
+		if cs := snapshot.CurrentStep(); cs != nil {
+			stepID = strings.TrimSpace(cs.ID)
+		}
+	}
+	if a.frozenStepParts != nil && stepID != "" &&
+		a.frozenStepPartsStepID == stepID && a.frozenStepPartsPlanVer == snapshot.PlanVersion {
+		return *a.frozenStepParts
+	}
+	parts := a.BuildThinkActPrompt(ctx, extra)
+	if stepID != "" {
+		frozen := parts
+		a.frozenStepParts = &frozen
+		a.frozenStepPartsStepID = stepID
+		a.frozenStepPartsPlanVer = snapshot.PlanVersion
+	}
+	return parts
+}
+
+// identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。输入全部为 run 内
+// 稳定值，各阶段复用同一渲染结果以保证字节一致（同一缓存条目）。
+func (a *Agent) identityEnvBlock() string {
+	if a == nil || a.promptManager == nil {
+		return ""
+	}
+	if a.identityEnvBuilt {
+		return a.identityEnvPrompt
+	}
+	workspaceSharedDir := ""
+	if a.workspaceRuntime != nil {
+		workspaceSharedDir = a.workspaceRuntime.SharedDir()
+	}
+	out, err := a.promptManager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
+		WorkspaceRootDir:   a.workspaceRootDir,
+		WorkspaceNamespace: a.workspaceNamespace,
+		WorkspaceSharedDir: workspaceSharedDir,
+		RuntimeRepoContext: a.runtimeRepoContext,
+		TaskContext:        a.currentTaskContext,
+	})
+	if err != nil {
+		return ""
+	}
+	a.identityEnvPrompt = out
+	a.identityEnvBuilt = true
+	return out
 }
 
 // canSpawnSubAgent reports whether this agent can actually delegate to sub_agent.
@@ -106,96 +159,129 @@ func latestStepOutcome(outcomes []*builtin_tools.StepOutcome) *builtin_tools.Ste
 	return latest
 }
 
-type stepSummaryCard struct {
-	StepID          string   `json:"step_id"`
+// dependencyPlanItemCard 是前置依赖步骤的 plan_item 产出投影：内联小字段默认注入，
+// 大体量产出经文件指针按需 read_file（copy→pointer 无损降本）。
+type dependencyPlanItemCard struct {
+	ID              string   `json:"id"`
+	Step            string   `json:"step"`
 	Status          string   `json:"status"`
+	DependsOn       []string `json:"depends_on,omitempty"`
 	ShortSummary    string   `json:"short_summary,omitempty"`
 	KeyFacts        []string `json:"key_facts,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
 	References      []string `json:"references,omitempty"`
-	SummaryFile     string   `json:"summary_file,omitempty"`
+	StepFile        string   `json:"step_file,omitempty"`
+	ResultFile      string   `json:"result_file,omitempty"`
 	TimelineFile    string   `json:"timeline_file,omitempty"`
-	StatusSummary   string   `json:"status_summary,omitempty"`
-	OpenQuestions   []string `json:"open_questions,omitempty"`
+	CoverageFile    string   `json:"coverage_file,omitempty"`
 }
 
-func SelectDependencyStepSummaryCards(snapshot builtin_tools.StateSnapshot, currentStep *builtin_tools.PlanItem) []stepSummaryCard {
+// 依赖卡片内联 digest 的条数上限：超出部分顺 timeline_file 指针按需回读，保持无损。
+const dependencyCardDigestMax = 20
+
+// SelectDependencyPlanItemCards 从 plan 真相源（终态烘焙后的 plan_item）投影当前 step
+// 的传递依赖产出卡片。指针字段转为绝对路径供模型直接 read_file。
+func SelectDependencyPlanItemCards(snapshot builtin_tools.StateSnapshot, currentStep *builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
 	if currentStep == nil {
-		return []stepSummaryCard{}
+		return nil
 	}
 	dependencyIDs := collectTransitiveDependencyIDs(currentStep, snapshot.Plan)
 	if len(dependencyIDs) == 0 {
-		return []stepSummaryCard{}
+		return nil
 	}
-
-	outcomesByID := make(map[string]*builtin_tools.StepOutcome, len(snapshot.StepOutcomes))
-	for _, outcome := range snapshot.StepOutcomes {
-		if outcome == nil {
+	itemByID := make(map[string]*builtin_tools.PlanItem, len(snapshot.Plan))
+	for _, item := range snapshot.Plan {
+		if item == nil {
 			continue
 		}
-		stepID := strings.TrimSpace(outcome.StepID)
-		if stepID == "" {
-			continue
-		}
-		prev, exists := outcomesByID[stepID]
-		if !exists || prev == nil || outcome.UpdatedAt.After(prev.UpdatedAt) {
-			outcomesByID[stepID] = outcome
+		if id := strings.TrimSpace(item.ID); id != "" {
+			itemByID[id] = item
 		}
 	}
-	if len(outcomesByID) == 0 {
-		return []stepSummaryCard{}
-	}
 
-	cards := make([]stepSummaryCard, 0, len(dependencyIDs))
-	addOutcome := func(outcome *builtin_tools.StepOutcome) {
-		if outcome == nil {
-			return
-		}
-		stepID := strings.TrimSpace(outcome.StepID)
-		if stepID == "" {
-			return
-		}
-		short := strings.TrimSpace(outcome.ShortSummary)
-		if short == "" {
-			short = strings.TrimSpace(outcome.Summary)
-		}
-		if short == "" {
-			short = strings.TrimSpace(outcome.DisplayResult)
-		}
-
-		card := stepSummaryCard{
-			StepID:          stepID,
-			Status:          strings.TrimSpace(string(outcome.Status)),
-			ShortSummary:    short,
-			KeyFacts:        outcome.KeyFacts,
-			ToolCallsDigest: outcome.ToolCallsDigest,
-			References:      outcome.References,
-			SummaryFile:     strings.TrimSpace(outcome.SummaryFile),
-			StatusSummary:   strings.TrimSpace(outcome.StatusSummary),
-			OpenQuestions:   outcome.OpenQuestions,
-		}
-		if len(card.KeyFacts) == 0 {
-			card.KeyFacts = nil
-		}
-		if len(card.ToolCallsDigest) == 0 {
-			card.ToolCallsDigest = nil
-		}
-		if len(card.References) == 0 {
-			card.References = nil
-		}
-		if len(card.OpenQuestions) == 0 {
-			card.OpenQuestions = nil
-		}
-		cards = append(cards, card)
-	}
-
+	cards := make([]dependencyPlanItemCard, 0, len(dependencyIDs))
 	for _, depID := range dependencyIDs {
-		addOutcome(outcomesByID[depID])
+		if card := planItemCard(itemByID[depID], workspaceRootDir); card != nil {
+			cards = append(cards, *card)
+		}
 	}
 	if len(cards) == 0 {
-		return []stepSummaryCard{}
+		return nil
 	}
 	return cards
+}
+
+// planItemCard 把烘焙后的 plan_item 投影为注入卡片（digest 截断、指针转绝对路径）。
+func planItemCard(item *builtin_tools.PlanItem, workspaceRootDir string) *dependencyPlanItemCard {
+	if item == nil || strings.TrimSpace(item.ID) == "" {
+		return nil
+	}
+	abs := func(path string) string {
+		path = strings.TrimSpace(path)
+		if path == "" || filepath.IsAbs(path) || strings.TrimSpace(workspaceRootDir) == "" {
+			return path
+		}
+		return filepath.Join(workspaceRootDir, filepath.FromSlash(path))
+	}
+	digest := item.ToolCallsDigest
+	if len(digest) > dependencyCardDigestMax {
+		digest = append(append([]string{}, digest[:dependencyCardDigestMax]...),
+			fmt.Sprintf("...(其余 %d 条见 timeline_file)", len(item.ToolCallsDigest)-dependencyCardDigestMax))
+	}
+	return &dependencyPlanItemCard{
+		ID:              strings.TrimSpace(item.ID),
+		Step:            strings.TrimSpace(item.Step),
+		Status:          strings.TrimSpace(string(item.Status)),
+		DependsOn:       item.DependsOn,
+		ShortSummary:    strings.TrimSpace(item.ShortSummary),
+		KeyFacts:        item.KeyFacts,
+		ToolCallsDigest: digest,
+		References:      item.References,
+		StepFile:        abs(item.StepFile),
+		ResultFile:      abs(item.ResultFile),
+		TimelineFile:    abs(item.TimelineFile),
+		CoverageFile:    abs(item.CoverageFile),
+	}
+}
+
+// ProjectPlanItemCards 把全量 plan 投影为 TASK_ITEMS / PLAN_ITEMS 注入视图。
+func ProjectPlanItemCards(plan []*builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
+	out := make([]dependencyPlanItemCard, 0, len(plan))
+	for _, item := range plan {
+		if card := planItemCard(item, workspaceRootDir); card != nil {
+			out = append(out, *card)
+		}
+	}
+	return out
+}
+
+// resolvePlannerJournalPointer 解析 workspace/planner.jsonl（plan 唯一真相源）的绝对路径，
+// 仅当文件存在且大小 > 0 时返回；否则返回空串。三个判定阶段（task_planner 续规划 /
+// step_replan / final_answer）共用，避免相同 5 行逻辑在多处复制后漂移。
+func resolvePlannerJournalPointer(workspaceRootDir string) string {
+	root := strings.TrimSpace(workspaceRootDir)
+	if root == "" {
+		return ""
+	}
+	p := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	if p == "" {
+		return ""
+	}
+	info, err := os.Stat(p)
+	if err != nil || info.Size() <= 0 {
+		return ""
+	}
+	return p
+}
+
+// ProjectPlanItemCardsSlim 是去 tool_calls_digest 的瘦身全量投影，供 task_planner
+// 与 step_replan 注入：digest 体量大且这两个阶段可顺 timeline_file 指针按需回读。
+func ProjectPlanItemCardsSlim(plan []*builtin_tools.PlanItem, workspaceRootDir string) []dependencyPlanItemCard {
+	out := ProjectPlanItemCards(plan, workspaceRootDir)
+	for i := range out {
+		out[i].ToolCallsDigest = nil
+	}
+	return out
 }
 
 func collectTransitiveDependencyIDs(step *builtin_tools.PlanItem, plan []*builtin_tools.PlanItem) []string {

@@ -19,11 +19,7 @@ func NewSubmitFinalAnswerTool() *SubmitFinalAnswerTool { return &SubmitFinalAnsw
 func (t *SubmitFinalAnswerTool) Name() string { return SubmitFinalAnswerToolName }
 
 func (t *SubmitFinalAnswerTool) Description() string {
-	return "完成性评估结束、准备交付最终答复时调用此工具提交结构化决策。" +
-		"参数即 assessment 的完整内容：is_complete/status 给出任务终态判断；" +
-		"incomplete_items/depth_gaps/new_surfaces 三轴盘点尚存缺口（驱动是否回流 plan）；" +
-		"user_message 为可直接交付给用户的高密度答复正文；references 为支撑结论的绝对路径引用。" +
-		"调用即视为提交，不要把决策写成普通文本或代码块。"
+	return "完成性评估结束、准备交付最终答复时调用，提交结构化决策（参数语义见 schema）；调用即视为提交，不要把决策写成普通文本或代码块。"
 }
 
 func (t *SubmitFinalAnswerTool) Parameters() any {
@@ -60,17 +56,17 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			"depth_gaps": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项（static_only 未确认 / sink 未追到 source / 悬而未决判断 / 水货占位 / 抽样冒充全量）。即使轴①为空也须独立判定。",
+				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项 —— " + DepthSmellsEnumeration + "。即使轴①为空也须独立判定。",
 			},
 			"new_surfaces": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（审计覆盖视角；范围是整个任务而非某个 step）。意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan。",
+				"description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（任务覆盖完整性视角；范围是整个任务而非某个 step）。意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan。",
 			},
 			"warnings": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "确属不可解的局限（含 step_replan 降级沉回的项）及风险注意事项。每条须在 user_message 中有对应归置，不得静默丢弃。",
+				"description": "最终产出的不可解局限与风险事项清单：主要来自账本 ## 不可解局限，runtime 内部告警中有重要的也可一并纳入。每条须在 user_message 中有对应归置，不得静默丢弃。",
 			},
 			"user_message": map[string]any{
 				"type":        "string",

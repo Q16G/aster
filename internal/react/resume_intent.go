@@ -9,10 +9,10 @@ import (
 type ResumeIntent string
 
 const (
-	ResumeIntentColdStart    ResumeIntent = "cold_start"
-	ResumeIntentContextCarry ResumeIntent = "context_carry"
+	ResumeIntentColdStart     ResumeIntent = "cold_start"
+	ResumeIntentContextCarry  ResumeIntent = "context_carry"
 	ResumeIntentContextReplan ResumeIntent = "context_replan"
-	ResumeIntentFullResume   ResumeIntent = "full_resume"
+	ResumeIntentFullResume    ResumeIntent = "full_resume"
 )
 
 // resolveResumeIntent 阶段 1：确定性规则。

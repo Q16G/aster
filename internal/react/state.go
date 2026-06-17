@@ -105,9 +105,9 @@ func normalizeReplanAxes(in *builtin_tools.ReplanAxes) *builtin_tools.ReplanAxes
 		return nil
 	}
 	return &builtin_tools.ReplanAxes{
-		IncompleteItems: normalizeReferences(in.IncompleteItems),
-		DepthGaps:       normalizeReferences(in.DepthGaps),
-		NewSurfaces:     normalizeReferences(in.NewSurfaces),
+		IncompleteItems: builtin_tools.NormalizeAxisItems(in.IncompleteItems),
+		DepthGaps:       builtin_tools.NormalizeAxisItems(in.DepthGaps),
+		NewSurfaces:     builtin_tools.NormalizeAxisItems(in.NewSurfaces),
 	}
 }
 
@@ -399,6 +399,19 @@ func (t *StateTracker) SetGoalUnderstanding(understanding string) builtin_tools.
 	return *t.state
 }
 
+// SetCurrentPhase 记录 planner 自决的「当前深度优先聚焦阶段」。
+// 跨阶段贯穿；step_replan 视角 B 据此把全局视角收窄为 GoalUnderstanding ∩ CurrentPhase。
+// 阶段切换由 step_replan 通过 ReplanContext.CurrentPhase=NextPhase 触发回流后由 planner 回填。
+// 空字符串覆盖既有值（与 SetGoalUnderstanding 不同）——simple 任务、direct_response 任务、
+// 阶段切换重置等场景都需要清空，让视角 B 退化为 GoalUnderstanding 全集兜底。
+func (t *StateTracker) SetCurrentPhase(phase string) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.CurrentPhase = strings.TrimSpace(phase)
+	t.touchLocked()
+	return *t.state
+}
+
 func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -495,17 +508,17 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	}
 
 	update.ArtifactDir = strings.TrimSpace(update.ArtifactDir)
-	update.SummaryFile = strings.TrimSpace(update.SummaryFile)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
 	update.TimelineFile = strings.TrimSpace(update.TimelineFile)
+	update.CoverageFile = strings.TrimSpace(update.CoverageFile)
 	update.ContextKey = strings.TrimSpace(update.ContextKey)
 	update.Namespace = strings.TrimSpace(update.Namespace)
 	update.CurrentGoal = strings.TrimSpace(update.CurrentGoal)
 	update.References = normalizeReferences(update.References)
 	update.Warnings = normalizeReferences(update.Warnings)
-	update.UnresolvedAxes = normalizeReplanAxes(update.UnresolvedAxes)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
+	var backfilled *builtin_tools.StepOutcome
 	for _, outcome := range t.state.StepOutcomes {
 		if outcome == nil {
 			continue
@@ -514,9 +527,9 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 			continue
 		}
 		outcome.ArtifactDir = update.ArtifactDir
-		outcome.SummaryFile = update.SummaryFile
 		outcome.ResultFile = update.ResultFile
 		outcome.TimelineFile = update.TimelineFile
+		outcome.CoverageFile = update.CoverageFile
 		outcome.ContextKey = update.ContextKey
 		outcome.Namespace = update.Namespace
 		outcome.PlanVersion = update.PlanVersion
@@ -525,7 +538,17 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		outcome.InheritedRefIDs = builtin_tools.CloneStringSlice(update.InheritedRefIDs)
 		outcome.References = normalizeReferences(append(outcome.References, update.References...))
 		outcome.UpdatedAt = time.Now()
+		backfilled = outcome
 		break
+	}
+
+	// 终态烘焙：把 outcome 产出写回 plan_item，使 plan 真相源（planner.jsonl）携带完整产出与指针。
+	if item := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: stepID}).CurrentStep(); item != nil {
+		item.BakeOutcome(backfilled)
+		// step 过程文件指针不经 outcome（StepOutcome 无该字段），由 runtime 探测后直填。
+		if sf := strings.TrimSpace(update.StepFile); sf != "" {
+			item.StepFile = sf
+		}
 	}
 
 	// step replan 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
@@ -533,15 +556,23 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		t.state.CurrentStepID = ""
 	}
 
+	// 直达 Step 重编排：在烘焙 completed plan_item 之后原子替换整个 plan 与 PlanVersion，
+	// 等价于 UpdatePlan 但保留前一阶段刚写回 outcome 的烘焙字段。NewPlan 仅由 phase_step_replan
+	// 在 should_replan=true 时传入，已包含合并后的 completed / in_progress / 新 pending。
+	if len(update.NewPlan) > 0 {
+		builtin_tools.HydratePlanRelations(update.NewPlan)
+		t.state.Plan = update.NewPlan
+		t.state.PlanVersion++
+		t.state.NeedsPlanning = true
+	}
+
 	if update.CurrentGoal != "" {
 		t.state.CurrentGoal = update.CurrentGoal
-	}
-	if update.UnresolvedAxes != nil {
-		t.state.UnresolvedAxes = builtin_tools.CloneReplanAxes(update.UnresolvedAxes)
 	}
 	if update.Warnings != nil {
 		t.state.Warnings = normalizeReferences(append(t.state.Warnings, update.Warnings...))
 	}
+	// step_replan 不再写 UnresolvedAxes（三轴输出已删）；该字段仅由 final_answer 自身评估写入。
 	t.state.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 	t.state.Phase = update.NextPhase
 	if update.NextPhase == builtin_tools.AgentPhasePlan {
@@ -554,9 +585,10 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 
 type stepReplanUpdate struct {
 	ArtifactDir  string
-	SummaryFile  string
 	ResultFile   string
 	TimelineFile string
+	StepFile     string
+	CoverageFile string
 	ContextKey   string
 	References   []string
 
@@ -566,10 +598,13 @@ type stepReplanUpdate struct {
 	InheritedContextKeys []string
 	InheritedRefIDs      []string
 
-	CurrentGoal    string
-	Warnings       []string
-	UnresolvedAxes *builtin_tools.ReplanAxes
-	ReplanContext  *builtin_tools.ReplanContext
+	CurrentGoal   string
+	Warnings      []string
+	ReplanContext *builtin_tools.ReplanContext
+	// NewPlan 仅由 phase_step_replan 在 should_replan=true 时传入，承载直接重编排后的
+	// 完整 plan（已含 completed / in_progress / 新 pending 的 merge 结果）。非空时原子
+	// 替换 state.Plan、PlanVersion++，等价于 UpdatePlan 但发生在烘焙之后。
+	NewPlan []*builtin_tools.PlanItem
 
 	NextPhase builtin_tools.AgentPhase
 }
@@ -772,6 +807,44 @@ func (t *StateTracker) SoftReset(outcomes []*builtin_tools.StepOutcome, timeline
 	}
 }
 
+// SoftResetFrom 从持久化 snapshot 继承续写上下文（goal_understanding / CurrentGoal /
+// Plan / PlanVersion / CurrentStepID / UnresolvedAxes / Active*），同时把相位与瞬态执行
+// 字段重置到"待规划"起点。用于跨会话 carry/replan 恢复，避免丢弃原意图与原计划导致漂移。
+// outcomes/timeline 由调用方（经 reducer 压缩后）显式传入。
+func (t *StateTracker) SoftResetFrom(
+	st builtin_tools.StateSnapshot,
+	outcomes []*builtin_tools.StepOutcome,
+	timeline []*builtin_tools.TimelineInput,
+) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state = &builtin_tools.StateSnapshot{
+		Phase:             builtin_tools.AgentPhasePlan,
+		Status:            builtin_tools.TaskStatusPreparing,
+		GoalUnderstanding: strings.TrimSpace(st.GoalUnderstanding),
+		CurrentPhase:      strings.TrimSpace(st.CurrentPhase),
+		CurrentGoal:       strings.TrimSpace(st.CurrentGoal),
+		CurrentStepID:     strings.TrimSpace(st.CurrentStepID),
+		Plan:              st.Plan,
+		PlanVersion:       st.PlanVersion,
+		UnresolvedAxes:    st.UnresolvedAxes,
+		ActiveSkillNames:  st.ActiveSkillNames,
+		ActiveMCPServers:  st.ActiveMCPServers,
+		StepOutcomes:      outcomes,
+		InputTimeline:     timeline,
+		UpdatedAt:         time.Now(),
+	}
+}
+
+// SetSimpleTask 标记/复位简单单步任务（step 完成后跳过 step_replan 直达 final_answer）。
+// 每次 plan 提交都重设：重规划提交（simple 缺省 false）自然复位直通。
+func (t *StateTracker) SetSimpleTask(simple bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.SimpleTask = simple
+	t.touchLocked()
+}
+
 // ReplaceStepOutcomes 原子替换 state 中的 StepOutcomes（用于 reducer 写回压缩结果）。
 func (t *StateTracker) ReplaceStepOutcomes(outcomes []*builtin_tools.StepOutcome) {
 	t.mu.Lock()
@@ -850,27 +923,25 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.ShortSummary = update.ShortSummary
 		outcome.LongSummary = update.LongSummary
 		outcome.KeyFacts = update.KeyFacts
-		outcome.OpenQuestions = update.OpenQuestions
-		outcome.ToolCallsDigest = update.ToolCallsDigest
+		outcome.CoverageChecklist = update.CoverageChecklist
 		outcome.UpdatedAt = time.Now()
 		return
 	}
 
 	t.state.StepOutcomes = append(t.state.StepOutcomes, &builtin_tools.StepOutcome{
-		StepID:          stepID,
-		Status:          status,
-		Summary:         update.Summary,
-		DisplayResult:   update.DisplayResult,
-		Result:          update.Result,
-		Error:           update.Error,
-		References:      update.References,
-		StatusSummary:   update.StatusSummary,
-		ShortSummary:    update.ShortSummary,
-		LongSummary:     update.LongSummary,
-		KeyFacts:        update.KeyFacts,
-		OpenQuestions:   update.OpenQuestions,
-		ToolCallsDigest: update.ToolCallsDigest,
-		UpdatedAt:       time.Now(),
+		StepID:            stepID,
+		Status:            status,
+		Summary:           update.Summary,
+		DisplayResult:     update.DisplayResult,
+		Result:            update.Result,
+		Error:             update.Error,
+		References:        update.References,
+		StatusSummary:     update.StatusSummary,
+		ShortSummary:      update.ShortSummary,
+		LongSummary:       update.LongSummary,
+		KeyFacts:          update.KeyFacts,
+		CoverageChecklist: update.CoverageChecklist,
+		UpdatedAt:         time.Now(),
 	})
 }
 

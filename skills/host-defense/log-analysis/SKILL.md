@@ -1,7 +1,6 @@
 ---
 name: log-analysis
 description: 安全日志分析 — 多源日志关联分析与威胁狩猎
-tags: host-defense,log,threat-hunting,siem
 when-to-use: 当需要分析系统日志、Web 日志、安全设备日志进行威胁狩猎时
 allowed-tools: read_file,list_files,rg,bash
 user-invocable: true

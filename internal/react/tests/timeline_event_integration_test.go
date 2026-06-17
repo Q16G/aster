@@ -90,9 +90,12 @@ func TestExecute_WritesTimelineEventsForToolCalls(t *testing.T) {
 	defer f.Close()
 
 	type timelineEvent struct {
-		Type    string         `json:"type"`
-		Key     string         `json:"key"`
-		Payload map[string]any `json:"payload"`
+		Type         string `json:"type"`
+		Key          string `json:"key"`
+		Tool         string `json:"tool"`
+		ArgsDigest   string `json:"args_digest"`
+		Result       string `json:"result"`
+		ResultDigest string `json:"result_digest"`
 	}
 
 	var events []timelineEvent
@@ -119,8 +122,14 @@ func TestExecute_WritesTimelineEventsForToolCalls(t *testing.T) {
 	if events[0].Key != "call-read-1" {
 		t.Errorf("event[0].Key = %q, want call-read-1", events[0].Key)
 	}
-	if tool, _ := events[0].Payload["tool"].(string); tool != builtin_tools.ReadFileToolName {
-		t.Errorf("event[0].Payload.tool = %q, want %s", tool, builtin_tools.ReadFileToolName)
+	if events[0].Tool != builtin_tools.ReadFileToolName {
+		t.Errorf("event[0].Tool = %q, want %s", events[0].Tool, builtin_tools.ReadFileToolName)
+	}
+	if events[0].ArgsDigest == "" {
+		t.Error("event[0].ArgsDigest should be populated")
+	}
+	if events[0].Result == "" || events[0].ResultDigest == "" {
+		t.Errorf("event[0] should keep full result and digest, got result=%q digest=%q", events[0].Result, events[0].ResultDigest)
 	}
 
 	// Second event should be the update_current_step tool call

@@ -22,13 +22,21 @@ type FinalAnswerModelOutput struct {
 	NextGoal     string `json:"next_goal"`
 	// IncompleteItems 轴①存在性/完成度：当前诉求范围内、根本没做的项。
 	IncompleteItems []string `json:"incomplete_items"`
-	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（static_only 未确认、sink 未追源、悬而未决、水货占位、抽样冒充全量）。
+	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（判据枚举见 builtin_tools.DepthSmellsEnumeration）。
 	DepthGaps []string `json:"depth_gaps"`
 	// NewSurfaces 轴③泛化：对照整体诉求全集、尚未被任何已完成工作覆盖的面（聚焦约束下方向外的新面填此字段但不单独驱动 replan）。
 	NewSurfaces []string `json:"new_surfaces"`
 	Warnings    []string `json:"warnings"`
 	UserMessage string   `json:"user_message"`
 	References  []string `json:"references"`
+}
+
+// axisLen 取 sticky 三轴某一轴的条目数；nil 安全（仅日志计数用）。
+func axisLen(axes *builtin_tools.ReplanAxes, pick func(*builtin_tools.ReplanAxes) []*builtin_tools.AxisItem) int {
+	if axes == nil {
+		return 0
+	}
+	return len(pick(axes))
 }
 
 func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.ChatClient) (builtin_tools.StateSnapshot, error) {
@@ -60,25 +68,27 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			}
 		}
 	}
+	plannerJournalPath := resolvePlannerJournalPointer(a.workspaceRootDir)
 
 	payload := map[string]any{
-		"status":                   stateStatus,
-		"state_error":              strings.TrimSpace(snapshot.Error),
-		"input_timeline":           snapshot.InputTimeline,
-		"goal_understanding":       snapshot.GoalUnderstanding,
-		"needs_planning":           snapshot.NeedsPlanning,
-		"show_plan":                snapshot.NeedsPlanning,
-		"plan":                     snapshot.Plan,
-		"plan_version":             snapshot.PlanVersion,
-		"step_outcomes":            stepOutcomeViews,
-		"external_interrupt":       externalInterrupt,
-		"replan_context":           snapshot.ReplanContext,
-		"active_skill_names":       snapshot.ActiveSkillNames,
-		"warnings":                 snapshot.Warnings,
-		"carried_incomplete_items": carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete),
-		"carried_depth_gaps":       carriedAxisItems(snapshot.UnresolvedAxes, axisDepth),
-		"carried_new_surfaces":     carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces),
-		"workspace_shared_dir":     workspaceSharedDir,
+		"status":             stateStatus,
+		"state_error":        strings.TrimSpace(snapshot.Error),
+		"input_timeline":     snapshot.InputTimeline,
+		"goal_understanding": snapshot.GoalUnderstanding,
+		"needs_planning":     snapshot.NeedsPlanning,
+		// plan/plan_version/step_outcomes 保留供 assessed_state 持久化（resume 回退源）；
+		// prompt 注入改走 plan_items 卡片 + 账本全文（CARRIED_* 已由账本吸收）。
+		"plan":                 snapshot.Plan,
+		"plan_version":         snapshot.PlanVersion,
+		"step_outcomes":        stepOutcomeViews,
+		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path": plannerJournalPath,
+		"open_items_ledger":    readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"external_interrupt":   externalInterrupt,
+		"replan_context":       snapshot.ReplanContext,
+		"active_skill_names":   snapshot.ActiveSkillNames,
+		"warnings":             snapshot.Warnings,
+		"workspace_shared_dir": workspaceSharedDir,
 	}
 
 	var modelOut FinalAnswerModelOutput
@@ -89,9 +99,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 			"reason_code":            strings.TrimSpace(externalInterrupt.ReasonCode),
 			"retryable":              externalInterrupt.Retryable,
 			"warnings_count":         len(snapshot.Warnings),
-			"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
-			"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
-			"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
+			"incomplete_items_count": axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.IncompleteItems }),
+			"depth_gaps_count":       axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.DepthGaps }),
+			"new_surfaces_count":     axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.NewSurfaces }),
 		})
 		modelOut = buildExternalInterruptModelOutput(snapshot, externalInterrupt)
 	} else {
@@ -121,14 +131,14 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				"plan_version":           snapshot.PlanVersion,
 				"step_outcomes_count":    len(snapshot.StepOutcomes),
 				"warnings_count":         len(snapshot.Warnings),
-				"incomplete_items_count": len(carriedAxisItems(snapshot.UnresolvedAxes, axisIncomplete)),
-				"depth_gaps_count":       len(carriedAxisItems(snapshot.UnresolvedAxes, axisDepth)),
-				"new_surfaces_count":     len(carriedAxisItems(snapshot.UnresolvedAxes, axisNewSurfaces)),
+				"incomplete_items_count": axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.IncompleteItems }),
+				"depth_gaps_count":       axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.DepthGaps }),
+				"new_surfaces_count":     axisLen(snapshot.UnresolvedAxes, func(a *builtin_tools.ReplanAxes) []*builtin_tools.AxisItem { return a.NewSurfaces }),
 			})
 			runtimelog.LogJSON("info", map[string]any{
 				"event":              "final_answer_model_request",
 				"phase":              "final_answer",
-				"raw_request_length": len(prompt),
+				"raw_request_length": len(prompt.Joined()),
 			})
 
 			fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseFinalAnswer)
@@ -144,12 +154,13 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					return snapshot, ctx.Err()
 				}
 				faCtx, faCancel := context.WithCancel(ctx)
-				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, "", fnTools...)
+				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, promptFamilyFinalAnswer, fnTools...)
 				faCancel()
 				if callErr != nil {
 					return snapshot, fmt.Errorf("final_answer AICallProxy failed: %w", callErr)
 				}
 
+				_ = round // 不再以 round 计数硬上限：让 final_answer 按需充分取证；空响应仍走 plaintext 兜底
 				// 空响应：plaintext 兜底（不 return，必须落到 L189 后处理产出可交付终报）。
 				if len(callResult.ToolCalls) == 0 {
 					modelOut = finalAnswerPlaintextFallback(callResult.AssistantText)
@@ -255,9 +266,9 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		if nextGoal == "" {
 			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
 		}
-		incompleteItems := normalizeStringSlice(decision.model.IncompleteItems)
-		depthGaps := normalizeStringSlice(decision.model.DepthGaps)
-		newSurfaces := normalizeStringSlice(decision.model.NewSurfaces)
+		incompleteItems := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.IncompleteItems))
+		depthGaps := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.DepthGaps))
+		newSurfaces := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.NewSurfaces))
 		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
 			NextPhase:     builtin_tools.AgentPhasePlan,
 			Status:        builtin_tools.TaskStatusRunning,

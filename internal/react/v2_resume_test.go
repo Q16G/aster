@@ -177,6 +177,118 @@ func TestSoftResetWithContext_HistoryRestored(t *testing.T) {
 	}
 }
 
+func TestSoftResetWithContext_GoalUnderstandingRestored(t *testing.T) {
+	root := t.TempDir()
+	store, err := persistv2.Open(root, "sess-soft-gu")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	const wantGU = "**核心目标**：对项目执行深度全量安全审计"
+	const wantGoal = "深度分析 /test/MCMS 全量安全审计"
+	rtState := builtin_tools.StateSnapshot{
+		StepOutcomes: []*builtin_tools.StepOutcome{
+			{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "recon"},
+		},
+		InputTimeline:     []*builtin_tools.TimelineInput{{Content: "深度分析", CreatedAt: time.Now()}},
+		GoalUnderstanding: wantGU,
+		CurrentGoal:       wantGoal,
+		CurrentStepID:     "s2",
+		PlanVersion:       3,
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "s1", Step: "recon", Status: builtin_tools.PlanStepCompleted},
+			{ID: "s2", Step: "decompile", Status: builtin_tools.PlanStepPending},
+		},
+		// 瞬态字段：应在恢复时被重置，不得 carry 过来
+		ReplanContext: &builtin_tools.ReplanContext{Reason: "stale"},
+		Error:         "stale error",
+	}
+	rtRaw, _ := json.Marshal(rtState)
+	rtRef, err := store.WriteBlob(rtRaw)
+	if err != nil {
+		t.Fatalf("WriteBlob: %v", err)
+	}
+
+	snap := &persistv2.Snapshot{RuntimeStateBlobRef: rtRef}
+
+	client := &intentTestClient{}
+	agent, aerr := NewReActAgent("test-soft-gu", client, WithEmitter(NewDummyEmitter()))
+	if aerr != nil {
+		t.Fatalf("NewReActAgent: %v", aerr)
+	}
+
+	agent.softResetWithContext(context.Background(), client, store, snap)
+
+	state := agent.State()
+	if state.GoalUnderstanding != wantGU {
+		t.Errorf("GoalUnderstanding = %q, want %q", state.GoalUnderstanding, wantGU)
+	}
+	if state.CurrentGoal != wantGoal {
+		t.Errorf("CurrentGoal = %q, want %q", state.CurrentGoal, wantGoal)
+	}
+	if state.CurrentStepID != "s2" {
+		t.Errorf("CurrentStepID = %q, want s2", state.CurrentStepID)
+	}
+	if state.PlanVersion != 3 {
+		t.Errorf("PlanVersion = %d, want 3", state.PlanVersion)
+	}
+	if len(state.Plan) != 2 {
+		t.Errorf("Plan len = %d, want 2", len(state.Plan))
+	}
+	if len(state.StepOutcomes) != 1 {
+		t.Errorf("StepOutcomes len = %d, want 1", len(state.StepOutcomes))
+	}
+	if len(state.InputTimeline) != 1 {
+		t.Errorf("InputTimeline len = %d, want 1", len(state.InputTimeline))
+	}
+	// 瞬态字段必须被重置
+	if state.ReplanContext != nil {
+		t.Errorf("ReplanContext = %+v, want nil (transient reset)", state.ReplanContext)
+	}
+	if state.Error != "" {
+		t.Errorf("Error = %q, want empty (transient reset)", state.Error)
+	}
+	if state.Phase != builtin_tools.AgentPhasePlan {
+		t.Errorf("Phase = %q, want plan", state.Phase)
+	}
+	if state.Status != builtin_tools.TaskStatusPreparing {
+		t.Errorf("Status = %q, want preparing", state.Status)
+	}
+}
+
+func TestSoftResetWithContext_EmptyGoalUnderstanding(t *testing.T) {
+	root := t.TempDir()
+	store, err := persistv2.Open(root, "sess-soft-gu-empty")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	rtState := builtin_tools.StateSnapshot{
+		StepOutcomes: []*builtin_tools.StepOutcome{
+			{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted, ShortSummary: "x"},
+		},
+	}
+	rtRaw, _ := json.Marshal(rtState)
+	rtRef, err := store.WriteBlob(rtRaw)
+	if err != nil {
+		t.Fatalf("WriteBlob: %v", err)
+	}
+
+	snap := &persistv2.Snapshot{RuntimeStateBlobRef: rtRef}
+
+	client := &intentTestClient{}
+	agent, aerr := NewReActAgent("test-soft-gu-empty", client, WithEmitter(NewDummyEmitter()))
+	if aerr != nil {
+		t.Fatalf("NewReActAgent: %v", aerr)
+	}
+
+	agent.softResetWithContext(context.Background(), client, store, snap)
+
+	if gu := agent.State().GoalUnderstanding; gu != "" {
+		t.Errorf("GoalUnderstanding = %q, want empty", gu)
+	}
+}
+
 func TestSoftResetWithContext_PartialBlobFail(t *testing.T) {
 	root := t.TempDir()
 	store, err := persistv2.Open(root, "sess-soft-partial")

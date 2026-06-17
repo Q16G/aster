@@ -14,7 +14,7 @@ import (
 // can satisfy to enable tool-assisted planning via AICallProxy instead of
 // the legacy structuredoutput.RunWithRetry path.
 type PlannerPromptBuilder interface {
-	BuildPrompt(input TaskPlannerPromptInput) (string, error)
+	BuildPrompt(input TaskPlannerPromptInput) (PromptParts, error)
 }
 
 // DefaultTaskPlanner 默认任务规划器
@@ -35,17 +35,17 @@ func NewDefaultTaskPlanner(aiClient ai.ChatClient, promptManagers ...PromptManag
 	return &DefaultTaskPlanner{aiClient: aiClient, promptManager: promptManager}
 }
 
-//go:embed prompts/task_planner.prompt
-var taskPlanPrompt string
+//go:embed prompts/task_planner_user.prompt
+var taskPlannerUserPrompt string
 
 // BuildPrompt builds the planner prompt text without calling the AI model.
 // This enables runPlanPhase to use AICallProxy (with tools) instead of structuredoutput.RunWithRetry.
-func (p *DefaultTaskPlanner) BuildPrompt(input TaskPlannerPromptInput) (string, error) {
+func (p *DefaultTaskPlanner) BuildPrompt(input TaskPlannerPromptInput) (PromptParts, error) {
 	if p == nil || p.promptManager == nil {
-		return "", fmt.Errorf("task planner prompt manager is nil")
+		return PromptParts{}, fmt.Errorf("task planner prompt manager is nil")
 	}
 	if strings.TrimSpace(input.Input) == "" {
-		return "", fmt.Errorf("input is required")
+		return PromptParts{}, fmt.Errorf("input is required")
 	}
 	return p.promptManager.BuildTaskPlannerPrompt(input)
 }

@@ -34,6 +34,7 @@ const (
 	EventTypeStepFinish        EventType = "step_finish"
 	EventTypeHistoryCompacted  EventType = "history_compacted"
 	EventTypeStepSummaryResult EventType = "step_summary_result"
+	EventTypeStepTriageResult  EventType = "step_triage_result"
 	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
 	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"
@@ -463,14 +464,14 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 		Type:   EventTypeStepReplanResult,
 		NodeID: "step_replan_result",
 		Payload: map[string]any{
-			"step_id":          strings.TrimSpace(stepID),
-			"step_name":        strings.TrimSpace(stepName),
-			"should_replan":    result.ShouldReplan,
-			"replan_reason":    strings.TrimSpace(result.ReplanReason),
-			"next_goal":        strings.TrimSpace(result.NextGoal),
-			"incomplete_items": normalizeStringSlice(result.IncompleteItems),
-			"depth_gaps":       normalizeStringSlice(result.DepthGaps),
-			"new_surfaces":     normalizeStringSlice(result.NewSurfaces),
+			"step_id":       strings.TrimSpace(stepID),
+			"step_name":     strings.TrimSpace(stepName),
+			"should_replan":         result.ShouldReplan,
+			"replan_reason":         strings.TrimSpace(result.ReplanReason),
+			"current_phase_done":    result.CurrentPhaseDone,
+			"incomplete_items_size": len(result.IncompleteItems),
+			"depth_gaps_size":       len(result.DepthGaps),
+			"new_surfaces_size":     len(result.NewSurfaces),
 		},
 	})
 }

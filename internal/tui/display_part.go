@@ -18,8 +18,10 @@ const (
 	PartTypeStepResult  PartType = "step_result"
 	PartTypeStepSummary PartType = "step_summary"
 	PartTypeStepReplan  PartType = "step_replan"
+	PartTypeStepTriage  PartType = "step_triage"
 	PartTypeFinalAnswer PartType = "final_answer"
 	PartTypeSubAgent    PartType = "sub_agent"
+	PartTypePhaseBanner PartType = "phase_banner"
 )
 
 type DisplayPart struct {
@@ -36,8 +38,10 @@ type DisplayPart struct {
 	StepResult  *StepResultPart  `json:"step_result,omitempty"`
 	StepSummary *StepSummaryPart `json:"step_summary,omitempty"`
 	StepReplan  *StepReplanPart  `json:"step_replan,omitempty"`
+	StepTriage  *StepTriagePart  `json:"step_triage,omitempty"`
 	FinalAnswer *FinalAnswerPart `json:"final_answer,omitempty"`
 	SubAgent    *SubAgentPart    `json:"sub_agent,omitempty"`
+	PhaseBanner *PhaseBannerPart `json:"phase_banner,omitempty"`
 }
 
 type UserPart struct {
@@ -130,9 +134,22 @@ type StepReplanPart struct {
 	ShouldReplan    bool     `json:"should_replan"`
 	ReplanReason    string   `json:"replan_reason,omitempty"`
 	NextGoal        string   `json:"next_goal,omitempty"`
+	PlanSize        int      `json:"plan_size,omitempty"`
 	IncompleteItems []string `json:"incomplete_items,omitempty"`
 	NewSurfaces     []string `json:"new_surfaces,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
+}
+
+// StepTriagePart 是 Triage 廉价决策门控的 UI 展示载体。
+// 与 StepReplanPart 相比字段更瘦:Triage 是 prompt-only 调用,只产出 suggestion + reason,
+// 不涉及 plan / next_goal / surfaces 等重产出字段。
+type StepTriagePart struct {
+	AgentName  string `json:"agent_name,omitempty"`
+	StepID     string `json:"step_id,omitempty"`
+	StepName   string `json:"step_name,omitempty"`
+	Suggestion string `json:"suggestion"` // continue | replan
+	Reason     string `json:"reason,omitempty"`
+	DurationMs int64  `json:"duration_ms,omitempty"`
 }
 
 type SubAgentPart struct {
@@ -152,6 +169,34 @@ type FinalAnswerPart struct {
 	Content    string   `json:"content"`
 	Source     string   `json:"source,omitempty"`
 	References []string `json:"references,omitempty"`
+}
+
+type PhaseBannerPart struct {
+	Phase     string `json:"phase"`
+	Label     string `json:"label"`
+	Iteration int    `json:"iteration,omitempty"`
+	AgentName string `json:"agent_name,omitempty"`
+}
+
+func phaseLabel(phase string) string {
+	switch phase {
+	case "plan":
+		return "Plan"
+	case "step":
+		return "Step"
+	case "step_replan":
+		return "Step Replan"
+	case "step_triage":
+		return "Step Triage"
+	case "step_summary":
+		return "Step Summary"
+	case "final_answer":
+		return "Final Answer"
+	case "step_outcomes_reducer":
+		return "History Compression"
+	default:
+		return phase
+	}
 }
 
 var toolIcons = map[string]string{

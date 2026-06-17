@@ -1,7 +1,6 @@
 ---
 name: agent-browser
 description: Browser automation CLI for AI agents. Use when the user needs to interact with websites, fill forms, click buttons, extract data, take screenshots, or automate any browser task.
-tags: browser,automation,web
 when-to-use: 当需要通过浏览器自动化访问网页、交互、截图、提取数据时
 allowed-tools: bash,read_file,list_files,rg,list_skills
 user-invocable: true

@@ -1,0 +1,78 @@
+{{- if .HAS_AVAILABLE_TOOLS}}
+## 本阶段可用核验工具（语义以 function calling schema 为准）
+{{range .AVAILABLE_TOOLS}}- `{{.Name}}`：{{.Description}}
+{{end}}
+{{- end}}
+## 诉求与意图
+<CURRENT_GOAL>
+{{.CURRENT_GOAL}}
+</CURRENT_GOAL>
+{{- if .HAS_GOAL_UNDERSTANDING}}
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+{{- end}}
+{{- if .HAS_CURRENT_PHASE}}
+<CURRENT_PHASE>
+{{.CURRENT_PHASE}}
+</CURRENT_PHASE>
+{{- end}}
+<INPUT_TIMELINE>
+{{.INPUT_TIMELINE}}
+</INPUT_TIMELINE>
+
+## 复核区间卡片（自上次重编排以来已完成的 step 区间；JSON 数组旧 → 新；`latest:true` 标识本回合刚跑完）
+{{- if .REVIEW_WINDOW_TRUNCATED}}
+（共 {{.REVIEW_WINDOW_TOTAL}} 张，仅展示最近 {{.REVIEW_WINDOW_SHOWN}} 张；更早 step 详见下方 `<PLANNER_JOURNAL>` 与 `<PLAN_OVERVIEW>`。）
+{{- end}}
+<REVIEW_WINDOW_CARDS>
+{{.REVIEW_WINDOW_CARDS}}
+</REVIEW_WINDOW_CARDS>
+{{- if .HAS_STEP_FILE_CONTENT}}
+当前 step（区间最右一卡）过程文件（step.md，执行节点的人类可读总结）：
+<STEP_FILE>
+{{.STEP_FILE_CONTENT}}
+</STEP_FILE>
+{{- end}}
+
+## 计划全量卡片（全部步骤；内联产出小字段 + 文件指针，digest 顺 timeline_file 指针按需回读）
+<PLAN_OVERVIEW>
+{{.PLAN_OVERVIEW}}
+</PLAN_OVERVIEW>
+
+## 未闭环账本（完整超集；缺漏由你直接维护至终态）
+<OPEN_ITEMS_LEDGER>
+{{.OPEN_ITEMS_LEDGER}}
+</OPEN_ITEMS_LEDGER>
+
+## 贯穿全程关键事实板（核验确认的事实缺漏由你直接补入 `## 执行中补充`）
+<TASK_CONTEXT_BOARD>
+{{.TASK_CONTEXT_BOARD}}
+</TASK_CONTEXT_BOARD>
+{{- if .HAS_PLANNER_JOURNAL}}
+
+## 计划全量历史 journal（plan 真相源；jsonl 逐行 append，同 id 最后一条为最新状态；超限截断时按 PLANNER_JOURNAL_PATH 补读）
+<PLANNER_JOURNAL>
+{{.PLANNER_JOURNAL}}
+</PLANNER_JOURNAL>
+{{- end}}
+{{- if .HAS_SKILLS_TABLE}}
+
+<SKILLS_INDEX>
+{{.SKILLS_CONTEXT.Table}}
+</SKILLS_INDEX>
+{{- end}}
+{{- if or .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .HAS_PLANNER_JOURNAL_PATH}}
+
+## 可按需回读的文件（受核验依据与回读预算约束）
+注：每张复核卡片自带 `result_file` / `timeline_file` / `coverage_file` 指针，按需顺该卡指针回读对应 step 产物。
+{{- if .HAS_PLANNER_JOURNAL_PATH}}
+- 计划全量历史 journal 文件指针（`<PLANNER_JOURNAL>` 已被超限截断，按本路径补读完整内容）：`{{.PLANNER_JOURNAL_PATH}}`
+{{- end}}
+{{- if .STEP_CONTEXTS_PATH}}
+- 全局 step contexts 索引（所有已执行 step 的执行记录与产出指针）：`{{.STEP_CONTEXTS_PATH}}`
+{{- end}}
+{{- if .STEP_TRANSCRIPT_PATH}}
+- 当前 step（区间最右一卡）执行对话记录（体量大，仅摘要不足时读）：`{{.STEP_TRANSCRIPT_PATH}}`
+{{- end}}
+{{- end}}

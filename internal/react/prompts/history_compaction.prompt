@@ -1,44 +1,39 @@
-You are compacting a long-running coding conversation so another agent can continue seamlessly.
+你正在压缩一段长对话历史，使另一个 agent 能读后无缝继续工作。
 
-Original agent instruction:
-{{if .INSTRUCTION}}{{.INSTRUCTION}}{{else}}(none){{end}}
+原始 agent 指令：
+{{if .INSTRUCTION}}{{.INSTRUCTION}}{{else}}(无){{end}}
 
-Existing compaction summary (merge it forward, do not keep stale or duplicated details):
-{{if .PREV_SUMMARY}}{{.PREV_SUMMARY}}{{else}}(none){{end}}
+既有压缩摘要（向前合并，不保留过期或重复细节）：
+{{if .PREV_SUMMARY}}{{.PREV_SUMMARY}}{{else}}(无){{end}}
 
-Provide a detailed prompt for continuing the work represented by the messages above.
-Focus on information that will help another agent continue effectively, including what was done, what is in progress, what constraints apply, and which files or symbols matter.
-The summary that you construct will be used so that another agent can read it and continue the work.
-
-When constructing the summary, try to stick to this template:
+输出一份延续性摘要，覆盖：做了什么、进行中什么、适用哪些约束、哪些文件或符号重要。按以下模板组织：
 ---
-## Goal
+## 目标
 
-[What goal(s) is the user trying to accomplish?]
+[用户要达成什么]
 
-## Instructions
+## 指令与约束
 
-- [What important instructions or constraints still apply]
-- [What architectural or workflow constraints must continue to be followed]
+- [仍然生效的重要指令或约束]
+- [必须继续遵守的架构/流程约束]
 
-## Discoveries
+## 发现
 
-[What notable facts, debugging findings, design decisions, or caveats were learned]
+[值得保留的事实、调试发现、设计决策、注意事项]
 
-## Accomplished
+## 进展
 
-[What work has already been completed, what is still in progress, and what remains]
+[已完成什么、进行中什么、还剩什么]
 
-## Relevant files / directories
+## 相关文件 / 目录
 
-[A structured list of files, directories, functions, structs, commands, or IDs that matter]
+[重要的文件、目录、函数、结构体、命令、ID 的结构化列表]
 ---
 
-Requirements:
-- Merge the existing compaction summary with the new conversation excerpt into one coherent continuation summary.
-- Preserve concrete technical details: file paths, directory paths, function names, struct names, type names, commands, IDs, versions, thresholds, errors, and API field names.
-- If a `task_context.md` (贯穿事实板) path or its confirmed concrete values (地址/端口/凭据/端点/分支版本等) appear in the conversation, preserve the file-path pointer and prioritize keeping those confirmed values — the fact board is the authoritative fact base, do not drop it during compaction.
-- If an old tool result was cleared, mention only that the tool ran and its detailed output is no longer available.
-- Remove duplication, stale progress notes, and low-signal chatter.
-- Do not mention token limits or compaction mechanics unless they are directly relevant to the task itself.
-- Output only the summary text. No code fences. No JSON.
+要求：
+- 把既有压缩摘要与新对话片段合并为一份连贯的延续摘要。
+- 具体技术细节原样保留：文件/目录路径、函数/结构体/类型名、命令、ID、版本、阈值、错误信息、API 字段名。
+- 对话中出现 task_context.md（贯穿事实板）路径或其已确认具体值（地址/端口/凭据/端点/分支版本等）时，保留文件路径指针并优先保留这些已确认值，不得在压缩中丢弃。
+- 旧工具结果已被清理的，只提及该工具运行过、详细输出已不可得。
+- 删除重复、过期进度与低信号内容。
+- 只输出摘要正文，不带代码围栏、不带 JSON。

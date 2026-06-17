@@ -53,23 +53,19 @@ func TestPlannerInputFromSnapshot_EmptyWithoutTimeline(t *testing.T) {
 	}
 }
 
-func TestPlannerInputFromSnapshot_IncludesAgentIdentityAndHandoffContext(t *testing.T) {
+// 身份三段已上移至公共身份/env 块（system block2），planner_input 只承载交接上下文等动态输入。
+func TestPlannerInputFromSnapshot_IncludesHandoffContextWithoutIdentity(t *testing.T) {
 	snapshot := builtin_tools.StateSnapshot{
 		InputTimeline: []*builtin_tools.TimelineInput{
 			{Content: "hello", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
 		},
 	}
 	opts := PlannerInputOptions{
-		AgentRole:        "data_flow_analysis_agent",
-		AgentInstruction: "需要做取证与路径验证，不要直接输出修复方案。",
-		HandoffContext:   "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
+		HandoffContext: "[SESSION_CONTEXT]\nproject_path: /tmp/repo",
 	}
 
 	got := PlannerInputFromSnapshot(snapshot, opts)
 	for _, marker := range []string{
-		"<AGENT_ROLE>",
-		"data_flow_analysis_agent",
-		"</AGENT_ROLE>",
 		"<HANDOFF_CONTEXT>",
 		"project_path: /tmp/repo",
 		"</HANDOFF_CONTEXT>",
@@ -78,9 +74,12 @@ func TestPlannerInputFromSnapshot_IncludesAgentIdentityAndHandoffContext(t *test
 			t.Fatalf("expected marker %q in planner input, got %s", marker, got)
 		}
 	}
+	if strings.Contains(got, "<AGENT_ROLE>") || strings.Contains(got, "<AGENT_INSTRUCTION>") {
+		t.Fatalf("planner input must not render identity blocks (moved to identity env block), got %s", got)
+	}
 }
 
-func TestPlannerInputFromSnapshot_IncludesTaskItemsAndExecutionLine(t *testing.T) {
+func TestPlannerInputFromSnapshot_TaskItemsCarryBakedOutputs(t *testing.T) {
 	snapshot := builtin_tools.StateSnapshot{
 		Phase:         builtin_tools.AgentPhasePlan,
 		Status:        builtin_tools.TaskStatusRunning,
@@ -91,33 +90,35 @@ func TestPlannerInputFromSnapshot_IncludesTaskItemsAndExecutionLine(t *testing.T
 			{Content: "please continue", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
 		},
 		Plan: []*builtin_tools.PlanItem{
-			{ID: "step-1", Step: "收集证据", Status: builtin_tools.PlanStepCompleted},
-			{ID: "step-2", Step: "验证调用链", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-1"}},
-		},
-		StepOutcomes: []*builtin_tools.StepOutcome{
 			{
-				StepID:       "step-1",
-				Status:       builtin_tools.StepOutcomeCompleted,
-				UpdatedAt:    time.Date(2026, 4, 3, 10, 2, 0, 0, time.UTC),
+				ID:           "step-1",
+				Step:         "收集证据",
+				Status:       builtin_tools.PlanStepCompleted,
 				ShortSummary: "已完成证据收集",
 				KeyFacts:     []string{"fact-1", "fact-2"},
 				References:   []string{"ref-000001"},
+				TimelineFile: "shared/step-1/timeline.jsonl",
 			},
+			{ID: "step-2", Step: "验证调用链", Status: builtin_tools.PlanStepInProgress, DependsOn: []string{"step-1"}},
 		},
 	}
 
-	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
+	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{WorkspaceRootDir: "/ws/root"})
 	for _, marker := range []string{
 		"<TASK_ITEMS>",
 		"\"id\":\"step-1\"",
-		"</TASK_ITEMS>",
-		"<EXECUTION_LINE>",
-		"\"step_id\":\"step-1\"",
 		"\"short_summary\":\"已完成证据收集\"",
-		"</EXECUTION_LINE>",
+		"\"timeline_file\":\"/ws/root/shared/step-1/timeline.jsonl\"",
+		"</TASK_ITEMS>",
 	} {
 		if !strings.Contains(got, marker) {
 			t.Fatalf("expected marker %q in planner input, got %s", marker, got)
+		}
+	}
+	// 旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入已取消（copy→pointer）。
+	for _, banned := range []string{"<EXECUTION_LINE>", "<WORKSPACE_STEP_CONTEXTS>"} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("planner input must not contain removed section %q, got %s", banned, got)
 		}
 	}
 }
@@ -135,7 +136,7 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 			SourceStepID:    "step-1",
 			Reason:          "旧计划未覆盖新增缺口",
 			NextGoal:        "围绕新缺口重排计划",
-			IncompleteItems: []string{"missing-1"},
+			IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
 			Warnings:        []string{"warn-1"},
 			ReplacePending:  true,
 		},
@@ -149,55 +150,6 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 		"\"next_goal\":\"围绕新缺口重排计划\"",
 		"\"replace_pending\":true",
 		"</REPLAN_CONTEXT>",
-	} {
-		if !strings.Contains(got, marker) {
-			t.Fatalf("expected marker %q in planner input, got %s", marker, got)
-		}
-	}
-}
-
-func TestPlannerInputFromSnapshot_IncludesWorkspaceStepContexts(t *testing.T) {
-	workspaceRoot := t.TempDir()
-	if err := builtin_tools.AppendWorkspaceStepContextRecords(workspaceRoot, []*builtin_tools.StepContextRecord{
-		{
-			ContextKey:   "ctx-1",
-			Namespace:    "agents/dfa",
-			StepID:       "step-1",
-			StepKey:      "step-1",
-			PlanVersion:  2,
-			AgentProfile: "dfa",
-			SummaryFile:  "shared/step_artifacts/dfa.summary.md",
-			ResultFile:   "shared/step_artifacts/dfa.result.json",
-			ResultKeys:   []string{"flow_evidence"},
-			ShortSummary: "child summary",
-			KeyFacts:     []string{"k1"},
-			References:   []string{"ref-000002"},
-			CreatedAt:    time.Now(),
-		},
-	}); err != nil {
-		t.Fatalf("append workspace step contexts failed: %v", err)
-	}
-
-	snapshot := builtin_tools.StateSnapshot{
-		InputTimeline: []*builtin_tools.TimelineInput{
-			{Content: "continue", CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC)},
-		},
-		Plan: []*builtin_tools.PlanItem{
-			{ID: "step-1", Step: "seed", Status: builtin_tools.PlanStepCompleted},
-		},
-	}
-
-	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		WorkspaceRootDir:   workspaceRoot,
-		WorkspaceNamespace: "agents/dfa",
-	})
-	for _, marker := range []string{
-		"<WORKSPACE_STEP_CONTEXTS>",
-		"\"workspace_namespace\":\"agents/dfa\"",
-		"\"context_key\":\"ctx-1\"",
-		"\"namespace\":\"agents/dfa\"",
-		"flow_evidence",
-		"</WORKSPACE_STEP_CONTEXTS>",
 	} {
 		if !strings.Contains(got, marker) {
 			t.Fatalf("expected marker %q in planner input, got %s", marker, got)

@@ -138,10 +138,12 @@ type concurrentToolSlot struct {
 	rawOut string
 	rawErr string
 
-	out      string
-	errText  string
-	outTrunc bool
-	errTrunc bool
+	out         string
+	errText     string
+	outTrunc    bool
+	errTrunc    bool
+	outFullPath string
+	duration    time.Duration
 }
 
 // executeToolCallsConcurrently runs multiple concurrent-safe tools in parallel.
@@ -249,6 +251,12 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 				WorkspaceRootDir:   strings.TrimSpace(a.workspaceRootDir),
 				WorkspaceNamespace: strings.TrimSpace(a.workspaceNamespace),
 				WorkspaceSharedDir: sharedDir,
+				SourceWorkingDir:   strings.TrimSpace(a.runtimeRepoContext.SourceWorkingDir),
+				RepoRootDir:        strings.TrimSpace(a.runtimeRepoContext.RepoRootDir),
+				IsGitRepo:          a.runtimeRepoContext.IsGitRepo,
+				GitBranch:          strings.TrimSpace(a.runtimeRepoContext.Branch),
+				GitRepoURL:         strings.TrimSpace(a.runtimeRepoContext.RemoteURL),
+				IsGitWorktree:      a.runtimeRepoContext.IsWorktree,
 				CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
 			})
 
@@ -256,7 +264,9 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 			execCtx, cancelTimeout := context.WithTimeout(callCtx, toolTimeout)
 			defer cancelTimeout()
 
+			toolStart := time.Now()
 			out, err := s.tool.Execute(execCtx, s.argsMap)
+			s.duration = time.Since(toolStart)
 			if err != nil && execCtx.Err() == context.DeadlineExceeded {
 				err = fmt.Errorf("tool %q timed out after %s: %w", s.toolName, toolTimeout, err)
 			}
@@ -291,8 +301,8 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 			continue
 		}
 
-		slot.out, slot.outTrunc = TruncateToolOutput(slot.toolName, slot.rawOut, a.workspaceRootDir)
-		slot.errText, slot.errTrunc = TruncateToolOutput(slot.toolName+"-error", slot.rawErr, a.workspaceRootDir)
+		slot.out, slot.outTrunc, slot.outFullPath = TruncateToolOutput(slot.toolName, slot.rawOut, a.workspaceRootDir)
+		slot.errText, slot.errTrunc, _ = TruncateToolOutput(slot.toolName+"-error", slot.rawErr, a.workspaceRootDir)
 
 		if slot.outTrunc || slot.errTrunc {
 			a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{
@@ -312,21 +322,11 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		a.AICallProxyWriteToolResult(slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
 		if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
-			payload := map[string]any{
-				"tool":   slot.toolName,
-				"args":   slot.argsMap,
-				"result": slot.out,
-				"error":  slot.errText,
-			}
+			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)
 			if len(render.Media) > 0 {
-				payload["media"] = render.Media
+				event.Payload = map[string]any{"media": render.Media}
 			}
-			_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
-				TS:      time.Now().UTC(),
-				Type:    "tool_call",
-				Key:     slot.callID,
-				Payload: payload,
-			})
+			_ = appendStepTimeline(sharedDir, stepID, event)
 		}
 
 		a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{

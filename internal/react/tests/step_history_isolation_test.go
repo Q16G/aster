@@ -142,6 +142,7 @@ func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, 
 }
 
 func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	client := &stepHistoryIsolationClient{t: t}
 	agent, err := NewReActAgent(
 		"isolation-agent",

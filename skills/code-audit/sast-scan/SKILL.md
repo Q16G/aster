@@ -1,7 +1,8 @@
 ---
 name: sast-scan
-description: 多语言多介质静态应用安全扫描（SAST）— 自动检测 RCE/SQLi/XSS/XXE/SSRF/命令注入/反序列化/路径穿越等结构化漏洞模式，覆盖源码、XML 配置、模板文件，输出覆盖声明与分桶结果。
-tags: code-audit,sast,semgrep
+description: >-
+  多语言多介质静态粗筛——基于本地 Semgrep 规则扫描源码 / XML 配置 / 模板，产出按
+  high_confidence / needs_dataflow_confirmation / high_noise 分桶的漏洞候选清单。
 when-to-use: 当需要对代码进行静态安全扫描、建立高价值漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
@@ -11,28 +12,84 @@ arguments:
   - lang
 ---
 
-# SAST 静态安全扫描（Semgrep）
+# SAST 多漏洞粗筛（Semgrep + 本地规则）
 
-> **只使用本地规则扫描**。不要使用 `--config auto`、`--config p/xxx` 等在线规则。所有规则已内置于本地。
+## 1. 触发线索 / 适用信号
 
-## 目标
+按"项目规模 + 介质 + 依赖 + 流程位置"四维识别本能力命中场景。
 
-这个 skill 的职责不是“跑完 Semgrep 就结束”，而是：
+**项目规模维度**：
+- `list_files` 在目标根目录被截断（默认 5000 / 上限 20000）
+- monorepo / 多模块 / 多语言混合项目
+- Controller / Service 单文件超过 2000 行（人读分页成本远高于先粗筛）
 
-1. 建立**高价值候选集**
-2. 明确**实际扫描面**
-3. 把结果分成**高置信 / 需数据流确认 / 高噪声**
-4. 为后续 `dataflow-analysis` 和业务逻辑复核提供输入
+**介质维度**（按项目结构识别——单看扩展名会漏 XML / 模板）：
+- 含 `**/mapper/**/*.xml` 或 `**/*Mapper.xml`（MyBatis 模板里的 `${}`）
+- 含 `templates/` / `views/` / `WEB-INF/` 等服务端模板目录（Thymeleaf / Freemarker / Jinja2 / Blade）
+- 含 `application*.yml` / `*.properties` / `nginx.conf` / `web.xml` 等配置介质
+- C/C++ 项目含手写 `Runtime.exec` / `system()` / 格式化字符串 sink
 
-它偏向发现：
+**依赖维度**（粗筛收益高的栈）：
+- `pom.xml` 含 `mybatis-spring` / `spring-boot-starter-web`
+- `package.json` 含 `sequelize` / `typeorm` / `mysql2`（raw 通道集中）
+- `go.mod` 含 `gorm.io/gorm`（`db.Raw` / `db.Exec` 集中）
+- `requirements.txt` 含 `django` / `flask` / `sqlalchemy`
+- `composer.json` 含 `laravel/framework` / `thinkphp`
 
-- SQL 注入、命令执行、代码执行、路径穿越、文件上传、XSS、SSRF、硬编码密钥
-- MyBatis `${}`、模板原样输出、危险反序列化、危险脚本执行
-- Cookie/session/request-attribute 等信任边界问题的初筛线索
+**流程位置维度**：
+- 已完成 [project-framework-analysis](../project-framework-analysis/SKILL.md)，但还没建立漏洞候选集
+- 准备进入按漏洞维度深挖前的"分发"时点——直接对未粗筛的代码逐文件深读会浪费大量 context
+- 已有上一轮 sast-scan 候选但发现规则覆盖不全（如新规则集发布、新框架进入扫描面）
 
-## 本地规则路径
+**反向信号**（不命中本能力）：
+- 目标已经是单文件或<100 行的小修改半径——直接走对应漏洞 skill 即可
+- 用户已显式指定单漏洞类型（"只看 SQLi"）——直接 [dataflow-analysis](../dataflow-analysis/SKILL.md) + 对应漏洞 skill
 
-ASTER 启动时会把本地嵌入规则提取到：
+---
+
+## 2. 造成原因
+
+**本能力 n/a**（原因：粗筛跨多种漏洞类型，单类漏洞成因由对应 skill 承担。SQLi 成因看 `business-logic-auth-review` / `dataflow-analysis` 引用的对应能力；XSS 成因看 `stored-xss-detection` / `csp-audit`；密钥泄露成因看 `secret-detection`；以此类推）。
+
+---
+
+## 3. 领域 source-sink 数据流模型
+
+**本能力 n/a**（原因：Semgrep 规则匹配只判"是否出现危险 pattern"，**不做跨函数追踪**。源-汇可达性证明由 [dataflow-analysis](../dataflow-analysis/SKILL.md) 接力。本能力的产物里 `needs_dataflow_confirmation` 桶正是为此设的——把"模式命中但跨函数链路未证"的候选交给数据流分析）。
+
+---
+
+## 4. 常见类型
+
+本能力规则集覆盖的漏洞大类（按已知主流覆盖，不追求穷举）：
+
+| 大类 | 典型 sink 形态 | 主要落桶 |
+|---|---|---|
+| **代码执行 / 反序列化** | `Runtime.exec` / `eval` / `ObjectInputStream.readObject` / `pickle.loads` / `unserialize` | high_confidence（强 sink）/ needs_dataflow（封装层） |
+| **SQL 注入** | 字符串拼接进 SQL / ORM Raw / MyBatis `${}` / ORDER BY 拼接 | high_confidence（XML `${}`）/ needs_dataflow（拼接） |
+| **路径穿越 / 任意文件** | `new File(userInput)` / `FileInputStream` / `Path.resolve` 无校验 | needs_dataflow（普遍需追校验层） |
+| **命令注入** | `Runtime.exec(String)` / `bash -c` / `system()` 接收变量 | high_confidence（含变量参数）/ needs_dataflow |
+| **SSRF** | `URL.openConnection` / `HttpClient.execute` / `requests.get` 用户可控 URL | needs_dataflow |
+| **XXE / XML 实体** | `DocumentBuilderFactory` / `SAXParser` 未禁用外部实体 | high_confidence（配置缺失） |
+| **模板注入** | Velocity / Freemarker / Jinja2 `render(string)` 用户可控模板 | needs_dataflow / high_noise |
+| **XSS（服务端模板）** | 模板原样输出 / `innerHTML` / `dangerouslySetInnerHTML` | high_noise（模式宽，FP 多） |
+| **硬编码密钥** | `password=...` / `apiKey=...` 字面量 + 配置文件字段 | high_confidence（与 [secret-detection](../secret-detection/SKILL.md) 协作） |
+| **危险配置** | `debug=true` / 默认凭据 / 过宽 CORS / 弱 TLS | high_confidence（与 [dangerous-config](../dangerous-config/SKILL.md) 协作） |
+| **信任边界类初筛** | `request.getAttribute` / `Cookie` / `session` 参与分支判断 | needs_dataflow（与 [session-security](../session-security/SKILL.md) / [business-logic-auth-review](../business-logic-auth-review/SKILL.md) 协作） |
+
+注：本表不是穷举清单，本地规则库会随版本更新；粗筛产物本身的覆盖度以**实际命中条目**为准，不靠表格预设。
+
+---
+
+## 5. 入口点定位
+
+按项目结构构建"实际扫描面"——粗筛能否命中真候选取决于扫描面是否覆盖到正确介质，**只看扩展名会漏 XML / 配置 / 模板**。
+
+> 下列框架 / 项目类型仅作类似项目示例，不限于此；以目标实际栈为准。
+
+### 本地规则路径
+
+ASTER 启动时把本地嵌入规则提取到：
 
 ```text
 ~/.aster/rules/
@@ -44,251 +101,247 @@ ASTER 启动时会把本地嵌入规则提取到：
 └── c-cpp/
 ```
 
-每个语言目录下同时包含：
+每个语言目录同时包含自建高价值规则与 `community/` 子目录（Semgrep 社区高质量规则）。**禁止**用 `--config auto` / `--config p/xxx` 拉在线规则（why：审计环境可能离线、在线规则版本不可固定影响可追溯性）。
 
-- 自建高价值规则
-- `community/` 子目录中的 Semgrep 社区高质量规则
+### 按项目结构扫描面构建
 
-## 扫描流程
+| 语言 | 特征文件（识别语言+框架） | 必入扫描面的介质 |
+|---|---|---|
+| Java | `pom.xml` / `build.gradle` / `*.java` | `**/*Mapper.xml`、`**/*.properties`、`**/*.yml`、`templates/` / `views/` / `WEB-INF/` |
+| Go | `go.mod` / `*.go` | `config/*.yaml`、模板目录、SQL 构造层（`*repository*.go` / `*dao*.go`） |
+| Python | `requirements*.txt` / `pyproject.toml` / `*.py` | `settings.py`、模板（Jinja2 / Django templates）、`*.cfg` / `*.ini` |
+| JS/TS | `package.json` / `*.js` / `*.ts` | 服务端模板（EJS / Pug / Handlebars）、SSR、中间件、配置 |
+| PHP | `composer.json` / `*.php` | Blade / Twig / Smarty、配置、上传点 |
+| C/C++ | `Makefile` / `CMakeLists.txt` / `*.c` / `*.cpp` | 头文件、命令执行点、内存安全点 |
 
-### 第一步：检查 Semgrep
+### Java 项目的强信号
 
-```bash
-semgrep --version
+识别到任一信号后，**必须**确认 XML mapper 已入扫描面（why：MyBatis `${}` 注入是 Java 项目最高密度的高置信候选源，缺它直接导致"完整审计已完成"结论失真）：
+
+- `pom.xml` 含 `org.mybatis` / `mybatis-spring`
+- 项目根目录树含 `**/mapper/` 目录
+- 含任意 `*Mapper.xml` 文件
+
+若扫描面统计中 XML mapper 数为 `0` 但识别到上述信号——按 §9 闭环要求输出阻断性告警，不得给"已完整审计 SQL 注入"结论。
+
+### 排除项
+
+明显无关目录加入 `--exclude`：
+
+```
+--exclude .git --exclude node_modules --exclude vendor
+--exclude dist --exclude build --exclude out --exclude target
 ```
 
-若未安装，引导用户安装 `semgrep`。
+---
 
-### 第二步：识别语言与框架信号
+## 6. 跨框架代码变体
 
-优先通过目录与特征文件判断语言和框架，而不是只看扩展名：
+本节列粗筛规则集对主流框架的"安全形态 vs 危险形态"对照——帮助理解为何某些命中需要走 §9 三桶判定（同一 sink 形态在不同框架里命中性质不同）。
 
-| 语言 | 特征文件 | 需要额外关注 |
-|------|---------|-------------|
-| Java | `pom.xml`、`build.gradle`、`*.java` | `mapper.xml`、`application*.yml`、`*.properties`、模板目录 |
-| Go | `go.mod` | `config/*.yaml`、模板、SQL 构造层 |
-| Python | `requirements*.txt`、`setup.py`、`pyproject.toml` | `settings.py`、模板、Jinja2/Flask/Django 配置 |
-| JS/TS | `package.json`、`*.js`、`*.ts` | 服务端模板、SSR、配置与中间件 |
-| PHP | `composer.json`、`*.php` | Blade/Twig/Smarty、配置与上传点 |
-| C/C++ | `Makefile`、`CMakeLists.txt` | 命令执行、内存安全、格式化字符串 |
+| 框架 | 安全形态 | 危险形态（规则命中） | 主要落桶 |
+|---|---|---|---|
+| **MyBatis** | `#{var}` 占位符（参数化） | `${var}` 直拼（XML / 注解 `@Select`） | high_confidence |
+| **Gorm** | `db.Where("col = ?", val)` | `db.Raw(fmt.Sprintf(...))` / `db.Where("col = " + val)` | high_confidence（含变量）/ needs_dataflow |
+| **JdbcTemplate** | `queryForObject(sql, args)` 带占位符 | `queryForObject(sql)` 无 args 形式 / 字符串拼接 | high_confidence / needs_dataflow |
+| **Spring JPA** | `@Query(value="...", nativeQuery=false)` + `:param` | `createNativeQuery(String)` + 字符串拼接 | high_confidence |
+| **Sequelize** | `Model.findAll({where: {col: val}})` | `sequelize.query(template literal)` / `Sequelize.literal(...)` | high_confidence / needs_dataflow |
+| **Django ORM** | `Model.objects.filter(field=v)` | `objects.raw(format-string)` / `.extra(where=[str])` | high_confidence |
+| **Jackson** | `ObjectMapper` 关闭 `enableDefaultTyping` | 开启了 polymorphic typing + 反序列化用户输入 | high_confidence（反序列化） |
+| **Velocity / FreeMarker** | 模板从受信文件加载 | `Template.evaluate(userControlledString)` | needs_dataflow / high_noise |
+| **DocumentBuilderFactory** | 显式 `setFeature("...disallow-doctype-decl", true)` | 默认未禁用 + 接收用户 XML 输入 | high_confidence（配置缺失） |
 
-若用户通过 `--lang` 指定语言，可跳过自动检测，但仍要补做框架信号盘点。
+> ORM 通用危险点：所有 ORM 都有 Raw 通道；字段名 / 表名 / 排序方向不能参数化（需白名单）。这两类是规则命中后**直接归 high_confidence**的位置。
 
-### 第三步：构建扫描面
+---
 
-不要把扫描面缩成“只有源码”。至少按语言保证以下介质进入扫描面：
+## 7. 思考检查点
 
-#### Java 默认扫描面
+候选条目分桶时按 sink 语义思考（不按业务命名）：
 
-- `*.java`
-- `**/mapper/**/*.xml`
-- `**/*.properties`
-- `**/*.yml`
-- `**/*.yaml`
-- 常见模板目录：`templates/`、`views/`、`WEB-INF/`
+- 该 finding 的 sink 是否真到了**用户可控 source**？（粗筛只看 sink；source 可达性是 high_confidence vs needs_dataflow 的分界）
+- sink 形态是**强 sink**（无法通过参数化救活，如 `Runtime.exec(String)` / MyBatis `${}` / 字段名拼接）还是**弱 sink**（同名 API 有安全形态，如 `JdbcTemplate.queryForObject` 既能拼也能参数化）？
+- 项目里是否已有**中间过滤层**（白名单 / 类型转换 / 框架自动转义）让该 sink 实际安全？sast-scan 看不到跨函数过滤——这类应入 `needs_dataflow_confirmation` 而非直接 `high_confidence`。
+- 该 finding 属于**已知高噪声模式**吗？典型如 SSTI 宽匹配、JNDI 审计规则、模板原样输出——这类应入 `high_noise_patterns`，不挤主结论。
+- 该候选**该交给哪个下游 skill**？跨函数链路 → [dataflow-analysis](../dataflow-analysis/SKILL.md)；存储型 XSS → [stored-xss-detection](../stored-xss-detection/SKILL.md)；越权 → [business-logic-auth-review](../business-logic-auth-review/SKILL.md)；硬编码密钥 → [secret-detection](../secret-detection/SKILL.md)；配置类 → [dangerous-config](../dangerous-config/SKILL.md)。
 
-#### Java 项目的强制要求
+---
 
-若识别到任一信号：
+## 8. 检测方法论 / 数据流追踪
 
-- `org.mybatis`
-- `mybatis-spring`
-- `mapper/` 目录
-- `Mapper.xml`
+> 本能力**只到候选**——跨函数 / 跨文件可达性证明走 [dataflow-analysis](../dataflow-analysis/SKILL.md)；动态利用证据走对应黑盒 / graybox skill。本节方法论描述粗筛产出，不规定 plan / step 编排。
 
-则必须确认 XML mapper 已进入扫描面。  
-若 XML mapper 数为 `0`，不得给出“完整审计已完成”的结论，必须输出阻断性告警。
+### 基线流程
 
-### 第四步：执行扫描
+1. **环境就绪**：`semgrep --version`；未安装引导用户安装 `semgrep`（why：本能力依赖外部二进制）。
+2. **语言与框架识别**：按 §5 表格用特征文件而非扩展名定位；若用户已传 `--lang`，仍要补做框架信号盘点（why：`--lang java` 不告诉你是否要扫 MyBatis XML）。
+3. **扫描面构建**：按 §5 在扫描面统计里写明 Java 文件数 / XML mapper 数 / 配置文件数 / 模板文件数；Java 项目识别到 MyBatis 信号但 XML mapper = 0 直接停手并告警（why：缺最高密度高置信源会给出失真"已审"结论，详见 §9 反例义务）。
+4. **执行扫描**：
 
-标准命令：
+   ```bash
+   semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> \
+     --json --timeout 600 --max-memory 4096 --jobs 4 \
+     --exclude .git --exclude node_modules --exclude vendor \
+     --exclude dist --exclude build --exclude out --exclude target
+   ```
 
-```bash
-semgrep scan --config "$HOME/.aster/rules/<lang>" <target_path> --json --timeout 600 --max-memory 4096
-```
+   - 优先用工具内置 `--jobs N`（共享规则集解析与 AST 缓存，比多进程高效，避免多 semgrep 同时驻留 OOM）
+   - 通过 bash 工具显式传 `timeout_ms`（如 `600000`），避免提前截断；被取消时整棵进程树（含 `semgrep-core`）会被自动清理
 
-建议额外排除明显无关目录：
+5. **大项目分批**：扫描面文件数 > 5000 时按顶层模块 / 目录边界**串行**切分；详见 [references/semgrep-batching.md](references/semgrep-batching.md)。
+6. **三桶分类**：按 §7 思考检查点把每条命中归入 `high_confidence` / `needs_dataflow_confirmation` / `high_noise_patterns`。
+7. **产物落库**：按 §9 闭环要求，每条候选独立 jsonl 落 `shared/coverage-ledger/findings/sast-scan.jsonl`。
 
-```bash
---exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
-```
+### 基线检查项
 
-> **超时提示**：semgrep 扫描大目录常超过默认上限，通过 bash 工具执行时显式传 `timeout_ms`（如 `600000`）避免被提前截断；被取消时整棵进程树（含 `semgrep-core`）会被自动清理，不会残留。
+> 以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标代码动态调整，按三态标注（`[x]` / `[-]` / `[+]`）处置。
 
-### 大项目分批扫描
+- [ ] 扫描面统计完整（Java 文件 / XML mapper / 配置 / 模板四个介质都有数字）
+- [ ] Java 项目识别到 MyBatis 信号时 XML mapper 数 > 0；否则已记入扫描缺口并阻断"已审"结论
+- [ ] 每条命中按 sink 语义入三桶之一（不漏不重）
+- [ ] high_noise_patterns 桶单独列出，未挤入主结论
+- [ ] 每条候选含 `file:line` + source/sink 表达式片段
+- [ ] 产物已 append-only 写入 jsonl（不靠汇总阶段事后补全）
 
-大型项目（monorepo、文件数巨大）一次性扫整个目录有三个风险：被 bash 超时杀掉导致整次结果全丢、`--max-memory` 下 OOM、产出量过大难以逐条处理。
+---
 
-**何时触发**：执行扫描前先用 `list_files` 估算扫描面文件数。`list_files` 默认上限就是 5000、最高 20000，超出会被截断——这本身就是信号。**若扫描面文件数超过 5000，进入分批模式。**
+## 9. 闭环要求（必须遵守）
 
-**如何切分**：按顶层模块/目录边界切分，**不要机械地按「每 5000 文件一片」切**。优先沿项目已有的模块边界走，例如：
+> 闭环判定 / 取证完整性 / 破坏性动作以 [common/closure-verification.md](../../common/closure-verification.md) 为准，下面只列本能力特有的判定上限与产物契约。
+>
+> **为什么这里是「必须」**：本节属交付契约——产物结构关系到下游 [dataflow-analysis](../dataflow-analysis/SKILL.md) / 各单漏洞 skill / `result-with-file` 机器消费；产物聚合或省略会让整条链路失效，因此是刚性要求。
 
-- maven 多模块的各 module 目录
-- go 的各子 module / 子服务目录
-- monorepo 下的 `service-a/`、`service-b/`、`web/` 等顶层目录
+### 白盒判定上限
 
-每个子目录作为一次独立 `semgrep scan` 的 `<target_path>`。
+本能力作为**粗筛**原子能力，判定上限为 `static-confirmed`（粗筛级模式命中），**不等于动态 confirmed**。升级路径：
 
-**每批命令**：复用上面的标准命令，只把 `<target_path>` 换成子目录，`--json --timeout 600 --max-memory 4096` 与排除项保持不变，并通过 bash 显式传 `timeout_ms`：
+| 三桶 | 上限状态 | 升级路径 |
+|---|---|---|
+| `high_confidence` | `static-confirmed (粗筛级)` | 跨函数链路确认 → [dataflow-analysis](../dataflow-analysis/SKILL.md) → 黑盒可观测效果验证 → `confirmed` |
+| `needs_dataflow_confirmation` | `suspected` | 强制走 [dataflow-analysis](../dataflow-analysis/SKILL.md)；不通过中间信号直接升级 |
+| `high_noise_patterns` | `needs_review` | 默认不上主结论；按上下文复核，复核后多归 not_vulnerable |
 
-```bash
-semgrep scan --config "$HOME/.aster/rules/<lang>" <module_path> --json --timeout 600 --max-memory 4096 \
-  --exclude .git --exclude node_modules --exclude vendor --exclude dist --exclude build --exclude out --exclude target
-```
+**禁止**仅凭 sast-scan 命中直接判 `confirmed`——无可观测效果证据，仅模式命中不构成动态利用。
 
-**单批失败隔离**：某批超时或 OOM 时，把该模块明确记入「扫描缺口」，其余批的结果仍然有效，**不得因为一批失败就放弃全部**。
+### 产物契约（必须遵守）
 
-**结果归并**（关键）：分批是手段，最终仍必须输出**一份**报告：
+**为什么这里是「必须」**：产物结构是下游机器消费的接口，聚合 / 省略 / 区间会让 `result-with-file` 计数闸门失效，并让单漏洞 skill 无法回溯到具体 file:line。
 
-- 覆盖声明合并为一份：扫描面统计（文件数 / XML mapper / 配置 / 模板）为各批之和，并列出本次实际分了哪几批、每批对应哪个目录。
-- 三个分桶（high_confidence / needs_dataflow_confirmation / high_noise）跨批统一归并、统一去重后再输出。
-- 仍受下面「输出要求」的全部硬约束：禁止聚合计数、每个 finding 独占一行、不得用「等/略」省略。**分批不是省略 finding 的借口。**
-
-## 输出要求
-
-### 1. 覆盖声明（必须输出）
-
-报告里必须先写清本次扫到了什么，而不是直接开始列告警。至少包含：
-
-- 扫描目标
-- 识别语言
-- 规则来源
-- 扫描面统计
-  - Java 文件数
-  - XML mapper 数
-  - 配置文件数
-  - 模板文件数
-- 识别到的框架信号
-  - Spring
-  - MyBatis
-  - Thymeleaf
-  - Freemarker
-  - 其他显著框架
-- 扫描盲区 / 缺口
-
-### 2. 结果分桶（必须输出）
-
-所有结果必须分为三类：
-
-- `high_confidence`
-  - 强 sink、直接危险 API、明确动态 SQL、明确危险配置
-- `needs_dataflow_confirmation`
-  - source/sink 已接近成立，但还需要 `dataflow-analysis`
-- `high_noise_patterns`
-  - 已知容易大批量误报的模式，如某些 SSTI/JNDI 审计规则
-
-默认主结论只先展示前两类。  
-高噪声桶单独列出，不允许它们挤占主结论。
-
-### 3. 逐条分析规则
-
-对每条发现至少做以下判断：
-
-1. 是否真有用户可控输入
-2. 是否可达危险 sink / 动态 SQL / 权限决策
-3. 是否已有明确防护
-4. 该项属于哪类：
-   - `Confirmed by pattern`
-   - `Needs dataflow confirmation`
-   - `Semantic review required`
-5. 如果能从代码上下文判断该 sink 的 controller 入口点（方法名 + URL），注明入口点信息，方便下游按入口点汇总
-
-## Java 项目的特别要求
-
-对 Java Web 项目，除了常规 sink 规则，还必须额外注意：
-
-- `request.getAttribute(...)`、`Cookie`、`session` 参与权限或身份流转
-- `mapper.xml` 中 `${}`、动态条件、动态排序
-- controller/service/mapper 三层之间的参数一致性
-- 登录、鉴权、权限边界不一定会直接命中危险 API
-
-所以 Java 项目扫描结束后，若命中以下任一线索：
-
-- `needs_dataflow_confirmation`
-- `Cookie` 参与分支判断
-- `session` 写入身份字段
-- controller 参数同时包含 owner/operator 与 resource/target
-
-则应继续调用：
-
-- `dataflow-analysis`
-- 或 `business-logic-auth-review`
-
-## 输出模板（必须遵循）
-
-```text
-## SAST 扫描报告
-
-### 覆盖声明
-- 扫描目标：<target_path>
-- 检测语言：Java
-- 规则来源：本地规则（~/.aster/rules/java）
-- 框架信号：Spring, MyBatis, Thymeleaf
-- 扫描面：
-  - Java files: 128
-  - XML mappers: 14
-  - Config files: 9
-  - Templates: 6
-- 扫描缺口：<若有>
-
-### 高置信结果（逐条列出，每个 finding 独占一行）
-
-#### CWE-22 路径穿越 / 任意文件下载（N 条）
-- [high_confidence] path-traversal: 文件下载路径拼接 @ AccTransactionController.java:102 (source: request.getParameter("filePath"), sink: new File())
-- [high_confidence] path-traversal: 文件下载路径拼接 @ AccTransactionController.java:158 (source: request.getParameter("name"), sink: FileInputStream())
-- [high_confidence] path-traversal: 文件下载路径拼接 @ PersPersonController.java:545 (source: params.get("photo"), sink: new File())
-（此处为模板示意，实际输出时必须逐条列完所有 finding，不得省略）
-
-#### CWE-89 SQL 注入（N 条）
-- [high_confidence] sql-injection: MyBatis ${} 动态拼接 @ UserMapper.xml:42 (source: ${name}, sink: SELECT)
-- [high_confidence] sql-injection: MyBatis ${} 动态排序 @ OrderMapper.xml:78 (source: ${orderBy}, sink: ORDER BY)
-（此处为模板示意，实际输出时必须逐条列完所有 finding，不得省略）
-
-### 需要数据流确认（逐条列出）
-- [needs_dataflow] deserialization: ObjectInputStream.readObject @ MsgHandler.java:88 (source: socket input, sink: readObject)
-（此处为模板示意，实际输出时必须逐条列完，不得省略）
-
-### 高噪声结果（逐条列出）
-- [high_noise] ssti-pattern: 模板变量输出 @ views/user.ftl:12 (source: model.name, sink: ${})
-（此处为模板示意，实际输出时必须逐条列完，不得省略）
-```
-
-> **格式要求**：每个 finding 独占一行，格式为 `- [桶名] <rule_id>: <简述> @ <file>:<line> (source: <source_expr>, sink: <sink_expr>)`。按 CWE 分组便于阅读，但每条必须独立列出。总数必须与逐条列出的条目数一致。
-
-### 反例（禁止以下写法）
-
-```text
-### 高置信结果
-- 高置信 50 处任意文件下载 + 13 处路径穿越，分布在 AccTransactionController、
-  PersPersonController、BaseController、IvsSnapController、SystemController 等
-- 发现 8 处 SQL 注入，主要集中在 mapper 层
-```
-
-> 问题：聚合计数（"50 处 + 13 处"）丢失了 63 个具体位置；"等"省略了剩余 Controller；"8 处 SQL 注入"只有计数没有逐条列出。
-
-## 禁止事项
-
-- 不要只报“发现多少条”，不说明扫描面
-- 不要把高噪声 SSTI/JNDI 直接混进主结论
-- 不要因为 `--lang java` 就只看 `*.java`，忽略 XML / 配置 / 模板
-- 不要在 XML mapper 没扫到时，仍宣称 SQL 注入已被完整覆盖
-- 不要将多个 finding 合并为聚合计数（如"50 处任意文件下载 + 13 处路径穿越"），每个 finding 必须独占一行，包含 file:line
-- 不要用"等"、"..."、"（略）"、"（其余 N 条略）"等方式省略 finding 列表中的条目，所有发现必须完整枚举
-- 不要因为项目大就只扫了部分模块却宣称"完整审计已完成"；分批扫描时未扫到的模块必须显式列入"扫描缺口"
-
-## 发现即落行（coverage-ledger/findings）
-
-每确认一条 finding/需复核项，**立即** append 一行规范化 jsonl 到 `shared/coverage-ledger/findings/sast-scan.jsonl`——不要等汇总阶段再回头整理，"事后总结"正是折叠（区间行、"50 处任意文件下载"聚合计数、"等"/"略"）的根源。这与上方"每个 finding 必须独占一行"是同一要求的机器可核版本。
-
-一 finding 一行，**绝不写区间/计数/抽样**，字段：
+每确认一条候选**立即** append 一行到 `shared/coverage-ledger/findings/sast-scan.jsonl`，不等汇总阶段回头整理（why："事后总结"是聚合 / 区间 / "等"省略的根源）：
 
 ```json
-{"id","title","severity","cwe","source","sink","entry_point","status","confidence","file_location","source_report","description"}
+{
+  "id": "sast-001",
+  "title": "MyBatis ${} 动态拼接",
+  "severity": "high",
+  "cwe": "CWE-89",
+  "source": "${name}",
+  "sink": "SELECT WHERE",
+  "entry_point": "POST /user/search",
+  "status": "needs_review",
+  "confidence": "high_confidence",
+  "file_location": "UserMapper.xml:42",
+  "source_report": "sast-scan",
+  "description": "..."
+}
 ```
 
-- `id` 带前缀全局唯一（如 `sast-001`）。
-- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`。
-- `(source, sink, entry_point)` 三元组任一不同即各自独立成行，禁止合并折叠。
-- `entry_point` 填该 sink 可达的 HTTP 入口点（method+URL）；无明确入口点的系统性命中填 `systemic`。`file_location` 填 `file:line`。
+字段约束：
+- `id` 带 `sast-` 前缀全局唯一
+- `status ∈ confirmed | needs_review | not_vulnerable | false_positive | superseded`（粗筛默认 `needs_review`）
+- `confidence ∈ high_confidence | needs_dataflow_confirmation | high_noise`（与三桶对齐）
+- `(source, sink, entry_point)` **三元组任一不同即各自独立成行**——禁止合并折叠
+- `entry_point` 填该 sink 可达的 HTTP 入口点（method+URL）；无明确入口点的系统性命中填 `systemic`
+- `file_location` 填 `file:line`，不留空、不写区间
 
-下游 `result-with-file` 直接消费这些 jsonl 机械派生 `findings-index.md` 并做计数闸门，你无需再手写索引。
+**禁止**：
+- 聚合计数（"50 处任意文件下载 + 13 处路径穿越"）—— 丢失了具体位置，下游无法消费
+- "等" / "..." / "（略）" / "（其余 N 条略）" 省略 finding —— 看似覆盖完整实则漏检
+- 因项目大就只扫了部分模块却宣称"完整审计已完成"——分批扫描未扫到的模块必须显式列入"扫描缺口"
+
+### 反例义务（必须遵守）
+
+> **why**：粗筛"已完整覆盖"结论是覆盖完整性产物声明，缺失反向验证会让下游误信"该子系统该维度安全"。
+
+写"已完整审计 SQL 注入 / RCE / 任意文件"等结论前，产物必须包含：
+- 扫描面统计（介质数清单 + 与项目结构识别信号一致性核验）
+- 分批扫描时每批对应模块清单与覆盖关系
+- 任一未扫到的模块在"扫描缺口"段显式列出
+- Java 项目 MyBatis 信号触发但 XML mapper = 0 → 阻断结论，标 `partial-coverage`
+
+清单不完整 → 结论降级 `partial-coverage`。
+
+---
+
+## 10. 具象化反例库
+
+### FP（看似命中实际不构成）
+
+**反例 1：MyBatis `${}` 在 ORDER BY 但已白名单**
+
+- 抽象规则：`${col}` 在 ORDER BY 位置仍可注入，但若上游有 enum 白名单则实际安全
+- 具体场景：Mapper 含 `ORDER BY ${orderBy}`，但 Service 层 `orderBy = whitelist.contains(input) ? input : "id"`
+- 关键识别特征：sink 位置看似危险，但跨函数追到上游有白名单 / enum 校验
+- 排除方法：标 `needs_dataflow_confirmation` 推 [dataflow-analysis](../dataflow-analysis/SKILL.md) 追上游；不在 sast-scan 阶段直接判 FP
+
+**反例 2：`Runtime.exec(String[])` 数组形态 + 常量首元素**
+
+- 抽象规则：Java `Runtime.exec(String[])` + 首元素为常量命令，仅参数变量 → 无命令注入风险
+- 具体场景：`Runtime.exec(new String[]{"git", "log", "--oneline", userBranch})`
+- 关键识别特征：调用形式是数组而非字符串拼接；首元素是字面量
+- 排除方法：sast-scan 仍命中（规则按 API 名），归 `needs_dataflow_confirmation` 让下游复核
+
+**反例 3：路径拼接但已 `Path.normalize` + 前缀校验**
+
+- 抽象规则：`new File(input)` 命中，但上游已规范化并校验前缀属于受信目录
+- 具体场景：`Path p = Paths.get(base).resolve(input).normalize(); if (!p.startsWith(base)) reject;`
+- 关键识别特征：sink 调用前有 `normalize()` + `startsWith(allowedRoot)` 组合
+- 排除方法：归 `needs_dataflow_confirmation`，由 dataflow-analysis 确认校验链完整
+
+### FN（看似不命中实际是真洞）
+
+**反例 4：通过封装层调用的 sink（规则没覆盖封装 API）**
+
+- 抽象规则：项目把 `Runtime.exec` 封装成 `CmdUtil.run(String)`，sast-scan 规则只查 JDK API 漏报
+- 具体场景：调用点全是 `CmdUtil.run(userInput)`，扫描结果一片"安全"
+- 关键识别特征：[project-framework-analysis](../project-framework-analysis/SKILL.md) 的"自有类与方法"清单提示项目有自定义封装但 sast-scan 命中数异常少
+- 确认方法：把项目 wrapper API 加入本地规则集（自建规则）或交 [dataflow-analysis](../dataflow-analysis/SKILL.md) 用 source-sink 模式追
+
+**反例 5：MyBatis 注解里的 `${}`（XML 扫描面外）**
+
+- 抽象规则：MyBatis 注解 `@Select("SELECT ${col} FROM ...")` 与 XML 模板等价危险，但扫描面只扫 `*.xml` 会漏
+- 关键识别特征：项目用 `@Mapper` 接口 + 注解写 SQL，`*Mapper.xml` 数较少
+- 确认方法：扫描面同时纳入 `*Mapper.java` 注解级别扫描
+
+### 已知高噪声模式（直接归 high_noise_patterns 桶）
+
+| 模式 | 噪声来源 |
+|---|---|
+| SSTI 模板变量原样输出 | 服务端模板天然渲染变量，绝大多数是预期行为 |
+| JNDI 审计规则（log4j 风格） | 应用层调用 `Context.lookup` 大多是受信内部目录 |
+| 序列化器接收 `Object` 类型 | Java 类型擦除导致大量 `ObjectInputStream` 误报 |
+| 弱加密算法（MD5 / SHA1） | 用于非安全场景（哈希校验 / cache key）时不构成漏洞 |
+
+---
+
+## 11. 静态分析边界
+
+> 白盒底线：**不假装看到看不到的代码**。本能力的可观测能力到正则 / AST 模式匹配为止。
+
+下面这些情形 sast-scan **无法继续追踪**，必须落 `needs_dataflow_confirmation` 桶并标 `static-unknown`，**不允许**默认为 not_vulnerable：
+
+1. **跨函数链路**——sast-scan 不做调用栈追踪。命中的 sink 是否真接到用户可控 source 必须交 [dataflow-analysis](../dataflow-analysis/SKILL.md)。
+2. **反射调用 / 动态分派**——Java `Method.invoke` / Python `getattr` / JS `obj[name]()` / 字符串决定调用哪个 DAO 方法。处置：标 `static-unknown` 记录反射点行号。
+3. **闭源 / 无源码依赖**——三方 jar / dll / so / 闭源 SDK。处置：依赖图谱标 `unknown` 推 [dependency-decompile](../dependency-decompile/SKILL.md) 反编译；**不能**直接判 not_vulnerable。
+4. **动态字符串构造**——配置文件驱动的 SQL（`config.get("query.user")`）/ 代码生成器（mybatis-generator）生成的 SQL。处置：标 `static-unknown`，必要时读配置文件验证。
+5. **运行时配置切换 / feature flag**——dev / prod 不同分支不同 SQL 模板。处置：每个分支独立审计；不能只看 dev 分支下结论。
+6. **AOP / 注解处理器 / 框架自动注入**——Spring `@Aspect` / Django middleware 修改 request 上下文。处置：独立列出拦截器实现，确认是否引入过滤。
+7. **超出 `--max-memory 4096` 单批限制的大文件**——单文件超 200MB（如某些自动生成代码）会触发 semgrep 单文件超时。处置：把该文件入"扫描缺口"，必要时按需手工读关键段落。
+
+**底线**：本能力写"该子系统无 X 类漏洞"前，所有 `needs_dataflow_confirmation` 与 `static-unknown` 单元格必须显式列出原因。否则结论降级 `partial-coverage`。
+
+---
+
+## 12. 修复建议
+
+**本能力 n/a**（原因：粗筛产出候选不直接对应单类漏洞修复。各单漏洞的修复路径见对应 skill：SQL 注入 → 走 [dataflow-analysis](../dataflow-analysis/SKILL.md) 升级到 graybox 后参 `pentest/sql-injection-comprehensive` §12；XSS → [stored-xss-detection](../stored-xss-detection/SKILL.md) §12；密钥 → [secret-detection](../secret-detection/SKILL.md) §12；以此类推）。

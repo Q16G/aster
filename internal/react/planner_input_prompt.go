@@ -13,16 +13,12 @@ var plannerInputTmpl = template.Must(
 )
 
 type plannerInputData struct {
-	AgentRole             string
-	AgentBackground       string
-	AgentInstruction      string
-	HandoffContext        string
-	InputTimeline         string
-	TaskItemsJSON         string
-	ReplanContextJSON     string
-	ExecutionLineJSON     string
-	HasExecutionLine      bool
-	WorkspaceContextsJSON string
-	HasWorkspaceContexts  bool
-	RecoveryContextJSON   string
+	HandoffContext string
+	InputTimeline  string
+	TaskItemsJSON  string
+	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）的绝对路径，
+	// 文件存在才注入，供卡片不足时按需回读。
+	PlannerJournalPath  string
+	ReplanContextJSON   string
+	RecoveryContextJSON string
 }

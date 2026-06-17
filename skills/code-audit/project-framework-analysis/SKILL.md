@@ -1,7 +1,9 @@
 ---
 name: project-framework-analysis
-description: 项目框架与攻击面侦察 — 识别技术栈/分层架构、枚举入口点与路由、盘点过滤器/中间件信任边界、梳理认证会话架构与数据模型归属字段，产出供下游 SAST/数据流/认证授权复用的项目框架图。
-tags: code-audit,recon,framework,attack-surface,entry-point
+description: >-
+  项目框架与攻击面侦察——识别技术栈与分层、枚举入口点与路由、盘点中间件信任边界、梳理认证
+  会话架构与数据归属字段、识别框架对 source/sink/分发/过滤的自有封装、标注闭源依赖位置，产出
+  项目框架图。本能力不做漏洞判定。
 when-to-use: 当开始一次全量代码安全审计、需要先识别项目结构与攻击面、为后续分析建立共享侦察上下文时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
@@ -12,211 +14,290 @@ arguments:
 
 # 项目框架与攻击面侦察
 
-## 角色与目标
+> 本能力在审计早期产出"项目框架图"作为共享侦察底图——把后续多维度审计都会重复盘点的"技术栈 / 入口点 / 中间件 / 认证 / 归属字段 / 框架自有封装 / 闭源依赖位置"一次性沉淀下来。**不做漏洞判定**——侦察阶段产生的可疑点交对应审计能力消费。
 
-你是代码审计的**侦察前哨**。本 skill 在审计早期运行，**不做漏洞判定**，只负责一次性建立结构化的"项目框架图"作为共享上下文，避免后续各分析维度重复盘点框架、入口点、中间件。
+## 1. 触发线索 / 适用信号
 
-产出要回答六个问题：
+按"半径 + 项目体量 + 已有产物 + 信息完备度"四维识别命中场景。
 
-1. 这是个什么技术栈、什么分层结构的项目？
-2. 攻击面有哪些入口点 / 路由？
-3. 哪些 request 上下文字段是**服务端注入的可信值**、哪些是**客户端可控**的（信任边界）？
-4. 这套框架把标准的 source / sink / 跨过程分发 / 认证与过滤**封装成了哪些自有类与方法**（通用工具按标准类型匹配会看不见的盲区）？
-5. 项目依赖里哪些是**无源码 / 可反编译 / 混淆**的，它们落在攻击面的什么位置（封住了哪些入口点或信任边界）？
-6. 这些产出**对后续分析各有什么影响**（移交清单）？
+**半径维度**：
+- 用户给的目标路径是**项目根目录**（含 `pom.xml` / `go.mod` / `package.json` / `composer.json` / `requirements.txt` / `Cargo.toml` 任一特征文件），不是单文件
+- 至少存在 controller 层目录（`controllers/` / `handlers/` / 含 `@RequestMapping` 注解的 Java 文件 / `routes/` / `views/`），项目体量大于单文件
 
-## 侦察步骤
+**已有产物维度**：
+- `shared/project-framework.md` 或 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` **尚不存在**
+- 已有产物但目标项目栈 / 入口点近期发生重大变更（新增模块 / 新增框架 / 切换 ORM）
 
-### a. 技术栈与框架识别
+**信息完备度维度**：
+- 多语言混合（前后端同仓 / 微服务异构）
+- 多模块（monorepo / 多 maven module / lerna 工作区）
+- 用户未在初始描述里给出明确技术栈或入口点
 
-特征文件优先，而非只看扩展名：
+**反向信号**（不命中本能力）：
+- 用户已显式给出技术栈 + 已知入口点（直接跳到对应漏洞维度 skill）
+- 小修改半径——单文件审计、PR diff、特定函数复核
+- 已有同 commit 范围内的 framework 产物（增量审计直接消费现有产物即可）
 
-| 语言 | 特征文件 | 框架信号 |
-|------|---------|---------|
-| Java | `pom.xml`、`build.gradle` | Spring / Spring Boot / MyBatis / Shiro / Spring Security / Thymeleaf / Freemarker |
-| Go | `go.mod` | gin / echo / beego / gorm / 自定义 middleware |
-| Python | `requirements*.txt`、`pyproject.toml` | Flask / Django / FastAPI / Jinja2 |
-| JS/TS | `package.json` | Express / Koa / NestJS / SSR 模板 |
-| PHP | `composer.json` | Laravel / ThinkPHP / Blade / Twig / Smarty / 原生 |
-| C/C++ | `Makefile`、`CMakeLists.txt` | 命令执行 / 内存安全相关 |
+---
 
-输出：语言 + 框架信号 + 可获取到的版本线索。
+## 2. 造成原因
 
-### b. 架构与分层
+**本能力 n/a**（原因：本能力是前置侦察，不针对单一漏洞，无成因可写。各漏洞成因由对应 audit skill 在 §2 中独立讲清。）
 
-- 分层模式：MVC / controller → service → mapper(repository) / 充血或贫血模型
-- 路由机制：注解路由 / 集中注册 / 约定式路由
-- ORM / 数据访问层：MyBatis mapper、GORM、SQLAlchemy、Eloquent 等
-- 模板引擎与渲染位置
-- 模块/包结构（多模块、微服务边界）
+---
 
-### c. 入口点 / 路由枚举
+## 3. 领域 source-sink 数据流模型
 
-用 `rg` 抓路由声明，输出**端点骨架表**：
+**本能力 n/a**（原因：侦察阶段不做 source-sink 追踪。本能力只产出"哪里可能是 source、哪里可能是 sink 的封装"这一**位置盘点**，跨函数可达性证明由下游 [dataflow-analysis](../dataflow-analysis/SKILL.md) 接力。）
 
-- Java：`rg "@RequestMapping|@GetMapping|@PostMapping|@PutMapping|@DeleteMapping"`
-- Go gin/echo：`rg "\.(GET|POST|PUT|DELETE|Any)\(|router\.|engine\."`
-- Flask/FastAPI：`rg "@app\.(route|get|post|put|delete)|@router\."`
-- Express：`rg "app\.(get|post|put|delete)|router\.(get|post)"`
+---
 
-重点标注：参数中含 `id` / `@PathVariable` / `@RequestParam` 的资源型端点，**没有 operator 参数的端点恰恰是最高风险的**。
+## 4. 常见类型
 
-### d. 过滤器 / 中间件 / 拦截器映射（信任边界）
+**本能力 n/a**（原因：本能力不针对漏洞分类，攻击变体由各漏洞维度 skill 自行枚举。）
 
-这是本 skill 最关键、后续分析最依赖的一节。对每个安全 Filter / Interceptor / Middleware：
+---
 
-- 拦截路径 / URL 覆盖范围（含 exclude / anon 配置）
-- 类型：认证 / 授权 / 日志 / CORS / XSS / 限流 / 多租户
-- **向 request 上下文注入了哪些字段**（如 `userId` / `tenantId` / `roles` 写入 `request.setAttribute` / gin context / session）
-- 执行顺序
-- **信任边界标注**：被注入的字段是 server-derived（可信）还是仍可被客户端覆盖
+## 5. 入口点定位
 
-为什么重要：后续判断 source 是否可控、鉴权是否真实，都依赖"哪些 request 属性可信"这一事实。
+> 本能力的"入口点"实际是"侦察起点"——告诉模型从项目里哪些特征文件 / 声明位置进入，把侦察面建立起来。
 
-### e. 认证授权架构
+按项目根的特征文件 + 路由声明 + 中间件声明 + ORM 配置定位起点。
 
-- 登录 / 注册 / 找回密码入口位置
-- 会话策略：HttpSession / 自定义 token / JWT / Cookie
-- 鉴权机制：注解（`@PreAuthorize` / `@RequiresRoles`）/ 中间件 / 手写 if-else
-- 角色与权限模型：是否有 RBAC、角色分级
-- 多租户标识：`tenant_id` / `org_id` 等是否存在及其来源
+> 下列框架 / 项目类型仅作类似项目示例 不限于此；以目标实际栈为准。
 
-### f. 数据模型与归属字段
+### 项目根特征文件（识别技术栈 + 依赖）
 
-对核心实体：区分
-
-- **owner/operator 字段**：`userId` / `owner_id` / `tenantId` / `principalId`（操作者约束）
-- **resource/target 字段**：`resourceId` / `docId` / `orderId`（被操作对象）
-
-供后续 IDOR / ownership 跨层追踪使用。
-
-### g. 扫描面清单
-
-统计并定位：源码文件、XML mapper、配置文件、模板文件、依赖清单文件的数量与目录位置。
-
-### h. 框架封装映射侦察
-
-本步骤回答一个问题：**标准的 source / sink / 跨过程分发 / 认证与过滤，在本项目里被封装成了哪些自有类与方法？** 通用 SAST 规则与污点分析按"标准类型 / 标准边界"匹配，一旦框架把它们包了一层，就会整段看不见——这是系统性盲区，不止 SQL。
-
-按下列类别逐一排查，**每一处实例都要列出，禁止省略 / 抽样**（沿用本 skill 端点枚举的硬规则）。每类按"识别信号 → 为何通用工具会漏 → 侦察须输出什么"组织。
-
-**① Source 封装**
-
-- 识别信号：自定义 Action/Controller 基类的取参方法、表单反射绑定、自研参数解码器 / 包装请求对象。
-- 为何漏：通用规则只认标准请求 API（如 `HttpServletRequest` 取参）作为 taint 源，自研取参方法不在 source 列表。
-- 须输出：用户输入经哪些自研基类#方法进入（落到具体类#方法）。
-
-**② Sink 封装（按子类型分别列）**
-
-- **SQL**：自研 `PreparedStatement` 子类 / BaseDAO / 跨库包装；以及 `StringBuffer`/`StringBuilder` 拼接后 `prepareStatement(拼接串)` 的"伪安全预编译"。漏因：标准类型不匹配（非 `java.sql.Statement`）+ 拼接发生在 `prepareStatement` 之前，参数化只对 `?` 占位生效。
-- **命令执行**：包装 `Runtime`/`ProcessBuilder` 的工具类。漏因：标准执行 API 被自研类名遮蔽。
-- **文件上传 / 下载 / 读写**：包装 `File`/IO 的文件服务类（下载 / 展示 / 写入）。漏因：路径拼接点在自研类内部。
-- **反序列化入口**：自研 `ObjectInputStream` 子类（如仅校验魔数）。漏因：未匹配标准反序列化 sink，弱校验被误判为防护。
-- **模板 / 表达式执行**：自研模板渲染 / 表达式求值封装。漏因：标准模板引擎 API 被包装。
-- 须输出：每个自研 sink 类#方法 + 子类型（落到具体）。
-
-**③ 分发 / RPC 边界封装（数据流桥接关键）**
-
-- 通用模式：客户端桩 / 代理对象通过"服务定位器 / 注册表 / 容器 / JNDI 按名 lookup"拿到接口引用并调用，运行期再路由到服务端实现；以及反射式分发器（按 action / 方法 / 命令名反射调用目标）。
-- 为何漏：调用点与真正执行点在静态上断开，跨过程 + 动态分发使污点链中断。
-- 须输出：**"客户端桩方法 ↔ 服务端实现方法"的对应关系**（以本项目实际用到的定位 / 分发机制为准去填，而非套某框架的固定 API 名），供数据流当作跨过程边界桥接。
-
-**④ 认证 / 会话封装**
-
-- 识别信号：自研登录 / 上下文 Filter，从 Cookie/Header 设置身份；以及空实现 / 恒真的校验（形如 `validateXxx` 直接 `return true`）。
-- 为何漏：通用工具默认存在认证边界即视为可信，空实现 / 恒真校验造成信任边界误判。
-- 须输出：身份注入点 + 失效 / 恒真校验位置（落到具体类#方法#边界）。
-
-**⑤ 过滤 / 校验封装**
-
-- 识别信号：自研输入过滤器、编解码器。
-- 为何漏：无法区分它是"输入转换点（可能改变可控性）"还是"失效防护（看似防护实则无效）"。
-- 须输出：每个过滤 / 编解码点，并标注"输入转换点"还是"失效防护"。
-
-### i. 依赖图谱与无源码可反编译标注
-
-与步骤 h 配对：h 盘自研封装盲区，本步盘**第三方 / 闭源依赖盲区**。同样只识别、不反编译、不判漏洞。
-
-- **盘点依赖**：复用步骤 a 的特征文件表（`pom.xml` / `go.mod` / `package.json` / `requirements*.txt` / `composer.json` 等），列出第三方、本地路径、vendored 进来的依赖。
-- **分类（通用判据，语言无关）**：按下列类别归桶，判据复用 `dependency-decompile` 的极低成本信号，不重抄工具细节——
-  - 公共库：命中公共坐标 / 知名命名空间（如 `org.apache.*`、`com.google.*`）/ 有配套 `-sources`。
-  - 无源码可反编译：编译产物（jar/war/class/so/dll），无配套源码。
-  - 混淆：类名 `a.a.a` / `o0Oo`、字符串常量被加密等特征。
-- **归属（与分类正交的独立轴，决定反不反编译）**：对非公共库、无源码的依赖，必须再定归属——私有命名空间只说明「不是常见公共库」，**说明不了是项目方/同厂商自己写的还是第三方异厂商的商业产品**，两者长得一样但处置相反。用 `MANIFEST` 的 `Vendor`/`Implementation-Vendor`、`pom` 的 `groupId`、包内 `LICENSE`/`NOTICE` 定归属：
-  - 同厂商自有：私有命名空间且坐标/Vendor 指向项目方或同厂商私服（含同厂商自研的商业闭源）。
-  - 第三方商业（异厂商）：外部厂商坐标/Vendor + 商业或专有许可（如 BCL、专有），无公共源码。
-  - 归属拿不准 → 按 `unknown` 显式标注，不强行归桶。
-- **不确定必须显式标注**：信号不足、无法明确判断某依赖的分类或归属时，**不得强行归桶**——标为 `unknown / 待确认`，并写明缺了什么判据（如"无 pom.properties 也无 -sources，命名空间不典型，Vendor 缺失"）。这是本 skill「缺口显式标注、不假装枚举完整」边界的延伸。`unknown` 项若落在关键路径上，同样按下条作为前提变化上报。
-- **标位置**：每个无源码 / 可反编译 / `unknown` 依赖，标注其相对入口点 / 信任边界 / 已知 sink 的位置（是否承载鉴权 filter、是否在污点必经路径上）——这是判断「是否影响后续规划」的依据。**位置拿不准时偏放行**：不透明依赖常因看不见内部而无法确定在不在关键路径（如某闭源 jar import 在入口点附近，是真在路径上还是只相邻），此时按"偏放行"标为候选上报，**别默认归为"不在关键路径"** 而把它从后续规划里筛掉。
-- **影响规划的事实须上报（附带归属）**：**位于关键路径（信任边界 / 污点必经路径）上的无源码可反编译依赖（含 `unknown`）**，是会改变攻击面可见性的高价值事实，应连同归属写入 `task_context.md`。决定要不要反编译的主闸门是重要性（在不在关键路径），归属只调节处置——供后续 replan 区分：**同厂商自有 → 主动规划反编译步骤（优先、无法律顾虑）**；**第三方异厂商商业 → 按 安全/sink 决策在依赖内还是在调用方 判：(a) 决策在调用方、依赖只是标准化通道（如 DB 驱动）行为已知可免；(b) 安全/sink 决策在依赖内部（鉴权/路由/过滤/sink 在 jar 里，含自称标准协议的闭源鉴权 SDK）"行为已知"不成立，照样规划反编译并标法律**；**归属 `unknown`、或位置/重要性拿不准（看不出在不在关键路径） → 一律偏放行当候选**（欠覆盖优于漏判，别拿"定不了归属/看不出位置"当默认排除的借口）。**诚实性约束**：关键路径上的依赖只要选择不反编译，那条穿过它的污点/攻击面问题就得留作显式缺口交下游，别用"走 CVE"假性闭环。而非等数据流撞墙时才被动反编译。
-
-## 输出（Markdown）
-
-按 a–i 分节输出。其中四张关键表必须给出：
-
-### 入口点 / 路由清单
-
-| Controller/Handler | 方法 | HTTP Method | URL Pattern | 命中的中间件 | 备注 |
-|---|---|---|---|---|---|
-
-枚举到的端点必须完整列出，不得用"等""..."省略。
-
-### 过滤器 / 中间件映射
-
-| 过滤器名 | 拦截路径 | 类型 | 注入字段 | 信任边界(server-derived/client-controlled) |
-|---|---|---|---|---|
-
-### 框架封装映射表
-
-对应步骤 h。穷举所有实例、每实例独占一行、不得用"等""略"省略。
-
-| 封装类别 | 功能 | 位置（类#方法） |
+| 语言 | 特征文件 | 同时看什么 |
 |---|---|---|
+| Java | `pom.xml` / `build.gradle` / `settings.gradle` | dependencies 节、`spring-boot-starter-*` / `mybatis-spring` / `shiro-*` 信号 |
+| Go | `go.mod` / `go.sum` | require 节、`gin` / `echo` / `gorm` / `database/sql` 信号 |
+| Python | `requirements*.txt` / `pyproject.toml` / `Pipfile` | `flask` / `django` / `fastapi` / `sqlalchemy` / `jinja2` 信号 |
+| JS / TS | `package.json` / `pnpm-workspace.yaml` / `lerna.json` | dependencies 节、`express` / `koa` / `@nestjs/*` / `next` / `sequelize` / `typeorm` 信号 |
+| PHP | `composer.json` | `laravel/framework` / `topthink/think` / `symfony/*` 信号 |
+| C / C++ | `Makefile` / `CMakeLists.txt` / `meson.build` | 链接的库（OpenSSL / libcurl / 框架库） |
+| Rust | `Cargo.toml` | `actix-web` / `axum` / `rocket` / `tokio` 信号 |
 
-### 依赖图谱
+### 路由声明文件（找入口点）
 
-对应步骤 i。穷举所有依赖、每依赖独占一行、不得抽样或用"等""略"省略。
+按框架 grep 路由声明位置：
 
-| 依赖坐标 | 分类 | 归属 | 有无可读源码 | 相对入口/边界位置 | 是否关键路径 | 处置建议 |
-|---|---|---|---|---|---|---|
+- Spring：`rg "@RequestMapping|@GetMapping|@PostMapping|@PutMapping|@DeleteMapping|@PatchMapping"`
+- Gin / Echo：`rg "\.(GET|POST|PUT|DELETE|PATCH|Any)\(|router\.|engine\.Group"`
+- Flask / FastAPI：`rg "@app\.(route|get|post|put|delete)|@router\.(get|post|put|delete)"`
+- Django：读 `urls.py` 找 `path(...)` / `re_path(...)` 声明
+- Express / Koa：`rg "app\.(get|post|put|delete|use)|router\.(get|post|put|delete)"`
+- NestJS：`rg "@(Get|Post|Put|Delete|Patch|Controller)\("`
+- Laravel：读 `routes/web.php` / `routes/api.php`
+- ThinkPHP：约定式路由按控制器目录
 
-- 分类取值：公共库 / 无源码可反编译 / 混淆 / `unknown`
-- 归属取值：项目方·同厂商自有 / 第三方异厂商商业 / 公共库 / `unknown`
-- 处置建议取值：公共库免反编译 / 反编译候选（关键路径优先；同厂商自有优先且无法律顾虑，异厂商商业落 (b)、安全/sink 决策在依赖内说不清则候选并标法律） / 免反编译（不在关键路径，或在关键路径但落 (a)、安全/sink 决策在调用方、依赖仅标准化通道，行为可由 CVE/已知语义说清，走 CVE）
+### 中间件 / 拦截器 / 过滤器声明位置
 
-## 对后续分析的影响 / 移交清单（必须输出）
+- Spring：`@WebFilter` / `@Component` 实现 `Filter` / `HandlerInterceptor` / `@ControllerAdvice` / Spring Security 配置类
+- Gin：`engine.Use(...)` / `group.Use(...)` 注册的 handler
+- Django：`settings.py` 的 `MIDDLEWARE` 列表
+- Express：`app.use(...)` / `router.use(...)`
+- Laravel：`app/Http/Kernel.php` 的 `$middleware` / `$routeMiddleware`
 
-本节显式声明侦察产出如何被后续分析维度消费，是本 skill 的核心交付物：
+### ORM / 数据访问层配置
 
-| 后续分析维度 | 复用本侦察的哪些产出 | 影响 |
-|---|---|---|
-| 结构化漏洞扫描 | 语言/框架信号、扫描面清单 | 选规则、构建多介质扫描面、覆盖声明 |
-| 数据流 / 污点分析 | 过滤器注入字段、入口点 | 区分 server-derived vs client-derived source，定 taint 起点 |
-| 认证授权与 ownership 复核 | 入口点骨架、中间件 URL 覆盖、归属字段、多租户标识 | 喂入端点枚举、授权矩阵、中间件覆盖面分析 |
-| 配置与敏感信息检查 | 配置/密钥文件位置 | 定位扫描目标 |
-| 依赖 / 供应链检查 | 步骤 i 的依赖图谱（依赖清单 + 分类） | 复用已识别的依赖清单与分类直接做 CVE 扫描，不重复盘点 |
-| 结构化漏洞扫描 | 框架封装映射表（sink 封装类型） | 对自研 sink 类型补做定向 rg / 规则匹配，把按标准类型漏掉的封装 sink 也纳入候选集 |
-| 数据流 / 污点分析 | 框架封装映射表（分发/RPC 边界封装、认证封装/空实现校验） | 把"客户端桩方法 → 服务端实现方法"当作跨过程边界桥接，使 Web 入口 source 连到底层数据访问/执行层 sink；用认证封装/空实现校验修正信任边界判断 |
-| 无源码依赖反编译 | 步骤 i 的依赖图谱（无源码可反编译 / `unknown` 依赖及其关键路径位置） | 关键路径（信任边界 / 污点必经路径）上的无源码可反编译依赖标注为 `dependency-decompile` 候选并写入 `task_context.md`，作为「前提变化」供 replan 主动规划「反编译→重估」步骤；避免对封进闭源 jar 的自研鉴权/过滤逻辑按"无源码"直接留盲 |
+- MyBatis：`*Mapper.xml` 位置、`@Mapper` 注解扫描包配置
+- Gorm：`*.go` 里的 `db.AutoMigrate(...)` 调用
+- SQLAlchemy / Django ORM：`models.py` 位置
+- Sequelize / TypeORM：`models/` 目录、`ormconfig.json`
 
-## 边界与通用原则
+---
 
-- 本 skill **只做侦察，不做漏洞判定**——发现的可疑点交由后续对应分析维度确认
-- 不以单个项目的字段名、方法名、返回文案来定义通用结论
-- 不在报告中泄露审计目标的真实项目名，用匿名化描述
-- 侦察未能覆盖的部分（如动态注册路由、反射加载）显式标注为缺口，不能假装已枚举完整
-- 全量审计时作为侦察前哨先运行；用户指定聚焦方向时可跳过
+## 6. 跨框架代码变体
 
-## 附录：通用框架封装案例参考
+> 本能力在不同框架下的侦察起点对照——每语言 × 框架的特征文件 + 框架信号 + 关注介质。**目的是让本能力在任意项目栈都能用**。
 
-驱动步骤 h 排查的清单——"应当查什么"。通用、匿名、可持续扩充；用抽象占位（如 `XxxPreparedStatement` / `XxxClient` + `ServiceLocator.lookup`），不引用任何真实项目。遇到新模式时持续追加。
+| 语言 | 框架 | 特征文件信号 | 必入侦察面的介质 |
+|---|---|---|---|
+| Java | Spring Boot | `pom.xml` 含 `spring-boot-starter-web` | `*Controller.java`、`application*.yml`、`templates/` |
+| Java | Spring MVC | `web.xml` 配 `DispatcherServlet` | `*Controller.java`、`WEB-INF/`、`spring-*.xml` |
+| Java | MyBatis | `pom.xml` 含 `mybatis-spring` 或 `mybatis-plus` | `**/*Mapper.xml`、`@Mapper` 接口、`@Select` / `@Update` 注解 |
+| Java | Shiro / Sa-Token | `pom.xml` 含 `shiro-spring` / `sa-token-*` | Shiro 配置类、`@RequiresPermissions` / `@SaCheckLogin` 注解位置 |
+| Java | Thymeleaf / Freemarker | `pom.xml` 含 `thymeleaf` / `freemarker` | `templates/*.html` / `*.ftl` 模板目录 |
+| Go | Gin | `go.mod` 含 `gin-gonic/gin` | `router*.go`、`main.go`、middleware 注册位置 |
+| Go | Echo | `go.mod` 含 `labstack/echo` | 路由注册文件、middleware |
+| Go | Beego | `go.mod` 含 `beego/beego` | `routers/router.go`、controllers/ |
+| Go | Gorm | `go.mod` 含 `gorm.io/gorm` | 含 `db.Raw` / `db.Exec` 的文件、模型定义 |
+| Go | 自定义 middleware | 项目内 middleware 包 | middleware 注册顺序与覆盖范围 |
+| Python | Flask | `requirements.txt` 含 `flask` | `app.py` / `views.py`、`templates/`（Jinja2） |
+| Python | Django | `manage.py` + `settings.py` | `urls.py`、`views.py`、`models.py`、`MIDDLEWARE` 配置 |
+| Python | FastAPI | `requirements.txt` 含 `fastapi` | router 文件、`main.py`、Pydantic 模型 |
+| Python | SQLAlchemy | `requirements.txt` 含 `sqlalchemy` | 模型定义、含 `session.execute` / `text()` 的文件 |
+| Python | Jinja2 | 模板文件 `.html` / `.j2` | `templates/` 目录 |
+| JS / TS | Express | `package.json` 含 `express` | `routes/*.js`、`app.js`、`middlewares/` |
+| JS / TS | Koa | `package.json` 含 `koa` | router 文件、`koa-*` 中间件 |
+| JS / TS | NestJS | `package.json` 含 `@nestjs/core` | `*.controller.ts`、`*.module.ts`、`*.guard.ts` |
+| JS / TS | Next.js SSR | `next.config.js` 存在 | `pages/api/*` / `app/api/*` 路由、SSR getServerSideProps |
+| PHP | Laravel | `composer.json` 含 `laravel/framework` | `routes/web.php`、`routes/api.php`、`app/Http/` |
+| PHP | ThinkPHP | `composer.json` 含 `topthink/think` | `application/` 或 `app/` 目录、约定式路由 |
+| PHP | Blade / Twig | 模板文件 `.blade.php` / `.twig` | `resources/views/` |
+| C / C++ | 通用 | `Makefile` / `CMakeLists.txt` | 命令执行点（`system` / `popen`）、内存安全点、链接的第三方库 |
 
-| 案例 | 模式描述 | 识别信号 | 漏检原因 | 侦察应产出 |
-|---|---|---|---|---|
-| SQL sink 封装 | 自研 `XxxPreparedStatement` 子类，或 `StringBuffer.append` 拼接后 `prepareStatement(拼接串)` 再无参执行 | 类名后缀 PreparedStatement/Statement/Dao；prepareStatement 入参非字面常量 | 规则要求 `java.sql.Statement` 类型；拼接在 prepareStatement 之前，参数化只对 `?` 生效 | 自研 sink 类#方法、拼接位置 |
-| 命令执行封装 | 包装 `Runtime`/`ProcessBuilder` 的 `XxxCmdExecutor` | 类名后缀 Executor/Shell/Cmd；内部调用 exec/start | 标准执行 API 被自研类名遮蔽 | 自研执行类#方法、命令参数来源 |
-| 文件上传/下载封装 | 包装 `File`/IO 的 `XxxFileService`（下载/展示/写入） | 类名含 File/Download/Upload；内部 `new File(路径拼接)` | 路径拼接点在自研类内部，未匹配标准 sink | 自研文件类#方法、路径来源 |
-| 反序列化入口封装 | 自研 `XxxObjectInputStream` 子类（如仅校验魔数） | 继承 `ObjectInputStream`；`resolveClass` 被覆盖但校验弱 | 未匹配标准反序列化 sink；弱校验被误判为防护 | 自研反序列化类#方法、校验是否有效 |
-| RPC/服务定位器分发封装 | 客户端桩 `XxxClient` 经 `ServiceLocator.lookup(name)` 拿接口引用调用，运行期路由到服务端实现；或反射式分发器按名调用 | lookup/getService/getBean 按字符串名取引用；按 action/method 名反射 invoke | 调用点与执行点静态断开，跨过程 + 动态分发使污点链中断 | "客户端桩方法 ↔ 服务端实现方法"对应关系 |
-| 认证/上下文 Filter 封装 | 自研 `XxxAuthFilter` 从 Cookie/Header 设身份；或 `validateXxx` 直接 `return true` | Filter/Interceptor 写 request 上下文身份字段；校验方法体恒真/空实现 | 默认认证边界即可信，恒真/空实现造成信任边界误判 | 身份注入点、失效/恒真校验位置 |
-| 过滤/校验封装 | 自研输入过滤器/编解码器 `XxxFilter`/`XxxCodec` | 统一入口对参数做转换/编解码 | 无法区分"输入转换点"与"失效防护" | 每个过滤/编解码点 + 标注其性质 |
+> 详细的侦察维度展开（每维度的识别细则、grep pattern、易漏点）见 [references/recon-dimensions.md](references/recon-dimensions.md)。
+
+---
+
+## 7. 思考检查点
+
+加载本 skill 时按这些问题思考——按"待回答的核心问题"驱动侦察展开：
+
+- 这个项目是什么技术栈、什么分层结构？（MVC / 充血贫血 / 微服务边界 / monorepo）
+- 攻击面入口点有哪些？路由声明在哪个文件里？有没有动态注册的路由 / 反射加载？
+- request 上下文里**哪些字段是服务端注入的可信值**、**哪些是客户端可控**？中间件向上下文写入了什么？
+- 框架把 source / sink / 跨过程分发 / 认证 / 过滤封装成了哪些自有类与方法？（通用 SAST 工具按标准类型匹配会看不见的盲区）
+- 依赖里哪些是闭源 / 可反编译 / 混淆？落在攻击面的什么位置（是否承载鉴权 / 是否在污点必经路径上）？
+- 项目里的核心业务实体的归属字段（`user_id` / `tenant_id` / `owner_id`）在哪些表 / 哪些字段？
+
+---
+
+## 8. 检测方法论 / 数据流追踪
+
+> 本能力**只到侦察产物**——跨函数追踪 / sink 可达性证明走 [dataflow-analysis](../dataflow-analysis/SKILL.md) 与对应单漏洞维度 skill。本节描述本能力如何把"项目框架图"建立起来。
+
+### 侦察维度（非编号——按"待回答问题"组织，结合代码事实展开顺序）
+
+每维度按"识别信号 → 为什么这维度重要 → 须产出什么"组织。
+
+**技术栈与框架识别**
+
+- 识别信号：§5 项目根特征文件 + dependencies 节信号
+- why：后续所有维度都依赖准确的栈识别——把 Spring 项目当 Django 审计、漏掉 MyBatis XML 介质，后续整条链路失真
+- 须产出：语言 + 框架信号 + 版本线索
+
+**架构分层**
+
+- 识别信号：目录命名（`controller/` / `service/` / `mapper/` / `dao/` / `repository/`）、注解模式（`@Service` / `@Repository`）、模块边界
+- why：分层决定 source 入口位置与 sink 集中位置——MVC 项目 source 在 Controller，sink 在 Mapper；微服务项目要识别服务边界以确定本服务范围
+- 须产出：分层模式 + 模块/微服务边界
+
+**路由与入口点枚举**
+
+- 识别信号：§5 路由声明文件 grep 结果
+- why：入口点是后续所有漏洞维度 source-to-sink 追踪的起点——缺一个入口点 = 那一类漏洞维度在该端点失去 source 锚点
+- 须产出：端点骨架表（Controller / 方法 / HTTP method / URL pattern / 命中的中间件 / 参数列表）
+
+**中间件与信任边界**
+
+- 识别信号：§5 中间件声明位置 + 拦截器配置 + `@ControllerAdvice` / Filter / `app.use` 注册
+- why：判断 source 是否可控、鉴权是否真实，都依赖"哪些 request 属性是 server-derived（可信）vs client-controlled（不可信）"这一事实；中间件向上下文注入的字段直接决定信任边界
+- 须产出：过滤器/中间件映射表（名称 / 拦截路径 / 类型 / 注入字段 / 信任边界标注）
+
+**认证与会话架构**
+
+- 识别信号：登录端点位置、Token 类（JWT / Cookie / 自定义）、`@PreAuthorize` / `@RequiresRoles` 注解、Spring Security 配置
+- why：认证逻辑决定哪些端点匿名可达、哪些端点需要角色校验——这是越权类漏洞维度的前提
+- 须产出：会话策略 + 鉴权机制 + 角色权限模型 + 多租户标识
+
+**数据模型归属字段**
+
+- 识别信号：实体类字段命名（`userId` / `owner_id` / `tenant_id` / `org_id` / `principalId`）、SQL 表 schema
+- why：IDOR / ownership / 越权类审计依赖 owner ↔ resource 字段对照——侦察阶段沉淀这套对照表，下游能力按字段名直接追踪
+- 须产出：owner/operator 字段集合 + resource/target 字段集合 + 多租户字段
+
+**框架封装的 source / sink / 自定义工具类**
+
+- 识别信号：自定义 Controller 基类的取参方法、`StringBuffer` 拼接后 `prepareStatement` 的伪安全预编译、包装 `Runtime` / `ProcessBuilder` 的工具类、自研 `ObjectInputStream` 子类、自研模板渲染封装、自研登录 Filter 与恒真校验、自研输入过滤器/编解码器
+- why：通用 SAST 规则只认标准 API——自研封装把标准 source / sink 包了一层，按标准类型匹配会整段看不见；这是系统性盲区。详细分类（① Source 封装 / ② Sink 封装（SQL / 命令 / 文件 / 反序列化 / 模板）/ ③ 分发 / RPC 边界封装 / ④ 认证 / 会话封装 / ⑤ 过滤 / 校验封装）见 [references/recon-dimensions.md](references/recon-dimensions.md)
+- 须产出：框架封装映射表（封装类别 / 功能 / 类#方法位置）
+
+**依赖结构与闭源 / 混淆识别**
+
+- 识别信号：依赖清单（`pom.xml` / `go.mod` / `package.json` / `requirements.txt` / `composer.json`）+ 命名空间（公共 vs 私有）+ MANIFEST/Vendor/groupId/LICENSE 归属信号 + 类名混淆特征（`a.a.a` / `o0Oo`）
+- why：闭源依赖如果承载鉴权 / 过滤 / sink 逻辑，标"未审"会让结论失真——需要标注其在攻击面的位置以决定是否反编译。详细分类判据（公共库 / 无源码可反编译 / 混淆 / unknown）与归属（同厂商自有 / 第三方异厂商商业 / unknown）规则见 [references/recon-dimensions.md](references/recon-dimensions.md)
+- 须产出：依赖图谱表（坐标 / 分类 / 归属 / 有无可读源码 / 相对入口/边界位置 / 是否关键路径 / 处置建议）
+
+**产物落库**
+
+- 详见下方"产物结构"段——侦察的最终产物形式
+
+### 基线检查项
+
+> 以下是已知的检查角度，作为基线起点而非必检硬清单。结合目标项目动态调整，按三态标注（`[x]` / `[-]` / `[+]`）处置。
+
+- [ ] 项目根特征文件已识别，技术栈 + 框架信号 + 版本线索完整
+- [ ] 路由声明文件已 grep 覆盖，端点骨架表完整列出（不省略）
+- [ ] 中间件声明位置已识别，注入字段与信任边界标注到位
+- [ ] 认证 / 会话架构已识别，恒真校验 / 空实现已标注
+- [ ] 核心实体的 owner 字段 / resource 字段已列出
+- [ ] 框架封装映射表覆盖 ①-⑤ 五个类别
+- [ ] 依赖图谱覆盖所有依赖，每条标注分类 + 归属 + 关键路径位置
+- [ ] 关键路径上的闭源依赖（含 `unknown`）已写入 `task_context.md` 作为前提变化
+- [ ] 侦察未能覆盖的部分（动态注册路由 / 反射加载）显式标为缺口，不假装枚举完整
+
+---
+
+## 9. 闭环要求（必须遵守）
+
+**本能力 n/a**（原因：本能力不做漏洞判定，无 `confirmed` / `suspected` / `not_vulnerable` 概念。但**产物契约**仍是交付契约——侦察缺漏会让下游所有维度失去锚点，因此独立成"产物结构"段写在本节末尾。）
+
+### 产物结构（必须遵守）
+
+> **为什么这里是「必须」**：产物结构是下游审计能力按入口点对账的接口。下游 [dataflow-analysis](../dataflow-analysis/SKILL.md) / [sast-scan](../sast-scan/SKILL.md) / 各单漏洞维度 skill 都按本产物的入口点清单展开攻击面覆盖；**省略一个入口点 = 一类漏洞维度在该端点失去 source 锚点**，整条链路失真。产物落库规范见 [common/result-with-file](../../common/result-with-file/SKILL.md)。
+
+**产物形态**：
+
+- 主文件（人读）：`shared/project-framework.md`，按"技术栈 / 架构分层 / 入口点 / 中间件信任边界 / 认证会话 / 数据归属 / 框架封装 / 闭源依赖 / 扫描缺口"分节
+- 结构化清单（机器读）：`shared/coverage-ledger/inventory/project-framework-analysis.jsonl`，append-only
+
+**JSONL 字段示例**（每行一个对象，按 `kind` 区分）：
+
+```json
+{"kind": "route", "id": "ep-001", "controller": "UserController", "handler": "search", "http_method": "POST", "url": "/api/user/search", "params": [{"name": "name", "source": "body"}, {"name": "page", "source": "query"}], "has_resource_id": false, "hit_middleware": ["AuthFilter", "RateLimitFilter"], "risk_priority": "medium", "scan_status": "pending", "file_location": "UserController.java:42"}
+{"kind": "middleware", "name": "AuthFilter", "intercept_paths": ["/api/**"], "exclude": ["/api/login"], "type": "auth", "inject_fields": ["userId", "roles"], "trust_boundary": "server-derived", "file_location": "AuthFilter.java:23"}
+{"kind": "framework_wrap", "category": "sink", "subtype": "sql", "class": "BaseDao", "method": "executeQuery", "file_location": "BaseDao.java:88", "concat_position": "StringBuffer.append before prepareStatement"}
+{"kind": "framework_wrap", "category": "auth", "subtype": "validation_stub", "class": "TokenValidator", "method": "validateToken", "file_location": "TokenValidator.java:15", "note": "method body returns true unconditionally"}
+{"kind": "dependency", "coordinate": "com.example:closed-auth-sdk:1.2.0", "classification": "no_source_decompilable", "ownership": "third_party_commercial", "decision_point": "in_dependency", "critical_path": true, "file_location": "pom.xml:88", "recommendation": "decompile_candidate_with_legal_review"}
+{"kind": "entity_field", "entity": "Order", "field": "userId", "role": "owner", "file_location": "Order.java:12"}
+{"kind": "entity_field", "entity": "Order", "field": "orderId", "role": "resource", "file_location": "Order.java:8"}
+{"kind": "coverage_gap", "reason": "动态注册路由：app.dispatch 通过反射按 action 名分发，未能静态枚举", "file_location": "Dispatcher.java:55"}
+```
+
+字段约束：
+
+- `id`：route 类带 `ep-` 前缀全局唯一，便于下游能力引用
+- `scan_status`：route 类初始统一写 `pending`
+- `kind ∈ route | middleware | framework_wrap | dependency | entity_field | coverage_gap`
+- 每条记录独占一行——**禁止**用"等" / "..." / "（其余 N 条略）"省略
+- 入口点穷举不省略——why：下游各漏洞维度按入口点对账，省略一个入口点会让该入口点对应的整类漏洞维度失去 source 锚点
+
+**幂等写入（必须遵守）**：
+
+> why：重跑侦察不应重置已有的扫描进度——下游能力可能已将部分端点更新为 `in_progress` 或 `completed`，覆盖写会破坏跨批次状态追踪。
+
+文件已存在时，以 `id` 字段去重，仅追加文件中尚不存在的记录；已存在的 id 原样保留，不重置已有 `scan_status`。
+
+**反例义务**（必须遵守）：
+
+> why：写"已完整盘点框架"前必须有反向覆盖证据——缺失会让下游误信"该范围内攻击面已穷举"。
+
+写"框架侦察已完成"结论前，产物必须包含：
+
+- 所有路由声明文件已 grep 覆盖的证据（grep 命令 + 命中数）
+- 所有中间件注册位置已识别（middleware 数 + 拦截范围）
+- 所有依赖已分类（公共库 / 无源码 / 混淆 / `unknown` 数量分布）
+- 任一未覆盖的范围（动态注册路由 / 反射加载 / 闭源依赖内部）在 `coverage_gap` 记录中显式列出原因
+
+清单不完整 → 结论降级为 `partial-coverage`，且必须在主文件"扫描缺口"段显式列出未覆盖范围。
+
+---
+
+## 10. 具象化反例库
+
+**本能力 n/a**（原因：本能力不做漏洞判定，无 FP / FN 概念。各漏洞维度的反例库由对应 audit skill 在 §10 中独立写。）
+
+---
+
+## 11. 静态分析边界
+
+**本能力 n/a**（原因：本能力是侦察阶段，不涉及静态分析的可达性证明边界。反射调用 / 闭源依赖 / 动态字符串构造等静态分析边界由 [dataflow-analysis](../dataflow-analysis/SKILL.md) 与下游单漏洞维度 skill 在 §11 中独立写。本能力对这些情形的处置是**侦察阶段标注其位置**——反射点 / 闭源依赖 / 动态注册路由进 `coverage_gap` 记录，供下游能力按位置接力。）
+
+---
+
+## 12. 修复建议
+
+**本能力 n/a**（原因：本能力不做漏洞判定，无修复对象。各漏洞维度的修复建议由对应 audit skill 在 §12 中独立写。）

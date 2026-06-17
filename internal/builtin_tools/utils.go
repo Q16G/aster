@@ -75,10 +75,11 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.SourceStepID = strings.TrimSpace(in.SourceStepID)
 	out.Reason = strings.TrimSpace(in.Reason)
 	out.NextGoal = strings.TrimSpace(in.NextGoal)
-	out.IncompleteItems = CloneStringSlice(in.IncompleteItems)
-	out.DepthGaps = CloneStringSlice(in.DepthGaps)
-	out.NewSurfaces = CloneStringSlice(in.NewSurfaces)
+	out.IncompleteItems = CloneAxisItems(in.IncompleteItems)
+	out.DepthGaps = CloneAxisItems(in.DepthGaps)
+	out.NewSurfaces = CloneAxisItems(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
+	out.CurrentPhase = strings.TrimSpace(in.CurrentPhase)
 	return &out
 }
 
@@ -95,9 +96,9 @@ func CloneReplanAxes(in *ReplanAxes) *ReplanAxes {
 		return nil
 	}
 	return &ReplanAxes{
-		IncompleteItems: CloneStringSlice(in.IncompleteItems),
-		DepthGaps:       CloneStringSlice(in.DepthGaps),
-		NewSurfaces:     CloneStringSlice(in.NewSurfaces),
+		IncompleteItems: CloneAxisItems(in.IncompleteItems),
+		DepthGaps:       CloneAxisItems(in.DepthGaps),
+		NewSurfaces:     CloneAxisItems(in.NewSurfaces),
 	}
 }
 
@@ -191,6 +192,20 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 			Step:      step,
 			Status:    status,
 			DependsOn: CloneStringSlice(item.DependsOn),
+
+			// 产出与指针字段随归一化保留：重规划保留 completed 项、journal 重放
+			// 等路径都经过这里，丢失即破坏 plan 真相源的烘焙数据。
+			ShortSummary:    strings.TrimSpace(item.ShortSummary),
+			KeyFacts:        CloneStringSlice(item.KeyFacts),
+			ToolCallsDigest: CloneStringSlice(item.ToolCallsDigest),
+			StepFile:        strings.TrimSpace(item.StepFile),
+			ResultFile:      strings.TrimSpace(item.ResultFile),
+			TimelineFile:    strings.TrimSpace(item.TimelineFile),
+			CoverageFile:    strings.TrimSpace(item.CoverageFile),
+			References:      CloneStringSlice(item.References),
+		}
+		if len(item.CoverageChecklist) > 0 {
+			norm.CoverageChecklist = append([]CoverageChecklistItem(nil), item.CoverageChecklist...)
 		}
 		out = append(out, norm)
 		if _, exists := stepToID[step]; !exists {
@@ -222,7 +237,10 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 				continue
 			}
 
-			canonical := dep
+			canonical := canonicalizePlanIDToken(dep)
+			if canonical == "" {
+				canonical = dep
+			}
 			if _, ok := idSet[canonical]; !ok {
 				if resolved, ok := stepToID[dep]; ok {
 					canonical = resolved
@@ -251,10 +269,7 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 }
 
 func canonicalPlanItemID(raw string, index int, used map[string]int) string {
-	candidate := strings.ToLower(strings.TrimSpace(raw))
-	candidate = strings.ReplaceAll(candidate, " ", "-")
-	candidate = nonPlanIDCharRE.ReplaceAllString(candidate, "-")
-	candidate = strings.Trim(candidate, "-_")
+	candidate := canonicalizePlanIDToken(raw)
 	if candidate == "" {
 		candidate = fmt.Sprintf("task-%d", index+1)
 	}
@@ -264,6 +279,17 @@ func canonicalPlanItemID(raw string, index int, used map[string]int) string {
 	}
 	used[candidate] = 1
 	return candidate
+}
+
+// canonicalizePlanIDToken applies the same lower-case + sanitize rules used to
+// mint plan IDs. It is shared by canonicalPlanItemID and the depends_on lookup
+// so user-supplied references like "P1-XSS-DEEP" resolve to the canonical
+// "p1-xss-deep" stored in the plan.
+func canonicalizePlanIDToken(raw string) string {
+	candidate := strings.ToLower(strings.TrimSpace(raw))
+	candidate = strings.ReplaceAll(candidate, " ", "-")
+	candidate = nonPlanIDCharRE.ReplaceAllString(candidate, "-")
+	return strings.Trim(candidate, "-_")
 }
 
 func validatePlanDependencyGraph(items []*PlanItem) error {

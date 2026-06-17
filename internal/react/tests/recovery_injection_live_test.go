@@ -80,7 +80,6 @@ func TestRecoveryInjection_PlannerLive(t *testing.T) {
 - 中断 step 的 interrupted_step_shared_dirs 里有半成品产出，用文件工具读取后续跑`
 
 	planInput := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
-		AgentInstruction:    agentInstruction,
 		RecoveryContextJSON: string(recoveryJSON),
 	})
 	if planInput == "" {
@@ -101,10 +100,13 @@ func TestRecoveryInjection_PlannerLive(t *testing.T) {
 	}
 
 	planner := NewDefaultTaskPlanner(client)
-	prompt, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
 	if err != nil {
 		t.Fatalf("BuildPrompt failed: %v", err)
 	}
+	// 身份指令在生产路径经身份/env 块（system block2）注入，这里手工模拟。
+	parts.SystemAgent = "<AGENT_INSTRUCTION>\n" + agentInstruction + "\n</AGENT_INSTRUCTION>"
+	prompt := parts.Joined()
 
 	os.WriteFile("/tmp/recovery_planner_prompt.txt", []byte(prompt), 0o644)
 	t.Logf("=== RENDERED PLANNER PROMPT (%d bytes) saved to /tmp/recovery_planner_prompt.txt ===", len(prompt))

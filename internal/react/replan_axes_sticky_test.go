@@ -7,40 +7,37 @@ import (
 	"aster/internal/builtin_tools"
 )
 
-// TestApplyStepReplan_UnresolvedAxesStickyCarryForward 校验三轴未决盘点的 sticky 跨步骤语义：
-// step-2 replan 产出三轴后，step-3 未触发 replan（不下发 UnresolvedAxes）时应原样保留 step-2 的三轴；
-// 终态下发空三轴（非 nil）则复位清空。
-func TestApplyStepReplan_UnresolvedAxesStickyCarryForward(t *testing.T) {
+// TestApplyStepReplan_NoLongerWritesStickyAxes 校验合并后的 step_replan 不再写 sticky 三轴：
+// step_replan 三轴输出已删除（缺口经 AI 用文件工具直接补到 open_items.md），UnresolvedAxes
+// 仅由 final_answer 自身评估写入。本测试断言 step_replan 路径下 sticky 字段保持为 nil。
+func TestApplyStepReplan_NoLongerWritesStickyAxes(t *testing.T) {
 	tracker := NewStateTracker()
 
-	// step-2 完成并 replan，产出三轴未决盘点。
-	snap2 := tracker.ApplyStepReplan("step-2", stepReplanUpdate{
-		UnresolvedAxes: &builtin_tools.ReplanAxes{
-			IncompleteItems: []string{"登出接口未测"},
-			DepthGaps:       []string{"sink A 已定位但未追到 source"},
-			NewSurfaces:     []string{"admin 分包整体未审计"},
-		},
+	// step_replan 完成（无论是否直达 Step）都不应写入 UnresolvedAxes。
+	snap := tracker.ApplyStepReplan("step-2", stepReplanUpdate{
 		NextPhase: builtin_tools.AgentPhaseStep,
 	})
-	if snap2.UnresolvedAxes == nil || len(snap2.UnresolvedAxes.DepthGaps) != 1 {
-		t.Fatalf("expected step-2 three-axis written, got %+v", snap2.UnresolvedAxes)
+	if snap.UnresolvedAxes != nil {
+		t.Fatalf("expected step_replan to not write UnresolvedAxes, got %+v", snap.UnresolvedAxes)
 	}
 
-	// step-3 未触发 replan（快路径）：UnresolvedAxes 不下发（nil），应保留 step-2 的三轴（sticky）。
-	snap3 := tracker.ApplyStepReplan("step-3", stepReplanUpdate{
+	// final_answer 评估未终态时仍可写入 sticky 三轴，作为后续兜底回流的依据。
+	snap = tracker.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
+		Status: builtin_tools.TaskStatusRunning,
+		UnresolvedAxes: &builtin_tools.ReplanAxes{
+			DepthGaps: builtin_tools.NewAxisItems([]string{"终点 A 已定位但未追到触发点"}),
+		},
+	})
+	if snap.UnresolvedAxes == nil || len(snap.UnresolvedAxes.DepthGaps) != 1 {
+		t.Fatalf("expected final_answer-written sticky UnresolvedAxes, got %+v", snap.UnresolvedAxes)
+	}
+
+	// 接下来一轮 step_replan 不应抹掉 final_answer 写入的 sticky 三轴。
+	snap = tracker.ApplyStepReplan("step-3", stepReplanUpdate{
 		NextPhase: builtin_tools.AgentPhaseStep,
 	})
-	if snap3.UnresolvedAxes == nil {
-		t.Fatalf("expected sticky UnresolvedAxes preserved after non-replan step, got nil")
-	}
-	if len(snap3.UnresolvedAxes.IncompleteItems) != 1 || snap3.UnresolvedAxes.IncompleteItems[0] != "登出接口未测" {
-		t.Fatalf("expected step-2 incomplete_items preserved, got %+v", snap3.UnresolvedAxes.IncompleteItems)
-	}
-	if len(snap3.UnresolvedAxes.DepthGaps) != 1 || snap3.UnresolvedAxes.DepthGaps[0] != "sink A 已定位但未追到 source" {
-		t.Fatalf("expected step-2 depth_gaps preserved, got %+v", snap3.UnresolvedAxes.DepthGaps)
-	}
-	if len(snap3.UnresolvedAxes.NewSurfaces) != 1 || snap3.UnresolvedAxes.NewSurfaces[0] != "admin 分包整体未审计" {
-		t.Fatalf("expected step-2 new_surfaces preserved, got %+v", snap3.UnresolvedAxes.NewSurfaces)
+	if snap.UnresolvedAxes == nil || len(snap.UnresolvedAxes.DepthGaps) != 1 {
+		t.Fatalf("expected sticky UnresolvedAxes preserved through step_replan, got %+v", snap.UnresolvedAxes)
 	}
 
 	// 终态复位：下发空三轴（非 nil），sticky 状态应被清空。
@@ -57,7 +54,7 @@ func TestApplyStepReplan_UnresolvedAxesStickyCarryForward(t *testing.T) {
 // assessed_state.unresolved_axes 三轴能完整重建到 snapshot。
 func TestSynthesizeResumeSnapshot_RestoresUnresolvedAxesFromAssessedState(t *testing.T) {
 	plan := []*builtin_tools.PlanItem{
-		{ID: "step-1", Step: "审计", Status: builtin_tools.PlanStepCompleted},
+		{ID: "step-1", Step: "分析", Status: builtin_tools.PlanStepCompleted},
 	}
 	raw, err := json.Marshal(map[string]any{
 		"session_id":   "resume-axes",
@@ -69,8 +66,8 @@ func TestSynthesizeResumeSnapshot_RestoresUnresolvedAxesFromAssessedState(t *tes
 			"step_outcomes": collectAllStepContextViews(plan, nil),
 			"unresolved_axes": map[string]any{
 				"incomplete_items": []string{"登出接口未测"},
-				"depth_gaps":       []string{"sink A 已定位但未追到 source"},
-				"new_surfaces":     []string{"admin 分包整体未审计"},
+				"depth_gaps":       []string{"终点 A 已定位但未追到触发点"},
+				"new_surfaces":     []string{"admin 分包整体未覆盖"},
 			},
 		},
 		"assessment": map[string]any{
@@ -91,13 +88,13 @@ func TestSynthesizeResumeSnapshot_RestoresUnresolvedAxesFromAssessedState(t *tes
 	if snapshot.UnresolvedAxes == nil {
 		t.Fatal("expected UnresolvedAxes restored from assessed_state, got nil")
 	}
-	if len(snapshot.UnresolvedAxes.IncompleteItems) != 1 || snapshot.UnresolvedAxes.IncompleteItems[0] != "登出接口未测" {
+	if len(snapshot.UnresolvedAxes.IncompleteItems) != 1 || snapshot.UnresolvedAxes.IncompleteItems[0].Item != "登出接口未测" {
 		t.Fatalf("incomplete_items not restored: %+v", snapshot.UnresolvedAxes.IncompleteItems)
 	}
-	if len(snapshot.UnresolvedAxes.DepthGaps) != 1 || snapshot.UnresolvedAxes.DepthGaps[0] != "sink A 已定位但未追到 source" {
+	if len(snapshot.UnresolvedAxes.DepthGaps) != 1 || snapshot.UnresolvedAxes.DepthGaps[0].Item != "终点 A 已定位但未追到触发点" {
 		t.Fatalf("depth_gaps not restored: %+v", snapshot.UnresolvedAxes.DepthGaps)
 	}
-	if len(snapshot.UnresolvedAxes.NewSurfaces) != 1 || snapshot.UnresolvedAxes.NewSurfaces[0] != "admin 分包整体未审计" {
+	if len(snapshot.UnresolvedAxes.NewSurfaces) != 1 || snapshot.UnresolvedAxes.NewSurfaces[0].Item != "admin 分包整体未覆盖" {
 		t.Fatalf("new_surfaces not restored: %+v", snapshot.UnresolvedAxes.NewSurfaces)
 	}
 }
@@ -108,7 +105,7 @@ func TestSynthesizeResumeSnapshot_StickyFallbackFromWorkspaceState(t *testing.T)
 	ws := &builtin_tools.WorkspaceState{
 		Status: builtin_tools.TaskStatusRunning,
 		UnresolvedAxes: &builtin_tools.ReplanAxes{
-			DepthGaps: []string{"越权判断停在 static_only"},
+			DepthGaps: builtin_tools.NewAxisItems([]string{"浅层判断停在 shallow_only"}),
 		},
 	}
 
@@ -116,7 +113,7 @@ func TestSynthesizeResumeSnapshot_StickyFallbackFromWorkspaceState(t *testing.T)
 	if snapshot.UnresolvedAxes == nil || len(snapshot.UnresolvedAxes.DepthGaps) != 1 {
 		t.Fatalf("expected sticky UnresolvedAxes from workspace state, got %+v", snapshot.UnresolvedAxes)
 	}
-	if snapshot.UnresolvedAxes.DepthGaps[0] != "越权判断停在 static_only" {
-		t.Fatalf("unexpected depth_gap: %q", snapshot.UnresolvedAxes.DepthGaps[0])
+	if snapshot.UnresolvedAxes.DepthGaps[0].Item != "浅层判断停在 shallow_only" {
+		t.Fatalf("unexpected depth_gap: %q", snapshot.UnresolvedAxes.DepthGaps[0].Item)
 	}
 }

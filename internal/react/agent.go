@@ -53,17 +53,31 @@ type Agent struct {
 	emitter             *Emitter
 	workspaceSessionID  string
 	workspaceRootDir    string
+	sourceWorkingDir    string
 	parentWorkspaceRoot string
 	workspaceNamespace  string
+	runtimeRepoContext  RuntimeRepoContext
 	frozenLineageByStep map[string]*frozenStepLineage
-	currentResultSource ResultSource
-	workspaceRuntime    builtin_tools.WorkspaceRuntime
-	runClientMu         sync.RWMutex
-	currentRunClientVal ai.ChatClient
-	finishMu            sync.Mutex
-	finishHooks         []func()
-	historyHookMu       sync.RWMutex
-	historyChangeHook   func(change *HistoryChange)
+	// currentTaskContext 与 identityEnv* 为 run 内稳定的 system block2 素材与缓存；
+	// frozenStepParts* 是 think_act 首条 user message 的 step 入口冻结快照
+	//（step 内字节恒定，使消息前缀的移动缓存断点全程命中）。
+	currentTaskContext     *TaskContextData
+	identityEnvPrompt      string
+	identityEnvBuilt       bool
+	frozenStepParts        *PromptParts
+	frozenStepPartsStepID  string
+	frozenStepPartsPlanVer int
+	currentResultSource    ResultSource
+	workspaceRuntime       builtin_tools.WorkspaceRuntime
+	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
+	stepFileGateMu         sync.Mutex
+	stepFileGateRejections map[string]int
+	runClientMu            sync.RWMutex
+	currentRunClientVal    ai.ChatClient
+	finishMu               sync.Mutex
+	finishHooks            []func()
+	historyHookMu          sync.RWMutex
+	historyChangeHook      func(change *HistoryChange)
 
 	asyncRegistry *AsyncAgentRegistry
 
@@ -76,6 +90,24 @@ type Agent struct {
 	// 表示「这是一次恢复」。它只是注入中断点子 agent 现场的必要条件——是否真注入由 runPlanPhase
 	// 计算的「存在 ParentStepKey 未综合进 step_outcome 的 child_agent」条件决定。判定一次后即清。
 	resumeChildRecovery bool
+
+	// contextWindowTokens 是本轮 Execute 时从 runClient 解析到的模型上下文窗口大小（tokens）。
+	// 由 Execute 写入，调度循环内只读，无并发问题。用于共享区大文件的动态截断阈值计算。
+	contextWindowTokens int
+
+	// consecutiveStepsSinceReplan 是 step_replan 心跳计数器：每跳过一次完整 LLM replan +1，
+	// 真正进入 LLM replan 后归 0。配合 STEP_REPLAN_HEARTBEAT_K 兜底，防止"plan 跑很久无 replan"
+	// 导致的累积漂移。仅在调度 goroutine 上读写，无并发问题。
+	consecutiveStepsSinceReplan int
+
+	// lastReplanBoundaryStepID 是上一次 LLM replan 升级时的 current stepID（即"复核窗口"的右边界）。
+	// runStepReplanPhase 命中升级、构造完本次窗口后写入；下一回合构造 review_window 时，
+	// 窗口取 plan 中所有索引位于该边界之后且 status ∈ {completed, failed} 的 step。
+	// 空串表示尚未发生过 LLM replan，等价于"边界 = -1"，窗口含全部 completed/failed step。
+	// 与 consecutiveStepsSinceReplan 一致仅为运行时态、不经 durable_resume 持久化；
+	// resume 后字段重置为空串 → 首次升级窗口含全部历史 completed/failed step（偏保守、可接受）。
+	// 仅在调度 goroutine 上读写，无并发问题。
+	lastReplanBoundaryStepID string
 }
 
 // NewReActAgent 创建 ReAct Agent
@@ -167,6 +199,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	// 平台级内置工具：状态回写、任务状态查询所有 Agent 共享；human_confirm 仅顶层注册（见下）。
 	ucsTool := builtin_tools.NewUpdateCurrentStepTool(agent)
 	ucsTool.ChildAgentChecker = agent.runningChildAgentNames
+	ucsTool.StepFileChecker = agent.checkStepFileProgress
 	if err := agent.registerTool(ucsTool); err != nil {
 		return nil, err
 	}

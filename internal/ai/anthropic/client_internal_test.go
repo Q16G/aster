@@ -7,6 +7,164 @@ import (
 	"aster/internal/ai"
 )
 
+func makeTools(names ...string) []*ai.FunctionTool {
+	tools := make([]*ai.FunctionTool, 0, len(names))
+	for _, n := range names {
+		tools = append(tools, &ai.FunctionTool{
+			Type:     "function",
+			Function: &ai.FunctionDetail{Name: n, Description: n + " desc"},
+		})
+	}
+	return tools
+}
+
+func countBodyCacheControls(body map[string]any) (system int, tools int, messages int, lastToolHas bool) {
+	if blocks, ok := body["system"].([]anthropicTextBlock); ok {
+		for _, b := range blocks {
+			if b.CacheControl != nil {
+				system++
+			}
+		}
+	}
+	if defs, ok := body["tools"].([]anthropicTool); ok {
+		for i, d := range defs {
+			if d.CacheControl != nil {
+				tools++
+				if i == len(defs)-1 {
+					lastToolHas = true
+				}
+			}
+		}
+	}
+	if msgs, ok := body["messages"].([]map[string]any); ok {
+		for _, msg := range msgs {
+			blocks, ok := msg["content"].([]map[string]any)
+			if !ok {
+				continue
+			}
+			for _, block := range blocks {
+				if block != nil && block["cache_control"] != nil {
+					messages++
+				}
+			}
+		}
+	}
+	return
+}
+
+func TestBuildRequestBody_CacheControlBreakpointsWithinLimit(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "generic rules block"},
+		{Role: "system", Content: "agent identity and env block"},
+		{Role: "user", Content: "task dynamic input"},
+		{Role: "user", Content: "go"},
+	}
+	tools := makeTools("read_file", "list_files", "rg", "bash", "submit_plan", "request_clarification")
+	opts := &ai.RequestOptions{PromptFamily: "think_act", PromptCacheEnabled: true}
+
+	body := c.buildRequestBody(infos, tools, opts)
+
+	system, toolCC, msgCC, lastToolHas := countBodyCacheControls(body)
+	total := system + toolCC + msgCC
+	if total > maxCacheControlBreakpoints {
+		t.Fatalf("expected <= %d cache_control blocks, got %d (system=%d tools=%d messages=%d)",
+			maxCacheControlBreakpoints, total, system, toolCC, msgCC)
+	}
+	if toolCC != 1 || !lastToolHas {
+		t.Fatalf("expected exactly 1 tool cache_control on the last tool, got toolCC=%d lastToolHas=%v", toolCC, lastToolHas)
+	}
+	if system != 2 {
+		t.Fatalf("expected 2 system cache_control blocks (rules + identity/env), got %d", system)
+	}
+	if msgCC != 1 {
+		t.Fatalf("expected 1 moving breakpoint on messages, got %d", msgCC)
+	}
+
+	msgs := body["messages"].([]map[string]any)
+	lastBlocks := msgs[len(msgs)-1]["content"].([]map[string]any)
+	if lastBlocks[len(lastBlocks)-1]["cache_control"] == nil {
+		t.Fatalf("expected moving breakpoint on the last block of the last message")
+	}
+}
+
+func TestBuildRequestBody_NoCacheControlWhenDisabled(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "generic rules block"},
+		{Role: "system", Content: "agent identity and env block"},
+		{Role: "user", Content: "go"},
+	}
+	tools := makeTools("read_file", "bash")
+	opts := &ai.RequestOptions{PromptFamily: "think_act", PromptCacheEnabled: false}
+
+	body := c.buildRequestBody(infos, tools, opts)
+
+	system, toolCC, msgCC, _ := countBodyCacheControls(body)
+	if system != 0 || toolCC != 0 || msgCC != 0 {
+		t.Fatalf("expected no cache_control when disabled, got system=%d tools=%d messages=%d", system, toolCC, msgCC)
+	}
+	if blocks, ok := body["system"].([]anthropicTextBlock); !ok || len(blocks) != 2 {
+		t.Fatalf("expected 2 system blocks preserved when cache disabled, got %v", body["system"])
+	}
+}
+
+func TestBuildRequestBody_MovingBreakpointOnToolResult(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "rules"},
+		{Role: "user", Content: "task input"},
+		{Role: "assistant", Content: "", ToolCalls: []*ai.FunctionTool{{
+			Id:       "call-1",
+			Type:     "function",
+			Function: &ai.FunctionDetail{Name: "read_file", Arguments: `{"path":"a.go"}`},
+		}}},
+		{Role: "tool", ToolCallID: "call-1", Content: "file content here"},
+	}
+	opts := &ai.RequestOptions{PromptCacheEnabled: true}
+
+	body := c.buildRequestBody(infos, nil, opts)
+
+	msgs := body["messages"].([]map[string]any)
+	lastBlocks := msgs[len(msgs)-1]["content"].([]map[string]any)
+	last := lastBlocks[len(lastBlocks)-1]
+	if last["type"] != "tool_result" || last["cache_control"] == nil {
+		t.Fatalf("expected moving breakpoint on trailing tool_result block, got %v", last)
+	}
+	for _, msg := range msgs[:len(msgs)-1] {
+		blocks, _ := msg["content"].([]map[string]any)
+		for _, block := range blocks {
+			if block["cache_control"] != nil {
+				t.Fatalf("expected no cache_control on non-last messages, got %v", block)
+			}
+		}
+	}
+}
+
+func TestCapCacheControlBreakpoints_OrderAndLimit(t *testing.T) {
+	c := NewClient()
+	infos := []*ai.MsgInfo{
+		{Role: "system", Content: "block1"},
+		{Role: "system", Content: "block2"},
+		{Role: "system", Content: "block3"},
+		{Role: "user", Content: "go"},
+	}
+	tools := makeTools("read_file")
+	opts := &ai.RequestOptions{PromptCacheEnabled: true}
+
+	body := c.buildRequestBody(infos, tools, opts)
+
+	system, toolCC, msgCC, lastToolHas := countBodyCacheControls(body)
+	if total := system + toolCC + msgCC; total != maxCacheControlBreakpoints {
+		t.Fatalf("expected exactly %d breakpoints after cap, got %d (system=%d tools=%d messages=%d)",
+			maxCacheControlBreakpoints, total, system, toolCC, msgCC)
+	}
+	// 层级顺序 tools→system→messages:tools 与 3 个 system 占满 4 个,messages 移动断点被裁剪。
+	if !lastToolHas || system != 3 || msgCC != 0 {
+		t.Fatalf("expected cap keeps tools+system and drops messages breakpoint, got system=%d tools=%d messages=%d", system, toolCC, msgCC)
+	}
+}
+
 func TestAnyToText_ChatContextTextAndImage(t *testing.T) {
 	contexts := []*ai.ChatContext{
 		{Type: "text", Text: "hello"},

@@ -66,6 +66,12 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 // 标题不一致会让模型新建重复标题。
 const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n"
 
+// 未闭环账本单文件三区（未解决 / 不可解局限 / 已闭环），与 main 同构：闭环项就地迁入
+// `## 已闭环`，闭环状态与未解决项同处可见。账本由 AI（think_act / planning）直接维护——
+// 含子 Agent 终态后由 think_act 按主视角重判归类的部分（见 think_act_system.prompt
+// 子 Agent 委派段「产出归并」原则）。条目格式宽松（建议保留 OI-xxx 编号习惯与
+// 来源/证据标注）。三区节标题是 prompt 与 AI 写者的共同契约，须逐字一致；无 H1（避免被改写）。
+// 注入按 sharedFileLimitBytes 从尾部截断，`## 已闭环` 最先被截、`## 未解决` 始终保留。
 const openItemsScaffold = "## 未解决\n\n## 不可解局限\n\n## 已闭环\n"
 
 // EnsureSharedScaffold 在 shared 目录下为 task_context.md 与 open_items.md 预置骨架，

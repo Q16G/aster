@@ -12,6 +12,7 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 	}
 	prev := a.state.Snapshot()
 	snapshot := a.state.UpdatePlan(plan, explanation, needsPlanning)
+	a.appendPlannerJournalFullPlan(snapshot)
 	if writer, err := newArtifactWriter(a.workspaceRuntime); err == nil {
 		if persistErr := writer.PersistPlanArtifacts(snapshot, a.workspaceSessionID, explanation); persistErr != nil {
 			a.emitRuntimeLog("warning", "persist plan artifacts failed", snapshot, map[string]any{
@@ -32,6 +33,35 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 		emitTaskItemDiffs(a.emitter, prev.Plan, snapshot.Plan, snapshot.CurrentStepID, explanation)
 	}
 	return snapshot
+}
+
+// appendPlannerJournalFullPlan 在 plan 提交（首次规划 / 重规划）时把全部条目（含 pending）
+// 全量 append 到 planner.jsonl，使其成为 plan 真相源；崩溃恢复据此重建。
+func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapshot) {
+	if a.workspaceRuntime == nil || len(snapshot.Plan) == 0 {
+		return
+	}
+	planVersion := snapshot.PlanVersion
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(snapshot.Plan))
+	for _, item := range snapshot.Plan {
+		if item == nil {
+			continue
+		}
+		records = append(records, &builtin_tools.PlannerJournalRecord{
+			Kind:        builtin_tools.PlannerJournalKindPlan,
+			PlanVersion: planVersion,
+			Item:        item,
+		})
+	}
+	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
+		a.emitRuntimeLog("warn", "append planner journal failed", snapshot, map[string]any{
+			"event": "planner_journal_append_failed",
+			"error": err.Error(),
+		})
+	}
 }
 
 func emitTaskItemDiffs(emitter *Emitter, prev []*builtin_tools.PlanItem, next []*builtin_tools.PlanItem, currentStepID string, explanation string) {

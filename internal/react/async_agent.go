@@ -30,10 +30,10 @@ type AsyncAgentEntry struct {
 	Status       string // "running" | "completed" | "failed"
 	Instruction  string
 	WorkspaceDir string
-	Result    *builtin_tools.RunResult
-	StartedAt time.Time
-	delivered bool
-	closed    bool
+	Result       *builtin_tools.RunResult
+	StartedAt    time.Time
+	delivered    bool
+	closed       bool
 }
 
 type AsyncAgentNotification struct {
@@ -60,7 +60,7 @@ func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string)
 		Status:       "running",
 		Instruction:  instruction,
 		WorkspaceDir: workspaceDir,
-		StartedAt: time.Now(),
+		StartedAt:    time.Now(),
 	}
 }
 

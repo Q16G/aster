@@ -1,0 +1,35 @@
+## 任务状态与诉求
+<STATUS>
+{{.STATUS}}
+</STATUS>
+{{- if .STATE_ERROR}}
+<STATE_ERROR>
+{{.STATE_ERROR}}
+</STATE_ERROR>
+{{- end}}
+<INPUT_TIMELINE>
+{{.INPUT_TIMELINE}}
+</INPUT_TIMELINE>
+{{- if .HAS_GOAL_UNDERSTANDING}}
+<GOAL_UNDERSTANDING>
+{{.GOAL_UNDERSTANDING}}
+</GOAL_UNDERSTANDING>
+{{- end}}
+
+## 计划与产出（内联小字段 + 文件指针，需要细节顺指针取全文）
+<PLAN_ITEMS>
+{{.PLAN_ITEMS}}
+</PLAN_ITEMS>
+{{- if .PLANNER_JOURNAL_PATH}}
+计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PLANNER_JOURNAL_PATH}}`
+{{- end}}
+
+<WARNINGS>
+{{.WARNINGS}}
+</WARNINGS>
+（WARNINGS 是 runtime 内部告警，如维护指令执行失败等；非业务层不可解局限——后者载于账本 `## 不可解局限`。识别其语义后在 `user_message` 中据实通报，不参与 is_complete 判定。）
+
+## 未闭环账本（总验收必读，只读；逐项归置闸对象）
+<OPEN_ITEMS_LEDGER>
+{{.OPEN_ITEMS_LEDGER}}
+</OPEN_ITEMS_LEDGER>

@@ -298,7 +298,7 @@ func TestAIHistoryCompressor_UsesDedicatedCompactionPrompt(t *testing.T) {
 		t.Fatalf("expected last compaction message to be user prompt, got %#v", promptMsg)
 	}
 	promptText, _ := promptMsg.Content.(string)
-	if !strings.Contains(promptText, "Existing compaction summary") {
+	if !strings.Contains(promptText, "既有压缩摘要") {
 		t.Fatalf("expected dedicated compaction prompt, got %q", promptText)
 	}
 	if !strings.Contains(promptText, "previous-summary") {
@@ -356,7 +356,7 @@ func TestAgentAICallProxy_EmitsHistoryCompactedEvent(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	result, err := agent.AICallProxy(context.Background(), 1, client, "system prompt", "")
+	result, err := agent.AICallProxy(context.Background(), 1, client, PromptParts{SystemRules: "system prompt"}, "")
 	if err != nil {
 		t.Fatalf("aiCallProxy failed: %v", err)
 	}

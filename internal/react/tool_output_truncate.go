@@ -16,16 +16,17 @@ const (
 	toolOutputRetention        = 7 * 24 * time.Hour
 )
 
-func TruncateToolOutput(toolName string, output string, workspaceRootDir string) (string, bool) {
+// TruncateToolOutput 截断超长工具输出；截断时完整输出落盘并返回文件路径（第三个返回值）。
+func TruncateToolOutput(toolName string, output string, workspaceRootDir string) (string, bool, string) {
 	if strings.TrimSpace(output) == "" {
-		return output, false
+		return output, false, ""
 	}
 
 	res, err := truncateToolOutput(output, resolveToolOutputDir(workspaceRootDir))
 	if err != nil {
-		return output, false
+		return output, false, ""
 	}
-	return res.Content, res.Truncated
+	return res.Content, res.Truncated, res.OutputPath
 }
 
 type toolOutputResult struct {

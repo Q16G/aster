@@ -37,10 +37,10 @@ func TestReducer_BuildSnapshotFromEvents_RestoresBlobRefs(t *testing.T) {
 		makeEvent("SESSION_CREATED"),
 		makeEvent("TURN_STARTED", withTurn("t1"), withPayload(map[string]any{"input": "hello"})),
 		makeEvent("INTERRUPT_RAISED", withTurn("t1"), withInterrupt("int-1"), withPayload(map[string]any{
-			"question":                       "confirm?",
-			"runtime_state_blob_ref":         "sha256:runtime-abc",
-			"step_history_blob_ref":          "sha256:history-def",
-			"conversation_history_blob_ref":  "sha256:conv-ghi",
+			"question":                      "confirm?",
+			"runtime_state_blob_ref":        "sha256:runtime-abc",
+			"step_history_blob_ref":         "sha256:history-def",
+			"conversation_history_blob_ref": "sha256:conv-ghi",
 		})),
 	}
 	snap, err := BuildSnapshotFromEvents("sess-1", events, nil)
@@ -78,10 +78,10 @@ func TestReducer_BuildSnapshotFromEvents_RestoresBlobRefs(t *testing.T) {
 //  4. 最终 turn 结束后 blob refs 清零
 func TestReducer_ResolveChain_BlobRefsLifecycle(t *testing.T) {
 	interruptPayload := map[string]any{
-		"question":                       "proceed?",
-		"runtime_state_blob_ref":         "sha256:rt-1",
-		"step_history_blob_ref":          "sha256:sh-1",
-		"conversation_history_blob_ref":  "sha256:conv-1",
+		"question":                      "proceed?",
+		"runtime_state_blob_ref":        "sha256:rt-1",
+		"step_history_blob_ref":         "sha256:sh-1",
+		"conversation_history_blob_ref": "sha256:conv-1",
 	}
 
 	waitingEvents := []*Event{
@@ -172,10 +172,10 @@ func TestReducer_InterruptCancelled_ClearsBlobRefs(t *testing.T) {
 		makeEvent("SESSION_CREATED"),
 		makeEvent("TURN_STARTED", withTurn("t1"), withPayload(map[string]any{"input": "run task"})),
 		makeEvent("INTERRUPT_RAISED", withTurn("t1"), withInterrupt("int-1"), withPayload(map[string]any{
-			"question":                       "confirm?",
-			"runtime_state_blob_ref":         "sha256:rt-x",
-			"step_history_blob_ref":          "sha256:sh-x",
-			"conversation_history_blob_ref":  "sha256:conv-x",
+			"question":                      "confirm?",
+			"runtime_state_blob_ref":        "sha256:rt-x",
+			"step_history_blob_ref":         "sha256:sh-x",
+			"conversation_history_blob_ref": "sha256:conv-x",
 		})),
 		makeEvent("TURN_FINISHED", withTurn("t1"), withPayload(map[string]any{"status": "interrupted"})),
 		makeEvent("TURN_STARTED", withTurn("t2")),
@@ -215,10 +215,10 @@ func TestReducer_TurnFinishedNonInterrupted_ClearsBlobRefs(t *testing.T) {
 		makeEvent("SESSION_CREATED"),
 		makeEvent("TURN_STARTED", withTurn("t1"), withPayload(map[string]any{"input": "do it"})),
 		makeEvent("INTERRUPT_RAISED", withTurn("t1"), withInterrupt("int-1"), withPayload(map[string]any{
-			"question":                       "ok?",
-			"runtime_state_blob_ref":         "sha256:rt-y",
-			"step_history_blob_ref":          "sha256:sh-y",
-			"conversation_history_blob_ref":  "sha256:conv-y",
+			"question":                      "ok?",
+			"runtime_state_blob_ref":        "sha256:rt-y",
+			"step_history_blob_ref":         "sha256:sh-y",
+			"conversation_history_blob_ref": "sha256:conv-y",
 		})),
 		makeEvent("TURN_FINISHED", withTurn("t1"), withPayload(map[string]any{"status": "interrupted"})),
 		makeEvent("TURN_STARTED", withTurn("t2")),

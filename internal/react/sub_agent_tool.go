@@ -31,16 +31,24 @@ func (t *SubAgentTool) Name() string  { return builtin_tools.SubAgentToolName }
 func (t *SubAgentTool) IsAgent() bool { return true }
 
 func (t *SubAgentTool) Description() string {
-	return "派生一个子 Agent 独立执行委派任务。遇到相互独立、可并行、专业性强或耗时较长的子任务时，应优先考虑委派给 sub_agent，而不是全部自己串行完成。"
+	return "派生子 Agent 独立执行任务。当前阶段需处理同手段/同产物口径独立可验收的子任务集（已落清单）时是默认动作；自己串行处理是反模式。"
 }
 
 func (t *SubAgentTool) Parameters() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"role": map[string]any{
+				"type":        "string",
+				"description": "可选：子 Agent 身份/职业定位，一句话画出是什么角色，限定其判断的语义维度（例如某专业域的资深从业者）；不要把规矩/输出要求写进来。",
+			},
+			"background": map[string]any{
+				"type":        "string",
+				"description": "可选：子 Agent 背景知识与熟悉度，描述这位角色懂什么、做过什么、对什么有偏好；不要把任务上下文、路径等具体值写进来。",
+			},
 			"instruction": map[string]any{
 				"type":        "string",
-				"description": "子 Agent 的完整指令，包含角色定义、任务目标、执行约束和输出要求。",
+				"description": "子 Agent 的指令性约束：按什么规矩干、偏好、强约定与输出要求；身份和背景请走 role / background 字段，不要混进此处。",
 			},
 			"tools": map[string]any{
 				"type":        "array",
@@ -53,7 +61,7 @@ func (t *SubAgentTool) Parameters() any {
 			},
 			"run_in_background": map[string]any{
 				"type":        "boolean",
-				"description": "可选：异步执行子 Agent，立即返回 agent_id。适合长耗时或可并行子任务。完成后结果会自动推送到上下文；启动后调用 await_subagents 让出执行权等待完成，不要紧密轮询 sub_agent_status。",
+				"description": "可选：异步执行子 Agent，立即返回 agent_id。完成后结果会自动推送到上下文。",
 			},
 		},
 		"required":             []string{"instruction"},
@@ -97,6 +105,8 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	if err != nil {
 		return nil, fmt.Errorf("instruction is required")
 	}
+	role := strings.TrimSpace(argx.OptionalText(args, "role"))
+	background := strings.TrimSpace(argx.OptionalText(args, "background"))
 	toolNames := argx.StringSlice(args["tools"])
 	explicitContext := argx.OptionalText(args, "context")
 	handoffContext := argx.OptionalText(args, "__handoff_context__")
@@ -109,6 +119,8 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 
 	childDef := AgentDefinition{
 		Name:        childName,
+		Role:        role,
+		Background:  background,
 		Instruction: instruction,
 		ToolNames:   t.resolveChildToolNames(toolNames),
 		IsSubAgent:  true,
@@ -146,6 +158,7 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	execOpts := []ExecuteOption{
 		WithWorkspaceRuntime(childRuntime),
 		WithParentWorkspace(t.parentAgent.workspaceRootDir),
+		WithSourceWorkingDir(t.parentAgent.sourceWorkingDir),
 		WithSkipIntentPrelude(),
 	}
 	if tc := childDef.BuildTaskContext(); tc != nil {
@@ -282,6 +295,9 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
 		return
 	}
+	// 不再机械回流子 agent 共享区到父级账本：父 AI 在 think_act「子 Agent 委派 → 产出归并」
+	// 原则约束下，按主 Agent 视角主动消费子工作区并归类写入父级两区/事实板/归档。
+	// 这里仅更新 ChildAgents 指针，AI 通过事实板汇总表的读取路径下钻。
 	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
 	if err != nil || parentState == nil {
 		return
@@ -309,8 +325,8 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 }
 
 func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
+	var result []string
 	if len(requested) > 0 {
-		var result []string
 		for _, name := range requested {
 			name = strings.TrimSpace(name)
 			if name == "" {
@@ -327,9 +343,46 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 				result = append(result, name)
 			}
 		}
-		return result
+	} else {
+		result = t.parentDomainToolNames()
 	}
-	return t.parentDomainToolNames()
+	// Always guarantee the read-only builtin domain tools regardless of what the
+	// parent requested. plan/replan/final phases structurally rely on them (their
+	// prompts advertise read_file/list_files/rg), so a child must have them even
+	// when the parent passed an unrelated or policy-only tools list (e.g.
+	// tools:["bash"] strips down to empty and previously dropped these entirely).
+	return t.withBaselineDomainTools(result)
+}
+
+// withBaselineDomainTools unions the read-only builtin domain tools into names,
+// guarded by registry.Has and de-duplicated, preserving the original order.
+func (t *SubAgentTool) withBaselineDomainTools(names []string) []string {
+	seen := make(map[string]struct{}, len(names)+len(baselineDomainToolNames))
+	for _, name := range names {
+		seen[name] = struct{}{}
+	}
+	for _, name := range baselineDomainToolNames {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if t.factory == nil || t.factory.toolRegistry == nil || !t.factory.toolRegistry.Has(name) {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+// baselineDomainToolNames are the read-only builtin domain tools every agent
+// (including sub-agents) must always have. They are registry-resident "common
+// utilities" (see NewDefaultToolRegistry) and plan/replan/final prompts assume
+// their presence, so they are unioned into every child's ToolNames regardless
+// of what the parent requested.
+var baselineDomainToolNames = []string{
+	builtin_tools.ReadFileToolName,
+	builtin_tools.ListFilesToolName,
+	builtin_tools.RgToolName,
 }
 
 // policyManagedTools lists tools hard-wired by NewReActAgent / AgentFactory.Build

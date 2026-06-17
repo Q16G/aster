@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"aster/internal/ai"
+	"aster/internal/builtin_tools"
 	"aster/internal/runtimelog"
 )
 
@@ -402,9 +403,15 @@ func shortenOldToolResults(stepHistory []*ai.MsgInfo, keepLastRounds int, maxRun
 	did := false
 	for r := 0; r < cutoff; r++ {
 		round := rounds[r]
+		protectedIDs := skillToolCallIDs(stepHistory[round.start])
 		for idx := round.start + 1; idx < round.end && idx < len(stepHistory); idx++ {
 			msg := stepHistory[idx]
 			if msg == nil || strings.TrimSpace(msg.Role) != "tool" {
+				continue
+			}
+			// skill 指令全文在加载当 step 内以该 tool result 为唯一来源
+			// (§7.3 注入快照固定在 step 入口),截断会丢失活跃指令,免截断。
+			if _, protected := protectedIDs[strings.TrimSpace(msg.ToolCallID)]; protected {
 				continue
 			}
 			switch content := msg.Content.(type) {
@@ -452,6 +459,31 @@ func shortenOldToolResults(stepHistory []*ai.MsgInfo, keepLastRounds int, maxRun
 		}
 	}
 	return NormalizeHistoryMsgInfos(stepHistory), did
+}
+
+// skillToolCallIDs 提取一轮 assistant tool_calls 中属于 skill 工具的 call id 集合。
+func skillToolCallIDs(assistantMsg *ai.MsgInfo) map[string]struct{} {
+	if assistantMsg == nil || len(assistantMsg.ToolCalls) == 0 {
+		return nil
+	}
+	var ids map[string]struct{}
+	for _, tc := range assistantMsg.ToolCalls {
+		if tc == nil || tc.Function == nil {
+			continue
+		}
+		if strings.TrimSpace(tc.Function.Name) != builtin_tools.SkillToolName {
+			continue
+		}
+		id := strings.TrimSpace(tc.Id)
+		if id == "" {
+			continue
+		}
+		if ids == nil {
+			ids = make(map[string]struct{}, 2)
+		}
+		ids[id] = struct{}{}
+	}
+	return ids
 }
 
 func shortenToolResultText(text string, maxRunes int) (string, bool) {
@@ -531,6 +563,15 @@ func maxInt(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+// sanitizeOutboundForVision 在模型不支持视觉时剥离出站消息中的 image_url。
+// 非破坏式：返回剥离后的副本，原 msgs / stepHistory 不受影响。
+func sanitizeOutboundForVision(client ai.ChatClient, msgs []*ai.MsgInfo) []*ai.MsgInfo {
+	if ModelSupportsVision(client) {
+		return msgs
+	}
+	return stripImagesFromExcerpt(msgs)
 }
 
 func stripImagesFromExcerpt(msgs []*ai.MsgInfo) []*ai.MsgInfo {

@@ -43,29 +43,33 @@ func TestSubAgentTool_Parameters_InstructionRequired(t *testing.T) {
 	if !ok {
 		t.Fatal("expected properties map")
 	}
-	if _, ok := props["instruction"]; !ok {
-		t.Fatal("expected instruction property")
-	}
-	if _, ok := props["tools"]; !ok {
-		t.Fatal("expected tools property")
-	}
-	if _, ok := props["context"]; !ok {
-		t.Fatal("expected context property")
+	for _, want := range []string{"instruction", "role", "background", "tools", "context", "run_in_background"} {
+		if _, ok := props[want]; !ok {
+			t.Fatalf("expected %q property in schema", want)
+		}
 	}
 
 	required, ok := schema["required"].([]any)
 	if !ok {
 		t.Fatal("expected required array")
 	}
-	found := false
+	wantRequired := map[string]bool{"instruction": true}
+	gotRequired := map[string]bool{}
 	for _, r := range required {
-		if r == "instruction" {
-			found = true
-			break
+		if s, ok := r.(string); ok {
+			gotRequired[s] = true
 		}
 	}
-	if !found {
-		t.Fatal("instruction should be in required")
+	for k := range wantRequired {
+		if !gotRequired[k] {
+			t.Fatalf("missing required field %q", k)
+		}
+	}
+	// role / background 仅为可选三要素，不应被强制必填
+	for _, banned := range []string{"role", "background"} {
+		if gotRequired[banned] {
+			t.Fatalf("%q must be optional, not required", banned)
+		}
 	}
 }
 
@@ -136,8 +140,8 @@ func TestSubAgentTool_BashViaPolicy(t *testing.T) {
 		Instruction: "test bash forwarding",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -176,7 +180,7 @@ func TestSubAgentTool_ChildInheritsBash(t *testing.T) {
 		Instruction: "parent with bash",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			AllowBash:            true,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -207,8 +211,8 @@ func TestSubAgentTool_ChildInheritsBash(t *testing.T) {
 		Instruction: "child with inherited bash policy",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -245,8 +249,8 @@ func TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic(t *testing.T) {
 		Instruction: "test",
 		ToolNames:   []string{"read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -268,8 +272,8 @@ func TestSubAgentTool_FactoryBuildWithBashInToolNames_NoPanic(t *testing.T) {
 		Instruction: "test",
 		ToolNames:   []string{"bash", "read_file"},
 		Policies: AgentPolicies{
-			MaxIterations:        10,
-			AllowBash:            true,
+			MaxIterations:         10,
+			AllowBash:             true,
 			BashPermissionContext: bashCfg,
 		},
 	})
@@ -344,34 +348,24 @@ func TestSubAgentTool_ContextReachesPrompt(t *testing.T) {
 		t.Fatalf("expected 2 visible entries (委派上下文 + 交接上下文), got %d", len(visible))
 	}
 
-	child, err := factory.Build(childDef)
-	if err != nil {
+	if _, err := factory.Build(childDef); err != nil {
 		t.Fatalf("factory.Build: %v", err)
 	}
 
-	prompt := child.BuildThinkActPrompt(context.Background(), "", tc)
-
-	t.Logf("\n=== PROMPT (relevant section) ===")
-	for _, line := range strings.Split(prompt, "\n") {
-		if strings.Contains(line, "上下文") || strings.Contains(line, "委派") ||
-			strings.Contains(line, "交接") || strings.Contains(line, "项目根目录") ||
-			strings.Contains(line, "已完成步骤") {
-			t.Logf("  %s", line)
+	// 任务上下文条目的 prompt 渲染已上移至身份/env 块（system block2），
+	// 由 Execute 注入 currentTaskContext 后统一渲染（覆盖见
+	// TestPromptManager_AgentIdentityEnvBlock）；这里只验证条目语义本身。
+	for i, expected := range []struct{ label, valueSubstr string }{
+		{"委派上下文", "项目根目录"},
+		{"交接上下文", "已完成步骤上下文"},
+	} {
+		if visible[i].Label != expected.label {
+			t.Errorf("entry %d label = %q, want %q", i, visible[i].Label, expected.label)
+		}
+		if !strings.Contains(visible[i].Value, expected.valueSubstr) {
+			t.Errorf("entry %d value missing %q: %q", i, expected.valueSubstr, visible[i].Value)
 		}
 	}
 
-	if !strings.Contains(prompt, "项目根目录") {
-		t.Error("prompt should contain explicit context '项目根目录'")
-	}
-	if !strings.Contains(prompt, "已完成步骤上下文") {
-		t.Error("prompt should contain handoff context '已完成步骤上下文'")
-	}
-	if !strings.Contains(prompt, "委派上下文") {
-		t.Error("prompt should contain label '委派上下文'")
-	}
-	if !strings.Contains(prompt, "交接上下文") {
-		t.Error("prompt should contain label '交接上下文'")
-	}
-
-	t.Logf("PASS: both explicit context and handoff context appear in child agent prompt")
+	t.Logf("PASS: explicit context and handoff context entries carried by task context")
 }

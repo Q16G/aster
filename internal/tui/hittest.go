@@ -7,7 +7,6 @@ const (
 	PanelSidebar
 	PanelInput
 	PanelFooter
-	PanelThinking
 	PanelPicker
 	PanelUnknown
 )
@@ -32,9 +31,8 @@ func (m *Model) HitTest(screenX, screenY int) HitResult {
 		return HitResult{Panel: PanelFooter}
 	}
 
-	panelHeight := m.thinkingPanel.Height()
 	pickerHeight := m.pickerHeight(chatWidth)
-	inputStart := chatHeight + panelHeight + pickerHeight
+	inputStart := chatHeight + pickerHeight
 
 	if screenY < chatHeight {
 		contentLine := m.chat.ContentYOffset() + screenY
@@ -49,11 +47,7 @@ func (m *Model) HitTest(screenX, screenY int) HitResult {
 		}
 	}
 
-	if panelHeight > 0 && screenY < chatHeight+panelHeight {
-		return HitResult{Panel: PanelThinking}
-	}
-
-	if pickerHeight > 0 && screenY < chatHeight+panelHeight+pickerHeight {
+	if pickerHeight > 0 && screenY < chatHeight+pickerHeight {
 		return HitResult{Panel: PanelPicker}
 	}
 
