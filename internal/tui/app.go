@@ -75,11 +75,18 @@ type Model struct {
 	sidebar         SidebarModel
 	subAgentPanel   SubAgentPanel
 	// subAgentPanelVer is the last PartsStore.SubAgentVersion value that was
-	// reflected into subAgentPanel via refreshSubAgentPanel. The main View()
-	// compares against the current store version and skips the refresh when
-	// equal so the panel snapshot is rebuilt only when the timeline actually
-	// changed sub-agent state — not 30 times a second on every render tick.
+	// reflected into subAgentPanel via refreshSubAgentPanel. The version
+	// comparison + refresh happens inside Update (renderTickMsg path /
+	// updateLayout); View() is value-receiver and therefore cannot write back
+	// to m, so it must NOT mutate this field. The panel is rebuilt only when
+	// the timeline actually changed sub-agent state — not 30 times a second
+	// on every render tick.
 	subAgentPanelVer uint64
+
+	// subAgentPanelRefreshes is a process-local counter incremented every
+	// time refreshSubAgentPanel actually runs. Tests use it to assert the
+	// View() path never triggers the refresh; production code never reads it.
+	subAgentPanelRefreshes uint64
 	agentCtx        *AgentExecContext
 	humanBridge     *HumanInputBridge
 	agentRunning    bool
@@ -1589,6 +1596,7 @@ func (m *Model) subAgentPanelVisible() bool {
 // sub-agent cards (timeline order, running and terminal), keeping live elapsed
 // times up to date. Terminal cards render with their status icon (●/✗).
 func (m *Model) refreshSubAgentPanel() {
+	m.subAgentPanelRefreshes++
 	sums := m.chat.SubAgentCardsThisTurn()
 	items := make([]subAgentPanelItem, 0, len(sums))
 	for i := range sums {
@@ -1891,10 +1899,12 @@ func (m Model) View() string {
 
 	cols := []string{leftPane}
 	if m.subAgentPanelVisible() {
-		if cur := m.chat.store.SubAgentVersion(); cur != m.subAgentPanelVer {
-			(&m).refreshSubAgentPanel()
-			m.subAgentPanelVer = cur
-		}
+		// 注意: 这里不再做 SubAgentVersion 惰性比对 + refresh.
+		// View 是 value receiver (Bubble Tea 约定), 任何对 m 的写入都丢失,
+		// d6e1ff15 引入的 "View 内惰性" 实际无效: 每帧都判定 != 又把 ver
+		// 写到栈帧拷贝里 → 下一帧又 != → 每帧都重算. 真正的惰性刷新被
+		// 集中在 Update 路径里(renderTickMsg / updateLayout 都会在改写
+		// store 后同步 panel), 这里只负责读取 panel 当前视图.
 		if v := m.subAgentPanel.View(); v != "" {
 			cols = append(cols, v)
 		}
