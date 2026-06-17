@@ -45,6 +45,17 @@ type PartsStore struct {
 	// instead of the pre-Stage-3 reverse scan.
 	idxByThinkingGroup map[thinkingKey]int
 
+	// lastUserIdx is the index of the most recent UserPart, or -1 when no
+	// user message has been added yet. Marks the start of the current turn;
+	// every part with a higher index belongs to the in-flight turn.
+	lastUserIdx int
+
+	// subAgentIdxThisTurn lists the parts indices of every SubAgentPart
+	// spawned in the current turn, in arrival order. Reset on every new
+	// UserPart write. Lets SubAgentCardsThisTurn project the snapshot in
+	// O(M) (M = sub-agents this turn) without scanning the whole timeline.
+	subAgentIdxThisTurn []int
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -61,6 +72,7 @@ func NewPartsStore() *PartsStore {
 		agentParent:        make(map[string]agentSpawnInfo),
 		idxByCallID:        make(map[string]int),
 		idxByThinkingGroup: make(map[thinkingKey]int),
+		lastUserIdx:        -1,
 	}
 }
 
@@ -113,6 +125,13 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 		s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = idx
 	}
+	switch p.Type {
+	case PartTypeUser:
+		s.lastUserIdx = idx
+		s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+	case PartTypeSubAgent:
+		s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, idx)
+	}
 	return p.ID
 }
 
@@ -134,6 +153,8 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.parts = parts
 	s.idxByCallID = make(map[string]int, len(parts))
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
+	s.lastUserIdx = -1
+	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
 	var maxID uint64
 	for i, p := range parts {
 		if p.ID > maxID {
@@ -144,6 +165,13 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 		}
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
+		}
+		switch p.Type {
+		case PartTypeUser:
+			s.lastUserIdx = i
+			s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+		case PartTypeSubAgent:
+			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
 		}
 	}
 	if maxID > s.nextID {
@@ -166,6 +194,8 @@ func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
 func (s *PartsStore) RebuildIndex() {
 	s.idxByCallID = make(map[string]int, len(s.parts))
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
+	s.lastUserIdx = -1
+	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
 	for i, p := range s.parts {
 		if cid := partCallID(p); cid != "" {
 			s.idxByCallID[cid] = i
@@ -173,7 +203,36 @@ func (s *PartsStore) RebuildIndex() {
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
 		}
+		switch p.Type {
+		case PartTypeUser:
+			s.lastUserIdx = i
+			s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+		case PartTypeSubAgent:
+			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
+		}
 	}
+}
+
+// LastUserIndex returns the index of the most recent UserPart, or -1 when
+// none has been added yet.
+func (s *PartsStore) LastUserIndex() int { return s.lastUserIdx }
+
+// SubAgentsThisTurn returns a fresh slice of SubAgentParts spawned in the
+// current turn (after lastUserIdx) in arrival order. The returned slice is a
+// copy so callers may mutate freely.
+func (s *PartsStore) SubAgentsThisTurn() []SubAgentPart {
+	if len(s.subAgentIdxThisTurn) == 0 {
+		return nil
+	}
+	out := make([]SubAgentPart, 0, len(s.subAgentIdxThisTurn))
+	for _, i := range s.subAgentIdxThisTurn {
+		if i >= 0 && i < len(s.parts) {
+			if p := s.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
+				out = append(out, *p.SubAgent)
+			}
+		}
+	}
+	return out
 }
 
 // AppendThinkingDelta extends an in-flight ThinkingPart belonging to (agent,
