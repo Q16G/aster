@@ -13,6 +13,17 @@ type thinkingKey struct {
 	group string
 }
 
+// callIDKey disambiguates the (callID -> parts index) join by the part type
+// that owns the callID. is_agent tool calls produce both a ToolPart and a
+// SubAgentPart that legitimately share the same callID; a single
+// map[string]int would let the second-appended type clobber the first, so
+// UpdateToolByCallID afterwards would silently miss the Tool. Keying by
+// (kind, id) keeps both lookup paths O(1) and collision-free.
+type callIDKey struct {
+	kind PartType
+	id   string
+}
+
 // PartsStore is the authoritative owner of a ChatModel's timeline state. It
 // holds the part slice plus all the ancillary maps that used to live as loose
 // fields on ChatModel (streaming buffers, sub-agent spawn metadata) so the
@@ -33,11 +44,12 @@ type PartsStore struct {
 	spawnByCallID map[string]agentSpawnInfo
 	agentParent   map[string]agentSpawnInfo
 
-	// idxByCallID maps a Tool or SubAgent part's CallID to its parts index.
-	// Maintained on every write that introduces or replaces such a part so
-	// UpdateToolByCallID / future lookup paths run in O(1) instead of the
-	// pre-Stage-3 reverse scan over the whole timeline.
-	idxByCallID map[string]int
+	// idxByCallID maps (part-type, callID) to the parts index. Keyed by both
+	// fields because is_agent tool calls produce a ToolPart and a
+	// SubAgentPart that share the same callID; a flat string->int map would
+	// silently clobber whichever was appended first and break the corresponding
+	// typed Update* lookup. See callIDKey for details.
+	idxByCallID map[callIDKey]int
 
 	// idxByThinkingGroup maps (agent, group) to the parts index of that
 	// agent's currently-open ThinkingPart in the named group. Streaming
@@ -92,7 +104,7 @@ func NewPartsStore() *PartsStore {
 		streamingByAgent:   make(map[string]*strings.Builder),
 		spawnByCallID:      make(map[string]agentSpawnInfo),
 		agentParent:        make(map[string]agentSpawnInfo),
-		idxByCallID:        make(map[string]int),
+		idxByCallID:        make(map[callIDKey]int),
 		idxByThinkingGroup: make(map[thinkingKey]int),
 		lastUserIdx:        -1,
 		childPartsByCallID: make(map[string][]int),
@@ -142,21 +154,22 @@ func (s *PartsStore) attributeChildCallID(p DisplayPart) string {
 	return ""
 }
 
-// partCallID returns the CallID a part identifies itself by, or "" when the
-// part type has no CallID concept. Centralised so index maintenance and
-// lookups agree on which fields carry the join key.
-func partCallID(p DisplayPart) string {
+// partCallIDKey returns the (kind, callID) join key for p, or the zero key
+// when p has no CallID concept. The zero-id check at call sites doubles as
+// the "skip indexing" gate. Centralised so index maintenance and lookups
+// agree on which fields carry the join key.
+func partCallIDKey(p DisplayPart) callIDKey {
 	switch p.Type {
 	case PartTypeTool:
-		if p.Tool != nil {
-			return p.Tool.CallID
+		if p.Tool != nil && p.Tool.CallID != "" {
+			return callIDKey{kind: PartTypeTool, id: p.Tool.CallID}
 		}
 	case PartTypeSubAgent:
-		if p.SubAgent != nil {
-			return p.SubAgent.CallID
+		if p.SubAgent != nil && p.SubAgent.CallID != "" {
+			return callIDKey{kind: PartTypeSubAgent, id: p.SubAgent.CallID}
 		}
 	}
-	return ""
+	return callIDKey{}
 }
 
 // Len returns the number of parts currently stored.
@@ -185,8 +198,8 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	}
 	idx := len(s.parts)
 	s.parts = append(s.parts, p)
-	if cid := partCallID(p); cid != "" {
-		s.idxByCallID[cid] = idx
+	if k := partCallIDKey(p); k.id != "" {
+		s.idxByCallID[k] = idx
 	}
 	if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 		s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = idx
@@ -226,7 +239,7 @@ func (s *PartsStore) Replace(i int, fn func(*DisplayPart)) {
 // so a freshly loaded session has identical lookup semantics to a live one.
 func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.parts = parts
-	s.idxByCallID = make(map[string]int, len(parts))
+	s.idxByCallID = make(map[callIDKey]int, len(parts))
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
@@ -236,8 +249,8 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 		if p.ID > maxID {
 			maxID = p.ID
 		}
-		if cid := partCallID(p); cid != "" {
-			s.idxByCallID[cid] = i
+		if k := partCallIDKey(p); k.id != "" {
+			s.idxByCallID[k] = i
 		}
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
@@ -258,11 +271,19 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 	}
 }
 
-// IndexByCallID returns the parts index for the most recent part registered
-// under callID. The second return is false when no Tool or SubAgent part with
-// that CallID has been recorded.
-func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
-	i, ok := s.idxByCallID[callID]
+// IndexByToolCallID returns the parts index for the ToolPart registered under
+// callID. The second return is false when no Tool part with that CallID has
+// been recorded.
+func (s *PartsStore) IndexByToolCallID(callID string) (int, bool) {
+	i, ok := s.idxByCallID[callIDKey{kind: PartTypeTool, id: callID}]
+	return i, ok
+}
+
+// IndexBySubAgentCallID returns the parts index for the SubAgentPart
+// registered under callID. The second return is false when no SubAgent part
+// with that CallID has been recorded.
+func (s *PartsStore) IndexBySubAgentCallID(callID string) (int, bool) {
+	i, ok := s.idxByCallID[callIDKey{kind: PartTypeSubAgent, id: callID}]
 	return i, ok
 }
 
@@ -272,7 +293,7 @@ func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
 // Production code keeps indexes + identities in sync via Append/Replace/
 // SetAll; this method is the explicit escape hatch for direct slice writes.
 func (s *PartsStore) RebuildIndex() {
-	s.idxByCallID = make(map[string]int, len(s.parts))
+	s.idxByCallID = make(map[callIDKey]int, len(s.parts))
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
@@ -289,8 +310,8 @@ func (s *PartsStore) RebuildIndex() {
 			maxID = s.parts[i].ID
 		}
 		p := s.parts[i]
-		if cid := partCallID(p); cid != "" {
-			s.idxByCallID[cid] = i
+		if k := partCallIDKey(p); k.id != "" {
+			s.idxByCallID[k] = i
 		}
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
@@ -407,7 +428,7 @@ func (s *PartsStore) AppendThinkingDelta(agentName, groupID, delta string, now t
 // callID. The caller is responsible for any Version bump on the part (Stage 3
 // keeps this manual; Stage 4 will fold it into Renderer invalidation).
 func (s *PartsStore) UpdateToolByCallID(callID string, fn func(*ToolPart)) bool {
-	idx, ok := s.idxByCallID[callID]
+	idx, ok := s.idxByCallID[callIDKey{kind: PartTypeTool, id: callID}]
 	if !ok || idx < 0 || idx >= len(s.parts) {
 		return false
 	}
@@ -426,7 +447,7 @@ func (s *PartsStore) UpdateToolByCallID(callID string, fn func(*ToolPart)) bool 
 // registered under that callID. The index is returned so callers can do
 // follow-up reads (duration calc, summary lookup) without re-scanning.
 func (s *PartsStore) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)) int {
-	idx, ok := s.idxByCallID[callID]
+	idx, ok := s.idxByCallID[callIDKey{kind: PartTypeSubAgent, id: callID}]
 	if !ok || idx < 0 || idx >= len(s.parts) {
 		return -1
 	}
