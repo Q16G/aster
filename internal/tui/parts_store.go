@@ -71,6 +71,13 @@ type PartsStore struct {
 	// never accumulate unbounded.
 	dirty map[uint64]struct{}
 
+	// subAgentVersion is bumped on every write that affects the sub-agent
+	// panel's snapshot: appending a SubAgent card, mutating a SubAgent via
+	// UpdateSubAgentByCallID, or rolling a new turn (which clears
+	// subAgentIdxThisTurn). Lets the main View() skip refreshSubAgentPanel
+	// when nothing changed since the last successful snapshot.
+	subAgentVersion uint64
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -188,8 +195,10 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	case PartTypeUser:
 		s.lastUserIdx = idx
 		s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+		s.subAgentVersion++
 	case PartTypeSubAgent:
 		s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, idx)
+		s.subAgentVersion++
 	}
 	if cid := s.attributeChildCallID(p); cid != "" {
 		s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], idx)
@@ -428,8 +437,15 @@ func (s *PartsStore) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart
 	fn(p.SubAgent)
 	p.Version++
 	s.dirty[p.ID] = struct{}{}
+	s.subAgentVersion++
 	return idx
 }
+
+// SubAgentVersion returns a monotonically increasing counter that ticks on
+// every write that affects the sub-agent panel snapshot (new SubAgent card,
+// SubAgent state change, new turn). Callers compare against the last value
+// they observed; equal means the panel may safely reuse its cached View.
+func (s *PartsStore) SubAgentVersion() uint64 { return s.subAgentVersion }
 
 // StreamingBuilder returns the in-progress text stream buffer for agentName,
 // creating it on first use. Mirrors the pre-migration streamBuilder helper.
