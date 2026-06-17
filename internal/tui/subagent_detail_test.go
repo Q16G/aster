@@ -23,6 +23,7 @@ func TestPartsForChildGroupsByCallID(t *testing.T) {
 		{Type: PartTypePlan, Plan: &PlanPart{AgentName: "sub-call_aaa"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "root text", AgentName: "root"}},
 	}
+	m.store.RebuildIndex()
 
 	if got := m.partsForChild("call_aaa1234"); !reflect.DeepEqual(got, []int{0, 2, 4}) {
 		t.Fatalf("child A parts = %v, want [0 2 4]", got)
@@ -45,6 +46,7 @@ func TestRenderAgentTranscriptRestoresState(t *testing.T) {
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "child output", AgentName: "sub-call_aaa"}},
 	}
+	m.store.RebuildIndex()
 	wantWidth := m.width
 
 	content, ok := m.RenderAgentTranscript("call_aaa1234", 70)
@@ -82,6 +84,7 @@ func TestMainTimelineExcludesNonRootDetails(t *testing.T) {
 		{Type: PartTypeText, Text: &TextPart{Content: "ROOT_VISIBLE", AgentName: "root"}},
 		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "ROOT_THINKING", AgentName: "root"}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 
 	out := m.fullContent
@@ -139,6 +142,7 @@ func TestStepResultAttributedByAgent(t *testing.T) {
 		sr(childA, "summarize", "STEP_SUMM"),    // child A → folded
 		sr(childB, "step-3", "STEP_STEP3"),      // child B → folded
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 
 	out := m.fullContent
@@ -169,6 +173,7 @@ func TestEnterOnSubAgentEmitsEnterDetail(t *testing.T) {
 	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_xyz", Status: "running"}},
 	}
+	m.store.RebuildIndex()
 	m.cursor = 0
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -202,6 +207,7 @@ func TestEnterExitChildSwapsMainContent(t *testing.T) {
 		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "CHILD_THINKING", AgentName: "sub-call_aaa"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "ROOT_VISIBLE", AgentName: "root"}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 
 	if strings.Contains(m.fullContent, "CHILD_THINKING") {

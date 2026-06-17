@@ -33,6 +33,7 @@ func fixtureSingleUser() ChatModel {
 	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "Hello, agent."}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 	return m
 }
@@ -54,6 +55,7 @@ func fixtureUserAssistantTool() ChatModel {
 			Duration:  250 * time.Millisecond,
 		}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 	return m
 }
@@ -72,6 +74,7 @@ func fixtureThinkingStream() ChatModel {
 			GroupID: "g2",
 		}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 	return m
 }
@@ -111,6 +114,7 @@ func fixtureMultiSubAgent() ChatModel {
 			Content: "Both sub-tasks dispatched.", AgentName: "root",
 		}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 	return m
 }
@@ -133,6 +137,7 @@ func fixtureLongToolAndTimeline() ChatModel {
 			Duration:  1200 * time.Millisecond,
 		}},
 	}
+	m.store.RebuildIndex()
 	m.refreshContent()
 	return m
 }

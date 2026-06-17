@@ -56,6 +56,13 @@ type PartsStore struct {
 	// O(M) (M = sub-agents this turn) without scanning the whole timeline.
 	subAgentIdxThisTurn []int
 
+	// childPartsByCallID maps a spawning callID to every parts index attributed
+	// to that child agent (its SubAgent card + every part whose producing
+	// agent resolves back to callID). Maintained on Append so PartsForChild
+	// returns in O(K) (K = parts belonging to that child) instead of the
+	// pre-Stage-3 O(N) scan + per-part map lookup.
+	childPartsByCallID map[string][]int
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -73,7 +80,50 @@ func NewPartsStore() *PartsStore {
 		idxByCallID:        make(map[string]int),
 		idxByThinkingGroup: make(map[thinkingKey]int),
 		lastUserIdx:        -1,
+		childPartsByCallID: make(map[string][]int),
 	}
+}
+
+// LookupSpawnByChild resolves the spawn context for a child agent name by
+// joining on the truncated call_id token its name embeds. Returns the spawn
+// info and true on hit, zero-value + false on miss. Moved here from ChatModel
+// so PartsStore can attribute parts to children at Append time without a
+// circular dependency on the higher-level model.
+func (s *PartsStore) LookupSpawnByChild(agentName string) (agentSpawnInfo, bool) {
+	if info, ok := s.spawnByCallID[agentName]; ok {
+		return info, true
+	}
+	token := childAgentCallToken(agentName)
+	if token == "" {
+		return agentSpawnInfo{}, false
+	}
+	wantSub := strings.HasPrefix(agentName, "sub-")
+	for callID, info := range s.spawnByCallID {
+		if info.SubScheme != wantSub {
+			continue
+		}
+		if strings.HasPrefix(callID, token) {
+			return info, true
+		}
+	}
+	return agentSpawnInfo{}, false
+}
+
+// attributeChildCallID returns the callID of the child agent that produced p,
+// or "" when p has no child attribution (root-owned, no agent name, or
+// unresolved). The SubAgent card itself is attributed to its own CallID.
+func (s *PartsStore) attributeChildCallID(p DisplayPart) string {
+	if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID != "" {
+		return p.SubAgent.CallID
+	}
+	name := partAgentName(p)
+	if name == "" {
+		return ""
+	}
+	if info, ok := s.LookupSpawnByChild(name); ok {
+		return info.CallID
+	}
+	return ""
 }
 
 // partCallID returns the CallID a part identifies itself by, or "" when the
@@ -132,6 +182,9 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	case PartTypeSubAgent:
 		s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, idx)
 	}
+	if cid := s.attributeChildCallID(p); cid != "" {
+		s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], idx)
+	}
 	return p.ID
 }
 
@@ -155,6 +208,7 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+	s.childPartsByCallID = make(map[string][]int)
 	var maxID uint64
 	for i, p := range parts {
 		if p.ID > maxID {
@@ -172,6 +226,9 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 			s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
 		case PartTypeSubAgent:
 			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
+		}
+		if cid := s.attributeChildCallID(p); cid != "" {
+			s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], i)
 		}
 	}
 	if maxID > s.nextID {
@@ -196,6 +253,7 @@ func (s *PartsStore) RebuildIndex() {
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+	s.childPartsByCallID = make(map[string][]int)
 	for i, p := range s.parts {
 		if cid := partCallID(p); cid != "" {
 			s.idxByCallID[cid] = i
@@ -210,7 +268,24 @@ func (s *PartsStore) RebuildIndex() {
 		case PartTypeSubAgent:
 			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
 		}
+		if cid := s.attributeChildCallID(p); cid != "" {
+			s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], i)
+		}
 	}
+}
+
+// PartsForChild returns the parts indices belonging to the sub-agent spawned
+// by callID, in timeline order. Returns nil for empty callID or no matches.
+// The returned slice is a fresh copy so callers may mutate freely.
+func (s *PartsStore) PartsForChild(callID string) []int {
+	if callID == "" {
+		return nil
+	}
+	src, ok := s.childPartsByCallID[callID]
+	if !ok || len(src) == 0 {
+		return nil
+	}
+	return append([]int(nil), src...)
 }
 
 // LastUserIndex returns the index of the most recent UserPart, or -1 when
