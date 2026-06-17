@@ -239,6 +239,7 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
 			if p.Type == PartTypeThinking && p.Thinking != nil {
 				p.Thinking.Content += delta
 				p.Version++
+				m.store.MarkDirty(p.ID)
 				s.groupID = groupID
 				m.markDirty()
 				return

@@ -63,6 +63,14 @@ type PartsStore struct {
 	// pre-Stage-3 O(N) scan + per-part map lookup.
 	childPartsByCallID map[string][]int
 
+	// dirty holds the set of part IDs whose rendered fragment must be
+	// invalidated on the next Renderer pass. Append always marks the new
+	// part dirty; in-place mutations (AppendThinkingDelta, future
+	// UpdateToolByCallID with version bump) mark the touched part dirty.
+	// Renderer drains the set at the start of each Render — entries here
+	// never accumulate unbounded.
+	dirty map[uint64]struct{}
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -81,6 +89,7 @@ func NewPartsStore() *PartsStore {
 		idxByThinkingGroup: make(map[thinkingKey]int),
 		lastUserIdx:        -1,
 		childPartsByCallID: make(map[string][]int),
+		dirty:              make(map[uint64]struct{}),
 	}
 }
 
@@ -185,17 +194,21 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if cid := s.attributeChildCallID(p); cid != "" {
 		s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], idx)
 	}
+	s.dirty[p.ID] = struct{}{}
 	return p.ID
 }
 
 // Replace mutates the part at index i via the provided closure. The closure
-// receives a pointer so it can update fields in place; Version is left to the
-// caller (Stage 3 will start auto-bumping it from typed setter methods).
+// receives a pointer so it can update fields in place; the touched part is
+// marked dirty so Renderer's next pass invalidates its cached fragment. The
+// caller is responsible for any explicit Version bump (typed setters such as
+// AppendThinkingDelta / UpdateToolByCallID auto-bump).
 func (s *PartsStore) Replace(i int, fn func(*DisplayPart)) {
 	if i < 0 || i >= len(s.parts) {
 		return
 	}
 	fn(&s.parts[i])
+	s.dirty[s.parts[i].ID] = struct{}{}
 }
 
 // SetAll replaces the entire slice, used by SetParts on session load. ID/
@@ -274,6 +287,33 @@ func (s *PartsStore) RebuildIndex() {
 	}
 }
 
+// MarkDirty records id in the dirty set. Used by chat.go's residual direct-
+// mutation paths (thinking append from an in-flight stream) that need explicit
+// invalidation; typed setters (Append, Replace, UpdateToolByCallID,
+// UpdateSubAgentByCallID, AppendThinkingDelta) all mark dirty automatically.
+func (s *PartsStore) MarkDirty(id uint64) {
+	s.dirty[id] = struct{}{}
+}
+
+// DrainDirty returns the part IDs that have been marked dirty since the last
+// drain, then clears the set. Returns nil when nothing is dirty so callers can
+// skip the per-id invalidation loop. Order is undefined; Renderer doesn't care
+// because it keys cached fragments by ID.
+func (s *PartsStore) DrainDirty() []uint64 {
+	if len(s.dirty) == 0 {
+		return nil
+	}
+	out := make([]uint64, 0, len(s.dirty))
+	for id := range s.dirty {
+		out = append(out, id)
+	}
+	s.dirty = make(map[uint64]struct{})
+	return out
+}
+
+// IsDirty reports whether any part has pending invalidation.
+func (s *PartsStore) IsDirty() bool { return len(s.dirty) > 0 }
+
 // PartsForChild returns the parts indices belonging to the sub-agent spawned
 // by callID, in timeline order. Returns nil for empty callID or no matches.
 // The returned slice is a fresh copy so callers may mutate freely.
@@ -325,6 +365,7 @@ func (s *PartsStore) AppendThinkingDelta(agentName, groupID, delta string, now t
 			if p.Type == PartTypeThinking && p.Thinking != nil {
 				p.Thinking.Content += delta
 				p.Version++
+				s.dirty[p.ID] = struct{}{}
 				return p.ID, false
 			}
 		}
@@ -351,6 +392,8 @@ func (s *PartsStore) UpdateToolByCallID(callID string, fn func(*ToolPart)) bool 
 		return false
 	}
 	fn(p.Tool)
+	p.Version++
+	s.dirty[p.ID] = struct{}{}
 	return true
 }
 
@@ -368,6 +411,8 @@ func (s *PartsStore) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart
 		return -1
 	}
 	fn(p.SubAgent)
+	p.Version++
+	s.dirty[p.ID] = struct{}{}
 	return idx
 }
 
