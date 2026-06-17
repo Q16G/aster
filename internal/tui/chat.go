@@ -45,6 +45,11 @@ type ChatModel struct {
 	// replaces the main timeline in-place ("" = showing the main timeline).
 	viewingChild string
 
+	// nextPartIDValue is the next ID newPart() will assign to an inserted
+	// DisplayPart. Starting at 1 keeps 0 reserved as "no ID assigned" — useful
+	// for SetParts back-fill detection on historical session files.
+	nextPartIDValue uint64
+
 	activeStepByAgent map[string]string
 	// agentSpawnByCallID maps a child agent's spawning tool call_id to the spawn
 	// context captured at its tool_start. call_id is the one stable identifier
@@ -68,6 +73,28 @@ func NewChatModel() ChatModel {
 		agentSpawnByCallID: make(map[string]agentSpawnInfo),
 		agentParent:        make(map[string]agentSpawnInfo),
 	}
+}
+
+// nextPartID returns the next stable identity for a part insertion. Callers
+// must route every DisplayPart creation through newPart() so identities stay
+// dense and monotonically increasing within a process.
+func (m *ChatModel) nextPartID() uint64 {
+	m.nextPartIDValue++
+	return m.nextPartIDValue
+}
+
+// newPart stamps a fresh DisplayPart with a process-local ID and initial
+// Version=1. Any code that constructs a DisplayPart literal for insertion
+// must wrap it via newPart so the renderer's fragment cache can key on the
+// identity and the store's dirty set can track invalidations.
+func (m *ChatModel) newPart(p DisplayPart) DisplayPart {
+	if p.ID == 0 {
+		p.ID = m.nextPartID()
+	}
+	if p.Version == 0 {
+		p.Version = 1
+	}
+	return p
 }
 
 func (m *ChatModel) SetSize(w, h int) {
