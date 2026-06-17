@@ -74,6 +74,12 @@ type Model struct {
 	input           InputModel
 	sidebar         SidebarModel
 	subAgentPanel   SubAgentPanel
+	// subAgentPanelVer is the last PartsStore.SubAgentVersion value that was
+	// reflected into subAgentPanel via refreshSubAgentPanel. The main View()
+	// compares against the current store version and skips the refresh when
+	// equal so the panel snapshot is rebuilt only when the timeline actually
+	// changed sub-agent state — not 30 times a second on every render tick.
+	subAgentPanelVer uint64
 	agentCtx        *AgentExecContext
 	humanBridge     *HumanInputBridge
 	agentRunning    bool
@@ -1882,7 +1888,10 @@ func (m Model) View() string {
 
 	cols := []string{leftPane}
 	if m.subAgentPanelVisible() {
-		(&m).refreshSubAgentPanel()
+		if cur := m.chat.store.SubAgentVersion(); cur != m.subAgentPanelVer {
+			(&m).refreshSubAgentPanel()
+			m.subAgentPanelVer = cur
+		}
 		if v := m.subAgentPanel.View(); v != "" {
 			cols = append(cols, v)
 		}
