@@ -1,0 +1,5 @@
+┃ List files in current dir.                                                 
+────────────────────────────────────────────────────────────
+│ Thinking: I'll call list_files to enumerate.                               
+│ Listing files now.                                                         
+→ list_files {"path":"."} · 250ms

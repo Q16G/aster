@@ -1,0 +1,5 @@
+┃ Split into two sub-tasks.                                                                      
+────────────────────────────────────────────────────────────
+⚡ sub_agent  scan repo for TODOs · completed [5.0s]
+⚡ sub_agent  summarize README · running
+│ Both sub-tasks dispatched.                                                                     
