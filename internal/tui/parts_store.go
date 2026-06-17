@@ -257,17 +257,29 @@ func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
 	return i, ok
 }
 
-// RebuildIndex rebuilds the side indexes from the current parts slice.
-// Production code keeps the indexes in sync via Append/Replace/SetAll; tests
-// that mutate parts directly (e.g. seed a timeline by assigning store.parts)
-// must call this before any index-driven lookup or update.
+// RebuildIndex rebuilds the side indexes from the current parts slice and
+// back-fills ID/Version for any part that was assigned directly (tests that
+// seed a timeline via store.parts = [...] rather than going through Append).
+// Production code keeps indexes + identities in sync via Append/Replace/
+// SetAll; this method is the explicit escape hatch for direct slice writes.
 func (s *PartsStore) RebuildIndex() {
 	s.idxByCallID = make(map[string]int, len(s.parts))
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
 	s.childPartsByCallID = make(map[string][]int)
-	for i, p := range s.parts {
+	var maxID uint64
+	for i := range s.parts {
+		if s.parts[i].ID == 0 {
+			s.parts[i].ID = uint64(i + 1)
+		}
+		if s.parts[i].Version == 0 {
+			s.parts[i].Version = 1
+		}
+		if s.parts[i].ID > maxID {
+			maxID = s.parts[i].ID
+		}
+		p := s.parts[i]
 		if cid := partCallID(p); cid != "" {
 			s.idxByCallID[cid] = i
 		}
@@ -284,6 +296,9 @@ func (s *PartsStore) RebuildIndex() {
 		if cid := s.attributeChildCallID(p); cid != "" {
 			s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], i)
 		}
+	}
+	if maxID > s.nextID {
+		s.nextID = maxID
 	}
 }
 
