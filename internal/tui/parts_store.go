@@ -1,6 +1,17 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
+
+// thinkingKey identifies an in-flight ThinkingPart by its owning agent and
+// optional group ID. Both fields are required to disambiguate concurrent
+// sub-agents that might happen to share a group ID across model boundaries.
+type thinkingKey struct {
+	agent string
+	group string
+}
 
 // PartsStore is the authoritative owner of a ChatModel's timeline state. It
 // holds the part slice plus all the ancillary maps that used to live as loose
@@ -28,6 +39,12 @@ type PartsStore struct {
 	// pre-Stage-3 reverse scan over the whole timeline.
 	idxByCallID map[string]int
 
+	// idxByThinkingGroup maps (agent, group) to the parts index of that
+	// agent's currently-open ThinkingPart in the named group. Streaming
+	// thinking deltas append into the existing part via this index in O(1)
+	// instead of the pre-Stage-3 reverse scan.
+	idxByThinkingGroup map[thinkingKey]int
+
 	// nextID seeds DisplayPart.ID assignment. 0 is the unassigned sentinel;
 	// the first allocated ID is 1. Owned by the store so PartsStore.Append
 	// can mint identities without bouncing back through ChatModel once the
@@ -39,10 +56,11 @@ type PartsStore struct {
 // keep a *PartsStore to share mutations across the model.
 func NewPartsStore() *PartsStore {
 	return &PartsStore{
-		streamingByAgent: make(map[string]*strings.Builder),
-		spawnByCallID:    make(map[string]agentSpawnInfo),
-		agentParent:      make(map[string]agentSpawnInfo),
-		idxByCallID:      make(map[string]int),
+		streamingByAgent:   make(map[string]*strings.Builder),
+		spawnByCallID:      make(map[string]agentSpawnInfo),
+		agentParent:        make(map[string]agentSpawnInfo),
+		idxByCallID:        make(map[string]int),
+		idxByThinkingGroup: make(map[thinkingKey]int),
 	}
 }
 
@@ -92,6 +110,9 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if cid := partCallID(p); cid != "" {
 		s.idxByCallID[cid] = idx
 	}
+	if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
+		s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = idx
+	}
 	return p.ID
 }
 
@@ -112,6 +133,7 @@ func (s *PartsStore) Replace(i int, fn func(*DisplayPart)) {
 func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.parts = parts
 	s.idxByCallID = make(map[string]int, len(parts))
+	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	var maxID uint64
 	for i, p := range parts {
 		if p.ID > maxID {
@@ -119,6 +141,9 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 		}
 		if cid := partCallID(p); cid != "" {
 			s.idxByCallID[cid] = i
+		}
+		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
+			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
 		}
 	}
 	if maxID > s.nextID {
@@ -134,17 +159,48 @@ func (s *PartsStore) IndexByCallID(callID string) (int, bool) {
 	return i, ok
 }
 
-// RebuildIndex rebuilds idxByCallID from the current parts slice. Production
-// code keeps the index in sync via Append/Replace/SetAll; tests that mutate
-// parts directly (e.g. seed a timeline by assigning store.parts) must call
-// this before any index-driven lookup or update.
+// RebuildIndex rebuilds the side indexes from the current parts slice.
+// Production code keeps the indexes in sync via Append/Replace/SetAll; tests
+// that mutate parts directly (e.g. seed a timeline by assigning store.parts)
+// must call this before any index-driven lookup or update.
 func (s *PartsStore) RebuildIndex() {
 	s.idxByCallID = make(map[string]int, len(s.parts))
+	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	for i, p := range s.parts {
 		if cid := partCallID(p); cid != "" {
 			s.idxByCallID[cid] = i
 		}
+		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
+			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
+		}
 	}
+}
+
+// AppendThinkingDelta extends an in-flight ThinkingPart belonging to (agent,
+// groupID) by delta. When no part with that key exists (or groupID is empty),
+// a new ThinkingPart is created with the provided timestamp. Returns the part
+// ID and a created flag indicating whether a fresh part was added (true) or
+// an existing one was extended (false).
+//
+// The Version of an extended part is bumped so the Renderer's fragment cache
+// can invalidate just that fragment on the next Render call.
+func (s *PartsStore) AppendThinkingDelta(agentName, groupID, delta string, now time.Time) (id uint64, created bool) {
+	if groupID != "" {
+		if idx, ok := s.idxByThinkingGroup[thinkingKey{agentName, groupID}]; ok && idx >= 0 && idx < len(s.parts) {
+			p := &s.parts[idx]
+			if p.Type == PartTypeThinking && p.Thinking != nil {
+				p.Thinking.Content += delta
+				p.Version++
+				return p.ID, false
+			}
+		}
+	}
+	id = s.Append(DisplayPart{
+		Type:     PartTypeThinking,
+		Time:     now,
+		Thinking: &ThinkingPart{Content: delta, GroupID: groupID, AgentName: agentName},
+	})
+	return id, true
 }
 
 // UpdateToolByCallID mutates the ToolPart belonging to callID via the closure.
