@@ -1103,6 +1103,26 @@ func (m *ChatModel) scrollToCursor() {
 }
 
 func (m *ChatModel) SetParts(parts []DisplayPart) {
+	// Back-fill identities for historical session files written before the
+	// ID/Version fields existed (ID==0 sentinel). Dense back-fill from 1 keeps
+	// identities stable across loads of the same file; live parts written by a
+	// running session already carry IDs from newPart() and are left intact.
+	var maxID uint64
+	for i := range parts {
+		if parts[i].ID == 0 {
+			parts[i].ID = uint64(i + 1)
+		}
+		if parts[i].Version == 0 {
+			parts[i].Version = 1
+		}
+		if parts[i].ID > maxID {
+			maxID = parts[i].ID
+		}
+	}
+	if maxID >= m.nextPartIDValue {
+		m.nextPartIDValue = maxID
+	}
+
 	m.parts = parts
 	m.toolExpanded = make(map[int]bool)
 	for i, part := range parts {
