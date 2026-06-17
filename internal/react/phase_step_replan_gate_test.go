@@ -91,6 +91,40 @@ func TestShouldEscalateStepReplan_Bypass(t *testing.T) {
 	}
 }
 
+// TestShouldEscalateStepReplan_DefaultPerBatch 验证默认（无 env）纯 per-batch 语义：
+// 心跳禁用（K=-1），mid-batch 成功 step 且仍有可跑 task_item → 旁路；plan_exhausted / step_error 仍升级。
+func TestShouldEscalateStepReplan_DefaultPerBatch(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "") // 空 → 取默认 -1（纯 per-batch）
+	a := &Agent{consecutiveStepsSinceReplan: 99}
+
+	// mid-batch：当前 step 成功，仍有可跑 task_item → 旁路（心跳禁用，不因步数升级）。
+	midBatch := builtin_tools.StateSnapshot{
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "s1", Step: "a", Status: builtin_tools.PlanStepCompleted},
+			{ID: "s2", Step: "b", Status: builtin_tools.PlanStepPending},
+		},
+	}
+	if escalate, reason := a.shouldEscalateStepReplan(midBatch, &builtin_tools.StepOutcome{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted}); escalate {
+		t.Fatalf("expected bypass mid-batch under per-batch default, got escalate=true reason=%q", reason)
+	}
+
+	// 没有可跑 task_item → plan_exhausted 升级。
+	batchEnd := builtin_tools.StateSnapshot{
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "s1", Step: "a", Status: builtin_tools.PlanStepCompleted},
+			{ID: "s2", Step: "b", Status: builtin_tools.PlanStepCompleted},
+		},
+	}
+	if escalate, reason := a.shouldEscalateStepReplan(batchEnd, &builtin_tools.StepOutcome{StepID: "s2", Status: builtin_tools.StepOutcomeCompleted}); !escalate || reason != "plan_exhausted" {
+		t.Fatalf("expected plan_exhausted when no runnable task_item, got (%v, %q)", escalate, reason)
+	}
+
+	// step 失败 → 即时升级，不受 per-batch 影响。
+	if escalate, reason := a.shouldEscalateStepReplan(midBatch, &builtin_tools.StepOutcome{StepID: "s1", Status: builtin_tools.StepOutcomeFailed}); !escalate || reason != "step_error" {
+		t.Fatalf("expected step_error immediate escalation, got (%v, %q)", escalate, reason)
+	}
+}
+
 // TestShouldEscalateStepReplan_FailureOverridesAll 验证 step_error 触发条件优先级最高，
 // 即使 plan 仍有可跑 step、心跳未到也会立即升级。
 func TestShouldEscalateStepReplan_FailureOverridesAll(t *testing.T) {
@@ -130,8 +164,8 @@ func TestShouldEscalateStepReplan_NilOutcomeNoCrash(t *testing.T) {
 // TestStepReplanHeartbeatK_DefaultAndOverride 验证心跳阈值的默认值与环境变量覆盖。
 func TestStepReplanHeartbeatK_DefaultAndOverride(t *testing.T) {
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "")
-	if got := stepReplanHeartbeatK(); got != 2 {
-		t.Fatalf("default heartbeat K expected 2, got %d", got)
+	if got := stepReplanHeartbeatK(); got != -1 {
+		t.Fatalf("default heartbeat K expected -1 (per-batch), got %d", got)
 	}
 
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "3")
@@ -139,9 +173,14 @@ func TestStepReplanHeartbeatK_DefaultAndOverride(t *testing.T) {
 		t.Fatalf("override heartbeat K expected 3, got %d", got)
 	}
 
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0")
+	if got := stepReplanHeartbeatK(); got != 0 {
+		t.Fatalf("override heartbeat K=0 (per-step) expected 0, got %d", got)
+	}
+
 	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "not-a-number")
-	if got := stepReplanHeartbeatK(); got != 2 {
-		t.Fatalf("invalid value falls back to default 2, got %d", got)
+	if got := stepReplanHeartbeatK(); got != -1 {
+		t.Fatalf("invalid value falls back to default -1, got %d", got)
 	}
 }
 

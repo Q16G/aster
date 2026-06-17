@@ -57,7 +57,11 @@ type StepReplanPromptInput struct {
 	IsSubAgent        bool
 	CurrentGoal       any
 	GoalUnderstanding string
-	InputTimeline     any
+	// CurrentPhase 是注入给 step_replan 的「当前深度优先阶段」语义描述。
+	// 视角 B 据此把全局视角从 GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ CurrentPhase。
+	// 空字符串时视角 B 退化为 GoalUnderstanding 全集兜底（兼容历史 session 与 simple 任务）。
+	CurrentPhase  string
+	InputTimeline any
 	// ReviewWindow 是「自上次 LLM replan 边界以来已完成的 step」区间多卡（最右一卡 Latest=true 标识本回合刚跑完）。
 	// 替代旧 CurrentStepCard 单卡：plan-once-execute-many gate 下被跳过的 K-1 个 step 也以同构卡片入 prompt，
 	// 让模型用统一格式核验整个复核区间。PlanOverview 是全部步骤的 slim 全量卡片（去 digest，含产出小字段与文件指针）；
@@ -138,7 +142,11 @@ type TaskPlannerPromptInput struct {
 	AgentBackground   string
 	Input             string
 	GoalUnderstanding string
-	UserInputTurn     bool
+	// CurrentPhase 注入为上一轮的当前深度优先阶段（上下文，非强制焦点）；planner 读账本
+	// 「待承接排队」候选 + REPLAN_CONTEXT.current_phase_done 信号自决保持还是切换，
+	// submit_plan.current_phase 可覆盖此注入值（职责反转后 step_replan 不再选下一个 phase）。
+	CurrentPhase  string
+	UserInputTurn bool
 	// IsSubAgent 标记本 planner 回合发生在子 Agent 内部；用于让模板对子 Agent
 	// 关闭"顶层 planner 维护事实板终态"的契约段（子 Agent 工作区不承担顶层
 	// 事实板维护责任，避免被强制注入）。
@@ -369,6 +377,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"CURRENT_GOAL":             fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
+		"CURRENT_PHASE":            strings.TrimSpace(input.CurrentPhase),
+		"HAS_CURRENT_PHASE":        strings.TrimSpace(input.CurrentPhase) != "",
 		"INPUT_TIMELINE":           prettyJSON(input.InputTimeline),
 		"REVIEW_WINDOW_CARDS":      cardsJSON,
 		"REVIEW_WINDOW_TOTAL":      reviewTotal,
@@ -481,6 +491,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"INPUT":                  strings.TrimSpace(input.Input),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
+		"CURRENT_PHASE":          strings.TrimSpace(input.CurrentPhase),
+		"HAS_CURRENT_PHASE":      strings.TrimSpace(input.CurrentPhase) != "",
 		"TASK_CONTEXT_BOARD":     strings.TrimSpace(input.TaskContextBoard),
 		"HAS_TASK_CONTEXT_BOARD": strings.TrimSpace(input.TaskContextBoard) != "",
 		"SKILLS_CONTEXT":         input.SkillsContext,

@@ -253,7 +253,7 @@ func TestStepReplanB3c06685Replay_LiveFromENV(t *testing.T) {
 
 	t.Logf("[replay] should_replan=%v", decision.ShouldReplan)
 	t.Logf("[replay] replan_reason=%s", decision.ReplanReason)
-	t.Logf("[replay] next_goal=%s", decision.NextGoal)
+	t.Logf("[replay] current_phase_done=%v", decision.CurrentPhaseDone)
 	t.Logf("[replay] incomplete_items=%d depth_gaps=%d new_surfaces=%d",
 		len(decision.IncompleteItems), len(decision.DepthGaps), len(decision.NewSurfaces))
 	if msg.ReasoningOutput != "" {

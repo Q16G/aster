@@ -312,6 +312,7 @@ func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID 
 		StatusSummary:     strings.TrimSpace(snapshot.StatusSummary),
 		CurrentGoal:       strings.TrimSpace(snapshot.CurrentGoal),
 		GoalUnderstanding: strings.TrimSpace(snapshot.GoalUnderstanding),
+		CurrentPhase:      strings.TrimSpace(snapshot.CurrentPhase),
 		InputTimeline:     snapshot.InputTimeline,
 		ActiveSkillNames:  builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames),
 		ActiveMCPServers:  builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers),

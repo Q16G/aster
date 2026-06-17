@@ -328,6 +328,15 @@ type ReplanContext struct {
 	ReplacePending  bool        `json:"replace_pending,omitempty"`
 	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
 	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
+	// CurrentPhase 透传给 planner 作为本回合的当前深度优先阶段（原样不变）：
+	// 职责反转后 step_replan 不再选下一个 phase，planner 读账本「待承接排队」候选 + CurrentPhaseDone
+	// 信号自决保持还是切换。submit_plan.current_phase 由 planner 自决回填到 TaskPlannerResult.CurrentPhase。
+	CurrentPhase string `json:"current_phase,omitempty"`
+	// CurrentPhaseDone 是 step_replan 报告的「当前 phase in-phase 深度已穷尽」信号（严格闸门：
+	// 无可测未测、无可深未深）。planner 据此决定沿用当前阶段深推（false）还是切换下一阶段（true）。
+	// 不加 omitempty：false 是「保持当前阶段继续深推」的关键信号，须显式出现在注入 planner 的
+	// REPLAN_CONTEXT JSON 中，不能因零值被省略而让 planner 无法区分 false 与缺省。
+	CurrentPhaseDone bool `json:"current_phase_done"`
 }
 
 // ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。
@@ -383,6 +392,10 @@ type StateSnapshot struct {
 	InputTimeline []*TimelineInput `json:"input_timeline,omitempty"`
 	// GoalUnderstanding 是 planner 对原始输入的结构化理解，贯穿下游用于锚定原始意图。
 	GoalUnderstanding string `json:"goal_understanding,omitempty"`
+	// CurrentPhase 是当前深度优先聚焦阶段的语义描述，跨阶段贯穿（planner 写、step_replan 读）；
+	// step_replan 视角 B 据此把全局视角从 GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ CurrentPhase。
+	// 切换面/纠偏重塑由 step_replan 在 ReplanContext 中携带 NextPhase 触发，回流 planner 写回此处。
+	CurrentPhase string `json:"current_phase,omitempty"`
 	// SimpleTask 标记简单单步任务：step 完成后跳过 step_replan 直达 final_answer。
 	SimpleTask bool `json:"simple_task,omitempty"`
 

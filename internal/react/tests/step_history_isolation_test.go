@@ -142,9 +142,7 @@ func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, 
 }
 
 func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T) {
-	// 本测试用 step_replan LLM 路径在每个 step 后切换 history layer 验证跨 step 隔离；
-	// plan-once-execute-many gate 默认会跳过 LLM replan 改变调用计数，需显式关闭以保留旧路径行为。
-	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	client := &stepHistoryIsolationClient{t: t}
 	agent, err := NewReActAgent(
 		"isolation-agent",

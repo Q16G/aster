@@ -1549,9 +1549,7 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 }
 
 func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
-	// 本测试断言 step_replan LLM 路径的每步调用语义；plan-once-execute-many gate
-	// 默认会跳过 LLM replan，需显式关闭以保留旧路径行为。
-	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 本用例验证 per-step replan 序列，pin per-step
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -1631,9 +1629,7 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 // 给 planner，由 planner 产出含 step-2 的新 plan（取代 legacy-step）。planner 被调用两次
 // （初始 + 回流编排）。
 func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
-	// 本测试断言 step_replan LLM 路径的「三轴→回流 planner→新 plan」行为；
-	// plan-once-execute-many gate 默认会跳过 LLM replan，需显式关闭以保留 LLM 路径。
-	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 验证 step-1 后 mid-batch replan，pin per-step
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
 		if e != nil {
@@ -1677,10 +1673,10 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				// step_replan 提交三轴缺口，触发 ReplanContext 回流 planner。
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-submit-replan-1", "submit_replan", map[string]any{
-						"should_replan":    true,
-						"replan_reason":    "旧计划未覆盖新增验证缺口",
-						"next_goal":        "围绕新缺口补齐验证",
-						"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
+						"should_replan":      true,
+						"replan_reason":      "旧计划未覆盖新增验证缺口",
+						"current_phase_done": false,
+						"incomplete_items":   []any{"legacy-step 覆盖的验证面缺失"},
 					}),
 				},
 			},
@@ -1798,8 +1794,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["replan_reason"])); got != "旧计划未覆盖新增验证缺口" {
 		t.Fatalf("expected replan reason in event, got %#v", stepReplanEvent.Payload)
 	}
-	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["next_goal"])); got != "围绕新缺口补齐验证" {
-		t.Fatalf("expected next goal in event, got %#v", stepReplanEvent.Payload)
+	if got, ok := stepReplanEvent.Payload["current_phase_done"].(bool); !ok || got {
+		t.Fatalf("expected current_phase_done=false in event, got %#v", stepReplanEvent.Payload)
 	}
 }
 
@@ -1945,6 +1941,7 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 						},
 						"explanation":        "需要规划",
 						"goal_understanding": "核心目标：执行用户请求",
+						"current_phase":      "执行用户请求",
 					}),
 				},
 			},
@@ -2167,9 +2164,7 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 }
 
 func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
-	// 本测试用 step_replan LLM 路径串联多 step；plan-once-execute-many gate 默认会跳过
-	// LLM replan 改变模型调用计数，需显式关闭以保留旧路径行为。
-	t.Setenv("STEP_REPLAN_BYPASS_DISABLED", "true")
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	wsRoot := t.TempDir()
 	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
 
@@ -2628,6 +2623,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
+						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2642,6 +2638,7 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
+						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2816,6 +2813,7 @@ func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
 					},
 					"explanation":        "需要规划",
 					"goal_understanding": "核心目标：执行用户请求",
+					"current_phase":      "执行用户请求",
 				}),
 			},
 		}

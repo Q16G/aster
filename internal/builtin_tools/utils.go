@@ -79,6 +79,7 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.DepthGaps = CloneAxisItems(in.DepthGaps)
 	out.NewSurfaces = CloneAxisItems(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
+	out.CurrentPhase = strings.TrimSpace(in.CurrentPhase)
 	return &out
 }
 

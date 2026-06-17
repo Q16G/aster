@@ -137,9 +137,11 @@ func TestBuildReviewWindow_FailedIncluded(t *testing.T) {
 	}
 }
 
-// TestBuildReviewWindow_TruncationAndOmittedCount: 区间长度 > reviewWindowMaxCards() 时截断保最新 N 张并写 OmittedCount。
-func TestBuildReviewWindow_TruncationAndOmittedCount(t *testing.T) {
-	const overshoot = 12 // > reviewWindowMaxCards() (8)
+// TestBuildReviewWindow_PerBatchCeilingTruncation: 默认 per-batch（K<0）下，批次 > ceiling(32)
+// 时截断保最新 ceiling 张并写 OmittedCount，更早 step 由 journal 指针回读。
+func TestBuildReviewWindow_PerBatchCeilingTruncation(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1") // 纯 per-batch 模式
+	overshoot := reviewWindowMaxCardsBatchCeiling + 4 // 36 > ceiling 32
 	a := &Agent{}
 	var plan []*builtin_tools.PlanItem
 	var outcomes []*builtin_tools.StepOutcome
@@ -150,24 +152,49 @@ func TestBuildReviewWindow_TruncationAndOmittedCount(t *testing.T) {
 	}
 	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
 	win := a.buildReviewWindow(snapshot, "", "")
-	if got := len(win.Cards); got != reviewWindowMaxCards() {
-		t.Fatalf("expected %d cards after truncation, got %d", reviewWindowMaxCards(), got)
+	if got := len(win.Cards); got != reviewWindowMaxCardsBatchCeiling {
+		t.Fatalf("expected %d cards after ceiling truncation, got %d", reviewWindowMaxCardsBatchCeiling, got)
 	}
 	if win.TotalCards != overshoot {
 		t.Fatalf("expected TotalCards=%d, got %d", overshoot, win.TotalCards)
 	}
-	if win.OmittedCount != overshoot-reviewWindowMaxCards() {
-		t.Fatalf("expected OmittedCount=%d, got %d", overshoot-reviewWindowMaxCards(), win.OmittedCount)
+	if win.OmittedCount != overshoot-reviewWindowMaxCardsBatchCeiling {
+		t.Fatalf("expected OmittedCount=%d, got %d", overshoot-reviewWindowMaxCardsBatchCeiling, win.OmittedCount)
 	}
-	// 截断保最新：第一张应是 s5 (12-8+1)
-	if win.Cards[0].ID != stepID(overshoot-reviewWindowMaxCards()+1) {
-		t.Fatalf("expected first card id=%s, got %s", stepID(overshoot-reviewWindowMaxCards()+1), win.Cards[0].ID)
+	// 截断保最新：第一张应是 s5 (36-32+1)
+	if win.Cards[0].ID != stepID(overshoot-reviewWindowMaxCardsBatchCeiling+1) {
+		t.Fatalf("expected first card id=%s, got %s", stepID(overshoot-reviewWindowMaxCardsBatchCeiling+1), win.Cards[0].ID)
 	}
 	if win.Cards[len(win.Cards)-1].ID != stepID(overshoot) {
 		t.Fatalf("expected last card id=%s, got %s", stepID(overshoot), win.Cards[len(win.Cards)-1].ID)
 	}
 	if !win.Cards[len(win.Cards)-1].Latest {
 		t.Fatalf("expected Latest=true on last card after truncation")
+	}
+}
+
+// TestBuildReviewWindow_PerBatchCoversWholeBatch: 默认 per-batch 下，批次 <= ceiling 时整批入窗，不截断。
+func TestBuildReviewWindow_PerBatchCoversWholeBatch(t *testing.T) {
+	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1") // 纯 per-batch 模式
+	const batch = 12                          // <= ceiling 32
+	a := &Agent{}
+	var plan []*builtin_tools.PlanItem
+	var outcomes []*builtin_tools.StepOutcome
+	for i := 1; i <= batch; i++ {
+		id := stepID(i)
+		plan = append(plan, makePlanItem(id, "step "+id, builtin_tools.PlanStepCompleted))
+		outcomes = append(outcomes, makeOutcome(id, "done-"+id, builtin_tools.StepOutcomeCompleted))
+	}
+	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
+	win := a.buildReviewWindow(snapshot, "", "")
+	if got := len(win.Cards); got != batch {
+		t.Fatalf("expected whole batch %d cards (no truncation), got %d", batch, got)
+	}
+	if win.OmittedCount != 0 {
+		t.Fatalf("expected OmittedCount=0, got %d", win.OmittedCount)
+	}
+	if win.Cards[0].ID != stepID(1) {
+		t.Fatalf("expected first card id=%s, got %s", stepID(1), win.Cards[0].ID)
 	}
 }
 
@@ -365,33 +392,49 @@ func TestBuildReviewWindow_InlineCoverageNoPath(t *testing.T) {
 	}
 }
 
-// TestReviewWindowMaxCards_FollowsHeartbeatK 验证软上限随 STEP_REPLAN_HEARTBEAT_K 联动：
-// K 较小（如 5）时退回 baseline=8；K 较大（如 10）时使用 K+3=13。
+// TestReviewWindowMaxCards_FollowsHeartbeatK 验证软上限按 K 与窗口规模联动：
+//   - K<0（per-batch，默认）：clamp(total, baseline=8, ceiling=32)。
+//   - K=0（per-step）：baseline。
+//   - K>0：max(K+3, baseline)。
 func TestReviewWindowMaxCards_FollowsHeartbeatK(t *testing.T) {
+	t.Run("per_batch_covers_whole_batch", func(t *testing.T) {
+		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+		if got := reviewWindowMaxCards(12); got != 12 {
+			t.Fatalf("expected 12 (whole batch), got %d", got)
+		}
+	})
+	t.Run("per_batch_clamps_up_to_baseline", func(t *testing.T) {
+		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+		if got := reviewWindowMaxCards(3); got != reviewWindowMaxCardsBaseline {
+			t.Fatalf("expected baseline %d, got %d", reviewWindowMaxCardsBaseline, got)
+		}
+	})
+	t.Run("per_batch_clamps_down_to_ceiling", func(t *testing.T) {
+		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+		if got := reviewWindowMaxCards(100); got != reviewWindowMaxCardsBatchCeiling {
+			t.Fatalf("expected ceiling %d, got %d", reviewWindowMaxCardsBatchCeiling, got)
+		}
+	})
+	t.Run("K=0_per_step_baseline", func(t *testing.T) {
+		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0")
+		if got := reviewWindowMaxCards(50); got != reviewWindowMaxCardsBaseline {
+			t.Fatalf("expected %d, got %d", reviewWindowMaxCardsBaseline, got)
+		}
+	})
 	t.Run("K=5_use_baseline", func(t *testing.T) {
 		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "5")
-		if got := reviewWindowMaxCards(); got != reviewWindowMaxCardsBaseline {
+		if got := reviewWindowMaxCards(50); got != reviewWindowMaxCardsBaseline {
 			t.Fatalf("expected %d, got %d", reviewWindowMaxCardsBaseline, got)
 		}
 	})
 	t.Run("K=10_follows_K_plus_3", func(t *testing.T) {
 		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "10")
-		if got := reviewWindowMaxCards(); got != 13 {
+		if got := reviewWindowMaxCards(50); got != 13 {
 			t.Fatalf("expected 13, got %d", got)
-		}
-	})
-	t.Run("K_disabled_use_baseline", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0")
-		if got := reviewWindowMaxCards(); got != reviewWindowMaxCardsBaseline {
-			t.Fatalf("expected %d, got %d", reviewWindowMaxCardsBaseline, got)
 		}
 	})
 }
 
 func stepID(i int) string {
-	const letters = "0123456789"
-	if i < 10 {
-		return "s" + string(letters[i])
-	}
-	return "s1" + string(letters[i-10])
+	return fmt.Sprintf("s%d", i)
 }

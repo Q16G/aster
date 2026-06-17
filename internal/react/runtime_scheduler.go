@@ -280,6 +280,12 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
 	}
+	// CurrentPhase 注入为本回合的当前阶段（上下文，非强制焦点）；planner 读账本 + REPLAN_CONTEXT
+	// 携带的 current_phase_done 信号自决保持还是切换，submit_plan.current_phase 可覆盖此注入值。
+	plannerInput.CurrentPhase = strings.TrimSpace(snapshot.CurrentPhase)
+	if snapshot.ReplanContext != nil && strings.TrimSpace(snapshot.ReplanContext.CurrentPhase) != "" {
+		plannerInput.CurrentPhase = strings.TrimSpace(snapshot.ReplanContext.CurrentPhase)
+	}
 	a.applyPlannerOverflowHints(&plannerInput)
 
 	// 仅在「全新意图」首次规划、或用户改向（regenGoal）时强制要求 goal_understanding：
@@ -372,6 +378,15 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if res != nil {
 		a.SetGoalUnderstanding(res.GoalUnderstanding)
 		a.state.SetSimpleTask(res.Simple && len(items) == 1)
+		// 阶段贯穿：planner 自决当前阶段后写入 snapshot，step_replan 视角③ 据此收窄到 role ∩ current_phase；
+		// simple 任务空字符串 → 视角③ 退化为 GoalUnderstanding 全集兜底。
+		// 回流回合 fallback：planner 未回填 current_phase 时沿用 ReplanContext.CurrentPhase，
+		// 避免阶段焦点丢失退化为全集兜底。
+		phaseFromPlan := strings.TrimSpace(res.CurrentPhase)
+		if phaseFromPlan == "" && snapshot.ReplanContext != nil {
+			phaseFromPlan = strings.TrimSpace(snapshot.ReplanContext.CurrentPhase)
+		}
+		a.state.SetCurrentPhase(phaseFromPlan)
 	}
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
 	if res != nil && len(items) > 0 {
@@ -489,9 +504,10 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						anyUsefulTool = true
 						continue
 					}
-					// 粒度机械校验（P3 最小化兜底，与 prompt 侧 §粒度纪律 / §塌缩反模式 同口径）：
+					// 粒度机械校验（P3 最小化兜底，与 prompt 侧 Atomic Step Contract 同口径）：
 					// step 文案承载多句堆叠（中文分号 `；` 出现）或超长（runes > planItemStepMaxRunes）
-					// 时几乎必然塌缩——绕开 LLM 自检直接 reject 让其拆。失败时同样走 retry 通道。
+					// 时几乎必然包含多个 object/action/acceptance——绕开 LLM 自检直接 reject 让其拆。
+					// 失败时同样走 retry 通道。
 					if granErr := validatePlanItemsGranularity(parsed.Plan); granErr != nil {
 						submitRetries++
 						if submitRetries > maxSubmitRetries {
@@ -646,7 +662,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 							"required": []string{"id", "step", "status", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-								"step": map[string]any{"type": "string", "description": "一条 step = 一个具体工件 + 一个可独立验收的产出。命中任一即必拆：①文案动作对象包含 ≥2 个不同具体工件名 → 按工件逐条拆；②文案描述 ≥2 个相互独立可验收的产出（含\"X 综合处理：枚举…分析…验证…\"类复合动词标签遮蔽形态，壳词不计单产出）→ 按产出拆为多条；③以\"全部 / 所有 / 各种 + 类目\"无锚点收口 → 先 enumerate 再按工件逐条。step 内的工具调用序列共同服务于该 step 单一产出口径——同对象同维度复读（含同文件分页 / 同 grep 反复缩窄）属同闭包合法重复不算多产出；序列里出现服务于另一独立可验收产出的调用即按 ② 拆。合法豁免：单步内联完整清单并附\"对账该清单全部 N 项\" / 指向承载完整清单的产物文件并附\"对账该文件全部 N 项\"。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
+								"step": map[string]any{"type": "string", "description": "一条 step 必须是 atomic work item：object × action × acceptance。object 是一个具体执行对象（文件、接口、参数、页面、账户等对象标识）；action 是唯一动作维度（枚举、观测、验证某项属性、生成报告等）；acceptance 是一个可独立验收的产出或结论。规划时先列 objects，再列 actions，最后生成三元组；任一维度不同就拆成不同 step。清单是数据流：生成清单可作为一个 step，消费清单时必须展开清单内 objects，清单文件名本身不是批量执行对象。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
 								"status": map[string]any{
 									"type":        "string",
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},
@@ -666,7 +682,11 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 					},
 					"goal_understanding": map[string]any{
 						"type":        "string",
-						"description": "对用户输入的结构化复述，建议覆盖固定小标题：核心目标 / 范围边界 / 约束 / 交付物与验收 / 显式聚焦 / 隐含需求与假设 / 未决歧义。needs_planning=true 时必填。",
+						"description": "对用户输入的结构化复述；按七要素小标题覆盖：核心目标 / 范围边界 / 约束 / 交付物与验收标准 / 显式聚焦 / 隐含需求与假设 / 未决歧义。needs_planning=true 时必填。",
+					},
+					"current_phase": map[string]any{
+						"type":        "string",
+						"description": "本回合 plan 释放的当前阶段描述，格式「<对象> 的 <深度推进目标>」——一个最小的、可从浅到深推进的执行单元（纵向深度层在 phase 内推进，不拆成多个 phase）。内联具体对象/工件名，禁泛化范畴词。必须是单一可闭环主导切面，不得写成组件×多维度矩阵、泛化组件层或 skill checklist。多同类对象任务仅描述其中一个阶段；needs_planning=true 且 simple=false 时必填；simple=true 或 needs_planning=false 时留空。由 planner 读账本（待承接排队候选）+ task_context.md + 注入的 current_phase_done 信号自决：current_phase_done=false 时沿用当前阶段继续深推，=true 时从账本候选切换到下一阶段。",
 					},
 					"simple": map[string]any{
 						"type":        "boolean",
@@ -696,11 +716,11 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 	}
 }
 
-// planItemStepMaxRunes 是单条 step 文案的字符上限——超过则机械判定塌缩（多句堆叠或长描述塞多事）。
-// 经验值：120 字符足够承载"动词 + 单工件 + 单产出 + 验收"标准句式（30-80 字），>120 一般有多句。
+// planItemStepMaxRunes 是单条 step 文案的字符上限——超过则机械判定为可能塞入多个 atomic work items。
+// 经验值：120 字符足够承载"动词 + 单工件 + 单动作维度 + 单产出 + 验收"标准句式（30-80 字），>120 一般有多句。
 const planItemStepMaxRunes = 120
 
-// validatePlanItemsGranularity 对 plan items 做两条机械粒度兜底检查（与 §粒度纪律 / §塌缩反模式 同口径）：
+// validatePlanItemsGranularity 对 plan items 做两条机械粒度兜底检查（与 Atomic Step Contract 同口径）：
 //  1. step 文案 runes 数 ≤ planItemStepMaxRunes
 //  2. step 文案不含中文分号 `；`（多句堆叠的强信号）
 //
@@ -720,10 +740,10 @@ func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
 			id = "<unnamed>"
 		}
 		if strings.Contains(step, "；") {
-			return fmt.Errorf("step %q 文案包含中文分号 `；`（多句堆叠塌缩信号）——一条 step = 一个具体工件 + 一个可独立验收的产出，按工件/产出拆为多条", id)
+			return fmt.Errorf("step %q 文案包含中文分号 `；`（多句堆叠信号）——一条 step = object × action × acceptance，按三元组拆为多条", id)
 		}
 		if runeCount := utf8.RuneCountInString(step); runeCount > planItemStepMaxRunes {
-			return fmt.Errorf("step %q 文案长度 %d > %d 字符上限（超长几乎必然塞多事）——按工件/产出拆为多条单一动作的 step", id, runeCount, planItemStepMaxRunes)
+			return fmt.Errorf("step %q 文案长度 %d > %d 字符上限（超长几乎必然塞多事）——按 object/action/acceptance 拆为多条 atomic step", id, runeCount, planItemStepMaxRunes)
 		}
 	}
 	return nil
@@ -752,6 +772,9 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 	}
 	if requireGoalUnderstanding && result.NeedsPlanning && strings.TrimSpace(result.GoalUnderstanding) == "" {
 		return nil, fmt.Errorf("submit_plan: needs_planning=true but goal_understanding is empty（请先完成输入理解的七要素结构化复述，填入 goal_understanding 再提交）")
+	}
+	if result.NeedsPlanning && !result.Simple && strings.TrimSpace(result.CurrentPhase) == "" {
+		return nil, fmt.Errorf("submit_plan: needs_planning=true 且非 simple 任务时 current_phase 必填（一句话语义描述当前深度优先阶段，内联具体对象/工件名）")
 	}
 	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
 		return nil, fmt.Errorf("submit_plan: needs_planning=false but direct_response is empty")

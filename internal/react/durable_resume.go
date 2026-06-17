@@ -265,6 +265,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if strings.TrimSpace(snapshot.GoalUnderstanding) == "" && strings.TrimSpace(planCurrent.GoalUnderstanding) != "" {
 			snapshot.GoalUnderstanding = strings.TrimSpace(planCurrent.GoalUnderstanding)
 		}
+		if strings.TrimSpace(snapshot.CurrentPhase) == "" && strings.TrimSpace(planCurrent.CurrentPhase) != "" {
+			snapshot.CurrentPhase = strings.TrimSpace(planCurrent.CurrentPhase)
+		}
 		if len(snapshot.InputTimeline) == 0 && len(planCurrent.InputTimeline) > 0 {
 			snapshot.InputTimeline = planCurrent.InputTimeline
 		}

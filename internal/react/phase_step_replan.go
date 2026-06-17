@@ -39,33 +39,33 @@ func (t *submitReplanTool) Description() string {
 func (t *submitReplanTool) Parameters() any {
 	return map[string]any{
 		"type":     "object",
-		"required": []string{"should_replan", "replan_reason", "next_goal"},
+		"required": []string{"should_replan", "replan_reason", "current_phase_done"},
 		"properties": map[string]any{
 			"should_replan": map[string]any{
 				"type":        "boolean",
-				"description": "存在可行动缺口且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
+				"description": "账本 ## 未解决 存在可行动缺口（当前 phase 内或阶段外排队）且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
 			},
 			"replan_reason": map[string]any{
 				"type":        "string",
 				"description": "should_replan=true 时填一句人类可读的缺口总括；false 时填空字符串。",
 			},
-			"next_goal": map[string]any{
-				"type":        "string",
-				"description": "should_replan=true 时填明确的下一轮目标；false 时填空字符串。",
+			"current_phase_done": map[string]any{
+				"type":        "boolean",
+				"description": "当前 phase 的 in-phase 深度是否已穷尽——仅信号，本阶段不选下一个 phase（保持/切换由 planner 读账本 + 本信号自决）。严格闸门：当且仅当当前 phase 内『可测的都测了、可深入的都深入了』——step card 区间 + 当前 phase（CURRENT_PHASE 范围内）三轴均空，且不存在可测未测、可深未深（所有确认型发现已按 agent role 职责链推进到最深相关决策层）→ true；任一残留 → false。",
 			},
 			"incomplete_items": map[string]any{
 				"type":        "array",
-				"description": "轴①存在性：本 step 声明目标范围内、根本没做或仍悬而未决的项，驱动补齐。不含「做了但不扎实」（属 depth_gaps）。",
+				"description": "轴①存在性（限 CURRENT_PHASE 范围内，当前 phase 投影）：在当前深度优先阶段内、根本没做或仍悬而未决的项，驱动补齐。不含「做了但不扎实」（属 depth_gaps）。阶段外的同级排队面缺口不进此字段，仅留账本「待承接（深度优先排队）」由 planner 后续切换承接。",
 				"items":       map[string]any{"type": "string"},
 			},
 			"depth_gaps": map[string]any{
 				"type":        "array",
-				"description": "轴②深度/质量：本 step 声明目标内、做了但不扎实的项（static_only 未确认 / sink 未追到 source / 悬而未决判断 / 水货占位挤掉高价值分析 / 抽样冒充全量），驱动深挖。即使轴①为空也须独立判定。",
+				"description": "轴②深度/质量（限 CURRENT_PHASE 范围内，当前 phase 投影）：当前阶段内做了但不扎实的项（" + builtin_tools.DepthSmellsEnumeration + "），驱动深挖。即使轴①为空也须独立判定。阶段外同级排队面缺口不进此字段。",
 				"items":       map[string]any{"type": "string"},
 			},
 			"new_surfaces": map[string]any{
 				"type":        "array",
-				"description": "轴③泛化扩面：对照 GOAL_UNDERSTANDING 意图半径内、与用户核心目标语义相关的资产/攻击面全集，尚未被任何已完成工作覆盖的面；范围是整个任务而非当前 step。入列时轻量去重偏放行：只剔除明确同 (检查维度×资产) 对、前提未变、已扎实覆盖的重叠，拿不准保留；已覆盖但浅的转入 depth_gaps。受 GOAL_UNDERSTANDING 范围边界约束，意图外/明确不做项降级沉回 `## 不可解局限`。",
+				"description": "轴③泛化扩面（限 CURRENT_PHASE 范围内，当前 phase 投影）：理论全量覆盖集 = {在 scope 内 ∩ CURRENT_PHASE 范围内的对象集} × {role 职责维度集} 与所有已完成工作的差集；阶段外同级新面（含同对象更深层）的发现由 role 全量全半径核验只登账本「待承接（深度优先排队）」不入轴，由 planner 后续切换承接。受 GOAL_UNDERSTANDING 范围边界约束，意图外/明确不做项降级沉回 `## 不可解局限`。",
 				"items":       map[string]any{"type": "string"},
 			},
 		},
@@ -81,8 +81,8 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 	if err := json.Unmarshal(data, &result); err != nil {
 		return "", fmt.Errorf("submit_replan: parse args failed: %w", err)
 	}
-	if result.ShouldReplan && strings.TrimSpace(result.NextGoal) == "" {
-		return "", fmt.Errorf("submit_replan: should_replan=true but next_goal is empty")
+	if result.ShouldReplan && strings.TrimSpace(result.ReplanReason) == "" {
+		return "", fmt.Errorf("submit_replan: should_replan=true but replan_reason is empty")
 	}
 	r := result
 	t.mu.Lock()
@@ -98,12 +98,15 @@ func (t *submitReplanTool) getResult() *stepReplanModelOutput {
 }
 
 type stepReplanModelOutput struct {
-	ShouldReplan    bool     `json:"should_replan"`
-	ReplanReason    string   `json:"replan_reason"`
-	NextGoal        string   `json:"next_goal"`
-	IncompleteItems []string `json:"incomplete_items,omitempty"` // 轴①存在性缺口
-	DepthGaps       []string `json:"depth_gaps,omitempty"`       // 轴②深度缺口
-	NewSurfaces     []string `json:"new_surfaces,omitempty"`     // 轴③扩面缺口
+	ShouldReplan bool   `json:"should_replan"`
+	ReplanReason string `json:"replan_reason"`
+	// CurrentPhaseDone 是「当前 phase in-phase 深度已穷尽」信号（仅信号，本阶段不选下一个 phase）。
+	// 严格闸门：视角①(step card) + 视角③(role ∩ current_phase) 三轴均空，且无可测未测、无可深未深
+	// （所有确认型发现已按 agent role 职责链推进到最深相关决策层）→ true。保持/切换由 planner 自决。
+	CurrentPhaseDone bool     `json:"current_phase_done"`
+	IncompleteItems  []string `json:"incomplete_items,omitempty"` // 轴①存在性缺口（限 CURRENT_PHASE 范围内）
+	DepthGaps        []string `json:"depth_gaps,omitempty"`       // 轴②深度缺口（限 CURRENT_PHASE 范围内）
+	NewSurfaces      []string `json:"new_surfaces,omitempty"`     // 轴③扩面缺口（限 CURRENT_PHASE 范围内）
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -152,9 +155,9 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// 未命中任一触发条件时直接走 applyReplanResult 的 no-op 分支转入下一 step，
 	// 命中则保留下方完整 step_replan LLM 路径。bypass 不渲染 prompt、不发 LLM。
 	// 触发条件：
-	//   1) plan 耗尽（无下一可跑 step）
-	//   2) 当前 step status == failed
-	//   3) 心跳：连续跳过 K 步后强制升级
+	//   1) plan 耗尽（无下一可跑 task_item）—— 默认主触发：当前 phase 释放的批次跑完即复核
+	//   2) 当前 step status == failed —— 硬失败即时升级
+	//   3) 心跳：连续跳过 K 步后强制升级（默认 K=-1 禁用；K=0 每步；K>0 折中）
 	// 环境变量 STEP_REPLAN_BYPASS_DISABLED=true 时整段失效（紧急回滚开关）。
 	if !stepReplanBypassDisabled() {
 		escalate, reason := a.shouldEscalateStepReplan(snapshot, rawOutcome)
@@ -178,7 +181,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 	// 构造复核窗口：以上一次 LLM replan 边界为左侧开区间，含本回合 current 在内的所有
 	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
-	// bypass 关闭时（每步走 LLM）窗口稳定为 1 张卡（边界=上一步）。
+	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
 	priorBoundaryStepID := a.lastReplanBoundaryStepID
 	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, workspaceSharedDir)
 	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
@@ -222,24 +225,25 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
-		"current_goal":            snapshot.CurrentGoal,
-		"goal_understanding":      snapshot.GoalUnderstanding,
-		"input_timeline":          snapshot.InputTimeline,
-		"review_window":           reviewWin,
-		"plan_overview":           ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
-		"planner_journal_path":    plannerJournalPath,
-		"planner_journal":         plannerJournal,
-		"open_items_ledger":       readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"task_context_board":      readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"step_file_content":       readSharedStepFileForPrompt(workspaceSharedDir, stepID),
-		"step_contexts_path":      stepContextsPath,
-		"step_transcript_path":    stepTranscriptPath,
-		"open_items_path":         openItemsPath,
-		"task_context_path":       taskContextPath,
-		"step_file_path":          stepFileAbs(workspaceSharedDir, stepID),
-		"prior_boundary_step_id":  priorBoundaryStepID,
-		"skills_context":          skillsCtx,
-		"available_tools":         functionToolsToAvailableInfo(fnTools),
+		"current_goal":           snapshot.CurrentGoal,
+		"goal_understanding":     snapshot.GoalUnderstanding,
+		"current_phase":          snapshot.CurrentPhase,
+		"input_timeline":         snapshot.InputTimeline,
+		"review_window":          reviewWin,
+		"plan_overview":          ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
+		"planner_journal_path":   plannerJournalPath,
+		"planner_journal":        plannerJournal,
+		"open_items_ledger":      readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"task_context_board":     readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"step_file_content":      readSharedStepFileForPrompt(workspaceSharedDir, stepID),
+		"step_contexts_path":     stepContextsPath,
+		"step_transcript_path":   stepTranscriptPath,
+		"open_items_path":        openItemsPath,
+		"task_context_path":      taskContextPath,
+		"step_file_path":         stepFileAbs(workspaceSharedDir, stepID),
+		"prior_boundary_step_id": priorBoundaryStepID,
+		"skills_context":         skillsCtx,
+		"available_tools":        functionToolsToAvailableInfo(fnTools),
 	})
 	if err != nil {
 		return fmt.Errorf("build step replan prompt failed: %w", err)
@@ -304,20 +308,26 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 }
 
-// applyReplanDecision 根据三轴决策构造 ReplanContext 路由回 planner；
+// applyReplanDecision 把 step_replan 的复核结论构造成 ReplanContext 路由回 planner；
 // should_replan=false 时无重编排，继续执行下一个可跑 step 或走向 final_answer。
+//
+// 职责反转：step_replan 只维护账本 + 报告 current_phase_done 信号，不再选下一个 phase。
+// CurrentPhase 原样透传当前阶段（不变），由 planner 读账本 + current_phase_done 自决保持还是切换：
+//   - current_phase_done=false → planner 沿用当前阶段，编排更深 in-phase step；
+//   - current_phase_done=true  → planner 从账本「待承接排队」候选选下一阶段。
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	if !decision.ShouldReplan {
 		return a.applyReplanResult(stepID, &decision, nil, nil, snapshot, "")
 	}
 	rc := &builtin_tools.ReplanContext{
-		SourceStepID:    stepID,
-		Reason:          decision.ReplanReason,
-		NextGoal:        decision.NextGoal,
-		IncompleteItems: builtin_tools.NewAxisItems(decision.IncompleteItems),
-		DepthGaps:       builtin_tools.NewAxisItems(decision.DepthGaps),
-		NewSurfaces:     builtin_tools.NewAxisItems(decision.NewSurfaces),
-		ReplacePending:  true,
+		SourceStepID:     stepID,
+		Reason:           decision.ReplanReason,
+		IncompleteItems:  builtin_tools.NewAxisItems(decision.IncompleteItems),
+		DepthGaps:        builtin_tools.NewAxisItems(decision.DepthGaps),
+		NewSurfaces:      builtin_tools.NewAxisItems(decision.NewSurfaces),
+		ReplacePending:   true,
+		CurrentPhase:     strings.TrimSpace(snapshot.CurrentPhase),
+		CurrentPhaseDone: decision.CurrentPhaseDone,
 	}
 	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
 }
@@ -358,7 +368,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 
 	summaryGoal := ""
 	if newPlan != nil && modelOut != nil {
-		summaryGoal = strings.TrimSpace(modelOut.NextGoal)
+		summaryGoal = strings.TrimSpace(modelOut.ReplanReason)
 	} else if replanContext != nil {
 		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
 	}
@@ -495,11 +505,12 @@ func stepReplanBypassDisabled() bool {
 }
 
 // stepReplanHeartbeatK 返回心跳兜底阈值：连续跳过 K 步后强制升级一次完整 replan。
-// 默认 2，可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。
-// 触发语义：consecutiveStepsSinceReplan >= K 时升级——K=0 即每步必触发（零跳过容忍），
-// K=2 即跳过 2 步后第 3 步触发（默认）。负值视作禁用心跳，仅靠 plan_exhausted / step_error 升级。
+// 默认 -1（禁用心跳，纯 per-batch：只在没有可跑 task_item 时即 plan_exhausted、或 step_error 升级），
+// 可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。触发语义：k>=0 且 consecutiveStepsSinceReplan >= K
+// 时升级——K<0（默认）禁用心跳；K=0 退回每步复核（per-step）；K>0（如 3）为每 K 步的折中节流。
+// 无论 K 取值，plan_exhausted（当前批次跑完、无可跑 task_item）与 step_error 恒触发。
 func stepReplanHeartbeatK() int {
-	const defaultK = 2
+	const defaultK = -1
 	v := strings.TrimSpace(os.Getenv("STEP_REPLAN_HEARTBEAT_K"))
 	if v == "" {
 		return defaultK
@@ -749,21 +760,33 @@ type replanStepCard struct {
 	Latest            bool                                  `json:"latest,omitempty"`
 }
 
-// reviewWindowMaxCardsBaseline 是区间多卡软上限的下界。plan_exhausted 触发时窗口可能远超
-// heartbeat K，须截断保最新 N 张并在模板提示更早 step 从 PLANNER_JOURNAL / PLAN_OVERVIEW 回读。
-// 实际上限由 reviewWindowMaxCards() 动态计算，跟随 STEP_REPLAN_HEARTBEAT_K 联动，避免用户调大 K
-// 时（如 K=10）反而频繁截断的反直觉行为。
+// reviewWindowMaxCardsBaseline 是区间多卡软上限的下界。窗口可能远超 heartbeat K，
+// 须截断保最新 N 张并在模板提示更早 step 从 PLANNER_JOURNAL / PLAN_OVERVIEW 回读。
+// 实际上限由 reviewWindowMaxCards() 动态计算，避免反直觉的频繁截断。
 const reviewWindowMaxCardsBaseline = 8
 
-// reviewWindowMaxCards 计算复核窗口的卡片软上限：
-//
-//	上限 = max(heartbeat_K + 3, baseline=8)
-//
-// "+3" 是安全余量：K 心跳触发后通常窗口正好 K+1 张，但 plan_exhausted 时可能多带几个尾部 step。
-// 心跳禁用（K<0）或 K=0（每步触发、单卡窗口）时退化为 baseline。
-func reviewWindowMaxCards() int {
+// reviewWindowMaxCardsBatchCeiling 是 per-batch（K<0）模式下窗口的硬上限：正常批次应被整批
+// 覆盖（窗口=批次规模），但 resume 跨越大 plan 时窗口可能爆量，须截断到此上限并由 journal
+// 指针兜底，防止 token 爆炸。（后续可改为按 contextWindow 缩放。）
+const reviewWindowMaxCardsBatchCeiling = 32
+
+// reviewWindowMaxCards 计算复核窗口的卡片软上限，total 为本次窗口实际收集到的卡片数：
+//   - K<0（per-batch，默认）：clamp(total, baseline=8, ceiling=32)——覆盖整批，超大批截断到 ceiling。
+//   - K==0（per-step）：baseline（窗口本就 1 张）。
+//   - K>0（折中心跳）：max(K+3, baseline)，"+3" 为 plan_exhausted 多带尾部 step 的安全余量。
+func reviewWindowMaxCards(total int) int {
 	k := stepReplanHeartbeatK()
-	if k <= 0 {
+	if k < 0 {
+		cap := total
+		if cap < reviewWindowMaxCardsBaseline {
+			cap = reviewWindowMaxCardsBaseline
+		}
+		if cap > reviewWindowMaxCardsBatchCeiling {
+			cap = reviewWindowMaxCardsBatchCeiling
+		}
+		return cap
+	}
+	if k == 0 {
 		return reviewWindowMaxCardsBaseline
 	}
 	if dyn := k + 3; dyn > reviewWindowMaxCardsBaseline {
@@ -848,7 +871,7 @@ func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundary
 	}
 	total := len(windowItems)
 	omitted := 0
-	maxCards := reviewWindowMaxCards()
+	maxCards := reviewWindowMaxCards(total)
 	if total > maxCards {
 		omitted = total - maxCards
 		windowItems = windowItems[total-maxCards:]
@@ -1078,4 +1101,3 @@ func readSharedStepFileForPrompt(sharedDir, stepID string) string {
 	}
 	return strings.TrimSpace(string(data))
 }
-

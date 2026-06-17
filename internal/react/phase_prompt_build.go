@@ -24,6 +24,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		IsSubAgent:          a.cfg.IsSubAgent,
 		CurrentGoal:         payload["current_goal"],
 		GoalUnderstanding:   stringFromPayload(payload, "goal_understanding"),
+		CurrentPhase:        stringFromPayload(payload, "current_phase"),
 		InputTimeline:       payload["input_timeline"],
 		ReviewWindow:        payload["review_window"],
 		PlanOverview:        payload["plan_overview"],

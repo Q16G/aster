@@ -399,6 +399,19 @@ func (t *StateTracker) SetGoalUnderstanding(understanding string) builtin_tools.
 	return *t.state
 }
 
+// SetCurrentPhase 记录 planner 自决的「当前深度优先聚焦阶段」。
+// 跨阶段贯穿；step_replan 视角 B 据此把全局视角收窄为 GoalUnderstanding ∩ CurrentPhase。
+// 阶段切换由 step_replan 通过 ReplanContext.CurrentPhase=NextPhase 触发回流后由 planner 回填。
+// 空字符串覆盖既有值（与 SetGoalUnderstanding 不同）——simple 任务、direct_response 任务、
+// 阶段切换重置等场景都需要清空，让视角 B 退化为 GoalUnderstanding 全集兜底。
+func (t *StateTracker) SetCurrentPhase(phase string) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.CurrentPhase = strings.TrimSpace(phase)
+	t.touchLocked()
+	return *t.state
+}
+
 func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -809,6 +822,7 @@ func (t *StateTracker) SoftResetFrom(
 		Phase:             builtin_tools.AgentPhasePlan,
 		Status:            builtin_tools.TaskStatusPreparing,
 		GoalUnderstanding: strings.TrimSpace(st.GoalUnderstanding),
+		CurrentPhase:      strings.TrimSpace(st.CurrentPhase),
 		CurrentGoal:       strings.TrimSpace(st.CurrentGoal),
 		CurrentStepID:     strings.TrimSpace(st.CurrentStepID),
 		Plan:              st.Plan,

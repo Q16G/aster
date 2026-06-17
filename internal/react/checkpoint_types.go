@@ -27,6 +27,7 @@ type planCurrentCheckpoint struct {
 	StatusSummary     string                         `json:"status_summary,omitempty"`
 	CurrentGoal       string                         `json:"current_goal,omitempty"`
 	GoalUnderstanding string                         `json:"goal_understanding,omitempty"`
+	CurrentPhase      string                         `json:"current_phase,omitempty"`
 	InputTimeline     []*builtin_tools.TimelineInput `json:"input_timeline,omitempty"`
 	ActiveSkillNames  []string                       `json:"active_skill_names,omitempty"`
 	ActiveMCPServers  []string                       `json:"active_mcp_servers,omitempty"`
