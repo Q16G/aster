@@ -234,10 +234,11 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
 	}
 
 	if groupID != "" && s.buf.Len() == 0 {
-		for i := len(m.store.parts) - 1; i >= 0; i-- {
-			if m.store.parts[i].Type == PartTypeThinking && m.store.parts[i].Thinking != nil &&
-				m.store.parts[i].Thinking.GroupID == groupID && m.store.parts[i].Thinking.AgentName == agentName {
-				m.store.parts[i].Thinking.Content += delta
+		if idx, ok := m.store.idxByThinkingGroup[thinkingKey{agentName, groupID}]; ok && idx >= 0 && idx < len(m.store.parts) {
+			p := &m.store.parts[idx]
+			if p.Type == PartTypeThinking && p.Thinking != nil {
+				p.Thinking.Content += delta
+				p.Version++
 				s.groupID = groupID
 				m.markDirty()
 				return
@@ -271,23 +272,7 @@ func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
 	content := s.buf.String()
 	groupID := s.groupID
 
-	if groupID != "" {
-		for i := len(m.store.parts) - 1; i >= 0; i-- {
-			if m.store.parts[i].Type == PartTypeThinking && m.store.parts[i].Thinking != nil &&
-				m.store.parts[i].Thinking.GroupID == groupID && m.store.parts[i].Thinking.AgentName == agentName {
-				m.store.parts[i].Thinking.Content += content
-				m.dropThinking(agentName)
-				m.markDirty()
-				return true
-			}
-		}
-	}
-
-	m.store.Append(DisplayPart{
-		Type:     PartTypeThinking,
-		Time:     time.Now(),
-		Thinking: &ThinkingPart{Content: content, GroupID: groupID, AgentName: agentName},
-	})
+	m.store.AppendThinkingDelta(agentName, groupID, content, time.Now())
 	m.dropThinking(agentName)
 	m.markDirty()
 	return true
