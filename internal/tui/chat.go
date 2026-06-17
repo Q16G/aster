@@ -25,10 +25,12 @@ type agentSpawnInfo struct {
 }
 
 type ChatModel struct {
-	viewport         viewport.Model
-	parts            []DisplayPart
-	streamingByAgent map[string]*strings.Builder
-	streamingOrder   []string
+	viewport viewport.Model
+	// store owns the authoritative timeline state: the part slice, the
+	// streaming buffers, and the sub-agent spawn metadata. ChatModel keeps
+	// only view/UI concerns (cursor, expansion, dirty flag, cached render).
+	store *PartsStore
+
 	thinkingByAgent  map[string]*thinkingState
 	thinkingOrder    []string
 	width            int
@@ -45,56 +47,20 @@ type ChatModel struct {
 	// replaces the main timeline in-place ("" = showing the main timeline).
 	viewingChild string
 
-	// nextPartIDValue is the next ID newPart() will assign to an inserted
-	// DisplayPart. Starting at 1 keeps 0 reserved as "no ID assigned" — useful
-	// for SetParts back-fill detection on historical session files.
-	nextPartIDValue uint64
-
 	activeStepByAgent map[string]string
-	// agentSpawnByCallID maps a child agent's spawning tool call_id to the spawn
-	// context captured at its tool_start. call_id is the one stable identifier
-	// shared by tool_start and the later child name (both sub-<callID[:8]> and
-	// skill-<name>-<callID[:6]> embed a truncation of it), so it is the correct
-	// join key — independent of the child's naming scheme.
-	agentSpawnByCallID map[string]agentSpawnInfo
-	agentParent        map[string]agentSpawnInfo
 }
 
 func NewChatModel() ChatModel {
 	vp := viewport.New(0, 0)
 	vp.SetContent("")
 	return ChatModel{
-		viewport:           vp,
-		streamingByAgent:   make(map[string]*strings.Builder),
-		thinkingByAgent:    make(map[string]*thinkingState),
-		toolExpanded:       make(map[int]bool),
-		autoFollowBottom:   true,
-		activeStepByAgent:  make(map[string]string),
-		agentSpawnByCallID: make(map[string]agentSpawnInfo),
-		agentParent:        make(map[string]agentSpawnInfo),
+		viewport:          vp,
+		store:             NewPartsStore(),
+		thinkingByAgent:   make(map[string]*thinkingState),
+		toolExpanded:      make(map[int]bool),
+		autoFollowBottom:  true,
+		activeStepByAgent: make(map[string]string),
 	}
-}
-
-// nextPartID returns the next stable identity for a part insertion. Callers
-// must route every DisplayPart creation through newPart() so identities stay
-// dense and monotonically increasing within a process.
-func (m *ChatModel) nextPartID() uint64 {
-	m.nextPartIDValue++
-	return m.nextPartIDValue
-}
-
-// newPart stamps a fresh DisplayPart with a process-local ID and initial
-// Version=1. Any code that constructs a DisplayPart literal for insertion
-// must wrap it via newPart so the renderer's fragment cache can key on the
-// identity and the store's dirty set can track invalidations.
-func (m *ChatModel) newPart(p DisplayPart) DisplayPart {
-	if p.ID == 0 {
-		p.ID = m.nextPartID()
-	}
-	if p.Version == 0 {
-		p.Version = 1
-	}
-	return p
 }
 
 func (m *ChatModel) SetSize(w, h int) {
@@ -112,9 +78,9 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 	if part.Time.IsZero() {
 		part.Time = time.Now()
 	}
-	part = m.newPart(part)
-	m.parts = append(m.parts, part)
-	idx := len(m.parts) - 1
+	m.store.Append(part)
+	idx := m.store.Len() - 1
+	part = m.store.At(idx)
 	m.cursor = idx
 	if shouldAutoExpandPart(part.Type) {
 		m.toolExpanded[idx] = true
@@ -127,34 +93,34 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 }
 
 func (m *ChatModel) streamBuilder(agentName string) *strings.Builder {
-	b, ok := m.streamingByAgent[agentName]
+	b, ok := m.store.streamingByAgent[agentName]
 	if !ok {
 		b = &strings.Builder{}
-		m.streamingByAgent[agentName] = b
-		m.streamingOrder = append(m.streamingOrder, agentName)
+		m.store.streamingByAgent[agentName] = b
+		m.store.streamingOrder = append(m.store.streamingOrder, agentName)
 	}
 	return b
 }
 
 func (m *ChatModel) dropStreamBuilder(agentName string) {
-	if _, ok := m.streamingByAgent[agentName]; !ok {
+	if _, ok := m.store.streamingByAgent[agentName]; !ok {
 		return
 	}
-	delete(m.streamingByAgent, agentName)
-	for i, name := range m.streamingOrder {
+	delete(m.store.streamingByAgent, agentName)
+	for i, name := range m.store.streamingOrder {
 		if name == agentName {
-			m.streamingOrder = append(m.streamingOrder[:i], m.streamingOrder[i+1:]...)
+			m.store.streamingOrder = append(m.store.streamingOrder[:i], m.store.streamingOrder[i+1:]...)
 			break
 		}
 	}
 }
 
 func (m *ChatModel) StreamingAgents() []string {
-	return append([]string(nil), m.streamingOrder...)
+	return append([]string(nil), m.store.streamingOrder...)
 }
 
 func (m *ChatModel) hasStreamingContent() bool {
-	for _, b := range m.streamingByAgent {
+	for _, b := range m.store.streamingByAgent {
 		if b.Len() > 0 {
 			return true
 		}
@@ -163,7 +129,7 @@ func (m *ChatModel) hasStreamingContent() bool {
 }
 
 func (m *ChatModel) StreamContent(agentName string) string {
-	if b, ok := m.streamingByAgent[agentName]; ok {
+	if b, ok := m.store.streamingByAgent[agentName]; ok {
 		return b.String()
 	}
 	return ""
@@ -176,12 +142,12 @@ func (m *ChatModel) AppendStream(agentName, delta string) {
 
 func (m *ChatModel) FlushStream(agentName string) bool {
 	flushed := false
-	if b, ok := m.streamingByAgent[agentName]; ok && b.Len() > 0 {
-		m.parts = append(m.parts, m.newPart(DisplayPart{
+	if b, ok := m.store.streamingByAgent[agentName]; ok && b.Len() > 0 {
+		m.store.Append(DisplayPart{
 			Type: PartTypeText,
 			Time: time.Now(),
 			Text: &TextPart{Content: b.String(), AgentName: agentName},
-		}))
+		})
 		flushed = true
 	}
 	m.dropStreamBuilder(agentName)
@@ -268,10 +234,10 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
 	}
 
 	if groupID != "" && s.buf.Len() == 0 {
-		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil &&
-				m.parts[i].Thinking.GroupID == groupID && m.parts[i].Thinking.AgentName == agentName {
-				m.parts[i].Thinking.Content += delta
+		for i := len(m.store.parts) - 1; i >= 0; i-- {
+			if m.store.parts[i].Type == PartTypeThinking && m.store.parts[i].Thinking != nil &&
+				m.store.parts[i].Thinking.GroupID == groupID && m.store.parts[i].Thinking.AgentName == agentName {
+				m.store.parts[i].Thinking.Content += delta
 				s.groupID = groupID
 				m.markDirty()
 				return
@@ -306,10 +272,10 @@ func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
 	groupID := s.groupID
 
 	if groupID != "" {
-		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeThinking && m.parts[i].Thinking != nil &&
-				m.parts[i].Thinking.GroupID == groupID && m.parts[i].Thinking.AgentName == agentName {
-				m.parts[i].Thinking.Content += content
+		for i := len(m.store.parts) - 1; i >= 0; i-- {
+			if m.store.parts[i].Type == PartTypeThinking && m.store.parts[i].Thinking != nil &&
+				m.store.parts[i].Thinking.GroupID == groupID && m.store.parts[i].Thinking.AgentName == agentName {
+				m.store.parts[i].Thinking.Content += content
 				m.dropThinking(agentName)
 				m.markDirty()
 				return true
@@ -317,11 +283,11 @@ func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
 		}
 	}
 
-	m.parts = append(m.parts, m.newPart(DisplayPart{
+	m.store.Append(DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     time.Now(),
 		Thinking: &ThinkingPart{Content: content, GroupID: groupID, AgentName: agentName},
-	}))
+	})
 	m.dropThinking(agentName)
 	m.markDirty()
 	return true
@@ -354,9 +320,9 @@ func (m *ChatModel) syncAutoFollowFromViewport() {
 }
 
 func (m *ChatModel) UpdateLastTool(fn func(*ToolPart)) {
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
-			fn(m.parts[i].Tool)
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypeTool && m.store.parts[i].Tool != nil {
+			fn(m.store.parts[i].Tool)
 			m.refreshContent()
 			return
 		}
@@ -368,9 +334,9 @@ func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
 		m.UpdateLastTool(fn)
 		return
 	}
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil && m.parts[i].Tool.CallID == callID {
-			fn(m.parts[i].Tool)
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypeTool && m.store.parts[i].Tool != nil && m.store.parts[i].Tool.CallID == callID {
+			fn(m.store.parts[i].Tool)
 			m.refreshContent()
 			return
 		}
@@ -378,11 +344,11 @@ func (m *ChatModel) UpdateToolByCallID(callID string, fn func(*ToolPart)) {
 }
 
 func (m *ChatModel) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)) {
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
-			fn(m.parts[i].SubAgent)
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypeSubAgent && m.store.parts[i].SubAgent != nil && m.store.parts[i].SubAgent.CallID == callID {
+			fn(m.store.parts[i].SubAgent)
 			toolTime := m.partTimeByCallID(callID, "")
-			m.parts[i].SubAgent.Duration = time.Since(toolTime)
+			m.store.parts[i].SubAgent.Duration = time.Since(toolTime)
 			m.refreshContent()
 			return
 		}
@@ -390,14 +356,14 @@ func (m *ChatModel) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)
 }
 
 func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypeTool && m.parts[i].Tool != nil {
-			t := m.parts[i].Tool
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypeTool && m.store.parts[i].Tool != nil {
+			t := m.store.parts[i].Tool
 			if callID != "" && t.CallID == callID {
-				return m.parts[i].Time
+				return m.store.parts[i].Time
 			}
 			if callID == "" && t.Name == toolName {
-				return m.parts[i].Time
+				return m.store.parts[i].Time
 			}
 		}
 	}
@@ -405,9 +371,9 @@ func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
 	// tool call already ended); fall back to the sub-agent part's own time so
 	// elapsed is computed from when the card was created.
 	if callID != "" {
-		for i := len(m.parts) - 1; i >= 0; i-- {
-			if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
-				return m.parts[i].Time
+		for i := len(m.store.parts) - 1; i >= 0; i-- {
+			if m.store.parts[i].Type == PartTypeSubAgent && m.store.parts[i].SubAgent != nil && m.store.parts[i].SubAgent.CallID == callID {
+				return m.store.parts[i].Time
 			}
 		}
 	}
@@ -427,7 +393,7 @@ func (m *ChatModel) isRootAgentPlan(p *PlanPart) bool {
 // same call_id — gating ensures a "skill-" child only binds to a skill spawn and
 // a "sub-" child only to a sub_agent spawn.
 func (m *ChatModel) lookupSpawnByChild(agentName string) (agentSpawnInfo, bool) {
-	if info, ok := m.agentSpawnByCallID[agentName]; ok {
+	if info, ok := m.store.spawnByCallID[agentName]; ok {
 		return info, true
 	}
 	token := childAgentCallToken(agentName)
@@ -435,7 +401,7 @@ func (m *ChatModel) lookupSpawnByChild(agentName string) (agentSpawnInfo, bool) 
 		return agentSpawnInfo{}, false
 	}
 	wantSub := strings.HasPrefix(agentName, "sub-")
-	for callID, info := range m.agentSpawnByCallID {
+	for callID, info := range m.store.spawnByCallID {
 		if info.SubScheme != wantSub {
 			continue
 		}
@@ -500,7 +466,7 @@ func partAgentName(p DisplayPart) string {
 // HasRunningSubAgents reports whether any sub-agent is still running. The
 // right-side panel only lists running sub-agents, so it hides once they finish.
 func (m *ChatModel) HasRunningSubAgents() bool {
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.Status == "running" {
 			return true
 		}
@@ -513,7 +479,7 @@ func (m *ChatModel) HasRunningSubAgents() bool {
 // reachable via their collapsed card in the main timeline).
 func (m *ChatModel) SubAgentSummaries() []SubAgentPart {
 	var out []SubAgentPart
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.Status == "running" {
 			out = append(out, *p.SubAgent)
 		}
@@ -525,8 +491,8 @@ func (m *ChatModel) SubAgentSummaries() []SubAgentPart {
 // -1 when none exists. It marks the start of the current turn: everything after
 // it belongs to the turn the user just kicked off.
 func (m *ChatModel) lastUserPartIndex() int {
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypeUser {
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypeUser {
 			return i
 		}
 	}
@@ -539,8 +505,8 @@ func (m *ChatModel) lastUserPartIndex() int {
 // which also survives termination. A new user turn naturally drops the previous
 // turn's cards because lastUserPartIndex advances past them.
 func (m *ChatModel) HasSubAgentsThisTurn() bool {
-	for i := m.lastUserPartIndex() + 1; i < len(m.parts); i++ {
-		if p := m.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
+	for i := m.lastUserPartIndex() + 1; i < len(m.store.parts); i++ {
+		if p := m.store.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
 			return true
 		}
 	}
@@ -551,8 +517,8 @@ func (m *ChatModel) HasSubAgentsThisTurn() bool {
 // (running and terminal) in timeline order, for the right-side panel.
 func (m *ChatModel) SubAgentCardsThisTurn() []SubAgentPart {
 	var out []SubAgentPart
-	for i := m.lastUserPartIndex() + 1; i < len(m.parts); i++ {
-		if p := m.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
+	for i := m.lastUserPartIndex() + 1; i < len(m.store.parts); i++ {
+		if p := m.store.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
 			out = append(out, *p.SubAgent)
 		}
 	}
@@ -561,7 +527,7 @@ func (m *ChatModel) SubAgentCardsThisTurn() []SubAgentPart {
 
 // childTitle returns the display name of the sub-agent spawned by callID.
 func (m *ChatModel) childTitle(callID string) string {
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
 			if p.SubAgent.AgentName != "" {
 				return p.SubAgent.AgentName
@@ -580,7 +546,7 @@ func (m *ChatModel) partsForChild(callID string) []int {
 		return nil
 	}
 	var idxs []int
-	for i, p := range m.parts {
+	for i, p := range m.store.parts {
 		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
 			idxs = append(idxs, i)
 			continue
@@ -603,7 +569,7 @@ func (m *ChatModel) PlanForChild(callID string) *PlanPart {
 		return nil
 	}
 	var found *PlanPart
-	for _, p := range m.parts {
+	for _, p := range m.store.parts {
 		if p.Type == PartTypePlan && p.Plan != nil && !m.isRootAgent(p.Plan.AgentName) {
 			if info, ok := m.lookupSpawnByChild(p.Plan.AgentName); ok && info.CallID == callID {
 				found = p.Plan
@@ -620,7 +586,7 @@ func (m *ChatModel) EnterChild(callID string) bool {
 	if callID == "" {
 		return false
 	}
-	if _, ok := m.agentSpawnByCallID[callID]; !ok {
+	if _, ok := m.store.spawnByCallID[callID]; !ok {
 		return false
 	}
 	m.viewingChild = callID
@@ -663,7 +629,7 @@ func (m *ChatModel) renderChildTranscript(callID string, width int) (string, boo
 	for _, i := range idxs {
 		saved[i] = m.toolExpanded[i]
 		m.toolExpanded[i] = true
-		indexed = append(indexed, IndexedPart{Index: i, Part: m.parts[i]})
+		indexed = append(indexed, IndexedPart{Index: i, Part: m.store.parts[i]})
 	}
 
 	var sb strings.Builder
@@ -725,9 +691,9 @@ func (m *ChatModel) renderTranscriptAssistantTurn(sb *strings.Builder, parts []I
 
 func (m *ChatModel) UpdateLastPlanForAgent(agentName string, fn func(*PlanPart)) {
 	matchRoot := agentName == m.rootAgentName
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if m.parts[i].Type == PartTypePlan && m.parts[i].Plan != nil {
-			p := m.parts[i].Plan
+	for i := len(m.store.parts) - 1; i >= 0; i-- {
+		if m.store.parts[i].Type == PartTypePlan && m.store.parts[i].Plan != nil {
+			p := m.store.parts[i].Plan
 			if p.AgentName == agentName || (matchRoot && p.AgentName == "") {
 				fn(p)
 				m.refreshContent()
@@ -762,11 +728,11 @@ func (m *ChatModel) CancelPendingItemsForCallID(callID string) {
 		return
 	}
 	changed := false
-	for i := range m.parts {
-		if m.parts[i].Type != PartTypePlan || m.parts[i].Plan == nil {
+	for i := range m.store.parts {
+		if m.store.parts[i].Type != PartTypePlan || m.store.parts[i].Plan == nil {
 			continue
 		}
-		p := m.parts[i].Plan
+		p := m.store.parts[i].Plan
 		if m.isRootAgentPlan(p) {
 			continue
 		}
@@ -792,9 +758,9 @@ func (m *ChatModel) isSubAgentRunning(callID string) bool {
 	if callID == "" {
 		return false
 	}
-	for i := range m.parts {
-		if m.parts[i].Type == PartTypeSubAgent && m.parts[i].SubAgent != nil && m.parts[i].SubAgent.CallID == callID {
-			return !isTerminalSubAgentStatus(m.parts[i].SubAgent.Status)
+	for i := range m.store.parts {
+		if m.store.parts[i].Type == PartTypeSubAgent && m.store.parts[i].SubAgent != nil && m.store.parts[i].SubAgent.CallID == callID {
+			return !isTerminalSubAgentStatus(m.store.parts[i].SubAgent.Status)
 		}
 	}
 	return false
@@ -811,11 +777,11 @@ func (m *ChatModel) CancelSubAgentItemsForParentStep(parentAgent, stepID string)
 	}
 	matchRoot := parentAgent == m.rootAgentName
 	changed := false
-	for i := range m.parts {
-		if m.parts[i].Type != PartTypePlan || m.parts[i].Plan == nil {
+	for i := range m.store.parts {
+		if m.store.parts[i].Type != PartTypePlan || m.store.parts[i].Plan == nil {
 			continue
 		}
-		p := m.parts[i].Plan
+		p := m.store.parts[i].Plan
 		if p.ParentStepID != stepID {
 			continue
 		}
@@ -859,7 +825,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		case "down", "j":
 			// 一键滑到最底部：把光标对齐到最后一个主时间线可见 part，
 			// 使后续 up/enter/space 仍连贯，并重新开启自动跟随底部。
-			for j := len(m.parts) - 1; j >= 0; j-- {
+			for j := len(m.store.parts) - 1; j >= 0; j-- {
 				if m.mainVisible(j) {
 					m.cursor = j
 					break
@@ -870,8 +836,8 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			m.autoFollowBottom = true
 			return m, nil
 		case "enter", " ":
-			if m.cursor >= 0 && m.cursor < len(m.parts) {
-				part := m.parts[m.cursor]
+			if m.cursor >= 0 && m.cursor < len(m.store.parts) {
+				part := m.store.parts[m.cursor]
 				t := part.Type
 				// Enter on a sub-agent card drills into its in-place transcript;
 				// Space keeps the lightweight inline expand.
@@ -926,17 +892,17 @@ func (m *ChatModel) filterMainParts(parts []IndexedPart) []IndexedPart {
 // mainVisible reports whether the part at index i is shown in the main timeline
 // (and thus a valid cursor target).
 func (m *ChatModel) mainVisible(i int) bool {
-	if i < 0 || i >= len(m.parts) {
+	if i < 0 || i >= len(m.store.parts) {
 		return false
 	}
-	p := m.parts[i]
+	p := m.store.parts[i]
 	return p.Type == PartTypeSubAgent || m.isRootAgent(partAgentName(p))
 }
 
 // hasRootStreamingContent reports whether any root agent has pending live stream
 // content. Non-root live streams are not shown inline in the main timeline.
 func (m *ChatModel) hasRootStreamingContent() bool {
-	for name, b := range m.streamingByAgent {
+	for name, b := range m.store.streamingByAgent {
 		if m.isRootAgent(name) && b.Len() > 0 {
 			return true
 		}
@@ -951,10 +917,10 @@ func (m *ChatModel) refreshContent() {
 	}
 
 	var sb strings.Builder
-	m.partLineOffsets = make([]int, len(m.parts))
+	m.partLineOffsets = make([]int, len(m.store.parts))
 	lineCount := 0
 
-	turns := groupPartsIntoTurns(m.parts)
+	turns := groupPartsIntoTurns(m.store.parts)
 
 	renderedTurns := 0
 	for _, turn := range turns {
@@ -999,7 +965,7 @@ func (m *ChatModel) refreshContent() {
 		sb.WriteString(m.renderStreamingContent())
 		sb.WriteString("\n")
 	}
-	if len(m.parts) == 0 && !m.hasStreamingContent() && !m.anyThinking() {
+	if len(m.store.parts) == 0 && !m.hasStreamingContent() && !m.anyThinking() {
 		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("(empty)"))
 	}
 	m.fullContent = sb.String()
@@ -1009,7 +975,7 @@ func (m *ChatModel) refreshContent() {
 // refreshChildContent renders the in-place sub-agent transcript (drill-in view)
 // into the chat viewport, with a header pointing back to the main timeline.
 func (m *ChatModel) refreshChildContent() {
-	m.partLineOffsets = make([]int, len(m.parts))
+	m.partLineOffsets = make([]int, len(m.store.parts))
 
 	title := m.childTitle(m.viewingChild)
 	header := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true).
@@ -1106,8 +1072,9 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 	// Back-fill identities for historical session files written before the
 	// ID/Version fields existed (ID==0 sentinel). Dense back-fill from 1 keeps
 	// identities stable across loads of the same file; live parts written by a
-	// running session already carry IDs from newPart() and are left intact.
-	var maxID uint64
+	// running session already carry IDs from PartsStore.Append and are left
+	// intact. PartsStore.SetAll picks up the resulting max ID to seed nextID
+	// for future allocations.
 	for i := range parts {
 		if parts[i].ID == 0 {
 			parts[i].ID = uint64(i + 1)
@@ -1115,15 +1082,8 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 		if parts[i].Version == 0 {
 			parts[i].Version = 1
 		}
-		if parts[i].ID > maxID {
-			maxID = parts[i].ID
-		}
 	}
-	if maxID >= m.nextPartIDValue {
-		m.nextPartIDValue = maxID
-	}
-
-	m.parts = parts
+	m.store.SetAll(parts)
 	m.toolExpanded = make(map[int]bool)
 	for i, part := range parts {
 		if shouldAutoExpandPart(part.Type) {
@@ -1138,8 +1098,8 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 		// path reads it from the plan, not from here). Don't clobber richer live
 		// entries that may already carry ParentStepID.
 		if part.Type == PartTypeTool && part.Tool != nil && part.Tool.IsAgent && part.Tool.CallID != "" {
-			if _, ok := m.agentSpawnByCallID[part.Tool.CallID]; !ok {
-				m.agentSpawnByCallID[part.Tool.CallID] = agentSpawnInfo{
+			if _, ok := m.store.spawnByCallID[part.Tool.CallID]; !ok {
+				m.store.spawnByCallID[part.Tool.CallID] = agentSpawnInfo{
 					ParentAgent: part.Tool.AgentName,
 					CallID:      part.Tool.CallID,
 					SubScheme:   part.Tool.Name == builtin_tools.SubAgentToolName,
@@ -1153,7 +1113,7 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 }
 
 func (m *ChatModel) Parts() []DisplayPart {
-	return m.parts
+	return m.store.parts
 }
 
 func (m *ChatModel) AllContentLines() []string {
@@ -1165,7 +1125,7 @@ func (m *ChatModel) ContentYOffset() int {
 }
 
 func (m *ChatModel) HasContent() bool {
-	return len(m.parts) > 0 || m.hasStreamingContent()
+	return len(m.store.parts) > 0 || m.hasStreamingContent()
 }
 
 func (m *ChatModel) SetFocused(f bool) {
@@ -1286,12 +1246,12 @@ func (m *ChatModel) renderStreamingContent() string {
 		Width(maxWidth)
 	var sb strings.Builder
 	first := true
-	for _, name := range m.streamingOrder {
+	for _, name := range m.store.streamingOrder {
 		// Only root live streams render inline; sub-agent streams stay collapsed.
 		if !m.isRootAgent(name) {
 			continue
 		}
-		b, ok := m.streamingByAgent[name]
+		b, ok := m.store.streamingByAgent[name]
 		if !ok || b.Len() == 0 {
 			continue
 		}

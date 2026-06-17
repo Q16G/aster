@@ -217,7 +217,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			// ("sub-<callID[:8]>") and skill fork ("skill-<name>-<callID[:6]>")
 			// children, whose names both embed a truncation of it.
 			if callID != "" {
-				m.chat.agentSpawnByCallID[callID] = agentSpawnInfo{
+				m.chat.store.spawnByCallID[callID] = agentSpawnInfo{
 					ParentAgent:  event.AgentName,
 					ParentStepID: m.chat.activeStepByAgent[event.AgentName],
 					CallID:       callID,
@@ -512,12 +512,12 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				Items:       items,
 			}
 			if !m.chat.isRootAgentPlan(planPart) {
-				if _, known := m.chat.agentParent[event.AgentName]; !known {
+				if _, known := m.chat.store.agentParent[event.AgentName]; !known {
 					if info, ok := m.chat.lookupSpawnByChild(event.AgentName); ok {
-						m.chat.agentParent[event.AgentName] = info
+						m.chat.store.agentParent[event.AgentName] = info
 					}
 				}
-				if info, ok := m.chat.agentParent[event.AgentName]; ok {
+				if info, ok := m.chat.store.agentParent[event.AgentName]; ok {
 					planPart.ParentStepID = info.ParentStepID
 					planPart.ParentAgent = info.ParentAgent
 				}
@@ -569,7 +569,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					AgentName: event.AgentName,
 					Items:     []PlanItemView{{ID: itemID, Step: step, Status: status}},
 				}
-				if info, ok := m.chat.agentParent[event.AgentName]; ok {
+				if info, ok := m.chat.store.agentParent[event.AgentName]; ok {
 					fallbackPlan.ParentStepID = info.ParentStepID
 					fallbackPlan.ParentAgent = info.ParentAgent
 				}

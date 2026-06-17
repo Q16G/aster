@@ -30,7 +30,7 @@ func fixtureEmpty() ChatModel {
 func fixtureSingleUser() ChatModel {
 	m := NewChatModel()
 	m.SetSize(80, 24)
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "Hello, agent."}},
 	}
 	m.refreshContent()
@@ -40,7 +40,7 @@ func fixtureSingleUser() ChatModel {
 func fixtureUserAssistantTool() ChatModel {
 	m := NewChatModel()
 	m.SetSize(80, 24)
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "List files in current dir."}},
 		{Type: PartTypeThinking, Time: fixtureTime(1), Thinking: &ThinkingPart{
 			Content: "I'll call list_files to enumerate.", GroupID: "g1",
@@ -61,7 +61,7 @@ func fixtureUserAssistantTool() ChatModel {
 func fixtureThinkingStream() ChatModel {
 	m := NewChatModel()
 	m.SetSize(80, 24)
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "Think out loud."}},
 		{Type: PartTypeThinking, Time: fixtureTime(1), Thinking: &ThinkingPart{
 			Content: "Step 1: clarify request.\nStep 2: outline.\nStep 3: respond.",
@@ -80,9 +80,9 @@ func fixtureMultiSubAgent() ChatModel {
 	m := NewChatModel()
 	m.rootAgentName = "root"
 	m.SetSize(100, 30)
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
-	m.agentSpawnByCallID["call_bbb9999"] = agentSpawnInfo{CallID: "call_bbb9999", SubScheme: true}
-	m.parts = []DisplayPart{
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.spawnByCallID["call_bbb9999"] = agentSpawnInfo{CallID: "call_bbb9999", SubScheme: true}
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "Split into two sub-tasks."}},
 		{Type: PartTypeSubAgent, Time: fixtureTime(1), SubAgent: &SubAgentPart{
 			AgentName:   "sub_agent",
@@ -122,7 +122,7 @@ func fixtureLongToolAndTimeline() ChatModel {
 	for i := 1; i <= 200; i++ {
 		fmt.Fprintf(&resultLines, "line %03d: lorem ipsum dolor sit amet consectetur.\n", i)
 	}
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeUser, Time: fixtureTime(0), User: &UserPart{Content: "Run a long command."}},
 		{Type: PartTypeTool, Time: fixtureTime(1), Tool: &ToolPart{
 			Name:      "bash",

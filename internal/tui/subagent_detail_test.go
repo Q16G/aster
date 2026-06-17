@@ -12,10 +12,10 @@ import (
 // between concurrent sub-agents, while excluding root/unattributed parts.
 func TestPartsForChildGroupsByCallID(t *testing.T) {
 	m := NewChatModel()
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
-	m.agentSpawnByCallID["call_bbb9999"] = agentSpawnInfo{CallID: "call_bbb9999", SubScheme: true}
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.spawnByCallID["call_bbb9999"] = agentSpawnInfo{CallID: "call_bbb9999", SubScheme: true}
 
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_bbb9999", Status: "running"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "from A", AgentName: "sub-call_aaa"}},
@@ -40,8 +40,8 @@ func TestPartsForChildGroupsByCallID(t *testing.T) {
 func TestRenderAgentTranscriptRestoresState(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
-	m.parts = []DisplayPart{
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "child output", AgentName: "sub-call_aaa"}},
 	}
@@ -73,9 +73,9 @@ func TestMainTimelineExcludesNonRootDetails(t *testing.T) {
 	m := NewChatModel()
 	m.rootAgentName = "root"
 	m.SetSize(100, 40)
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
 
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running", Description: "CARD_DESC"}},
 		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "SECRET_THINKING", AgentName: "sub-call_aaa"}},
 		{Type: PartTypeTool, Tool: &ToolPart{Name: "rg", Arguments: "SECRET_TOOL_ARGS", State: "completed", AgentName: "sub-call_aaa"}},
@@ -121,8 +121,8 @@ func TestStepResultAttributedByAgent(t *testing.T) {
 	m := NewChatModel()
 	m.rootAgentName = rootName
 	m.SetSize(120, 60)
-	m.agentSpawnByCallID[childA] = agentSpawnInfo{CallID: childA, SubScheme: true}
-	m.agentSpawnByCallID[childB] = agentSpawnInfo{CallID: childB, SubScheme: true}
+	m.store.spawnByCallID[childA] = agentSpawnInfo{CallID: childA, SubScheme: true}
+	m.store.spawnByCallID[childB] = agentSpawnInfo{CallID: childB, SubScheme: true}
 
 	sr := func(agent, stepID, stepName string) DisplayPart {
 		return DisplayPart{Type: PartTypeStepResult, StepResult: &StepResultPart{
@@ -130,7 +130,7 @@ func TestStepResultAttributedByAgent(t *testing.T) {
 			Status: "completed", DisplayResult: "RESULT_" + stepID,
 		}}
 	}
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: childA, Status: "running"}},
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: childB, Status: "running"}},
 		sr(rootName, "recon", "STEP_RECON"),     // root → main
@@ -166,7 +166,7 @@ func TestStepResultAttributedByAgent(t *testing.T) {
 // Space keeps the inline toggle (no message).
 func TestEnterOnSubAgentEmitsEnterDetail(t *testing.T) {
 	m := NewChatModel()
-	m.parts = []DisplayPart{
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_xyz", Status: "running"}},
 	}
 	m.cursor = 0
@@ -196,8 +196,8 @@ func TestEnterExitChildSwapsMainContent(t *testing.T) {
 	m := NewChatModel()
 	m.rootAgentName = "root"
 	m.SetSize(100, 40)
-	m.agentSpawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
-	m.parts = []DisplayPart{
+	m.store.spawnByCallID["call_aaa1234"] = agentSpawnInfo{CallID: "call_aaa1234", SubScheme: true}
+	m.store.parts = []DisplayPart{
 		{Type: PartTypeSubAgent, SubAgent: &SubAgentPart{AgentName: "sub_agent", CallID: "call_aaa1234", Status: "running", Description: "CARD_DESC"}},
 		{Type: PartTypeThinking, Thinking: &ThinkingPart{Content: "CHILD_THINKING", AgentName: "sub-call_aaa"}},
 		{Type: PartTypeText, Text: &TextPart{Content: "ROOT_VISIBLE", AgentName: "root"}},
