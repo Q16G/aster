@@ -31,18 +31,18 @@ func TestCloneReplanContext_DepthGaps(t *testing.T) {
 func TestCloneReplanContext_CurrentPhase(t *testing.T) {
 	in := &ReplanContext{
 		SourceStepID: "step-3",
-		CurrentPhase: "  分析模块 hr-api 的访问控制  ",
+		CurrentPhase: "  分析模块 A 的访问控制  ",
 	}
 	out := CloneReplanContext(in)
 	if out == nil {
 		t.Fatal("clone returned nil")
 	}
-	if out.CurrentPhase != "分析模块 hr-api 的访问控制" {
+	if out.CurrentPhase != "分析模块 A 的访问控制" {
 		t.Fatalf("CurrentPhase not trimmed/cloned: %q", out.CurrentPhase)
 	}
 	// 改动副本不回写
 	out.CurrentPhase = "mutated"
-	if in.CurrentPhase != "  分析模块 hr-api 的访问控制  " {
+	if in.CurrentPhase != "  分析模块 A 的访问控制  " {
 		t.Fatalf("mutation leaked: %q", in.CurrentPhase)
 	}
 }

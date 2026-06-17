@@ -46,7 +46,7 @@ func TestParseSubmitPlanArgs_CurrentPhaseRequired(t *testing.T) {
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 分析多个对等模块的访问控制",
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举 hr-api 接口", "status": "pending", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "depends_on": []string{}},
 		},
 		// current_phase 缺失 ↓
 	}, true)
@@ -81,15 +81,15 @@ func TestParseSubmitPlanArgs_CurrentPhaseAccepted(t *testing.T) {
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
-		"current_phase":      "分析模块 hr-api 的访问控制（接口枚举 + 鉴权矩阵）",
+		"current_phase":      "分析模块 A 的访问控制（接口枚举 + 鉴权矩阵）",
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举 hr-api 接口", "status": "pending", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "depends_on": []string{}},
 		},
 	}, true)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if res.CurrentPhase != "分析模块 hr-api 的访问控制（接口枚举 + 鉴权矩阵）" {
+	if res.CurrentPhase != "分析模块 A 的访问控制（接口枚举 + 鉴权矩阵）" {
 		t.Fatalf("current_phase mismatch: got %q", res.CurrentPhase)
 	}
 }
