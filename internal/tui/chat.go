@@ -30,6 +30,11 @@ type ChatModel struct {
 	// streaming buffers, and the sub-agent spawn metadata. ChatModel keeps
 	// only view/UI concerns (cursor, expansion, dirty flag, cached render).
 	store *PartsStore
+	// renderer owns the per-part fragment cache that turns store contents
+	// into the timeline string. refreshContent drains the store's dirty set
+	// into the renderer and pulls cached fragments instead of re-rendering
+	// every part each frame.
+	renderer *Renderer
 
 	thinkingByAgent  map[string]*thinkingState
 	thinkingOrder    []string
@@ -56,11 +61,42 @@ func NewChatModel() ChatModel {
 	return ChatModel{
 		viewport:          vp,
 		store:             NewPartsStore(),
+		renderer:          NewRenderer(),
 		thinkingByAgent:   make(map[string]*thinkingState),
 		toolExpanded:      make(map[int]bool),
 		autoFollowBottom:  true,
 		activeStepByAgent: make(map[string]string),
 	}
+}
+
+// setCursor moves the selection to idx and invalidates both the old and new
+// selection's cached fragments so the Renderer re-emits them with the right
+// styling on the next pass. Direct field assignment to m.cursor is forbidden
+// outside this helper because it would silently keep stale rendered fragments
+// for the deselected/selected parts.
+func (m *ChatModel) setCursor(idx int) {
+	if m.cursor == idx {
+		return
+	}
+	if m.cursor >= 0 && m.cursor < m.store.Len() {
+		m.store.MarkDirty(m.store.At(m.cursor).ID)
+	}
+	if idx >= 0 && idx < m.store.Len() {
+		m.store.MarkDirty(m.store.At(idx).ID)
+	}
+	m.cursor = idx
+}
+
+// setFocused toggles focus and invalidates the currently-selected part, since
+// the focused flag flips its rendered styling. Same rationale as setCursor.
+func (m *ChatModel) setFocused(v bool) {
+	if m.focused == v {
+		return
+	}
+	if m.cursor >= 0 && m.cursor < m.store.Len() {
+		m.store.MarkDirty(m.store.At(m.cursor).ID)
+	}
+	m.focused = v
 }
 
 func (m *ChatModel) SetSize(w, h int) {
@@ -81,7 +117,7 @@ func (m *ChatModel) AddPart(part DisplayPart) {
 	m.store.Append(part)
 	idx := m.store.Len() - 1
 	part = m.store.At(idx)
-	m.cursor = idx
+	m.setCursor(idx)
 	if shouldAutoExpandPart(part.Type) {
 		m.toolExpanded[idx] = true
 	}
@@ -748,7 +784,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		case "up", "k":
 			for j := m.cursor - 1; j >= 0; j-- {
 				if m.mainVisible(j) {
-					m.cursor = j
+					m.setCursor(j)
 					break
 				}
 			}
@@ -761,7 +797,7 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 			// 使后续 up/enter/space 仍连贯，并重新开启自动跟随底部。
 			for j := len(m.store.parts) - 1; j >= 0; j-- {
 				if m.mainVisible(j) {
-					m.cursor = j
+					m.setCursor(j)
 					break
 				}
 			}
@@ -1063,7 +1099,7 @@ func (m *ChatModel) HasContent() bool {
 }
 
 func (m *ChatModel) SetFocused(f bool) {
-	m.focused = f
+	m.setFocused(f)
 	m.refreshContent()
 }
 
