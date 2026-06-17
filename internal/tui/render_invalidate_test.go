@@ -65,6 +65,38 @@ func TestExpandToggle_InvalidatesFragment(t *testing.T) {
 	}
 }
 
+// TestSetParts_ResetsRendererCache is the F4 regression: SetParts dense
+// back-fills IDs from 1..N when loading a session. Switching from a session
+// whose part #1 was, say, a UserPart "alice" to a different session whose
+// part #1 is UserPart "bob" must NOT serve the cached "alice" fragment for
+// id=1 just because (id=1, version=1, width=W) matches. The fix resets the
+// renderer cache on every SetParts.
+func TestSetParts_ResetsRendererCache(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(80, 24)
+
+	m.AddPart(DisplayPart{Type: PartTypeUser, User: &UserPart{Content: "alice-session-marker"}})
+	first := m.fullContent
+	if !strings.Contains(first, "alice-session-marker") {
+		t.Fatalf("first render must contain alice-session-marker, got:\n%s", first)
+	}
+
+	// Load a different "session": completely disjoint content. SetParts'
+	// dense back-fill will assign these IDs starting at 1 as well, which is
+	// exactly the cache-collision scenario.
+	m.SetParts([]DisplayPart{
+		{Type: PartTypeUser, User: &UserPart{Content: "bob-session-marker"}},
+	})
+	second := m.fullContent
+
+	if strings.Contains(second, "alice-session-marker") {
+		t.Fatalf("post-SetParts render must not contain the previous session's content; got:\n%s", second)
+	}
+	if !strings.Contains(second, "bob-session-marker") {
+		t.Fatalf("post-SetParts render must contain bob-session-marker, got:\n%s", second)
+	}
+}
+
 // TestRefreshContent_Incremental_AppendsThenUpdatesTool exercises the
 // incremental render path covered by the M1 testing gap. It verifies two
 // things on a single ChatModel instance:

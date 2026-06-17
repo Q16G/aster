@@ -1082,6 +1082,13 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 		}
 	}
 	m.store.SetAll(parts)
+	// Switching sessions dense-back-fills IDs 1..N; the Renderer's per-part
+	// fragment cache is keyed by (id, version, width) so the previous
+	// session's id=1 entry would otherwise be served on the next refresh
+	// (first-frame stale text from the wrong session). Drop the entire cache
+	// at the session boundary; subsequent refreshContent passes repopulate
+	// it from the freshly loaded parts.
+	m.renderer = NewRenderer()
 	m.toolExpanded = make(map[int]bool)
 	for i, part := range parts {
 		if shouldAutoExpandPart(part.Type) {
