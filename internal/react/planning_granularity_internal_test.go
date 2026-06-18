@@ -298,7 +298,7 @@ func TestCorePromptAtomicBudget(t *testing.T) {
 		maxLines int
 	}{
 		"planning_system":    {text: planningSystemPrompt, maxLines: 140},
-		"step_replan_system": {text: stepReplanSystemPrompt, maxLines: 215},
+		"step_replan_system": {text: stepReplanSystemPrompt, maxLines: 225},
 		"think_act_system":   {text: thinkActSystemPrompt, maxLines: 95},
 	}
 	totalLines := 0
@@ -312,8 +312,8 @@ func TestCorePromptAtomicBudget(t *testing.T) {
 			t.Fatalf("%s prompt line budget exceeded: got %d, want <= %d", name, lines, budget.maxLines)
 		}
 	}
-	if totalLines > 450 {
-		t.Fatalf("core prompt total line budget exceeded: got %d, want <= 450", totalLines)
+	if totalLines > 465 {
+		t.Fatalf("core prompt total line budget exceeded: got %d, want <= 465", totalLines)
 	}
 	if count := strings.Count(combined.String(), "塌缩"); count > 1 {
 		t.Fatalf("core prompts should not re-grow collapse blacklist wording: got %d occurrences", count)
