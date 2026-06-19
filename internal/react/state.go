@@ -577,6 +577,19 @@ func (t *StateTracker) UpdateInlineStep(stepID string, update builtin_tools.Curr
 		return *t.state
 	}
 
+	// fix/08（P1-4）：item 已终态守卫——peer goroutine 已经把 PlanItem 翻 Completed
+	// 后，drain 兜底 result.Success=false（ctx 取消 / 中间 err）不应把 Completed 退回
+	// Failed。已是终态时 outcome 字段仍可 upsert（允许补 Summary/Error 等异步信息），
+	// 但 Status 不变。
+	switch item.Status {
+	case builtin_tools.PlanStepCompleted,
+		builtin_tools.PlanStepFailed,
+		builtin_tools.PlanStepSkipped:
+		t.upsertStepOutcomeLocked(item, update)
+		t.touchLocked()
+		return *t.state
+	}
+
 	item.Status = update.Status
 	if update.Status == builtin_tools.PlanStepFailed {
 		_ = builtin_tools.PropagateSkippedPlanSteps(t.state.Plan)
