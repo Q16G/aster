@@ -1,0 +1,102 @@
+package react
+
+import (
+	"aster/internal/ai"
+	"aster/internal/builtin_tools"
+)
+
+// stepHistoryBucket 为单个 inline step 隔离一份 think_act 用的 stepHistory。
+//
+// 设计要点：
+//   - 每桶由其自身的 think_act goroutine 单写——不需要桶级锁；并发安全靠
+//     Agent.stepHistoryMu 仅保护 map 增删 + 调度者契约（同一 stepID 不并发起两个桶）。
+//   - msgs 起点必须是 deep copy（见 NewStepHistoryBucket 注释），共享 slice header
+//     会导致与主 scheduler 在主 history 上 append 时产生 race（go test -race 必爆）。
+//   - 单桶 fallback：MaxParallelSteps=1 时 stepHistories 仍是 map 但仅 1 个 entry，
+//     代码路径与多桶一致——不保留独立分叉，避免 fallback 变质成死代码。
+type stepHistoryBucket struct {
+	stepID  string
+	phase   builtin_tools.AgentPhase
+	planVer int
+	msgs    []*ai.MsgInfo
+	seedLen int // ready 时刻从主 history clone 的起点长度，便于审计与诊断
+}
+
+// NewStepHistoryBucket 用主 history 当前末尾的 deep copy 作为种子，构造一个干净的桶。
+// 调用方必须持有 Agent.stepHistoryMu 或确保自己在 scheduler 单写者上下文里。
+//
+// **必须 deep copy**：append 到 nil slice 强制分配新底层数组，与主 history 的底层数组
+// 完全脱钩；这是并发安全的硬约束，不能优化为切片别名。
+func NewStepHistoryBucket(stepID string, phase builtin_tools.AgentPhase, planVer int, seed []*ai.MsgInfo) *stepHistoryBucket {
+	msgs := append([]*ai.MsgInfo(nil), seed...)
+	return &stepHistoryBucket{
+		stepID:  stepID,
+		phase:   phase,
+		planVer: planVer,
+		msgs:    msgs,
+		seedLen: len(msgs),
+	}
+}
+
+// bucketFor 取出指定 stepID 的桶；不存在则返回 nil（调用方负责通过
+// ensureBucket 创建或视为非 inline step 路径）。stepHistoryMu 仅在 map 增删时锁。
+func (a *Agent) bucketFor(stepID string) *stepHistoryBucket {
+	if a == nil || stepID == "" {
+		return nil
+	}
+	a.stepHistoryMu.Lock()
+	defer a.stepHistoryMu.Unlock()
+	if a.stepHistories == nil {
+		return nil
+	}
+	return a.stepHistories[stepID]
+}
+
+// ensureBucket 取桶或新建：已存在则返回原桶（幂等），否则用 seed 新建一个 deep-copy 桶。
+// 入参 seed 通常是 a.history 末尾片段；调用方应在 scheduler 单写者上下文里读 a.history
+// 后立即传入，避免读到正在 append 的中间态。
+func (a *Agent) ensureBucket(stepID string, phase builtin_tools.AgentPhase, planVer int, seed []*ai.MsgInfo) *stepHistoryBucket {
+	if a == nil || stepID == "" {
+		return nil
+	}
+	a.stepHistoryMu.Lock()
+	defer a.stepHistoryMu.Unlock()
+	if a.stepHistories == nil {
+		a.stepHistories = make(map[string]*stepHistoryBucket)
+	}
+	if existing, ok := a.stepHistories[stepID]; ok && existing != nil {
+		return existing
+	}
+	bucket := NewStepHistoryBucket(stepID, phase, planVer, seed)
+	a.stepHistories[stepID] = bucket
+	return bucket
+}
+
+// dropBucket 删除指定 stepID 的桶；调用方应在该 stepID 的 goroutine 结束之后调用，
+// 避免 goroutine 仍在写 msgs 时桶被回收（map 删除本身受锁保护，但桶内 slice 写没锁）。
+func (a *Agent) dropBucket(stepID string) {
+	if a == nil || stepID == "" {
+		return
+	}
+	a.stepHistoryMu.Lock()
+	defer a.stepHistoryMu.Unlock()
+	if a.stepHistories == nil {
+		return
+	}
+	delete(a.stepHistories, stepID)
+}
+
+// InlineStepCtx 是显式传递的 inline step 运行上下文。
+//
+// **不**用 ctx.Value 注入：ctx.Value 在 Go 社区公认仅适用于 request-scoped 元数据
+// （trace_id / auth），业务路由用它是反模式——任何调用栈忘传 ctx 都会让 FinalAnswerAllowed
+// 等开关失效；最坏情况下 inline peer 桶可以调到 submit_final_answer 触发 state 双写。
+// 改为显式参数后编译器全程兜底，新增调用方在编译期就被指认是否要传 runCtx。
+type InlineStepCtx struct {
+	StepID string
+	Bucket *stepHistoryBucket
+	// FinalAnswerAllowed 控制 BuildFunctionTools 是否注册 submit_final_answer。
+	//   - current step 的 bucket：true（可调 final_answer 结束本轮主路径）
+	//   - peer step 的 bucket：  false（peer 完成只翻 PlanItem 终态，禁止 finalize 整个 agent）
+	FinalAnswerAllowed bool
+}
