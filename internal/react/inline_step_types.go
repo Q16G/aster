@@ -1,6 +1,8 @@
 package react
 
 import (
+	"strings"
+
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 )
@@ -112,6 +114,24 @@ func (a *Agent) setHistoryMsgsFor(runCtx *InlineStepCtx, msgs []*ai.MsgInfo) {
 		return
 	}
 	a.stepHistory = msgs
+}
+
+// effectiveStepID 在 runCtx 优先于 snapshot.CurrentStepID 的顺序下取出当前真实 stepID。
+//
+// 关键路径：peer goroutine 跑时 a.state.Snapshot().CurrentStepID 永远是**主 step ID**
+// （state 只有一个 CurrentStepID），所有从 snapshot 直接读 stepID 的代码点（tool
+// timeline append、ToolRuntimeInfo.CurrentStepID、step file gate 等）必须先看 runCtx
+// 才能拿到 peer 的真实 stepID，否则会把 peer 的工具调用记到主 step 的 timeline 文件、
+// 让 ToolRuntimeInfo 的 stepID 错配。
+//
+// 主路径（runCtx == nil）退化到 snapshot.CurrentStepID，行为不变。
+func effectiveStepID(runCtx *InlineStepCtx, snapshot builtin_tools.StateSnapshot) string {
+	if runCtx != nil {
+		if id := strings.TrimSpace(runCtx.StepID); id != "" {
+			return id
+		}
+	}
+	return strings.TrimSpace(snapshot.CurrentStepID)
 }
 
 // dropBucket 删除指定 stepID 的桶；调用方应在该 stepID 的 goroutine 结束之后调用，

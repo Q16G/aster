@@ -1460,7 +1460,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 
 		if sd := ""; a.workspaceRuntime != nil {
 			sd = a.workspaceRuntime.SharedDir()
-			if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sd != "" && stepID != "" {
+			if stepID := effectiveStepID(runCtx, prevSnapshot); sd != "" && stepID != "" {
 				_ = appendStepTimeline(sd, stepID, &TimelineEvent{
 					TS:   time.Now().UTC(),
 					Type: "human_confirm",
@@ -1522,7 +1522,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		GitBranch:          strings.TrimSpace(a.runtimeRepoContext.Branch),
 		GitRepoURL:         strings.TrimSpace(a.runtimeRepoContext.RemoteURL),
 		IsGitWorktree:      a.runtimeRepoContext.IsWorktree,
-		CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
+		CurrentStepID:      effectiveStepID(runCtx, prevSnapshot),
 	})
 
 	var execCtx context.Context
@@ -1570,7 +1570,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
 	a.AICallProxyWriteToolResult(runCtx, callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
-	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
+	if stepID := effectiveStepID(runCtx, prevSnapshot); sharedDir != "" && stepID != "" {
 		event := newToolCallTimelineEvent(callID, toolName, argsMap, out, errText, outFullPath, toolDuration)
 		if len(render.Media) > 0 {
 			event.Payload = map[string]any{"media": render.Media}
