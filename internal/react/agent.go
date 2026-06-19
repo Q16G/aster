@@ -34,13 +34,21 @@ type Agent struct {
 	tools         *utils.OrderMapx[string, Tool]
 	promptManager PromptManager
 	state         *StateTracker
-	// history and stepHistory are only accessed from the scheduler goroutine (runSchedulerLoop).
-	// No mutex is needed as long as this single-writer invariant holds.
+	// history 仍由 scheduler goroutine 单写（plan/replan/final_answer phase）。
+	// stepHistory / stepHistoryStepID / stepHistoryPhase / stepHistoryPlanVer 为
+	// 老的「单桶」字段——commit 2 阶段保留，由 commit 3 改造 AICallProxy 签名后统一
+	// 切到 stepHistories 多桶并清理。
+	//
+	// stepHistories 是新的「按 stepID 分桶」存储：每个 inline step 桶由其自身 goroutine
+	// 单写；stepHistoryMu 仅保护 map 增删（取桶 / 增删桶），不保护桶内 slice 写。
+	// MaxParallelSteps=1 时单桶 fallback 走相同代码路径（map 仅 1 个 entry），不保留分叉。
 	history                   []*ai.MsgInfo
 	stepHistory               []*ai.MsgInfo
 	stepHistoryStepID         string
 	stepHistoryPhase          builtin_tools.AgentPhase
 	stepHistoryPlanVer        int
+	stepHistories             map[string]*stepHistoryBucket
+	stepHistoryMu             sync.Mutex
 	lastStepTranscriptBlobRef string
 	currentRunID              string
 	// V2 persistence: session-scoped event store + per-turn correlation id.
@@ -184,6 +192,7 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 		promptManager: cfg.PromptManager,
 		state:         NewStateTracker(),
 		handoff:       &handoffState{},
+		stepHistories: make(map[string]*stepHistoryBucket),
 	}
 
 	if cfg.Emitter == nil {
