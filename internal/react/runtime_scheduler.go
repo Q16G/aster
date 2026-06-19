@@ -1219,84 +1219,9 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 			})
 		}
 	}
-	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
-	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
-
-	thinkCtx, thinkCancel := context.WithCancel(ctx)
-	defer thinkCancel()
-	callResult, err := a.AICallProxy(thinkCtx, nil, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
-	if err != nil {
-		return err
-	}
-
-	snapshot = a.state.Snapshot()
-	if shouldStopAfterCompaction(callResult.Compaction, snapshot) {
-		reason := ""
-		if callResult.Compaction != nil {
-			reason = callResult.Compaction.TerminalReason
-		}
-		return &CompactionTerminatedError{
-			Reason:  reason,
-			Message: buildHistoryCompactionStopMessage(callResult.Compaction),
-		}
-	}
-
-	// step phase 必须推进当前 step：如果模型未调用任何工具但输出了正文，
-	// runtime 将其视为该 step 的最小可交付事实，自动提交 step 终态，避免空转到迭代上限。
-	if callResult != nil && len(callResult.ToolCalls) == 0 {
-		// A4 守卫：若仍有后台子 Agent 在运行，禁止此时自动完成 step（无论是否有正文）。
-		// 否则父 turn 结束会取消子 Agent 的 ctx 并 Reset registry，丢失子 Agent 结果。
-		// 改为置 await 标志，交由调度循环 park 等待；下一轮模型看到完成通知后再决定终态。
-		// 这是「do NOT poll, you will be notified」的代码级安全网，不依赖模型记得调 await_subagents。
-		if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
-			a.awaitBackgroundRequested = true
-			a.emitRuntimeLog("info", "deferring step completion: background sub-agents running", snapshot, map[string]any{
-				"event":   "step_defer_for_background",
-				"step_id": stepIDOf(currentStep),
-				"running": len(a.asyncRegistry.RunningAgents()),
-			})
-			return nil
-		}
-		assistantText := strings.TrimSpace(callResult.AssistantText)
-		if assistantText == "" {
-			a.emitRuntimeLog("error", "step phase produced empty output", snapshot, map[string]any{
-				"event":   "step_phase_empty_output_error",
-				"step_id": stepIDOf(currentStep),
-			})
-			return fmt.Errorf("step produced no tool calls and empty content")
-		}
-		snapshot = a.state.Snapshot()
-		current := snapshot.CurrentStep()
-		if current == nil || strings.TrimSpace(current.ID) == "" {
-			return fmt.Errorf("step missing current plan item")
-		}
-		snapshot = a.state.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
-			Status:        builtin_tools.PlanStepCompleted,
-			Summary:       assistantText,
-			DisplayResult: assistantText,
-		})
-		a.emitter.EmitStateChange(snapshot)
-		a.emitRuntimeLog("warning", "auto completed step from assistant content", snapshot, map[string]any{
-			"event":        "auto_step_complete",
-			"step_id":      strings.TrimSpace(current.ID),
-			"content_size": len(assistantText),
-		})
-		return nil
-	}
-
-	executedToolCalls, dispatchErr := a.dispatchToolCalls(ctx, nil, iter, callResult.ToolCalls, allowedTools)
-	if dispatchErr != nil {
-		return dispatchErr
-	}
-
-	snapshot = a.state.Snapshot()
-	a.emitRuntimeLog("info", "step phase executed tool calls", snapshot, map[string]any{
-		"event":                "step_phase_tool_calls_executed",
-		"tool_calls_requested": len(callResult.ToolCalls),
-		"tool_calls_executed":  executedToolCalls,
-		"will_continue":        !snapshot.Terminal(),
-	})
-	return nil
+	// think_act 本体抽出为 runInlineStep（step_inline.go），主路径用 nil runCtx 调用——
+	// 行为与抽出前完全一致。commit 8c 在此处增加 runStepsConcurrently 并行调用 peer 桶。
+	return a.runInlineStep(ctx, nil, runClient, iter, snapshot, extraText)
 }
 
 // executeToolCall 单条 tool_call 分发执行；runCtx 用于桶路由（同 dispatchToolCalls 注释）。
