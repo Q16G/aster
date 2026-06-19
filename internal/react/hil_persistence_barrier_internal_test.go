@@ -52,7 +52,7 @@ func TestHumanConfirm_PersistenceBarrier_FailsFastOnBlobWriteError(t *testing.T)
 			Arguments: `{"question":"ok?"}`,
 		},
 	}
-	err = agent.executeToolCall(context.Background(), 1, tc, nil)
+	err = agent.executeToolCall(context.Background(), nil, 1, tc, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

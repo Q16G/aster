@@ -101,7 +101,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
-				if execErr := a.executeToolCall(ctx, iter, tc, allowedTools); execErr != nil {
+				if execErr := a.executeToolCall(ctx, nil, iter, tc, allowedTools); execErr != nil {
 					a.emitRuntimeLog("warn", "intent classification tool exec failed, fallback to carry", snapshot, map[string]any{
 						"tool":  strings.TrimSpace(tc.Function.Name),
 						"error": execErr.Error(),
