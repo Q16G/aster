@@ -58,13 +58,15 @@ func jsonHasKey(s, key string) bool {
 	return false
 }
 
-func subAgentCardKindAndStatus(m *Model, callID string) (kind, status string, ok bool) {
+// inlineStepCardStatus 返回 InlineStepPart 卡片的当前状态——commit 12 把
+// inline_step 卡片从 SubAgentPart 复用切到独立 InlineStepPart 类型。
+func inlineStepCardStatus(m *Model, stepID string) (status string, ok bool) {
 	for _, p := range m.chat.Parts() {
-		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == callID {
-			return p.SubAgent.Kind, p.SubAgent.Status, true
+		if p.Type == PartTypeInlineStep && p.InlineStep != nil && p.InlineStep.StepID == stepID {
+			return p.InlineStep.Status, true
 		}
 	}
-	return "", "", false
+	return "", false
 }
 
 func TestHandleAgentEvent_RemoteStepBgStart_AddsCard(t *testing.T) {
@@ -75,25 +77,22 @@ func TestHandleAgentEvent_RemoteStepBgStart_AddsCard(t *testing.T) {
 		Payload: map[string]any{
 			"agent_id":  "step-b",
 			"step_text": "分析模块 X 的认证逻辑",
-			"workspace": "/tmp/ws/remote_steps/step-b",
+			"workspace": "/tmp/ws",
 		},
 	})
 
-	kind, status, ok := subAgentCardKindAndStatus(&m, "step-b")
+	status, ok := inlineStepCardStatus(&m, "step-b")
 	if !ok {
-		t.Fatal("expected SubAgentPart card for step-b after BgStart")
-	}
-	if kind != subAgentPartKindRemoteStep {
-		t.Fatalf("expected Kind=remote_step, got %q", kind)
+		t.Fatal("expected InlineStepPart card for step-b after Start event")
 	}
 	if status != "running" {
 		t.Fatalf("expected status=running, got %q", status)
 	}
 	// Description 应填入 step_text
 	for _, p := range m.chat.Parts() {
-		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == "step-b" {
-			if p.SubAgent.Description != "分析模块 X 的认证逻辑" {
-				t.Fatalf("expected Description=step_text, got %q", p.SubAgent.Description)
+		if p.Type == PartTypeInlineStep && p.InlineStep != nil && p.InlineStep.StepID == "step-b" {
+			if p.InlineStep.Description != "分析模块 X 的认证逻辑" {
+				t.Fatalf("expected Description=step_text, got %q", p.InlineStep.Description)
 			}
 			return
 		}
@@ -116,7 +115,7 @@ func TestHandleAgentEvent_RemoteStepBgEnd_UpdatesStatus(t *testing.T) {
 		},
 	})
 
-	_, status, ok := subAgentCardKindAndStatus(&m, "step-c")
+	status, ok := inlineStepCardStatus(&m, "step-c")
 	if !ok {
 		t.Fatal("expected card for step-c")
 	}
@@ -143,7 +142,7 @@ func TestHandleAgentEvent_RemoteStepCancelledNotOverwritingTerminal(t *testing.T
 		Payload: map[string]any{"agent_id": "step-d", "status": "cancelled"},
 	})
 
-	_, status, _ := subAgentCardKindAndStatus(&m, "step-d")
+	status, _ := inlineStepCardStatus(&m, "step-d")
 	if status != "completed" {
 		t.Fatalf("expected status to stay completed (terminal guard), got %q", status)
 	}

@@ -388,6 +388,20 @@ func (m *ChatModel) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart)
 	m.refreshContent()
 }
 
+// UpdateInlineStepByStepID mutates the InlineStepPart for stepID via the closure.
+// Duration 自动按本 part 创建时间起算，与 SubAgent 路径对称。
+func (m *ChatModel) UpdateInlineStepByStepID(stepID string, fn func(*InlineStepPart)) {
+	idx := m.store.UpdateInlineStepByStepID(stepID, fn)
+	if idx < 0 {
+		return
+	}
+	startedAt := m.store.parts[idx].InlineStep.StartedAt
+	if !startedAt.IsZero() {
+		m.store.parts[idx].InlineStep.Duration = time.Since(startedAt)
+	}
+	m.refreshContent()
+}
+
 func (m *ChatModel) partTimeByCallID(callID, toolName string) time.Time {
 	for i := len(m.store.parts) - 1; i >= 0; i-- {
 		if m.store.parts[i].Type == PartTypeTool && m.store.parts[i].Tool != nil {
