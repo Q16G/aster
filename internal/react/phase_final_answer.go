@@ -185,7 +185,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 							if submitRetries > maxSubmitRetries {
 								return snapshot, fmt.Errorf("submit_final_answer failed after %d retries: %w", maxSubmitRetries, parseErr)
 							}
-							a.AICallProxyWriteToolResult(
+							a.AICallProxyWriteToolResult(nil, 
 								strings.TrimSpace(tc.Id), submitFinalAnswerToolName,
 								"", nil, "",
 								fmt.Sprintf("submit_final_answer 参数校验失败: %s\n请修正后重新调用 submit_final_answer。", parseErr.Error()),
@@ -204,7 +204,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 							return snapshot, err
 						}
 					} else {
-						a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+						a.AICallProxyWriteToolResult(nil, strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
 					}
 				}
 				if gotModelOut {

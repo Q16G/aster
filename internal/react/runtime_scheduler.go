@@ -500,7 +500,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					if submitRetries > maxSubmitRetries {
 						return nil, fmt.Errorf("submit_plan failed after %d retries: %w", maxSubmitRetries, parseErr)
 					}
-					a.AICallProxyWriteToolResult(
+					a.AICallProxyWriteToolResult(nil, 
 						strings.TrimSpace(tc.Id), submitPlanToolName,
 						"", nil, "",
 						fmt.Sprintf("submit_plan 参数校验失败（第 %d/%d 次重试）：%s", submitRetries, maxSubmitRetries, parseErr.Error()),
@@ -515,7 +515,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						if submitRetries > maxSubmitRetries {
 							return nil, fmt.Errorf("submit_plan plan validation failed after %d retries: %w", maxSubmitRetries, normErr)
 						}
-						a.AICallProxyWriteToolResult(
+						a.AICallProxyWriteToolResult(nil, 
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
 							fmt.Sprintf("submit_plan plan 结构校验失败（第 %d/%d 次重试）：%s\n请按报错指示修正 plan 结构（含 step_id 唯一性、depends_on 引用闭包等）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, normErr.Error()),
@@ -533,7 +533,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						if submitRetries > maxSubmitRetries {
 							return nil, fmt.Errorf("submit_plan granularity check failed after %d retries: %w", maxSubmitRetries, granErr)
 						}
-						a.AICallProxyWriteToolResult(
+						a.AICallProxyWriteToolResult(nil, 
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
 							fmt.Sprintf("submit_plan 粒度校验失败（第 %d/%d 次重试）：%s\n请把违例的 step 按工件/产出拆为多条独立可验收子项（一对象一动作一产出）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, granErr.Error()),
@@ -551,7 +551,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					running := a.runningChildAgentNames()
 					submitRetries++
 					if submitRetries <= maxSubmitRetries {
-						a.AICallProxyWriteToolResult(
+						a.AICallProxyWriteToolResult(nil, 
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
 							fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：仍有后台子 Agent 运行中：%s。请先调用 await_subagents 等待其全部结束、把有价值产出按入板闸门归并进 `## 执行中补充` 后再 submit_plan。", submitRetries, maxSubmitRetries, strings.Join(running, ", ")),
@@ -575,7 +575,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					if !taskContextInputFactsPresent(raw) {
 						submitRetries++
 						if submitRetries <= maxSubmitRetries {
-							a.AICallProxyWriteToolResult(
+							a.AICallProxyWriteToolResult(nil, 
 								strings.TrimSpace(tc.Id), submitPlanToolName,
 								"", nil, "",
 								fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：共享区终态未成立：task_context.md 的 `## 输入事实` 为空。请把用户输入中确定的具体操作事实逐条写入该节（每行 `- 名称: 值`）后重新调用 submit_plan。", submitRetries, maxSubmitRetries),
@@ -598,7 +598,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					return nil, err
 				}
 			} else {
-				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "",
+				a.AICallProxyWriteToolResult(nil, strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "",
 					fmt.Sprintf("工具 %q 在当前 plan 阶段不可用。本阶段可用工具：%s。若已具备规划所需信息，请直接调用 submit_plan 提交计划。",
 						strings.TrimSpace(tc.Function.Name), strings.Join(sortedToolNames(allowedTools, submitPlanToolName), ", ")),
 					false)
@@ -1313,7 +1313,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
 	if len(allowedTools) > 0 {
 		if _, ok := allowedTools[toolName]; !ok {
-			a.AICallProxyWriteToolResult(callID, toolName, "", map[string]any{}, "", "tool not available in current phase", false)
+			a.AICallProxyWriteToolResult(nil, callID, toolName, "", map[string]any{}, "", "tool not available in current phase", false)
 			return nil
 		}
 	}
@@ -1332,13 +1332,13 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 			}
 		}
 		errMsg := fmt.Sprintf("tool args parse failed: %v\n\nThe arguments JSON you provided is malformed. Raw arguments (truncated):\n%s\n\nPlease retry the tool call with valid JSON arguments.", argErr, rawArgs)
-		a.AICallProxyWriteToolResult(callID, toolName, "", argsMap, "", errMsg, false)
+		a.AICallProxyWriteToolResult(nil, callID, toolName, "", argsMap, "", errMsg, false)
 		return nil
 	}
 
 	tool, exists := a.GetTool(toolName)
 	if !exists || tool == nil {
-		a.AICallProxyWriteToolResult(callID, toolName, "", argsMap, "", "tool not found", false)
+		a.AICallProxyWriteToolResult(nil, callID, toolName, "", argsMap, "", "tool not found", false)
 		return nil
 	}
 
@@ -1641,7 +1641,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	}
 	render := buildToolResultRender(toolName, out)
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
-	a.AICallProxyWriteToolResult(callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
+	a.AICallProxyWriteToolResult(nil, callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
 	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
 		event := newToolCallTimelineEvent(callID, toolName, argsMap, out, errText, outFullPath, toolDuration)

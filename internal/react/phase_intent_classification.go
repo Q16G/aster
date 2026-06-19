@@ -87,7 +87,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 						})
 						return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "submit retry fallback"})
 					}
-					a.AICallProxyWriteToolResult(
+					a.AICallProxyWriteToolResult(nil, 
 						strings.TrimSpace(tc.Id), submitIntentToolName,
 						"", nil, "",
 						fmt.Sprintf("submit_intent 参数校验失败: %s\n请修正后重新调用 submit_intent。", parseErr.Error()),
@@ -109,7 +109,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 					return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "tool exec fallback"})
 				}
 			} else {
-				a.AICallProxyWriteToolResult(strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
+				a.AICallProxyWriteToolResult(nil, strings.TrimSpace(tc.Id), strings.TrimSpace(tc.Function.Name), "", nil, "", "tool not available in current phase", false)
 			}
 		}
 

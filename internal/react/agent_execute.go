@@ -1281,7 +1281,9 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 
 	// State-first: model input is system(+first user) + in-phase transcript only.
 	// Cross-turn continuity is carried by runtime state (input_timeline/plan/step_outcomes), not raw history.
-	msgs := buildOutboundMsgs(parts, a.stepHistory)
+	// historyMsgsFor 按 runCtx 路由：inline step 桶 vs 主 a.stepHistory。
+	stepHist := a.historyMsgsFor(runCtx)
+	msgs := buildOutboundMsgs(parts, stepHist)
 	requestOptions := a.buildPromptRequestOptions(promptFamily, parts, true, tools...)
 	runtimelog.LogJSON("info", map[string]any{
 		"event":         "ai_call_prompt_profile",
@@ -1289,12 +1291,12 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 		"system_hash":   requestOptions.PromptCacheKeyHash,
 		"system_len":    len(parts.SystemJoined()),
 		"user_len":      len(parts.User),
-		"history_msgs":  len(a.stepHistory),
+		"history_msgs":  len(stepHist),
 	})
 
 	// StepHistory compaction: only when approaching the input token budget.
 	// Must preserve tool_calls ↔ tool_result(tool_call_id) protocol correctness.
-	if a.cfg.StepHistoryCompactor != nil && len(a.stepHistory) > 0 {
+	if a.cfg.StepHistoryCompactor != nil && len(stepHist) > 0 {
 		budget := resolveContextBudget(runClient)
 		triggerRatio := a.cfg.StepHistoryCompressTriggerRatio
 		if triggerRatio <= 0 || triggerRatio > 1 {
@@ -1309,15 +1311,23 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 		}
 		if estimateHistoryTokens(msgs) >= triggerTokens {
 			// Persist the full transcript snapshot before any in-memory compaction.
+			// 注：当前 persist 仅记录主 a.stepHistory；inline step 桶的 transcript 持久化
+			// 是 commit 13 测试改造时再决定的事（buckets 主要用于 live execution，
+			// 持久化 / resume 路径仍以主 stepHistory 为准）。
 			a.persistStepTranscriptBlob()
-			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, parts.Joined(), a.stepHistory)
+			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, parts.Joined(), stepHist)
 			if err != nil {
 				return nil, err
 			}
 			if compacted != nil && len(compacted.StepHistory) > 0 {
-				a.stepHistory = NormalizeHistoryMsgInfos(compacted.StepHistory)
-				a.persistInFlightStepHistory()
-				msgs = buildOutboundMsgs(parts, a.stepHistory)
+				normalized := NormalizeHistoryMsgInfos(compacted.StepHistory)
+				a.setHistoryMsgsFor(runCtx, normalized)
+				if runCtx == nil || runCtx.Bucket == nil {
+					// 主路径才持久化 in-flight transcript；桶路径暂不持久（见上方注释）。
+					a.persistInFlightStepHistory()
+				}
+				stepHist = a.historyMsgsFor(runCtx)
+				msgs = buildOutboundMsgs(parts, stepHist)
 			}
 			if compacted != nil && !compacted.CanContinue {
 				return nil, &CompactionTerminatedError{
@@ -1329,7 +1339,7 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 	}
 
 	// 非视觉模型：发送前剥离 image_url，避免 DeepSeek 等返回 HTTP 400。
-	// 仅作用于出站副本，a.stepHistory 中的原图保留，切回视觉模型可恢复。
+	// 仅作用于出站副本，桶/主 history 中的原图保留，切回视觉模型可恢复。
 	msgs = sanitizeOutboundForVision(runClient, msgs)
 
 	const emptyResponseMaxRetries = 5
@@ -1348,7 +1358,7 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 			if len(choices) == 0 || choices[0] == nil || choices[0].Message == nil {
 				result = &aiCallProxyResult{}
 			} else {
-				result, err = a.finalizeAIChoice(ctx, iter, runClient, choices[0], requestOptions, true)
+				result, err = a.finalizeAIChoice(ctx, runCtx, iter, runClient, choices[0], requestOptions, true)
 			}
 		}
 
@@ -1374,11 +1384,10 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 	return &aiCallProxyResult{}, nil
 }
 
-// AICallProxyStream 单轮流式 think_act 入口。runCtx 占位至 commit 7：
-// 本函数不直接消费 runCtx（无 BuildFunctionTools 决策点）；history 桶路由由 commit 7
-// 接桶时统一启用——届时 a.stepHistory 的读写改走 runCtx.Bucket.msgs。
+// AICallProxyStream 单轮流式 think_act 入口。
+// runCtx 经 finalizeAIChoice 透传到 stepHistory 桶 append 路径（commit 7 已接）；
+// 本函数自身不再直接消费 runCtx（仅作为透传管道）。
 func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
-	_ = runCtx // commit 7 接桶时启用
 	if streamingClient == nil {
 		return &aiCallProxyResult{}, nil
 	}
@@ -1421,7 +1430,7 @@ func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, it
 		msg.Usage = usageProvider.LastTokenUsage()
 	}
 
-	return a.finalizeAIChoice(ctx, iter, runClient, &ai.ChatChoices{
+	return a.finalizeAIChoice(ctx, runCtx, iter, runClient, &ai.ChatChoices{
 		Index:        0,
 		Message:      msg,
 		Usage:        msg.Usage,
@@ -1429,7 +1438,9 @@ func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, it
 	}, requestOptions, false)
 }
 
-func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.ChatClient, choice *ai.ChatChoices, requestOptions *ai.RequestOptions, emitSummaryThink bool) (*aiCallProxyResult, error) {
+// finalizeAIChoice 把单条 ai.ChatChoices 烘焙成 aiCallProxyResult 并 append 到 stepHistory。
+// runCtx 路由：inline step 桶 vs 主 a.stepHistory（commit 7 接桶）。
+func (a *Agent) finalizeAIChoice(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, choice *ai.ChatChoices, requestOptions *ai.RequestOptions, emitSummaryThink bool) (*aiCallProxyResult, error) {
 	if choice == nil || choice.Message == nil {
 		return &aiCallProxyResult{}, nil
 	}
@@ -1486,7 +1497,7 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, iter int, runClient ai.Cha
 
 	// Step phase: keep tool calling transcript within the step window only.
 	sanitizeToolCallArguments(msg)
-	a.stepHistory = append(a.stepHistory, msg)
+	a.appendHistoryMsgFor(runCtx, msg)
 
 	var (
 		compactionResult *HistoryCompactionResult
@@ -1585,15 +1596,25 @@ func mergeFunctionToolDeltas(existing []*ai.FunctionTool, incoming []*ai.Functio
 	return existing
 }
 
-func (a *Agent) AICallProxyWriteToolResult(callID, toolName, description string, args map[string]any, content any, errText string, isAgent bool) {
+// AICallProxyWriteToolResult 把 tool_result 消息 append 到 inline step 活跃 history。
+// runCtx 路由：inline step 桶 vs 主 a.stepHistory。
+//
+// **runCtx 传递契约**：从 think_act 循环到本函数的所有调用栈都必须正确透传 runCtx——
+// 否则 inline peer 桶的 tool_result 会误写入主 stepHistory（commit 8 runStepPhase
+// 改造时会建立完整透传）。当前阶段所有调用方传 nil（行为不变，commit 8 切到真桶）。
+func (a *Agent) AICallProxyWriteToolResult(runCtx *InlineStepCtx, callID, toolName, description string, args map[string]any, content any, errText string, isAgent bool) {
 	if a == nil {
 		return
 	}
 
 	toolResultMsg := ai.NewToolCallResultMsgInfo(finalizeToolResultContent(content, errText), callID)
 	// Step phase: tool results are step-local transcript and should not be persisted to long-term ai.history.
-	a.stepHistory = append(a.stepHistory, toolResultMsg)
-	a.persistInFlightStepHistory()
+	a.appendHistoryMsgFor(runCtx, toolResultMsg)
+	if runCtx == nil || runCtx.Bucket == nil {
+		// 主路径才持久化 in-flight transcript；桶路径暂不持久（与 AICallProxy 内 compaction
+		// 后的处理一致——inline step 桶的持久化策略由 commit 13 集中设计）。
+		a.persistInFlightStepHistory()
+	}
 }
 
 // InjectAgentToolExtra 注入 Agent 工具额外信息
