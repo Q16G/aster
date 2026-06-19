@@ -11,14 +11,21 @@ import (
 // drainAsyncAgentNotifications reads all pending completed/failed async agent notifications
 // and dispatches them by Kind:
 //   - sub_agent（默认）：注入 stepHistory（原路径，模型可见）
-//   - remote_step（X2）：调 state.UpdateInlineStep 回写 PlanItem 并立即重扫 ready 二次 fan-out
+//   - inline_step（commit 7-9 重构后的并发 step）：调 state.UpdateInlineStep 回写 PlanItem 终态
 //
-// ctx 承自 scheduler 顶层（最终 TUI ctx，不 derive 不超时），供 handleRemoteStepNotification
-// 内 spawnRemoteStep 复用。Must only be called from the scheduler goroutine (single-writer invariant).
+// inline_step goroutine 已在 spawnInlinePeer 内部完成 PlanItem 推进（auto-complete 或
+// 工具分发驱动）；drain 路径的 UpdateInlineStep 仅作为「失败兜底」——goroutine 异常 / panic /
+// ctx 取消时把 PlanItem 翻 Failed，确保 PlanItem 不滞留 InProgress。
+//
+// 不再触发二次 fan-out（commit 8c2 已删 fanOutReadyPeers 调用）——scheduler 下一 iter 重入
+// runStepPhase 时会通过 collectInlineStepIDs 自然重扫 ready，把新解锁的 peer spawn 出去。
+//
+// Must only be called from the scheduler goroutine (single-writer invariant).
 func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 	if a == nil || a.asyncRegistry == nil {
 		return
 	}
+	_ = ctx
 	for {
 		select {
 		case notif := <-a.asyncRegistry.notifications:
@@ -27,7 +34,7 @@ func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 			}
 			switch notif.Kind {
 			case AsyncAgentKindRemoteStep:
-				a.handleRemoteStepNotification(ctx, notif)
+				a.handleInlineStepNotification(notif)
 			default: // "" 或 AsyncAgentKindSubAgent
 				a.handleSubAgentNotification(notif)
 			}
@@ -73,17 +80,16 @@ func (a *Agent) handleSubAgentNotification(notif *AsyncAgentNotification) {
 	// completion into stepHistory for the model.
 }
 
-// handleRemoteStepNotification 处理 X2 远程 step 完成通知。
-// 与 sub_agent 路径的差异：
-//   - 不写 async_result.json（远程 step 的 transcript 由 step_fanout 落 blob）
-//   - 不注入 stepHistory（主路径 transcript 不被远程 step 污染）
-//   - 直接调 state.UpdateInlineStep 把 Status + Summary 回写 PlanItem
-//   - 回写后立即重扫 ready 触发二次 fan-out（X2 滚动派发的核心）
+// handleInlineStepNotification 处理 inline step 完成通知。
+// inline goroutine 已在自己 think_act 循环里推进 PlanItem（auto-complete 或工具分发），
+// 本函数仅作为「失败兜底」+ 终态事件 emit：
+//   - PlanItem 仍是 Pending/InProgress → UpdateInlineStep 翻 Failed 防滞留
+//   - PlanItem 已终态 → UpdateInlineStep 终态守卫 no-op，无副作用
+//   - emit EventTypeInlineStepEnd 让 TUI 卡片翻终态
 //
-// 面 2 仅做最小回写（Status + Summary + Error）；完整结构化字段
-// （StatusSummary / ShortSummary / KeyFacts / etc）留给面 3.3 spawnRemoteStep
-// 通过新增通道传完整 CurrentStepUpdate。
-func (a *Agent) handleRemoteStepNotification(ctx context.Context, notif *AsyncAgentNotification) {
+// **不再触发二次 fan-out**：scheduler 下一 iter 自然走 runStepPhase →
+// collectInlineStepIDs 重扫 ready，把新解锁的 peer spawn 出去。
+func (a *Agent) handleInlineStepNotification(notif *AsyncAgentNotification) {
 	if a.state == nil {
 		a.asyncRegistry.MarkDelivered(notif.AgentID)
 		return
@@ -117,33 +123,17 @@ func (a *Agent) handleRemoteStepNotification(ctx context.Context, notif *AsyncAg
 		TranscriptBlobRef: transcriptRef,
 	})
 
-	// 发 BgEnd 事件让 TUI 卡片翻终态。与 sub_agent 的 emitSubAgentCardEnd 对照——
-	// 在 fanOutReadyPeers 之前发，确保用户先看到该卡片终态、再看到新 spawn 的卡片，
-	// 时序与 plan state 推进顺序对齐。
 	if a.emitter != nil {
 		cardStatus := "completed"
 		if status == builtin_tools.PlanStepFailed {
 			cardStatus = "failed"
 		}
-		a.emitter.EmitJSON(EventTypeRemoteStepBgEnd, notif.AgentID, map[string]any{
+		a.emitter.EmitJSON(EventTypeInlineStepEnd, notif.AgentID, map[string]any{
 			"agent_id": notif.AgentID,
 			"status":   cardStatus,
 			"summary":  summary,
 		})
 	}
-
-	// X2 滚动派发核心：回写完 PlanItem 后立即扫 ready，把刚被解锁的下一波 step
-	// 直接 spawn 出去，无需等到下一 iter 入口。fanOutReadyPeers 自带 slot/registered/
-	// agentFactory 三层早退，drain 侧无需防御。
-	//
-	// 顺序不变量（不要交换以下两行）：
-	//   1. fanOutReadyPeers 必须在 MarkDelivered 之前调用。
-	//      此时 notif.AgentID 对应 entry 仍在 registry（closed=true, delivered=false），
-	//      selectFanOutPeers 的 alreadyRegistered 判定看到 Get(notif.AgentID) != nil 会跳过
-	//      ——防止同 ID 被误派发为新远程 step（理论不会命中，因为 ready 已排除终态，
-	//      但保留这层兜底防御）。
-	//   2. MarkDelivered 后续 drain 的 PurgeDelivered 才会清掉 entry。
-	a.fanOutReadyPeers(ctx, a.state.Snapshot())
 
 	a.asyncRegistry.MarkDelivered(notif.AgentID)
 }
@@ -205,9 +195,9 @@ func (a *Agent) emitSubAgentCardEnd(childName string, result *builtin_tools.RunR
 // stay stuck on "running" when the parent turn aborts (ctx-cancel / forced failure)
 // before the children settle.
 //
-// 显式过滤 Kind=remote_step：那些是 X2 远程 step 卡片，使用不同的 event 类型
-// （EventTypeRemoteStepBgEnd），由 cancelRunningRemoteSteps 配对处理。这里发
-// EventTypeSubAgentBgEnd 会让 TUI 把远程 step 卡当 sub_agent 卡渲染、串台。
+// 显式过滤 Kind=remote_step（inline_step）：那些卡片用 EventTypeInlineStepEnd，
+// 由 cancelRunningInlineSteps 配对处理。这里发 EventTypeSubAgentBgEnd 会让 TUI 把
+// inline step 卡当 sub_agent 卡渲染、串台。
 // Must only be called from the scheduler goroutine (single-writer invariant).
 func (a *Agent) cancelRunningSubAgents() {
 	if a == nil || a.asyncRegistry == nil || a.emitter == nil {
@@ -227,13 +217,14 @@ func (a *Agent) cancelRunningSubAgents() {
 	}
 }
 
-// cancelRunningRemoteSteps emits a cancelled EventTypeRemoteStepBgEnd for every
-// remote_step registry entry still marked running. Pairs with cancelRunningSubAgents
+// cancelRunningInlineSteps emits a cancelled EventTypeInlineStepEnd for every
+// inline_step registry entry still marked running. Pairs with cancelRunningSubAgents
 // in the same scheduler cancel/teardown call sites.
 //
-// 与 cancelRunningSubAgents 对称：只处理 Kind=remote_step。sub_agent 卡片通过同位置
-// 的 cancelRunningSubAgents 调用清理。Must only be called from the scheduler goroutine.
-func (a *Agent) cancelRunningRemoteSteps() {
+// 与 cancelRunningSubAgents 对称：只处理 Kind=inline_step (AsyncAgentKindRemoteStep
+// 仍是旧名，commit 14 改名)。sub_agent 卡片通过同位置的 cancelRunningSubAgents 清理。
+// Must only be called from the scheduler goroutine.
+func (a *Agent) cancelRunningInlineSteps() {
 	if a == nil || a.asyncRegistry == nil || a.emitter == nil {
 		return
 	}
@@ -244,7 +235,7 @@ func (a *Agent) cancelRunningRemoteSteps() {
 		if entry.Kind != AsyncAgentKindRemoteStep {
 			continue
 		}
-		a.emitter.EmitJSON(EventTypeRemoteStepBgEnd, entry.AgentID, map[string]any{
+		a.emitter.EmitJSON(EventTypeInlineStepEnd, entry.AgentID, map[string]any{
 			"agent_id": entry.AgentID,
 			"status":   "cancelled",
 		})

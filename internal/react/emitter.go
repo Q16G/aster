@@ -37,12 +37,14 @@ const (
 	EventTypeStepTriageResult  EventType = "step_triage_result"
 	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
-	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"
-	EventTypeSubAgentBgEnd     EventType = "subagent_bg_end"
-	// EventTypeRemoteStepBgStart/BgEnd 是 X2 远程 step 卡片事件，与 sub_agent
-	// 的 BgStart/BgEnd 同结构但 Kind 不同——drain 路径按 Kind 分流。
-	EventTypeRemoteStepBgStart EventType = "remote_step_bg_start"
-	EventTypeRemoteStepBgEnd   EventType = "remote_step_bg_end"
+	EventTypeSubAgentBgStart EventType = "subagent_bg_start"
+	EventTypeSubAgentBgEnd   EventType = "subagent_bg_end"
+	// EventTypeInlineStepStart/End 是 inline step（commit 7-9 重构后的并发 step）卡片事件。
+	// 与 sub_agent 的 BgStart/BgEnd 同结构但 Kind 不同——drain 路径按 Kind 分流。
+	// 区分点是「是否独立 agent 实例」（sub_agent=out-of-line，inline_step=inline）而非
+	// 「是否并发」——MaxParallelSteps=1 时仍走相同事件路径，名字依然成立。
+	EventTypeInlineStepStart EventType = "inline_step_start"
+	EventTypeInlineStepEnd   EventType = "inline_step_end"
 )
 
 // AgentOutputEvent 统一的事件结构

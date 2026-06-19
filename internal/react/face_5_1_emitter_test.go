@@ -9,7 +9,7 @@ import (
 	"aster/internal/builtin_tools"
 )
 
-// remoteStepEventRecorder 收集所有 EventTypeRemoteStepBgStart/BgEnd 事件。
+// remoteStepEventRecorder 收集所有 EventTypeInlineStepStart/BgEnd 事件。
 func remoteStepEventRecorder() (*Emitter, func() (map[string]string, map[string]string)) {
 	var mu sync.Mutex
 	starts := map[string]string{}
@@ -22,10 +22,10 @@ func remoteStepEventRecorder() (*Emitter, func() (map[string]string, map[string]
 		mu.Lock()
 		defer mu.Unlock()
 		switch e.Type {
-		case EventTypeRemoteStepBgStart:
+		case EventTypeInlineStepStart:
 			stepText, _ := e.Payload["step_text"].(string)
 			starts[id] = stepText
-		case EventTypeRemoteStepBgEnd:
+		case EventTypeInlineStepEnd:
 			status, _ := e.Payload["status"].(string)
 			ends[id] = status
 		}
@@ -117,7 +117,7 @@ func TestCancelRunningRemoteSteps_EmitsBgEndCancelled(t *testing.T) {
 	a.asyncRegistry.RegisterRemoteStep("c", "")
 	a.asyncRegistry.RegisterRemoteStep("d", "")
 
-	a.cancelRunningRemoteSteps()
+	a.cancelRunningInlineSteps()
 
 	_, ends := snapshot()
 	if got := ends["c"]; got != "cancelled" {
@@ -135,11 +135,11 @@ func TestCancelRunningRemoteSteps_IgnoresSubAgentEntries(t *testing.T) {
 	a.asyncRegistry.Register("sub-1", "x", "")  // sub_agent kind=""
 	a.asyncRegistry.RegisterRemoteStep("c", "") // remote_step kind
 
-	a.cancelRunningRemoteSteps()
+	a.cancelRunningInlineSteps()
 
 	_, ends := snapshot()
 	if _, found := ends["sub-1"]; found {
-		t.Fatalf("cancelRunningRemoteSteps should NOT emit for sub_agent entries, got %v", ends)
+		t.Fatalf("cancelRunningInlineSteps should NOT emit for sub_agent entries, got %v", ends)
 	}
 	if got := ends["c"]; got != "cancelled" {
 		t.Fatalf("expected remote_step c cancelled, got %q", got)
@@ -162,7 +162,7 @@ func TestCancelRunningSubAgents_IgnoresRemoteStepEntries(t *testing.T) {
 		switch e.Type {
 		case EventTypeSubAgentBgEnd:
 			subEnds[id] = status
-		case EventTypeRemoteStepBgStart, EventTypeRemoteStepBgEnd:
+		case EventTypeInlineStepStart, EventTypeInlineStepEnd:
 			// 走原 recorder 钩子（这里测试 cancel 路径，主要看 SubAgentBgEnd）
 		}
 		return nil

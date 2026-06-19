@@ -71,7 +71,7 @@ func TestHandleAgentEvent_RemoteStepBgStart_AddsCard(t *testing.T) {
 	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type: react.EventTypeRemoteStepBgStart,
+		Type: react.EventTypeInlineStepStart,
 		Payload: map[string]any{
 			"agent_id":  "step-b",
 			"step_text": "分析模块 X 的认证逻辑",
@@ -104,11 +104,11 @@ func TestHandleAgentEvent_RemoteStepBgEnd_UpdatesStatus(t *testing.T) {
 	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type:    react.EventTypeRemoteStepBgStart,
+		Type:    react.EventTypeInlineStepStart,
 		Payload: map[string]any{"agent_id": "step-c", "step_text": "do c"},
 	})
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type: react.EventTypeRemoteStepBgEnd,
+		Type: react.EventTypeInlineStepEnd,
 		Payload: map[string]any{
 			"agent_id": "step-c",
 			"status":   "completed",
@@ -130,16 +130,16 @@ func TestHandleAgentEvent_RemoteStepCancelledNotOverwritingTerminal(t *testing.T
 	m := NewModel(ModelDeps{})
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type:    react.EventTypeRemoteStepBgStart,
+		Type:    react.EventTypeInlineStepStart,
 		Payload: map[string]any{"agent_id": "step-d", "step_text": "do d"},
 	})
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type:    react.EventTypeRemoteStepBgEnd,
+		Type:    react.EventTypeInlineStepEnd,
 		Payload: map[string]any{"agent_id": "step-d", "status": "completed"},
 	})
 	// 延迟到达的 cancelled 不应覆盖
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type:    react.EventTypeRemoteStepBgEnd,
+		Type:    react.EventTypeInlineStepEnd,
 		Payload: map[string]any{"agent_id": "step-d", "status": "cancelled"},
 	})
 
