@@ -1110,8 +1110,11 @@ func (a *Agent) ensureTaskContextSkeleton() {
 //
 // runtime != nil 时走 ReadFileRel 让 task_context.md / open_items.md 经 sharedFileLocks
 // 保护；nil 时退化为直接 os.ReadFile。
+//
+// 短路顺序保持与旧版语义一致：name 或 sharedDir 任一为空 → 不发起任何 IO，直接返回 ""。
+// （review P1-5：避免 runtime != nil + sharedDir == "" 时悄悄走 runtime IO 产生额外失败调用。）
 func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string) string {
-	if strings.TrimSpace(name) == "" {
+	if strings.TrimSpace(sharedDir) == "" || strings.TrimSpace(name) == "" {
 		return ""
 	}
 	if runtime != nil {
@@ -1120,9 +1123,6 @@ func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, sharedDir, n
 			return ""
 		}
 		return strings.TrimSpace(string(data))
-	}
-	if strings.TrimSpace(sharedDir) == "" {
-		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(sharedDir, name))
 	if err != nil {
