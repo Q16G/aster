@@ -80,9 +80,21 @@ func (a *Agent) runInlineStep(
 	snapshot builtin_tools.StateSnapshot,
 	extraText string,
 ) error {
-	currentStep := snapshot.CurrentStep()
+	// Peer 路径：thinkActPartsForStep 内部基于 snapshot.CurrentStepID 取 step 信息构建
+	// prompt。peer goroutine 跑时 snapshot.CurrentStepID 仍是主路径的 ID，需要复制一份
+	// snapshot 并把 CurrentStepID 改成 runCtx.StepID，让 prompt 锁定到 peer 的 step。
+	//
+	// 这是 pragmatic 做法——未来如果 thinkActPartsForStep 内部还隐式读了其他 stepID-绑定
+	// 的 agent state（如 frozenLineageByStep / lastStepTranscriptBlobRef），那些路径需要
+	// commit 13 测试覆盖时再补显式参数化（见 [[feedback_no_atomic_ledger_tools]] 的「pragmatic
+	// 优先 + 测试承担正确性」哲学）。
+	promptSnapshot := snapshot
+	if runCtx != nil && strings.TrimSpace(runCtx.StepID) != "" && runCtx.StepID != snapshot.CurrentStepID {
+		promptSnapshot.CurrentStepID = runCtx.StepID
+	}
+	currentStep := promptSnapshot.CurrentStep()
 
-	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
+	parts := a.thinkActPartsForStep(ctx, extraText, promptSnapshot)
 	fnTools, allowedTools := a.BuildFunctionTools(runCtx, builtin_tools.AgentPhaseStep)
 
 	thinkCtx, thinkCancel := context.WithCancel(ctx)
@@ -168,6 +180,159 @@ func (a *Agent) runInlineStep(
 		"will_continue":        !snapshot.Terminal(),
 	})
 	return nil
+}
+
+// spawnInlinePeer 为指定的 peer stepID 起后台 goroutine 跑 runInlineStep 循环。
+//
+// 与老 step_fanout.spawnRemoteStep 的关键差异：
+//   - **不**起 child agent / 不建独立 workspace
+//   - **不**走 agentFactory.Build 路径（共享主 agent 实例）
+//   - bucket seed 从主 a.stepHistory 当前末尾 deep copy（commit 2 settle）
+//   - 完成态：通过 a.state.UpdateInlineStep(stepID, ...) 显式回写，不动 CurrentStepID/Phase
+//
+// 调用方契约：仅由 scheduler 单写者 goroutine 调用（runStepsConcurrently）。
+// peer goroutine 内可能在 think_act 中 emit、改 state（state 自带 mutex）、
+// 写共享文件（runtime mutex 兜底，prompt 纪律承担 RMW 正确性）。
+//
+// fire-and-forget；调用方不等待。失败仅记录日志（旧实现的 spawn 失败重试已删）。
+func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClient, iter int, peerStepID string) error {
+	if a == nil {
+		return fmt.Errorf("nil agent")
+	}
+	if parentCtx != nil && parentCtx.Err() != nil {
+		return parentCtx.Err()
+	}
+	if a.asyncRegistry == nil {
+		return fmt.Errorf("async registry not initialized")
+	}
+	peerStepID = strings.TrimSpace(peerStepID)
+	if peerStepID == "" {
+		return fmt.Errorf("empty peerStepID")
+	}
+
+	// 在 scheduler goroutine 内 deep-copy 主 history 末尾作为桶 seed——必须在 spawn
+	// goroutine 之前完成，避免桶 seed 引用主 slice 后续 append 触发 race。
+	seed := append([]*ai.MsgInfo(nil), a.stepHistory...)
+	planVer := 0
+	if a.state != nil {
+		planVer = a.state.Snapshot().PlanVersion
+	}
+	bucket := a.ensureBucket(peerStepID, builtin_tools.AgentPhaseStep, planVer, seed)
+	runCtx := &InlineStepCtx{
+		StepID:             peerStepID,
+		Bucket:             bucket,
+		FinalAnswerAllowed: false, // peer 桶禁 finalize（防 state 双写——P0-2 防线）
+	}
+
+	// 注册到 asyncRegistry（仍走老 RegisterRemoteStep API 直到 commit 14 改名）。
+	// drain 路径会通过该注册看到 peer 的生命周期。
+	a.asyncRegistry.RegisterRemoteStep(peerStepID, a.workspaceRootDir)
+	if a.state != nil {
+		a.state.MarkInlineStepInProgress(peerStepID)
+	}
+	if a.emitter != nil {
+		a.emitter.EmitJSON(EventTypeRemoteStepBgStart, peerStepID, map[string]any{
+			"agent_id":  peerStepID,
+			"step_id":   peerStepID,
+			"workspace": a.workspaceRootDir,
+		})
+	}
+
+	go func() {
+		var result *builtin_tools.RunResult
+		defer func() {
+			if r := recover(); r != nil {
+				result = &builtin_tools.RunResult{
+					Success: false,
+					Error:   fmt.Sprintf("inline peer panicked: %v", r),
+				}
+			}
+			a.asyncRegistry.Complete(peerStepID, result)
+			a.dropBucket(peerStepID)
+		}()
+
+		// peer 循环：跑到 PlanItem terminal 或 ctx 取消。
+		// 与老 child agent Execute 的多 iter loop 对齐——peer 自己跑完所有 think_act 至终态。
+		for {
+			if parentCtx != nil && parentCtx.Err() != nil {
+				result = &builtin_tools.RunResult{Success: false, Error: "parent context cancelled"}
+				return
+			}
+			curSnap := a.state.Snapshot()
+			if isInlineStepTerminal(curSnap, peerStepID) {
+				result = &builtin_tools.RunResult{Success: true}
+				return
+			}
+			if err := a.runInlineStep(parentCtx, runCtx, runClient, iter, curSnap, ""); err != nil {
+				result = &builtin_tools.RunResult{Success: false, Error: err.Error()}
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+// isInlineStepTerminal 判定指定 stepID 在 snapshot 里是否已是终态（Completed/Failed/Skipped）。
+func isInlineStepTerminal(snap builtin_tools.StateSnapshot, stepID string) bool {
+	stepID = strings.TrimSpace(stepID)
+	for _, item := range snap.Plan {
+		if item == nil {
+			continue
+		}
+		if strings.TrimSpace(item.ID) != stepID {
+			continue
+		}
+		switch item.Status {
+		case builtin_tools.PlanStepCompleted,
+			builtin_tools.PlanStepFailed,
+			builtin_tools.PlanStepSkipped:
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+// runStepsConcurrently 是 step phase 的并发入口：把 [current, peer1, peer2, ...] 中的
+// peer 派发到后台 goroutine，主路径在 caller goroutine 同步跑 current 的 runInlineStep。
+//
+// 与老 fanOutReadyPeers 的差异：peer 不再起 child agent，而是在主 agent 上下文里
+// 以独立 bucket 跑 runInlineStep——共享 state / workspaceRuntime / emitter / v2Store。
+//
+// MaxParallelSteps=1 时 collectInlineStepIDs 只返回 [current]，没有 peer 派发，等价
+// 于纯串行——degenerate case 走完全相同代码路径，无 if maxParallel<2 分叉。
+func (a *Agent) runStepsConcurrently(
+	ctx context.Context,
+	runClient ai.ChatClient,
+	iter int,
+	snapshot builtin_tools.StateSnapshot,
+	extraText string,
+) error {
+	stepIDs := a.collectInlineStepIDs(snapshot)
+	if len(stepIDs) == 0 {
+		return nil
+	}
+	currentID := strings.TrimSpace(stepIDs[0])
+	if currentID != strings.TrimSpace(snapshot.CurrentStepID) {
+		// 不变量保护：collectInlineStepIDs 第一项必须是 snapshot.CurrentStepID。
+		return fmt.Errorf("collectInlineStepIDs[0]=%q != snapshot.CurrentStepID=%q", currentID, snapshot.CurrentStepID)
+	}
+
+	// 派发 peer（fire-and-forget）。失败仅记录日志，不阻塞主路径——peer 失败时下一轮
+	// scheduler iter 重扫 ready 会再次尝试派发（asyncRegistry alreadyRegistered 兜底防重）。
+	for _, peerID := range stepIDs[1:] {
+		if err := a.spawnInlinePeer(ctx, runClient, iter, peerID); err != nil {
+			a.emitRuntimeLog("warn", "spawn inline peer failed", snapshot, map[string]any{
+				"event":   "inline_peer_spawn_failed",
+				"step_id": peerID,
+				"error":   err.Error(),
+			})
+		}
+	}
+
+	// 主路径同步跑 current（沿用老 runStepPhase 行为）。
+	return a.runInlineStep(ctx, nil, runClient, iter, snapshot, extraText)
 }
 
 // collectInlineStepIDs 把本轮要并发跑的 stepID 集合化为 [current, peer1, peer2, ...]。
