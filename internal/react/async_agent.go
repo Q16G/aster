@@ -212,6 +212,26 @@ func (r *AsyncAgentRegistry) RunningInlineSteps() int {
 	return count
 }
 
+// HasRunningSubAgent O(1) 早退；与 HasRunningInlineSteps 对称——按 Kind 过滤。
+//
+// **为什么需要分 Kind**：A4 守卫（step phase 主路径 auto-complete 时禁止终态化
+// 以免父 turn 取消子 ctx 丢结果）的设计目的是等**真正的后台 sub_agent**；inline
+// peer 是同进程并行 step 由 runStepsConcurrently 的 wg 兜底，不应触发 A4 defer。
+// 用 HasRunning() 会让 peer 把主路径 park 住，造成串行化倒退（最坏死锁）。
+func (r *AsyncAgentRegistry) HasRunningSubAgent() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, entry := range r.agents {
+		if entry == nil {
+			continue
+		}
+		if entry.Status == "running" && entry.Kind != AsyncAgentKindInlineStep {
+			return true
+		}
+	}
+	return false
+}
+
 // HasRunningInlineSteps O(1) 早退实现，语义等价 RunningInlineSteps() > 0。
 func (r *AsyncAgentRegistry) HasRunningInlineSteps() bool {
 	r.mu.RLock()

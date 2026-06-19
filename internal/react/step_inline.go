@@ -119,10 +119,13 @@ func (a *Agent) runInlineStep(
 	// 自动完成：模型未调任何工具但出了正文。
 	// 主路径用 UpdateCurrentStep；inline peer 用 UpdateInlineStep(peerStepID) 显式定位。
 	if callResult != nil && len(callResult.ToolCalls) == 0 {
-		// A4 守卫：仍有后台子 Agent 在跑时不能自动完成本 step（避免父 turn 终止取消子 ctx）。
-		// 仅主路径需要此守卫——inline peer 自身不会启动 sub_agent（peer 桶 FinalAnswerAllowed=false
-		// 也不允许 finalize）。
-		if runCtx == nil && a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+		// A4 守卫：仍有真正的后台 **sub_agent**（user 显式 spawn 的子任务）在跑时
+		// 不能自动完成本 step——避免父 turn 终止取消子 ctx 丢结果。
+		//
+		// 必须按 Kind 过滤：HasRunning() 不分 Kind 会把 inline peer 也算成「后台任务」，
+		// 让主路径无限 defer（peer 跑完才退出 await，但 peer 也在等主路径前进，最坏死锁）。
+		// inline peer 由 runStepsConcurrently 的 wg 自然兜底，不需要 A4 守卫。
+		if runCtx == nil && a.asyncRegistry != nil && a.asyncRegistry.HasRunningSubAgent() {
 			a.awaitBackgroundRequested = true
 			a.emitRuntimeLog("info", "deferring step completion: background sub-agents running", snapshot, map[string]any{
 				"event":   "step_defer_for_background",

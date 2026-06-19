@@ -218,6 +218,39 @@ func TestSelectInlineStepPeers_DegenerateForN1(t *testing.T) {
 // 红线测试：isInlineStepTerminal
 // ====================================================================
 
+// TestAsyncAgentRegistry_HasRunningSubAgent_FiltersInlineStep（fix/01 P0-1 红线）：
+// inline peer 注册不应被 HasRunningSubAgent 当成后台 sub_agent；只有真正的
+// sub_agent kind 才让 A4 守卫触发 await。
+func TestAsyncAgentRegistry_HasRunningSubAgent_FiltersInlineStep(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	// 注册一个 inline peer 在跑
+	r.RegisterInlineStep("step-peer", "/tmp/ws")
+	if r.HasRunningSubAgent() {
+		t.Fatalf("inline peer 不应被 HasRunningSubAgent 命中——A4 守卫会被它误锁")
+	}
+	if !r.HasRunningInlineSteps() {
+		t.Fatalf("expected HasRunningInlineSteps=true after RegisterInlineStep")
+	}
+	if !r.HasRunning() {
+		t.Fatalf("expected HasRunning=true（不分 Kind 的旧 API）")
+	}
+
+	// 再注册一个真正的 sub_agent
+	r.Register("sub-x", "spawn a child", "/tmp/ws/sub")
+	if !r.HasRunningSubAgent() {
+		t.Fatalf("expected HasRunningSubAgent=true after Register（默认 Kind=sub_agent）")
+	}
+
+	// inline peer Complete 后剩 sub_agent 仍 running
+	r.Complete("step-peer", nil)
+	if !r.HasRunningSubAgent() {
+		t.Fatalf("inline peer Complete 不应影响 HasRunningSubAgent；剩下的 sub-x 还 running")
+	}
+	if r.HasRunningInlineSteps() {
+		t.Fatalf("inline peer Complete 后 HasRunningInlineSteps 应为 false")
+	}
+}
+
 func TestIsInlineStepTerminal(t *testing.T) {
 	snap := builtin_tools.StateSnapshot{
 		Plan: []*builtin_tools.PlanItem{
