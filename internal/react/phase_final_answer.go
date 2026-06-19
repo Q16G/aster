@@ -141,7 +141,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				"raw_request_length": len(prompt.Joined()),
 			})
 
-			fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseFinalAnswer)
+			fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseFinalAnswer)
 			fnTools = append(fnTools, buildSubmitFinalAnswerFunctionTool())
 
 			const maxSubmitRetries = 3
@@ -154,7 +154,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					return snapshot, ctx.Err()
 				}
 				faCtx, faCancel := context.WithCancel(ctx)
-				callResult, callErr := a.AICallProxy(faCtx, iter, runClient, prompt, promptFamilyFinalAnswer, fnTools...)
+				callResult, callErr := a.AICallProxy(faCtx, nil, iter, runClient, prompt, promptFamilyFinalAnswer, fnTools...)
 				faCancel()
 				if callErr != nil {
 					return snapshot, fmt.Errorf("final_answer AICallProxy failed: %w", callErr)

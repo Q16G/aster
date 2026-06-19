@@ -39,7 +39,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 
 	prompt.SystemAgent = a.identityEnvBlock()
 
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseIntentClassification)
+	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseIntentClassification)
 	fnTools = append(fnTools, buildSubmitIntentFunctionTool())
 
 	const maxSubmitRetries = 3
@@ -53,7 +53,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 			return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "context canceled fallback"})
 		}
 		callCtx, callCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(callCtx, iter, runClient, prompt, promptFamilyIntentRecognition, fnTools...)
+		callResult, callErr := a.AICallProxy(callCtx, nil, iter, runClient, prompt, promptFamilyIntentRecognition, fnTools...)
 		callCancel()
 		if callErr != nil {
 			a.emitRuntimeLog("warn", "intent classification AICallProxy failed, fallback to carry", snapshot, map[string]any{

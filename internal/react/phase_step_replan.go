@@ -222,7 +222,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 	defer a.unregisterTool(submitReplanToolName)
 
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStepReplan)
+	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStepReplan)
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
@@ -256,7 +256,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 		_ = round // 不再以 round 计数硬上限：让模型按需充分核验与落盘，runaway 防线靠 ctx 取消与 MaxIterations 兜底
 		replanCtx, replanCancel := context.WithCancel(ctx)
-		callResult, err := a.AICallProxy(replanCtx, iter, runClient, prompt, promptFamilyStepReplan, fnTools...)
+		callResult, err := a.AICallProxy(replanCtx, nil, iter, runClient, prompt, promptFamilyStepReplan, fnTools...)
 		replanCancel()
 		if err != nil {
 			return fmt.Errorf("step replan AICallProxy failed: %w", err)

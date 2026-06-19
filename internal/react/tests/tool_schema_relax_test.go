@@ -95,7 +95,7 @@ func TestBuildFunctionTools_RelaxesStrictParameterSchema(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	tools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+	tools, _ := agent.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 	var target *ai.FunctionTool
 	for _, tool := range tools {
 		if tool != nil && tool.Function != nil && tool.Function.Name == "rigid_schema_tool" {
@@ -180,7 +180,7 @@ func TestBuildFunctionTools_RelaxesBuiltInUpdateCurrentStepSchema(t *testing.T) 
 	}
 
 	var updateTool *ai.FunctionTool
-	tools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+	tools, _ := agent.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 	for _, tool := range tools {
 		if tool != nil && tool.Function != nil && tool.Function.Name == builtin_tools.UpdateCurrentStepToolName {
 			updateTool = tool
@@ -268,7 +268,7 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 	}
 
 	for phase, allowedSet := range phaseAllowed {
-		tools, allowed := agent.BuildFunctionTools(phase)
+		tools, allowed := agent.BuildFunctionTools(nil, phase)
 		var names []string
 		for _, tool := range tools {
 			if tool == nil || tool.Function == nil {
@@ -313,7 +313,7 @@ func TestBuildFunctionTools_FollowsRegistrationOrder(t *testing.T) {
 		t.Fatalf("NewReActAgent failed: %v", err)
 	}
 
-	tools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+	tools, _ := agent.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 	var names []string
 	for _, tool := range tools {
 		if tool == nil || tool.Function == nil {
