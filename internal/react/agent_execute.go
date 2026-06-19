@@ -1111,10 +1111,18 @@ func (a *Agent) resetRunHandoff() {
 	a.handoff = &handoffState{}
 }
 
-func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
+// BuildFunctionTools 按 phase 构建出工具集合。
+//
+// runCtx 可为 nil（plan / step_replan / final_answer / intent 路径都传 nil）；
+// 仅 inline step 路径会传非 nil 的 runCtx。当 runCtx != nil && !FinalAnswerAllowed 时，
+// 软挡板拒绝注册 submit_final_answer——P0-2 防线之一：现状 step phase 不注册该工具，
+// 这条防护是"防御未来某天 step phase 把 final_answer 加进去时 inline peer 不该能调"的
+// 编译期 + 运行期双保险。
+func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
 	if a == nil || a.tools == nil || a.tools.Len() == 0 {
 		return nil, nil
 	}
+	finalAnswerForbidden := runCtx != nil && !runCtx.FinalAnswerAllowed
 	tools := make([]*ai.FunctionTool, 0, a.tools.Len())
 	allowed := make(map[string]struct{}, a.tools.Len())
 	a.tools.ForEach(func(_ string, tool Tool) {
@@ -1123,6 +1131,9 @@ func (a *Agent) BuildFunctionTools(phase builtin_tools.AgentPhase) ([]*ai.Functi
 		}
 		name := strings.TrimSpace(tool.Name())
 		if !a.toolEnabledInPhase(name, phase) {
+			return
+		}
+		if finalAnswerForbidden && name == builtin_tools.SubmitFinalAnswerToolName {
 			return
 		}
 		allowed[name] = struct{}{}
@@ -1247,7 +1258,12 @@ type aiCallProxyResult struct {
 	Compaction    *HistoryCompactionResult
 }
 
-func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClient, parts PromptParts, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+// AICallProxy 单轮 think_act 入口。
+//
+// runCtx 可为 nil（plan / step_replan / final_answer / intent 路径都传 nil）；
+// inline step 路径传非 nil 的 runCtx 用于桶路由（commit 7 真接桶时启用，本 commit
+// 阶段 runCtx 仅穿透不消费——保留参数为 commit 7 铺路，避免再改一次签名）。
+func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, parts PromptParts, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if a == nil || a.cfg == nil {
 		return nil, fmt.Errorf("agent not initialized")
 	}
@@ -1322,7 +1338,7 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 		var err error
 
 		if streamingClient, ok := runClient.(ai.StreamingChatClient); ok {
-			result, err = a.AICallProxyStream(ctx, iter, runClient, streamingClient, msgs, requestOptions, tools...)
+			result, err = a.AICallProxyStream(ctx, runCtx, iter, runClient, streamingClient, msgs, requestOptions, tools...)
 		} else {
 			choices, callErr := ai.ChatExWithOptions(ctx, runClient, msgs, requestOptions, tools...)
 			if callErr != nil {
@@ -1357,7 +1373,9 @@ func (a *Agent) AICallProxy(ctx context.Context, iter int, runClient ai.ChatClie
 	return &aiCallProxyResult{}, nil
 }
 
-func (a *Agent) AICallProxyStream(ctx context.Context, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+// AICallProxyStream 单轮流式 think_act 入口。runCtx 当前未消费（同 AICallProxy 注释，commit 7 接桶时启用）。
+func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
+	_ = runCtx // 占位：commit 7 接桶时启用
 	if streamingClient == nil {
 		return &aiCallProxyResult{}, nil
 	}

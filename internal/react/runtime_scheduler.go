@@ -436,7 +436,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 const submitPlanToolName = "submit_plan"
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhasePlan)
+	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhasePlan)
 	fnTools = append(fnTools, buildSubmitPlanFunctionTool())
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
@@ -459,7 +459,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 		}
 
 		planCtx, planCancel := context.WithCancel(ctx)
-		callResult, callErr := a.AICallProxy(planCtx, iter, runClient, prompt, promptFamilyTaskPlanner, fnTools...)
+		callResult, callErr := a.AICallProxy(planCtx, nil, iter, runClient, prompt, promptFamilyTaskPlanner, fnTools...)
 		planCancel()
 		if callErr != nil {
 			return nil, fmt.Errorf("plan phase AICallProxy failed: %w", callErr)
@@ -1220,11 +1220,11 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		}
 	}
 	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
-	fnTools, allowedTools := a.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 
 	thinkCtx, thinkCancel := context.WithCancel(ctx)
 	defer thinkCancel()
-	callResult, err := a.AICallProxy(thinkCtx, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
+	callResult, err := a.AICallProxy(thinkCtx, nil, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
 	if err != nil {
 		return err
 	}

@@ -744,7 +744,7 @@ func TestBuild_SubAgentOmitsOrchestrationTools(t *testing.T) {
 				t.Errorf("sub-agent must not register %q", name)
 			}
 		}
-		fnTools, _ := child.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+		fnTools, _ := child.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 		for _, ft := range fnTools {
 			if ft.Function == nil {
 				continue
@@ -775,7 +775,7 @@ func TestBuild_SubAgentOmitsHumanConfirm(t *testing.T) {
 	)
 
 	exposesHumanConfirm := func(agent *Agent) bool {
-		fnTools, _ := agent.BuildFunctionTools(builtin_tools.AgentPhaseStep)
+		fnTools, _ := agent.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
 		for _, ft := range fnTools {
 			if ft.Function != nil && ft.Function.Name == builtin_tools.HumanConfirmToolName {
 				return true
