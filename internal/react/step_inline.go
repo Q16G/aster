@@ -1,8 +1,11 @@
 package react
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
+	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 )
 
@@ -56,6 +59,115 @@ func selectInlineStepPeers(maxParallel int, runningInline int, currentID string,
 		return nil
 	}
 	return out
+}
+
+// runInlineStep 跑单 stepID 的 think_act：parts build → AICallProxy → auto-complete or dispatch。
+// 共享主 agent 的 state / workspaceRuntime / emitter；按 runCtx 路由 history 与 PlanItem 写入：
+//   - runCtx == nil（主路径 current step）：a.stepHistory 写入；auto-complete 走 UpdateCurrentStep
+//   - runCtx != nil（inline peer，commit 8c 启用）：runCtx.Bucket.msgs 写入；
+//     auto-complete 走 UpdateInlineStep(runCtx.StepID)
+//
+// 调用方：commit 8b 只由 runStepPhase 用 nil 调用（行为不变）；commit 8c 增加 goroutine
+// 包装的 runStepsConcurrently 调用，给每个 peer 传带桶的 runCtx。
+//
+// snapshot 参数是调用方在合适时机抓的状态快照；runInlineStep 内部仍会按需 re-snapshot
+// （compaction / auto-complete 决策点）。
+func (a *Agent) runInlineStep(
+	ctx context.Context,
+	runCtx *InlineStepCtx,
+	runClient ai.ChatClient,
+	iter int,
+	snapshot builtin_tools.StateSnapshot,
+	extraText string,
+) error {
+	currentStep := snapshot.CurrentStep()
+
+	parts := a.thinkActPartsForStep(ctx, extraText, snapshot)
+	fnTools, allowedTools := a.BuildFunctionTools(runCtx, builtin_tools.AgentPhaseStep)
+
+	thinkCtx, thinkCancel := context.WithCancel(ctx)
+	defer thinkCancel()
+	callResult, err := a.AICallProxy(thinkCtx, runCtx, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
+	if err != nil {
+		return err
+	}
+
+	snapshot = a.state.Snapshot()
+	if shouldStopAfterCompaction(callResult.Compaction, snapshot) {
+		reason := ""
+		if callResult.Compaction != nil {
+			reason = callResult.Compaction.TerminalReason
+		}
+		return &CompactionTerminatedError{
+			Reason:  reason,
+			Message: buildHistoryCompactionStopMessage(callResult.Compaction),
+		}
+	}
+
+	// 自动完成：模型未调任何工具但出了正文。
+	// 主路径用 UpdateCurrentStep；inline peer 用 UpdateInlineStep(peerStepID) 显式定位。
+	if callResult != nil && len(callResult.ToolCalls) == 0 {
+		// A4 守卫：仍有后台子 Agent 在跑时不能自动完成本 step（避免父 turn 终止取消子 ctx）。
+		// 仅主路径需要此守卫——inline peer 自身不会启动 sub_agent（peer 桶 FinalAnswerAllowed=false
+		// 也不允许 finalize）。
+		if runCtx == nil && a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
+			a.awaitBackgroundRequested = true
+			a.emitRuntimeLog("info", "deferring step completion: background sub-agents running", snapshot, map[string]any{
+				"event":   "step_defer_for_background",
+				"step_id": stepIDOf(currentStep),
+				"running": len(a.asyncRegistry.RunningAgents()),
+			})
+			return nil
+		}
+		assistantText := strings.TrimSpace(callResult.AssistantText)
+		if assistantText == "" {
+			a.emitRuntimeLog("error", "step phase produced empty output", snapshot, map[string]any{
+				"event":   "step_phase_empty_output_error",
+				"step_id": stepIDOf(currentStep),
+			})
+			return fmt.Errorf("step produced no tool calls and empty content")
+		}
+		if runCtx != nil {
+			// inline peer 自动完成：UpdateInlineStep 显式按 stepID 定位，不动 CurrentStepID/Phase。
+			snapshot = a.state.UpdateInlineStep(runCtx.StepID, builtin_tools.CurrentStepUpdate{
+				Status:        builtin_tools.PlanStepCompleted,
+				Summary:       assistantText,
+				DisplayResult: assistantText,
+			})
+		} else {
+			snapshot = a.state.Snapshot()
+			current := snapshot.CurrentStep()
+			if current == nil || strings.TrimSpace(current.ID) == "" {
+				return fmt.Errorf("step missing current plan item")
+			}
+			snapshot = a.state.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
+				Status:        builtin_tools.PlanStepCompleted,
+				Summary:       assistantText,
+				DisplayResult: assistantText,
+			})
+		}
+		a.emitter.EmitStateChange(snapshot)
+		a.emitRuntimeLog("warning", "auto completed step from assistant content", snapshot, map[string]any{
+			"event":        "auto_step_complete",
+			"step_id":      stepIDOf(currentStep),
+			"content_size": len(assistantText),
+		})
+		return nil
+	}
+
+	executedToolCalls, dispatchErr := a.dispatchToolCalls(ctx, runCtx, iter, callResult.ToolCalls, allowedTools)
+	if dispatchErr != nil {
+		return dispatchErr
+	}
+
+	snapshot = a.state.Snapshot()
+	a.emitRuntimeLog("info", "step phase executed tool calls", snapshot, map[string]any{
+		"event":                "step_phase_tool_calls_executed",
+		"tool_calls_requested": len(callResult.ToolCalls),
+		"tool_calls_executed":  executedToolCalls,
+		"will_continue":        !snapshot.Terminal(),
+	})
+	return nil
 }
 
 // collectInlineStepIDs 把本轮要并发跑的 stepID 集合化为 [current, peer1, peer2, ...]。
