@@ -207,9 +207,13 @@ func partStepID(p DisplayPart) string {
 	return ""
 }
 
-// thinkingStepID 占位：ThinkingPart 暂未加 StepID 字段（commit 12 路由时若需要再加）。
-// 当前固定返回空——thinking 仍按主路径分组。
-func thinkingStepID(_ *ThinkingPart) string { return "" }
+// thinkingStepID 提取 ThinkingPart 的 StepID（fix/06 真正激活——peer think 块归到 inline_step 卡片）。
+func thinkingStepID(t *ThinkingPart) string {
+	if t == nil {
+		return ""
+	}
+	return t.StepID
+}
 
 // Len returns the number of parts currently stored.
 func (s *PartsStore) Len() int { return len(s.parts) }
@@ -515,12 +519,21 @@ func (s *PartsStore) SubAgentsThisTurn() []SubAgentPart {
 //
 // The Version of an extended part is bumped so the Renderer's fragment cache
 // can invalidate just that fragment on the next Render call.
-func (s *PartsStore) AppendThinkingDelta(agentName, groupID, delta string, now time.Time) (id uint64, created bool) {
+func (s *PartsStore) AppendThinkingDelta(agentName, groupID, stepID, delta string, now time.Time) (id uint64, created bool) {
 	if groupID != "" {
 		if idx, ok := s.idxByThinkingGroup[thinkingKey{agentName, groupID}]; ok && idx >= 0 && idx < len(s.parts) {
 			p := &s.parts[idx]
 			if p.Type == PartTypeThinking && p.Thinking != nil {
 				p.Thinking.Content += delta
+				// stepID 路由：首条 delta 创建 part 时填；后续 delta 若 stepID 一致
+				// 不动；若不一致也不重设（同 GroupID 通常不会切 step，安全侧只填空缺）。
+				if p.Thinking.StepID == "" && stepID != "" {
+					p.Thinking.StepID = stepID
+					if s.idxByStepID == nil {
+						s.idxByStepID = make(map[string][]int)
+					}
+					s.idxByStepID[stepID] = append(s.idxByStepID[stepID], idx)
+				}
 				p.Version++
 				s.dirty[p.ID] = struct{}{}
 				return p.ID, false
@@ -530,7 +543,7 @@ func (s *PartsStore) AppendThinkingDelta(agentName, groupID, delta string, now t
 	id = s.Append(DisplayPart{
 		Type:     PartTypeThinking,
 		Time:     now,
-		Thinking: &ThinkingPart{Content: delta, GroupID: groupID, AgentName: agentName},
+		Thinking: &ThinkingPart{Content: delta, GroupID: groupID, AgentName: agentName, StepID: stepID},
 	})
 	return id, true
 }

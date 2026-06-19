@@ -193,21 +193,26 @@ func (e *Emitter) ResetThinkGroupID() {
 	e.mu.Unlock()
 }
 
-// EmitThink 发射思考事件
-func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string) {
+// EmitThink 发射思考事件。stepID 标记 inline_step 归属（peer 走 runCtx.StepID；
+// 主路径 / 非 step phase 传空字符串），TUI 用于 ThinkingPart.StepID + idxByStepID。
+func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string, stepID string) {
 	groupID := e.EnsureThinkGroupID()
+	payload := map[string]any{
+		"content":           content,
+		"think_content":     thinkContent,
+		"reasoning_content": reasoningContent,
+		"tool_calls":        toolCalls,
+		"finish_reason":     finishReason,
+	}
+	if stepID != "" {
+		payload["step_id"] = stepID
+	}
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeThink,
 		NodeID:    "think",
 		GroupID:   groupID,
 		Iteration: iteration,
-		Payload: map[string]any{
-			"content":           content,
-			"think_content":     thinkContent,
-			"reasoning_content": reasoningContent,
-			"tool_calls":        toolCalls,
-			"finish_reason":     finishReason,
-		},
+		Payload:   payload,
 	})
 	if strings.TrimSpace(finishReason) != "" {
 		e.ResetThinkGroupID()

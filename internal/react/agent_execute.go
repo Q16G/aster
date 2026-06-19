@@ -1410,7 +1410,7 @@ func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, it
 		}
 		if delta.ReasoningContent != "" {
 			reasoningBuilder.WriteString(delta.ReasoningContent)
-			a.emitter.EmitThink(iter, "", delta.ReasoningContent, reasoningBuilder.String(), nil, delta.FinishReason)
+			a.emitter.EmitThink(iter, "", delta.ReasoningContent, reasoningBuilder.String(), nil, delta.FinishReason, runCtxStepID(runCtx))
 		}
 		if delta.Content != "" {
 			contentBuilder.WriteString(delta.Content)
@@ -1472,7 +1472,7 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, runCtx *InlineStepCtx, ite
 		}
 	}
 	if emitSummaryThink && msg.ReasoningOutput != "" {
-		a.emitter.EmitThink(iter, content, msg.ReasoningOutput, msg.ReasoningOutput, msg.ToolCalls, choice.FinishReason)
+		a.emitter.EmitThink(iter, content, msg.ReasoningOutput, msg.ReasoningOutput, msg.ToolCalls, choice.FinishReason, runCtxStepID(runCtx))
 	}
 
 	stepUsage := utils.BuildUsageSummary(runClient, msg.Usage)

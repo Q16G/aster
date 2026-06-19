@@ -456,7 +456,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			if groupID == "" {
 				groupID = strings.TrimSpace(event.EventID)
 			}
-			m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID)
+			stepID, _ := event.Payload["step_id"].(string)
+			m.chat.AppendThinkingForAgent(event.AgentName, thinkDelta, groupID, stepID)
 		}
 		if isRoot {
 			m.statusText = "thinking..."

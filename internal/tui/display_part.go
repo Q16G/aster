@@ -136,6 +136,9 @@ type ThinkingPart struct {
 	EventID   string `json:"event_id,omitempty"`
 	GroupID   string `json:"group_id,omitempty"`
 	AgentName string `json:"agent_name,omitempty"`
+	// StepID 标记该 think 块归属哪个 inline_step（commit 12+/fix/06 事件路由填入）。
+	// 空字符串=主路径/plan/replan/intent/final 等非 inline 上下文。
+	StepID string `json:"step_id,omitempty"`
 }
 
 type SummaryPart struct {

@@ -255,8 +255,12 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 			// 可按 ref 解引用读 peer 跑过的完整 transcript（与主路径 lastStepTranscriptBlobRef
 			// 对称）。单 writer：本 goroutine 已退出 think_act loop，桶 msgs 不再写；
 			// 主路径不竞争该 blob。
+			//
+			// **result == nil 防御**：所有正常 loop 退出路径都已设 result（终态 / err / 取消 /
+			// panic recover）；nil 只可能在未来 patch 漏写时出现——默认 Failed 让漏写显形，
+			// 不静默成功（silent-success-on-empty 是危险默认）。
 			if result == nil {
-				result = &builtin_tools.RunResult{Success: true}
+				result = &builtin_tools.RunResult{Success: false, Error: "inline peer exited with nil result"}
 			}
 			if ref := a.persistBucketTranscriptBlob(bucket); ref != "" {
 				result.TranscriptBlobRef = ref
