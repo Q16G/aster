@@ -231,7 +231,7 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 		a.state.MarkInlineStepInProgress(peerStepID)
 	}
 	if a.emitter != nil {
-		a.emitter.EmitJSON(EventTypeRemoteStepBgStart, peerStepID, map[string]any{
+		a.emitter.EmitJSON(EventTypeInlineStepStart, peerStepID, map[string]any{
 			"agent_id":  peerStepID,
 			"step_id":   peerStepID,
 			"workspace": a.workspaceRootDir,

@@ -375,7 +375,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			"has_running": m.chat.HasRunningSubAgents(),
 		})
 
-	case react.EventTypeRemoteStepBgStart:
+	case react.EventTypeInlineStepStart:
 		// X2 远程 step 卡片：复用 SubAgentPart 类型，Kind=remote_step 区分。
 		// 与 sub_agent BgStart 的差异：agent_id 就是 plan step id，无 launcher call_id 映射。
 		agentID, _ := event.Payload["agent_id"].(string)
@@ -408,7 +408,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			"status":   "running",
 		})
 
-	case react.EventTypeRemoteStepBgEnd:
+	case react.EventTypeInlineStepEnd:
 		agentID, _ := event.Payload["agent_id"].(string)
 		if agentID == "" {
 			return

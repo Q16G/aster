@@ -59,7 +59,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			// ctx is already canceled, so awaiting would return immediately; settle
 			// any still-running sub-agent cards as cancelled instead.
 			a.cancelRunningSubAgents()
-			a.cancelRunningRemoteSteps()
+			a.cancelRunningInlineSteps()
 			a.emitter.EmitIteration(iter, maxIterations, "terminal")
 			return a.finalizeResult(snapshot), nil
 		}
@@ -118,7 +118,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
 				a.awaitAllBackgroundSubAgents(ctx)
 				a.cancelRunningSubAgents()
-				a.cancelRunningRemoteSteps()
+				a.cancelRunningInlineSteps()
 			}
 			a.emitRuntimeLog("info", "scheduler iteration ended", snapshot, map[string]any{
 				"event":                "scheduler_iteration_end",
@@ -171,7 +171,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 	if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
 		a.awaitAllBackgroundSubAgents(ctx)
 		a.cancelRunningSubAgents()
-		a.cancelRunningRemoteSteps()
+		a.cancelRunningInlineSteps()
 	}
 	return a.finalizeResult(snapshot), nil
 }
@@ -1151,7 +1151,7 @@ func (a *Agent) handlePhaseError(
 	// Forced-failure terminal path: settle still-running sub-agent cards as
 	// cancelled so they do not stay stuck on "running".
 	a.cancelRunningSubAgents()
-	a.cancelRunningRemoteSteps()
+	a.cancelRunningInlineSteps()
 	if faErr != nil {
 		a.emitRuntimeLog("error", "final answer phase failed during error handling", snapshot, map[string]any{
 			"event":          "final_answer_phase_error_in_fallback",

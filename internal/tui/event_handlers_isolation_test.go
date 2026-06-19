@@ -88,7 +88,7 @@ func TestHandleAgentEvent_RemoteStepBgStart_DoesNotChangeStatusText(t *testing.T
 	m.statusText = "thinking..."
 
 	m.handleAgentEvent(&react.AgentOutputEvent{
-		Type:      react.EventTypeRemoteStepBgStart,
+		Type:      react.EventTypeInlineStepStart,
 		AgentName: "root",
 		Payload: map[string]any{
 			"agent_id":  "step-b",
