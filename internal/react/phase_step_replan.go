@@ -233,8 +233,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"plan_overview":          ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
 		"planner_journal_path":   plannerJournalPath,
 		"planner_journal":        plannerJournal,
-		"open_items_ledger":      readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"task_context_board":     readSharedFileForPromptWithLimit(workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"open_items_ledger":      readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"task_context_board":     readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
 		"step_file_content":      readSharedStepFileForPrompt(workspaceSharedDir, stepID),
 		"step_contexts_path":     stepContextsPath,
 		"step_transcript_path":   stepTranscriptPath,
@@ -962,18 +962,53 @@ func sharedFileLimitBytes(contextWindowTokens int) int {
 // 告知模型文件状态——这是 step_replan 阶段的设计意图。需要"缺失即留空"语义的调用方（如
 // task_planner 的 TaskContextBoard，HAS_TASK_CONTEXT_BOARD gate 仅判空串）改用
 // readSharedFileOptional，避免占位字符串被当事实板内容渲染。
-func readSharedFileForPrompt(sharedDir, name string) string {
-	return readSharedFileForPromptWithLimit(sharedDir, name, 0)
+func readSharedFileForPrompt(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string) string {
+	return readSharedFileForPromptWithLimit(runtime, sharedDir, name, 0)
 }
 
 // readSharedFileForPromptWithLimit 与 readSharedFileForPrompt 相同，但超过 limitBytes 时在
 // 尾部追加截断提示（含绝对文件路径），让模型自主决策是否用文件工具读取完整内容。
 // limitBytes <= 0 时不截断（同 readSharedFileForPrompt）。
-func readSharedFileForPromptWithLimit(sharedDir, name string, limitBytes int) string {
+//
+// runtime != nil 时通过 runtime.ReadFileRel("shared/"+name) 读取——这样共享 ledger
+// 文件（task_context.md / open_items.md）经过 sharedFileLocks 的 RLock 保护，
+// 与 inline_step 并发 WriteFile 路径串行化。runtime == nil 时退化为直接 os.ReadFile
+// （保留兼容路径，供未来非 runtime 上下文调用）。
+func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string, limitBytes int) string {
 	if sharedDir == "" {
 		return "(共享区不可用)"
 	}
-	return readFileForPromptWithLimit(filepath.Join(sharedDir, name), limitBytes)
+	absPath := filepath.Join(sharedDir, name)
+	if runtime != nil {
+		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join("shared", name)))
+		if err != nil {
+			return "(文件尚不存在)"
+		}
+		return truncateForPrompt(string(data), absPath, limitBytes)
+	}
+	return readFileForPromptWithLimit(absPath, limitBytes)
+}
+
+// truncateForPrompt 应用 readFileForPromptWithLimit 同款截断/占位策略到已读出的内容。
+// 抽出独立函数以便共享给 runtime-routed 读取路径（其 IO 已由 runtime.ReadFileRel 完成）。
+func truncateForPrompt(raw string, absPath string, limitBytes int) string {
+	content := strings.TrimSpace(raw)
+	if content == "" {
+		return "(文件为空)"
+	}
+	if limitBytes > 0 && len(content) > limitBytes {
+		cutByte := limitBytes
+		if i := strings.LastIndexByte(content[:limitBytes], '\n'); i >= limitBytes/2 {
+			cutByte = i
+		}
+		for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
+			cutByte--
+		}
+		truncated := content[:cutByte]
+		return truncated + "\n\n（[截断] 仅显示前 " +
+			formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
+	}
+	return content
 }
 
 // readFileForPromptWithLimit 是 readSharedFileForPromptWithLimit 的核心实现，接受绝对路径，
@@ -1072,8 +1107,21 @@ func (a *Agent) ensureTaskContextSkeleton() {
 // readSharedFileOptional 与 readSharedFileForPrompt 同源读取共享区文件，但所有"无内容"分支
 // （sharedDir 为空 / 文件不存在 / 文件为空）一律返回 ""，让外层的 `HAS_XXX` gate（基于
 // strings.TrimSpace != ""）正确判定"是否注入"。
-func readSharedFileOptional(sharedDir, name string) string {
-	if strings.TrimSpace(sharedDir) == "" || strings.TrimSpace(name) == "" {
+//
+// runtime != nil 时走 ReadFileRel 让 task_context.md / open_items.md 经 sharedFileLocks
+// 保护；nil 时退化为直接 os.ReadFile。
+func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string) string {
+	if strings.TrimSpace(name) == "" {
+		return ""
+	}
+	if runtime != nil {
+		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join("shared", name)))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(data))
+	}
+	if strings.TrimSpace(sharedDir) == "" {
 		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(sharedDir, name))

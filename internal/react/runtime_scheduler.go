@@ -282,7 +282,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
 		// TaskContextBoard 按动态上限截断：task_context.md 是精简事实板，正常不会过大，
 		// 但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
-		raw := readSharedFileOptional(a.workspaceRuntime.SharedDir(), taskContextFileName)
+		raw := readSharedFileOptional(a.workspaceRuntime, a.workspaceRuntime.SharedDir(), taskContextFileName)
 		limit := sharedFileLimitBytes(a.contextWindowTokens)
 		if limit > 0 && len(raw) > limit {
 			absPath := filepath.Join(a.workspaceRuntime.SharedDir(), taskContextFileName)
@@ -571,7 +571,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				// `## 输入事实` 须已落盘（planning_system「共享区终态」契约的机械兜底）。
 				// 超限降级为接受 + warning——闸门用于逼模型补写，事实板缺失不应使整个任务失败。
 				if parsed.NeedsPlanning && input.UserInputTurn && a.workspaceRuntime != nil {
-					raw := readSharedFileOptional(a.workspaceRuntime.SharedDir(), taskContextFileName)
+					raw := readSharedFileOptional(a.workspaceRuntime, a.workspaceRuntime.SharedDir(), taskContextFileName)
 					if !taskContextInputFactsPresent(raw) {
 						submitRetries++
 						if submitRetries <= maxSubmitRetries {

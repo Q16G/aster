@@ -38,7 +38,7 @@ func TestReadSharedFileForPromptWithLimit_Truncated(t *testing.T) {
 	}
 
 	const limit = 1024
-	result := readSharedFileForPromptWithLimit(dir, "open_items.md", limit)
+	result := readSharedFileForPromptWithLimit(nil, dir, "open_items.md", limit)
 
 	if !strings.Contains(result, "[截断]") {
 		t.Error("truncated result must contain warning marker")
@@ -65,7 +65,7 @@ func TestReadSharedFileForPromptWithLimit_UTF8Boundary(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "f.md"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result := readSharedFileForPromptWithLimit(dir, "f.md", 10)
+	result := readSharedFileForPromptWithLimit(nil, dir, "f.md", 10)
 	if !strings.Contains(result, "[截断]") {
 		t.Error("expected truncation marker")
 	}
@@ -83,7 +83,7 @@ func TestReadSharedFileForPromptWithLimit_NoBigFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := readSharedFileForPromptWithLimit(dir, "open_items.md", 20*1024)
+	result := readSharedFileForPromptWithLimit(nil, dir, "open_items.md", 20*1024)
 	if strings.Contains(result, "[截断]") {
 		t.Error("small file must not trigger truncation warning")
 	}
@@ -99,7 +99,7 @@ func TestReadSharedFileForPromptWithLimit_ZeroLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	// limit=0 表示不截断
-	result := readSharedFileForPromptWithLimit(dir, "big.md", 0)
+	result := readSharedFileForPromptWithLimit(nil, dir, "big.md", 0)
 	if strings.Contains(result, "[截断]") {
 		t.Error("limit=0 must not truncate")
 	}

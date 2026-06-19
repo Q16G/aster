@@ -83,7 +83,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"step_outcomes":        stepOutcomeViews,
 		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),
 		"planner_journal_path": plannerJournalPath,
-		"open_items_ledger":    readSharedFileForPromptWithLimit(workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
+		"open_items_ledger":    readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
 		"external_interrupt":   externalInterrupt,
 		"replan_context":       snapshot.ReplanContext,
 		"active_skill_names":   snapshot.ActiveSkillNames,
