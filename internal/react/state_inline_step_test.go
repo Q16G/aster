@@ -178,6 +178,40 @@ func TestUpdateInlineStep_RejectsNonTerminalStatus(t *testing.T) {
 	}
 }
 
+// TestUpdateInlineStep_TerminalGuard（fix/08 P1-4 红线）：
+// item 已是 Completed 时再调 UpdateInlineStep(Failed) 不应退回 Failed。
+func TestUpdateInlineStep_TerminalGuard(t *testing.T) {
+	tracker := setupFanOutPlan(t)
+
+	// 先把 c 翻 Completed（peer goroutine auto-complete 路径模拟）
+	tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
+		Status:        builtin_tools.PlanStepCompleted,
+		Summary:       "peer success",
+		ShortSummary:  "ok",
+	})
+	c := planItemByIDInSnap(tracker.Snapshot(), "c")
+	if c.Status != builtin_tools.PlanStepCompleted {
+		t.Fatalf("setup: expected c Completed, got %q", c.Status)
+	}
+
+	// drain 兜底 result.Success=false（ctx 取消窗口）→ UpdateInlineStep(Failed)
+	// 不应把 Completed 退回 Failed
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
+		Status: builtin_tools.PlanStepFailed,
+		Error:  "ctx cancelled after auto-complete",
+	})
+	cAfter := planItemByIDInSnap(snap, "c")
+	if cAfter.Status != builtin_tools.PlanStepCompleted {
+		t.Fatalf("terminal guard 失效：expected c Completed unchanged, got %q", cAfter.Status)
+	}
+
+	// d 不应被错误地传播为 Skipped——因为 c 没真翻 Failed
+	d := planItemByIDInSnap(snap, "d")
+	if d.Status == builtin_tools.PlanStepSkipped {
+		t.Fatalf("d 不应被传播 Skipped：c 仍是 Completed 而非 Failed")
+	}
+}
+
 func TestUpdateInlineStep_FailedPropagatesTransitively(t *testing.T) {
 	// 链式失败传播：c failed → d skipped → e skipped。
 	// 验证 PropagateSkippedPlanSteps 走完所有传递性依赖，不仅止于一跳。
