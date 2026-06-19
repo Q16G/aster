@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"aster/internal/builtin_tools"
 )
@@ -16,6 +17,17 @@ type localWorkspaceRuntime struct {
 	sessionID string
 	rootDir   string
 	namespace string
+
+	// sharedFileLocks 给 inline_step 并发场景下的共享 ledger 文件（task_context.md /
+	// open_items.md）加 per-file RWMutex 兜底，防止两个 goroutine 同时 WriteFile 时
+	// 出现 torn write（OS write 对 ≤4KB 块本就原子，但跨多块时理论上可被中断）。
+	//
+	// 不解 RMW lost-update——LLM 的「read→merge→write 整文件」事务跨多个工具调用，
+	// 单次 WriteFile 锁拦不到事务级丢失。lost-update 由 prompt 纪律承担：
+	// 本 step 只能 append 自己的条目，已闭环迁移由 step_replan 串行处理。
+	// 参见 [[feedback_no_atomic_ledger_tools]]。
+	sharedFileLocksMu sync.Mutex
+	sharedFileLocks   map[string]*sync.RWMutex
 }
 
 var _ builtin_tools.WorkspaceRuntime = (*localWorkspaceRuntime)(nil)
@@ -26,10 +38,44 @@ func newLocalWorkspaceRuntime(sessionID string, rootDir string, namespace string
 		return nil, fmt.Errorf("workspace root dir is empty")
 	}
 	return &localWorkspaceRuntime{
-		sessionID: strings.TrimSpace(sessionID),
-		rootDir:   rootDir,
-		namespace: builtin_tools.NormalizeWorkspaceNamespace(namespace),
+		sessionID:       strings.TrimSpace(sessionID),
+		rootDir:         rootDir,
+		namespace:       builtin_tools.NormalizeWorkspaceNamespace(namespace),
+		sharedFileLocks: make(map[string]*sync.RWMutex),
 	}, nil
+}
+
+// sharedFileLockKeys 列出需要 per-file RWMutex 保护的共享 ledger 路径
+// （相对 workspace root 的 slash 形式）。命中 → 取/建对应锁；不命中 → 返回 nil 不上锁。
+//
+// 当前仅保护 task_context.md / open_items.md（inline_step 并发写者；其他 shared 文件如
+// planner_skills_index 由 planner 单写、step_p*-s*.md 由 step 自己一写一读，无并发）。
+var sharedFileLockKeys = map[string]struct{}{
+	"shared/task_context.md": {},
+	"shared/open_items.md":   {},
+}
+
+// sharedFileLockFor 返回 relPath 对应的 per-file 锁；非保护路径返回 nil。
+// 锁的生命周期与 localWorkspaceRuntime 实例绑定，按需懒建。
+func (w *localWorkspaceRuntime) sharedFileLockFor(relPath string) *sync.RWMutex {
+	if w == nil {
+		return nil
+	}
+	key := filepath.ToSlash(strings.TrimSpace(relPath))
+	if _, ok := sharedFileLockKeys[key]; !ok {
+		return nil
+	}
+	w.sharedFileLocksMu.Lock()
+	defer w.sharedFileLocksMu.Unlock()
+	if w.sharedFileLocks == nil {
+		w.sharedFileLocks = make(map[string]*sync.RWMutex)
+	}
+	if lock, ok := w.sharedFileLocks[key]; ok {
+		return lock
+	}
+	lock := &sync.RWMutex{}
+	w.sharedFileLocks[key] = lock
+	return lock
 }
 
 func (w *localWorkspaceRuntime) SessionID() string {
@@ -108,6 +154,10 @@ func (w *localWorkspaceRuntime) ReadFileRel(relPath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if lock := w.sharedFileLockFor(relPath); lock != nil {
+		lock.RLock()
+		defer lock.RUnlock()
+	}
 	return os.ReadFile(absPath)
 }
 
@@ -118,6 +168,10 @@ func (w *localWorkspaceRuntime) WriteFileRel(relPath string, content []byte) err
 	}
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return err
+	}
+	if lock := w.sharedFileLockFor(relPath); lock != nil {
+		lock.Lock()
+		defer lock.Unlock()
 	}
 	return os.WriteFile(absPath, content, 0o644)
 }
