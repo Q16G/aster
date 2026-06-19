@@ -29,7 +29,7 @@ func iterationAllowed(iter, maxIterations int) bool {
 
 func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, extraText string, taskContext *TaskContextData, maxIterations int) (*builtin_tools.RunResult, error) {
 	for iter := 1; iterationAllowed(iter, maxIterations); iter++ {
-		a.drainAsyncAgentNotifications()
+		a.drainAsyncAgentNotifications(ctx)
 
 		if ctx != nil && ctx.Err() != nil {
 			snapshot := a.state.Snapshot()
@@ -59,6 +59,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			// ctx is already canceled, so awaiting would return immediately; settle
 			// any still-running sub-agent cards as cancelled instead.
 			a.cancelRunningSubAgents()
+			a.cancelRunningRemoteSteps()
 			a.emitter.EmitIteration(iter, maxIterations, "terminal")
 			return a.finalizeResult(snapshot), nil
 		}
@@ -67,7 +68,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
-		phase := currentPhase(snapshot)
+		phase := currentPhase(snapshot, a.maxParallelSteps())
 		if phase != snapshot.Phase {
 			_ = a.state.SetPhase(phase)
 			snapshot = a.state.Snapshot()
@@ -117,6 +118,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
 				a.awaitAllBackgroundSubAgents(ctx)
 				a.cancelRunningSubAgents()
+				a.cancelRunningRemoteSteps()
 			}
 			a.emitRuntimeLog("info", "scheduler iteration ended", snapshot, map[string]any{
 				"event":                "scheduler_iteration_end",
@@ -169,11 +171,19 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 	if a.asyncRegistry != nil && a.asyncRegistry.HasRunning() {
 		a.awaitAllBackgroundSubAgents(ctx)
 		a.cancelRunningSubAgents()
+		a.cancelRunningRemoteSteps()
 	}
 	return a.finalizeResult(snapshot), nil
 }
 
-func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
+// currentPhase 根据 state snapshot 决定下一轮路由进入的 phase。
+//
+// maxParallel 用于 X2 路由：≥2 时启用「Phase=StepReplan 但还有 ready → 绕回 Step」
+// 让主路径继续滚动跑下一个 ready；<2 时退化为原行为（保持串行兼容）。
+//
+// 关键边界：guard 比「step-terminal-defense」优先级低——后者守住"全部 terminal 进 FinalAnswer"
+// 不变量；guard 只在 StepReplan 分支生效。
+func currentPhase(snapshot builtin_tools.StateSnapshot, maxParallel int) builtin_tools.AgentPhase {
 	// 防御：卡在 Step 但已无可跑 step 且全部 terminal —— 任何路径走到这都改道收尾，杜绝空转。
 	if snapshot.Phase == builtin_tools.AgentPhaseStep &&
 		len(snapshot.Plan) > 0 &&
@@ -181,6 +191,16 @@ func currentPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase
 		builtin_tools.AllPlanStepsTerminal(snapshot.Plan) {
 		return builtin_tools.AgentPhaseFinalAnswer
 	}
+
+	// X2 滚动 guard：主路径 step 完成时 state.go:440 翻 Phase=StepReplan，但若 plan 上
+	// 仍有 ready（被刚完成的 step 解锁的下一波），先绕回 Step 让主路径滚动派发，
+	// 直到 ready=0 且 in_progress=0 才真正进 step_replan。
+	if maxParallel >= 2 &&
+		snapshot.Phase == builtin_tools.AgentPhaseStepReplan &&
+		builtin_tools.NextRunnablePlanStepID(snapshot.Plan) != "" {
+		return builtin_tools.AgentPhaseStep
+	}
+
 	switch snapshot.Phase {
 	case builtin_tools.AgentPhasePlan, builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan, builtin_tools.AgentPhaseFinalAnswer, builtin_tools.AgentPhaseIntentClassification:
 		return snapshot.Phase
@@ -1131,6 +1151,7 @@ func (a *Agent) handlePhaseError(
 	// Forced-failure terminal path: settle still-running sub-agent cards as
 	// cancelled so they do not stay stuck on "running".
 	a.cancelRunningSubAgents()
+	a.cancelRunningRemoteSteps()
 	if faErr != nil {
 		a.emitRuntimeLog("error", "final answer phase failed during error handling", snapshot, map[string]any{
 			"event":          "final_answer_phase_error_in_fallback",
@@ -1155,10 +1176,23 @@ func (a *Agent) prepareTerminalInterrupt(err error) {
 
 func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatClient, extraText string, taskContext *TaskContextData) error {
 	_ = a.state.SetPhase(builtin_tools.AgentPhaseStep)
+
+	// X2 滚动：主路径 step 完成后 CurrentStepID 仍指向已终态 step（state.go:436 注释保留）。
+	// 入口前先清空，让 EnsureCurrentStep 选下个 ready 作 current。MaxParallel<2 时为 no-op。
+	if a.maxParallelSteps() >= 2 {
+		_ = a.state.ResetCurrentStepIfTerminal()
+	}
+
 	_ = a.state.EnsureCurrentStep()
 	prevSnapshot := a.state.Snapshot()
 	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
 	snapshot := a.state.MarkCurrentStepInProgress()
+
+	// X2 fan-out：派发当前 ready 中除主路径以外的 peer step 到后台 goroutine。
+	// 主路径继续跑 think_act 循环，独立 step 在 goroutine 里跑各自的 child agent。
+	// MaxParallel<2 时为 no-op；slot 不足时不全部派发，剩下的留下一轮入口或 drain 二次 fan-out 接（面 3.2）。
+	a.fanOutReadyPeers(ctx, snapshot)
+
 	emitTaskItemDiffs(a.emitter, prevPlan, snapshot.Plan, snapshot.CurrentStepID, "")
 	// Ensure the in-step transcript layer is bound to current_step_id before calling the model.
 	// Otherwise the first tool transcript may be written while step id is empty, and then

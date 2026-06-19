@@ -22,6 +22,11 @@ type AgentFactory struct {
 	onHumanInput      builtin_tools.OnHumanInputFunc
 	mcpManager        *mcp.Manager
 	promptCacheConfig *ai.PromptCacheConfig
+
+	// maxParallelSteps X2 滚动 fan-out 上限（含主路径）。0 或 1 = 串行（默认）。
+	// 由 cmd/aster/main.go 从 AppConfig.React.MaxParallelSteps 读取并通过
+	// WithFactoryMaxParallelSteps 注入；Build 时仅在 ≥2 时附加 react.WithMaxParallelSteps Option。
+	maxParallelSteps int
 }
 
 type FactoryOption func(*AgentFactory)
@@ -88,6 +93,15 @@ func WithFactoryPromptCacheConfig(cfg *ai.PromptCacheConfig) FactoryOption {
 	}
 }
 
+// WithFactoryMaxParallelSteps 设置 X2 滚动 fan-out 上限。
+// 0/1 = 串行（保持现状）；≥2 启用并发派发同层 ready step。
+// 仅对非 sub_agent 根 Agent 生效（sub_agent 不持有 agentFactory，无法 fan-out）。
+func WithFactoryMaxParallelSteps(n int) FactoryOption {
+	return func(f *AgentFactory) {
+		f.maxParallelSteps = n
+	}
+}
+
 // NewAgentFactory creates a factory with the given options.
 func NewAgentFactory(opts ...FactoryOption) *AgentFactory {
 	f := &AgentFactory{}
@@ -126,6 +140,12 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 
 	if f.promptCacheConfig != nil {
 		opts = append(opts, WithPromptCacheConfig(f.promptCacheConfig))
+	}
+
+	// X2 滚动 fan-out 上限：≥2 时附加；<2 保持 AgentConfig 零值 + getter 兜底返回 1。
+	// sub_agent 自身不 spawn 远程 step（agentFactory 不注入），即使配置了也无副作用。
+	if f.maxParallelSteps >= 2 {
+		opts = append(opts, WithMaxParallelSteps(f.maxParallelSteps))
 	}
 
 	// Policies
@@ -167,6 +187,16 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 	// Orchestration tools are only registered for non-sub-agents. Sub-agents
 	// (depth>0) must neither register nor expose these in their prompt.
 	if !def.IsSubAgent {
+		// X2 fan-out 需要在 spawnRemoteStep 派发远程 step 时复用同一 factory 构造 child agent。
+		// 仅注入到根 Agent；sub_agent 自身不持有 factory，避免嵌套 spawn。
+		agent.agentFactory = f
+
+		// X2 fan-out 也需要 asyncRegistry 注册远程 step entry。现状 ensureAsyncRegistry
+		// 是懒创建，只在 sub_agent_tool 调用时触发；若任务里 LLM 不用 sub_agent，registry
+		// 永 nil，fanOutReadyPeers 第一道闸门直接早退——根 agent 在 Build 时提前 ensure
+		// 确保 X2 调度可见可用。
+		agent.ensureAsyncRegistry()
+
 		if err := agent.registerTool(NewSubAgentTool(agent, f)); err != nil {
 			return nil, fmt.Errorf("register sub_agent tool for %q failed: %w", def.Name, err)
 		}

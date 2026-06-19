@@ -175,6 +175,10 @@ type SubAgentPart struct {
 	ChildRef      string        `json:"child_ref,omitempty"`
 	Duration      time.Duration `json:"duration,omitempty"`
 	StartedAt     time.Time     `json:"started_at,omitempty"`
+
+	// Kind 区分卡片类型：默认空字符串视同 "sub_agent"，X2 远程 step 走 "remote_step"。
+	// 卡片渲染按 Kind 选 icon / 标题前缀，PartsStore 索引、idxByCallID、cursor 等抽象与 Kind 解耦。
+	Kind string `json:"kind,omitempty"`
 }
 
 type FinalAnswerPart struct {

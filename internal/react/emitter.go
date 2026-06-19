@@ -39,6 +39,10 @@ const (
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
 	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"
 	EventTypeSubAgentBgEnd     EventType = "subagent_bg_end"
+	// EventTypeRemoteStepBgStart/BgEnd 是 X2 远程 step 卡片事件，与 sub_agent
+	// 的 BgStart/BgEnd 同结构但 Kind 不同——drain 路径按 Kind 分流。
+	EventTypeRemoteStepBgStart EventType = "remote_step_bg_start"
+	EventTypeRemoteStepBgEnd   EventType = "remote_step_bg_end"
 )
 
 // AgentOutputEvent 统一的事件结构

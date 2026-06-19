@@ -81,6 +81,11 @@ type Agent struct {
 
 	asyncRegistry *AsyncAgentRegistry
 
+	// agentFactory 在 AgentFactory.Build 路径里为非 sub_agent 的根 Agent 注入，
+	// 供 X2 step_fanout.spawnRemoteStep 派发远程 step 时复用同一 factory 构造 child。
+	// sub_agent 自身的 Agent 实例不持有 factory，避免嵌套 spawn。
+	agentFactory *AgentFactory
+
 	// awaitBackgroundRequested 由 await_subagents 工具置位，调度循环读到后会在
 	// 非终态时 park 等待后台子 Agent 完成（等待期间零模型调用），随后无条件清除。
 	// 仅在调度 goroutine 上读写，无并发问题。
@@ -463,7 +468,7 @@ func (a *Agent) syncStepHistoryLayer(snapshot builtin_tools.StateSnapshot) {
 	if a == nil {
 		return
 	}
-	currentPhase := currentPhase(snapshot)
+	currentPhase := currentPhase(snapshot, a.maxParallelSteps())
 	prevPhase := a.stepHistoryPhase
 	prevStepID := strings.TrimSpace(a.stepHistoryStepID)
 	prevPlanVer := a.stepHistoryPlanVer
@@ -799,4 +804,16 @@ func (a *Agent) GetOnHumanInput() builtin_tools.OnHumanInputFunc {
 		return nil
 	}
 	return a.cfg.OnHumanInput
+}
+
+// maxParallelSteps 返回同层 ready step 最大并发数（含主路径）。
+// nil 防御 + 默认 1（向后兼容串行）。配置为 0 / 负数时也回退到 1。
+func (a *Agent) maxParallelSteps() int {
+	if a == nil || a.cfg == nil {
+		return 1
+	}
+	if a.cfg.MaxParallelSteps < 1 {
+		return 1
+	}
+	return a.cfg.MaxParallelSteps
 }

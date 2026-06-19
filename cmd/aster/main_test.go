@@ -156,3 +156,37 @@ func TestChooseDefaultAgentDefinition_FallsBackToFirst(t *testing.T) {
 	}
 }
 
+
+func TestMaxParallelStepsFromConfig_NilConfig(t *testing.T) {
+	if got := maxParallelStepsFromConfig(nil); got != 1 {
+		t.Fatalf("expected 1 for nil config, got %d", got)
+	}
+}
+
+func TestMaxParallelStepsFromConfig_NilReact(t *testing.T) {
+	cfg := &tui.AppConfig{React: nil}
+	if got := maxParallelStepsFromConfig(cfg); got != 1 {
+		t.Fatalf("expected 1 for nil React, got %d", got)
+	}
+}
+
+func TestMaxParallelStepsFromConfig_Set(t *testing.T) {
+	cfg := &tui.AppConfig{React: &tui.ReactConfig{MaxParallelSteps: 5}}
+	if got := maxParallelStepsFromConfig(cfg); got != 5 {
+		t.Fatalf("expected 5, got %d", got)
+	}
+}
+
+func TestMaxParallelStepsFromConfig_ZeroNormalized(t *testing.T) {
+	cfg := &tui.AppConfig{React: &tui.ReactConfig{MaxParallelSteps: 0}}
+	if got := maxParallelStepsFromConfig(cfg); got != 1 {
+		t.Fatalf("expected 1 for zero, got %d", got)
+	}
+}
+
+func TestMaxParallelStepsFromConfig_NegativeNormalized(t *testing.T) {
+	cfg := &tui.AppConfig{React: &tui.ReactConfig{MaxParallelSteps: -3}}
+	if got := maxParallelStepsFromConfig(cfg); got != 1 {
+		t.Fatalf("expected 1 for negative, got %d", got)
+	}
+}

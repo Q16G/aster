@@ -89,6 +89,12 @@ type AgentConfig struct {
 	// IsSubAgent 标记本 Agent 是 depth>0 的子 agent。子 agent 不注册 human_confirm：
 	// 嵌套的 durable interrupt 永远无法送达人类，请求只会挂起并失败。
 	IsSubAgent bool
+
+	// MaxParallelSteps 同层 ready step 最大并发数（含主路径）。0 或 1 = 串行（默认，
+	// 完全向后兼容现状）；≥2 启用 X2 滚动 fan-out——调度器在 runStepPhase 入口扫
+	// ReadyRunnablePlanStepIDs，把当前 current 以外的 ready 通过 spawnRemoteStep
+	// 派发为远程 step；drain 路径按 kind 分流到 state.UpdateRemotePlanItem。
+	MaxParallelSteps int
 }
 
 // Option Agent 配置选项
@@ -114,6 +120,17 @@ func WithMaxIterations(n int) Option {
 		if n > 0 {
 			c.MaxIterations = n
 		}
+	}
+}
+
+// WithMaxParallelSteps 设置同层 ready step 最大并发数（含主路径）。
+// 0/1 = 串行（默认）；≥2 启用 X2 滚动 fan-out。
+func WithMaxParallelSteps(n int) Option {
+	return func(c *AgentConfig) {
+		if c == nil {
+			return
+		}
+		c.MaxParallelSteps = n
 	}
 }
 

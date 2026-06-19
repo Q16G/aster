@@ -176,7 +176,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 						Time: time.Now(),
 						Text: &TextPart{Content: resultStr, AgentName: event.AgentName},
 					})
-					m.persistPart("result", "", resultStr)
+					// 持久化必须带 agentName：child agent 的 result 若以裸 persistPart 落盘，
+					// session 恢复时 partAgentName(part) 返回 ""，filterMainParts 会误判为
+					// root agent 的 part 进主流。
+					m.persistPartWithAgent("result", "", event.AgentName, resultStr)
 				}
 			}
 		}
@@ -245,9 +248,15 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				// reflows the chat width — recompute the layout now.
 				m.updateLayout()
 			}
-			m.statusText = fmt.Sprintf("agent: %s", toolName)
+			// 仅 root agent 的工具调用才改主状态栏。X2 远程 step（child agent）
+			// 调工具时不应污染主 statusText——保持 root 当前活动描述。
+			if isRoot {
+				m.statusText = fmt.Sprintf("agent: %s", toolName)
+			}
 		} else {
-			m.statusText = fmt.Sprintf("calling %s...", toolName)
+			if isRoot {
+				m.statusText = fmt.Sprintf("calling %s...", toolName)
+			}
 		}
 		m.persistPartWithCallIDAndAgent("tool_start", toolName, callID, event.AgentName, args)
 
@@ -364,6 +373,67 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			"cardCallID":  cardCallID,
 			"status":      status,
 			"has_running": m.chat.HasRunningSubAgents(),
+		})
+
+	case react.EventTypeRemoteStepBgStart:
+		// X2 远程 step 卡片：复用 SubAgentPart 类型，Kind=remote_step 区分。
+		// 与 sub_agent BgStart 的差异：agent_id 就是 plan step id，无 launcher call_id 映射。
+		agentID, _ := event.Payload["agent_id"].(string)
+		if agentID == "" {
+			return
+		}
+		stepText, _ := event.Payload["step_text"].(string)
+		workspace, _ := event.Payload["workspace"].(string)
+		m.chat.AddPart(DisplayPart{
+			Type: PartTypeSubAgent,
+			Time: time.Now(),
+			SubAgent: &SubAgentPart{
+				AgentName:     agentID,
+				CallID:        agentID,
+				Kind:          subAgentPartKindRemoteStep,
+				Status:        "running",
+				Description:   stepText,
+				WorkspaceRoot: workspace,
+				StartedAt:     time.Now(),
+			},
+		})
+		m.updateLayout()
+		// 不写 m.statusText：X2 远程 step 是后台任务，与 #1 child tool_start
+		// 不污染主状态栏同款思路。卡片本身已在主对话区 + 右侧 panel 显示，
+		// 状态栏应继续反映 root agent 当前活动；高并发 spawn 时也避免被
+		// 最后一个 BgStart 覆盖、BgEnd 不清的"挂在远程 step id"现象。
+		runtimelog.LogJSON("debug", map[string]any{
+			"event":    "remote_step_card_bgstart",
+			"agent_id": agentID,
+			"status":   "running",
+		})
+
+	case react.EventTypeRemoteStepBgEnd:
+		agentID, _ := event.Payload["agent_id"].(string)
+		if agentID == "" {
+			return
+		}
+		status, _ := event.Payload["status"].(string)
+		summary, _ := event.Payload["summary"].(string)
+		// 复用 SubAgentByCallID 路径 + 终态守卫：cancelled 不覆盖已 completed/failed
+		m.chat.UpdateSubAgentByCallID(agentID, func(sa *SubAgentPart) {
+			if isTerminalSubAgentStatus(sa.Status) {
+				return
+			}
+			if status != "" {
+				sa.Status = status
+			} else {
+				sa.Status = "completed"
+			}
+			if summary != "" {
+				sa.Summary = summary
+			}
+		})
+		m.updateLayout()
+		runtimelog.LogJSON("debug", map[string]any{
+			"event":    "remote_step_card_bgend",
+			"agent_id": agentID,
+			"status":   status,
 		})
 
 	case react.EventTypeThink:
