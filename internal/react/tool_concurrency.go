@@ -292,7 +292,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		}
 
 		if slot.validationErr != "" {
-			a.AICallProxyWriteToolResult(slot.callID, slot.toolName, "", slot.argsMap, "", slot.validationErr, false)
+			a.AICallProxyWriteToolResult(nil, slot.callID, slot.toolName, "", slot.argsMap, "", slot.validationErr, false)
 			executed++
 			continue
 		}
@@ -319,7 +319,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		}
 		render := buildToolResultRender(slot.toolName, slot.out)
 		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText)
-		a.AICallProxyWriteToolResult(slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
+		a.AICallProxyWriteToolResult(nil, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
 		if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
 			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)

@@ -70,7 +70,7 @@ func TestAICallProxyWriteToolResult_PreservesImageContexts(t *testing.T) {
 	}
 
 	render := buildToolResultRender(builtin_tools.ReadFileToolName, out)
-	agent.AICallProxyWriteToolResult("call-read-image", builtin_tools.ReadFileToolName, "", nil, render.Content, "", false)
+	agent.AICallProxyWriteToolResult(nil, "call-read-image", builtin_tools.ReadFileToolName, "", nil, render.Content, "", false)
 
 	if len(agent.stepHistory) != 1 {
 		t.Fatalf("expected 1 step history item, got %d", len(agent.stepHistory))

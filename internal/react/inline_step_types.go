@@ -72,6 +72,48 @@ func (a *Agent) ensureBucket(stepID string, phase builtin_tools.AgentPhase, plan
 	return bucket
 }
 
+// historyMsgsFor 返回 inline step 当前活跃的 stepHistory 切片：
+//   - runCtx != nil && runCtx.Bucket != nil → 返回桶内 msgs（inline 路径）
+//   - 其余情况 → 退化为主 a.stepHistory（plan / step_replan / 单 step 主路径）
+//
+// **并发安全**：桶内 msgs 由该 stepID 自己的 goroutine 单写，外层调用者必须保证
+// 同一 stepID 不并发——这是 runStepsConcurrently（commit 8）的调度契约。
+func (a *Agent) historyMsgsFor(runCtx *InlineStepCtx) []*ai.MsgInfo {
+	if a == nil {
+		return nil
+	}
+	if runCtx != nil && runCtx.Bucket != nil {
+		return runCtx.Bucket.msgs
+	}
+	return a.stepHistory
+}
+
+// appendHistoryMsgFor 把一条消息 append 到 inline step 的活跃 history（桶或主）。
+// runCtx 路由规则与 historyMsgsFor 一致。
+func (a *Agent) appendHistoryMsgFor(runCtx *InlineStepCtx, msg *ai.MsgInfo) {
+	if a == nil || msg == nil {
+		return
+	}
+	if runCtx != nil && runCtx.Bucket != nil {
+		runCtx.Bucket.msgs = append(runCtx.Bucket.msgs, msg)
+		return
+	}
+	a.stepHistory = append(a.stepHistory, msg)
+}
+
+// setHistoryMsgsFor 整体替换 inline step 的活跃 history（典型场景：compaction 后写回）。
+// runCtx 路由规则与 historyMsgsFor 一致。
+func (a *Agent) setHistoryMsgsFor(runCtx *InlineStepCtx, msgs []*ai.MsgInfo) {
+	if a == nil {
+		return
+	}
+	if runCtx != nil && runCtx.Bucket != nil {
+		runCtx.Bucket.msgs = msgs
+		return
+	}
+	a.stepHistory = msgs
+}
+
 // dropBucket 删除指定 stepID 的桶；调用方应在该 stepID 的 goroutine 结束之后调用，
 // 避免 goroutine 仍在写 msgs 时桶被回收（map 删除本身受锁保护，但桶内 slice 写没锁）。
 func (a *Agent) dropBucket(stepID string) {
