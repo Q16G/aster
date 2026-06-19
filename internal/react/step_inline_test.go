@@ -6,6 +6,7 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/react/persistv2"
 )
 
 // selectInlineStepPeers — 纯函数选择逻辑单测（迁移自 step_fanout_test.go::selectFanOutPeers）。
@@ -276,6 +277,50 @@ func TestEffectiveStepID(t *testing.T) {
 	runCtx3 := &InlineStepCtx{StepID: "  trimmed-step  "}
 	if got := effectiveStepID(runCtx3, snap); got != "trimmed-step" {
 		t.Fatalf("runCtx StepID with whitespace: expected 'trimmed-step', got %q", got)
+	}
+}
+
+// TestPersistBucketTranscriptBlob（fix/04 P0-3 完整路径红线）：
+// peer 桶 transcript 一次性写 v2Store blob，ref 非空可被 step_replan 解引用。
+func TestPersistBucketTranscriptBlob(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := persistv2.Open(tmpDir, "test-sess")
+	if err != nil {
+		t.Fatalf("persistv2.Open: %v", err)
+	}
+
+	a := &Agent{
+		v2Store:       store,
+		stepHistories: make(map[string]*stepHistoryBucket),
+	}
+	bucket := a.ensureBucket("peer-x", builtin_tools.AgentPhaseStep, 1, []*ai.MsgInfo{
+		ai.NewUserMsgInfo("peer think 1"),
+		ai.NewUserMsgInfo("peer tool result"),
+	})
+
+	ref := a.persistBucketTranscriptBlob(bucket)
+	if ref == "" {
+		t.Fatalf("expected non-empty TranscriptBlobRef, got empty")
+	}
+
+	// 验证 blob 可读回
+	raw, rerr := store.ReadBlob(ref)
+	if rerr != nil {
+		t.Fatalf("ReadBlob(%q): %v", ref, rerr)
+	}
+	if len(raw) == 0 {
+		t.Fatalf("blob 为空")
+	}
+
+	// 空桶不写 blob
+	emptyBucket := a.ensureBucket("peer-empty", builtin_tools.AgentPhaseStep, 1, nil)
+	if ref := a.persistBucketTranscriptBlob(emptyBucket); ref != "" {
+		t.Fatalf("empty bucket 应不写 blob，got ref=%q", ref)
+	}
+
+	// nil bucket 安全
+	if ref := a.persistBucketTranscriptBlob(nil); ref != "" {
+		t.Fatalf("nil bucket 应返回 ''，got %q", ref)
 	}
 }
 
