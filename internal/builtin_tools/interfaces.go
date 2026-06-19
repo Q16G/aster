@@ -23,7 +23,7 @@ type TaskStateManager interface {
 
 // Emitter 内置工具依赖的事件发射接口（由 react.Emitter 实现）
 type Emitter interface {
-	EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string)
+	EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string, stepID string)
 	EmitToolStart(iteration int, call ToolCall, stepID string)
 	EmitToolEnd(iteration int, result ToolResult, stepID string)
 	EmitStateChange(snapshot StateSnapshot)

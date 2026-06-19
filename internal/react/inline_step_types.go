@@ -116,6 +116,16 @@ func (a *Agent) setHistoryMsgsFor(runCtx *InlineStepCtx, msgs []*ai.MsgInfo) {
 	a.stepHistory = msgs
 }
 
+// runCtxStepID 仅从 runCtx 取 StepID（不 fallback 到 snapshot）。供 EmitThink 等
+// "没有 snapshot 在手" 的事件路由使用——peer 路径 → 桶 StepID；主路径 → ""（plan/replan
+// 等没有"当前 step"概念的阶段也应是 ""）。
+func runCtxStepID(runCtx *InlineStepCtx) string {
+	if runCtx == nil {
+		return ""
+	}
+	return strings.TrimSpace(runCtx.StepID)
+}
+
 // effectiveStepID 在 runCtx 优先于 snapshot.CurrentStepID 的顺序下取出当前真实 stepID。
 //
 // 关键路径：peer goroutine 跑时 a.state.Snapshot().CurrentStepID 永远是**主 step ID**

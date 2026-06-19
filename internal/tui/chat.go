@@ -214,6 +214,7 @@ func (m *ChatModel) FlushStream(agentName string) bool {
 type thinkingState struct {
 	buf     strings.Builder
 	groupID string
+	stepID  string // fix/06：peer 桶 thinking 归到 inline_step 卡片
 }
 
 func (m *ChatModel) thinkingStateFor(agentName string) *thinkingState {
@@ -272,13 +273,14 @@ func (m *ChatModel) AppendThinking(delta string) {
 // AppendThinkingWithGroupID appends a root-agent thinking delta. Kept for
 // callers/tests that don't carry an agent name.
 func (m *ChatModel) AppendThinkingWithGroupID(delta string, groupID string) {
-	m.AppendThinkingForAgent("", delta, groupID)
+	m.AppendThinkingForAgent("", delta, groupID, "")
 }
 
 // AppendThinkingForAgent appends a thinking delta for a specific agent and
 // aggregates by group_id within that agent's stream. group_id is the primary
 // aggregation key; event_id is record-unique and should not be used for grouping.
-func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
+// stepID 用于 inline_step 桶分组（peer think → 卡片展开可见）；主路径/plan/replan 传 ""。
+func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID, stepID string) {
 	s := m.thinkingStateFor(agentName)
 
 	if groupID != "" && s.groupID != "" && groupID != s.groupID {
@@ -291,9 +293,19 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
 			p := &m.store.parts[idx]
 			if p.Type == PartTypeThinking && p.Thinking != nil {
 				p.Thinking.Content += delta
+				if p.Thinking.StepID == "" && stepID != "" {
+					p.Thinking.StepID = stepID
+					if m.store.idxByStepID == nil {
+						m.store.idxByStepID = make(map[string][]int)
+					}
+					m.store.idxByStepID[stepID] = append(m.store.idxByStepID[stepID], idx)
+				}
 				p.Version++
 				m.store.MarkDirty(p.ID)
 				s.groupID = groupID
+				if s.stepID == "" {
+					s.stepID = stepID
+				}
 				m.markDirty()
 				return
 			}
@@ -301,6 +313,9 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID string) {
 	}
 
 	s.groupID = groupID
+	if s.stepID == "" {
+		s.stepID = stepID
+	}
 	s.buf.WriteString(delta)
 	m.markDirty()
 }
@@ -326,7 +341,7 @@ func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
 	content := s.buf.String()
 	groupID := s.groupID
 
-	m.store.AppendThinkingDelta(agentName, groupID, content, time.Now())
+	m.store.AppendThinkingDelta(agentName, groupID, s.stepID, content, time.Now())
 	m.dropThinking(agentName)
 	m.markDirty()
 	return true

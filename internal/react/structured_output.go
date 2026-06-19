@@ -50,9 +50,9 @@ func (a *Agent) buildStructuredOutputStreamHandler() ai.StreamHandler {
 			return nil
 		}
 		if delta.ReasoningContent != "" || delta.FinishReason != "" {
-			a.emitter.EmitThink(0, "", delta.ReasoningContent, "", nil, delta.FinishReason)
+			a.emitter.EmitThink(0, "", delta.ReasoningContent, "", nil, delta.FinishReason, "")
 		} else if delta.Content != "" {
-			a.emitter.EmitThink(0, "", delta.Content, "", nil, "")
+			a.emitter.EmitThink(0, "", delta.Content, "", nil, "", "")
 		}
 		return nil
 	}

@@ -16,7 +16,7 @@ import (
 
 type noopEmitter struct{}
 
-func (noopEmitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string) {
+func (noopEmitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string, stepID string) {
 }
 func (noopEmitter) EmitToolStart(iteration int, call ToolCall, stepID string)        {}
 func (noopEmitter) EmitToolEnd(iteration int, result ToolResult, stepID string)      {}

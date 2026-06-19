@@ -1596,7 +1596,9 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		}
 		emitTaskItemDiffs(a.emitter, prevPlan, nextSnapshot.Plan, nextSnapshot.CurrentStepID, explanation)
 
-		stepID := strings.TrimSpace(prevSnapshot.CurrentStepID)
+		// fix/02 补漏：peer 桶里 LLM 误调 update_current_step 时（fix/09 屏蔽前的窗口），
+		// outcome attempt 必须按 runCtx 路由——否则把 peer 的 attempt 写到主 step outcome。
+		stepID := effectiveStepID(runCtx, prevSnapshot)
 		stepName := ""
 		if current := prevSnapshot.CurrentStep(); current != nil {
 			if stepID == "" {

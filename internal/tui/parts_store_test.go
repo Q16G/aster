@@ -113,11 +113,11 @@ func TestStore_AppendThinkingDelta_ResumeAfterFlush(t *testing.T) {
 	s := NewPartsStore()
 	now := time.Now()
 
-	id1, created1 := s.AppendThinkingDelta("root", "g1", "hello ", now)
+	id1, created1 := s.AppendThinkingDelta("root", "g1", "", "hello ", now)
 	if !created1 {
 		t.Fatal("first AppendThinkingDelta should report created=true")
 	}
-	id2, created2 := s.AppendThinkingDelta("root", "g1", "world", now)
+	id2, created2 := s.AppendThinkingDelta("root", "g1", "", "world", now)
 	if created2 {
 		t.Fatal("second AppendThinkingDelta for same (agent, group) should extend, not create")
 	}
@@ -261,7 +261,7 @@ func TestStore_SetAll_RebuildsAllIndexes(t *testing.T) {
 		t.Fatalf("LastUserIndex: want 0, got %d", s.LastUserIndex())
 	}
 	// Thinking group index: same-agent same-group resume should hit slot 3.
-	id, created := s.AppendThinkingDelta("root", "g", "y", time.Now())
+	id, created := s.AppendThinkingDelta("root", "g", "", "y", time.Now())
 	if created {
 		t.Fatal("AppendThinkingDelta after SetAll: want extend, got create")
 	}
