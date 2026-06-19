@@ -175,7 +175,7 @@ func TestDispatchToolCalls_SingleSafeFallsBackToSequential(t *testing.T) {
 
 	tcs := []*ai.FunctionTool{makeTC("1", "grep")}
 
-	executed, err := agent.dispatchToolCalls(context.Background(), 1, tcs, nil)
+	executed, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestDispatchToolCalls_MultipleSafeRunConcurrently(t *testing.T) {
 	}
 
 	start := time.Now()
-	executed, err := agent.dispatchToolCalls(context.Background(), 1, tcs, nil)
+	executed, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -233,7 +233,7 @@ func TestDispatchToolCalls_ResultsInOriginalOrder(t *testing.T) {
 		makeTC("fast-id", "fast"),
 	}
 
-	_, err := agent.dispatchToolCalls(context.Background(), 1, tcs, nil)
+	_, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestDispatchToolCalls_MixedSafeUnsafe(t *testing.T) {
 		makeTC("3", "safe_b"),
 	}
 
-	executed, err := agent.dispatchToolCalls(context.Background(), 1, tcs, nil)
+	executed, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -594,7 +594,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
-				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+				if err := a.executeToolCall(ctx, nil, iter, tc, allowedTools); err != nil {
 					return nil, err
 				}
 			} else {
@@ -1284,7 +1284,7 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		return nil
 	}
 
-	executedToolCalls, dispatchErr := a.dispatchToolCalls(ctx, iter, callResult.ToolCalls, allowedTools)
+	executedToolCalls, dispatchErr := a.dispatchToolCalls(ctx, nil, iter, callResult.ToolCalls, allowedTools)
 	if dispatchErr != nil {
 		return dispatchErr
 	}
@@ -1299,7 +1299,9 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	return nil
 }
 
-func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTool, allowedTools map[string]struct{}) error {
+// executeToolCall 单条 tool_call 分发执行；runCtx 用于桶路由（同 dispatchToolCalls 注释）。
+// 主路径传 nil（行为不变）；inline step 在 commit 8b 通过 runInlineStep 传真正 runCtx。
+func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter int, tc *ai.FunctionTool, allowedTools map[string]struct{}) error {
 	callID := strings.TrimSpace(tc.Id)
 	toolName := strings.TrimSpace(tc.Function.Name)
 	if toolName == "" {
@@ -1313,7 +1315,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
 	if len(allowedTools) > 0 {
 		if _, ok := allowedTools[toolName]; !ok {
-			a.AICallProxyWriteToolResult(nil, callID, toolName, "", map[string]any{}, "", "tool not available in current phase", false)
+			a.AICallProxyWriteToolResult(runCtx, callID, toolName, "", map[string]any{}, "", "tool not available in current phase", false)
 			return nil
 		}
 	}
@@ -1332,13 +1334,13 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 			}
 		}
 		errMsg := fmt.Sprintf("tool args parse failed: %v\n\nThe arguments JSON you provided is malformed. Raw arguments (truncated):\n%s\n\nPlease retry the tool call with valid JSON arguments.", argErr, rawArgs)
-		a.AICallProxyWriteToolResult(nil, callID, toolName, "", argsMap, "", errMsg, false)
+		a.AICallProxyWriteToolResult(runCtx, callID, toolName, "", argsMap, "", errMsg, false)
 		return nil
 	}
 
 	tool, exists := a.GetTool(toolName)
 	if !exists || tool == nil {
-		a.AICallProxyWriteToolResult(nil, callID, toolName, "", argsMap, "", "tool not found", false)
+		a.AICallProxyWriteToolResult(runCtx, callID, toolName, "", argsMap, "", "tool not found", false)
 		return nil
 	}
 
@@ -1641,7 +1643,7 @@ func (a *Agent) executeToolCall(ctx context.Context, iter int, tc *ai.FunctionTo
 	}
 	render := buildToolResultRender(toolName, out)
 	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
-	a.AICallProxyWriteToolResult(nil, callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
+	a.AICallProxyWriteToolResult(runCtx, callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
 	if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
 		event := newToolCallTimelineEvent(callID, toolName, argsMap, out, errText, outFullPath, toolDuration)

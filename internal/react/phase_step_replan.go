@@ -282,7 +282,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 				continue
 			}
 			if tc.Function.Name == submitReplanToolName {
-				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+				if err := a.executeToolCall(ctx, nil, iter, tc, allowedTools); err != nil {
 					return err
 				}
 				decision := submitTool.getResult()
@@ -295,7 +295,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 			}
 			if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 				anyUsefulTool = true
-				if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+				if err := a.executeToolCall(ctx, nil, iter, tc, allowedTools); err != nil {
 					return err
 				}
 			} else {

@@ -80,16 +80,19 @@ func partitionToolCalls(a *Agent, toolCalls []*ai.FunctionTool) (safe, unsafe []
 
 // dispatchToolCalls executes tool calls with concurrency for safe tools.
 // Returns the number of successfully dispatched tool calls.
-func (a *Agent) dispatchToolCalls(ctx context.Context, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
+//
+// runCtx 用于 inline step 桶路由——tool_result 通过 AICallProxyWriteToolResult 走 runCtx 桶。
+// 主路径调用方传 nil（行为不变）；commit 8b 接桶执行时传真正的 runCtx。
+func (a *Agent) dispatchToolCalls(ctx context.Context, runCtx *InlineStepCtx, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
 	safe, unsafe := partitionToolCalls(a, toolCalls)
 
 	if len(safe) < 2 {
-		return a.executeToolCallsSequentially(ctx, iter, toolCalls, allowedTools)
+		return a.executeToolCallsSequentially(ctx, runCtx, iter, toolCalls, allowedTools)
 	}
 
 	executed := 0
 
-	n, err := a.executeToolCallsConcurrently(ctx, iter, safe, allowedTools)
+	n, err := a.executeToolCallsConcurrently(ctx, runCtx, iter, safe, allowedTools)
 	executed += n
 	if err != nil {
 		return executed, err
@@ -98,13 +101,14 @@ func (a *Agent) dispatchToolCalls(ctx context.Context, iter int, toolCalls []*ai
 		return executed, nil
 	}
 
-	n2, err := a.executeToolCallsSequentially(ctx, iter, unsafe, allowedTools)
+	n2, err := a.executeToolCallsSequentially(ctx, runCtx, iter, unsafe, allowedTools)
 	executed += n2
 	return executed, err
 }
 
 // executeToolCallsSequentially runs tool calls one by one (the original behavior).
-func (a *Agent) executeToolCallsSequentially(ctx context.Context, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
+// runCtx 同 dispatchToolCalls 注释。
+func (a *Agent) executeToolCallsSequentially(ctx context.Context, runCtx *InlineStepCtx, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
 	executed := 0
 	for _, tc := range toolCalls {
 		if ctx.Err() != nil {
@@ -113,7 +117,7 @@ func (a *Agent) executeToolCallsSequentially(ctx context.Context, iter int, tool
 		if tc == nil || tc.Function == nil {
 			continue
 		}
-		if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+		if err := a.executeToolCall(ctx, runCtx, iter, tc, allowedTools); err != nil {
 			return executed, err
 		}
 		executed++
@@ -148,7 +152,8 @@ type concurrentToolSlot struct {
 
 // executeToolCallsConcurrently runs multiple concurrent-safe tools in parallel.
 // Tool results are written to stepHistory in the original call order.
-func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
+// runCtx 同 dispatchToolCalls 注释——所有 AICallProxyWriteToolResult 调用都路由到桶。
+func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *InlineStepCtx, iter int, toolCalls []*ai.FunctionTool, allowedTools map[string]struct{}) (int, error) {
 	prevSnapshot := a.state.Snapshot()
 
 	slots := make([]*concurrentToolSlot, len(toolCalls))
@@ -292,7 +297,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		}
 
 		if slot.validationErr != "" {
-			a.AICallProxyWriteToolResult(nil, slot.callID, slot.toolName, "", slot.argsMap, "", slot.validationErr, false)
+			a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, "", slot.argsMap, "", slot.validationErr, false)
 			executed++
 			continue
 		}
@@ -319,7 +324,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, iter int, tool
 		}
 		render := buildToolResultRender(slot.toolName, slot.out)
 		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText)
-		a.AICallProxyWriteToolResult(nil, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
+		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
 		if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
 			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)

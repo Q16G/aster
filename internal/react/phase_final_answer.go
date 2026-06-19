@@ -200,7 +200,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 					}
 					if _, ok := allowedTools[strings.TrimSpace(tc.Function.Name)]; ok {
 						anyUsefulTool = true
-						if err := a.executeToolCall(ctx, iter, tc, allowedTools); err != nil {
+						if err := a.executeToolCall(ctx, nil, iter, tc, allowedTools); err != nil {
 							return snapshot, err
 						}
 					} else {
