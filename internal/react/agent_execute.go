@@ -1261,8 +1261,9 @@ type aiCallProxyResult struct {
 // AICallProxy 单轮 think_act 入口。
 //
 // runCtx 可为 nil（plan / step_replan / final_answer / intent 路径都传 nil）；
-// inline step 路径传非 nil 的 runCtx 用于桶路由（commit 7 真接桶时启用，本 commit
-// 阶段 runCtx 仅穿透不消费——保留参数为 commit 7 铺路，避免再改一次签名）。
+// inline step 路径传非 nil 的 runCtx——当前 runCtx 已被 BuildFunctionTools 消费
+// （驱动 FinalAnswerAllowed 软挡板）；AICallProxy/Stream 内部的 history 桶路由
+// （a.stepHistory → runCtx.Bucket.msgs）由 commit 7 接桶时启用。
 func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, parts PromptParts, promptFamily string, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
 	if a == nil || a.cfg == nil {
 		return nil, fmt.Errorf("agent not initialized")
@@ -1373,9 +1374,11 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 	return &aiCallProxyResult{}, nil
 }
 
-// AICallProxyStream 单轮流式 think_act 入口。runCtx 当前未消费（同 AICallProxy 注释，commit 7 接桶时启用）。
+// AICallProxyStream 单轮流式 think_act 入口。runCtx 占位至 commit 7：
+// 本函数不直接消费 runCtx（无 BuildFunctionTools 决策点）；history 桶路由由 commit 7
+// 接桶时统一启用——届时 a.stepHistory 的读写改走 runCtx.Bucket.msgs。
 func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, iter int, runClient ai.ChatClient, streamingClient ai.StreamingChatClient, msgs []*ai.MsgInfo, requestOptions *ai.RequestOptions, tools ...*ai.FunctionTool) (*aiCallProxyResult, error) {
-	_ = runCtx // 占位：commit 7 接桶时启用
+	_ = runCtx // commit 7 接桶时启用
 	if streamingClient == nil {
 		return &aiCallProxyResult{}, nil
 	}
