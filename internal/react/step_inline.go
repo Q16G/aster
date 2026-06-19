@@ -241,6 +241,22 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 		})
 	}
 
+	// fix/10（P1-8）：spawn 兜底——register 已落、MarkInlineStepInProgress 已翻 InProgress，
+	// 但若本同步段 panic（极端如 OOM）或 go 关键字执行前异常，goroutine 永不存在 →
+	// 其内部 defer 不会跑 → PlanItem 永远 InProgress，registry 永远 running。
+	// spawnSucceeded 标志 + defer 兜底确保即使 spawn 段崩了也能 Complete + dropBucket。
+	spawnSucceeded := false
+	defer func() {
+		if spawnSucceeded {
+			return
+		}
+		a.asyncRegistry.Complete(peerStepID, &builtin_tools.RunResult{
+			Success: false,
+			Error:   "inline peer spawn failed before goroutine start",
+		})
+		a.dropBucket(peerStepID)
+	}()
+
 	go func() {
 		var result *builtin_tools.RunResult
 		defer func() {
@@ -288,6 +304,8 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 		}
 	}()
 
+	// goroutine 已起，spawn 同步段安全退出；spawn-level defer 不再兜底。
+	spawnSucceeded = true
 	return nil
 }
 
