@@ -51,6 +51,15 @@ type PartsStore struct {
 	// typed Update* lookup. See callIDKey for details.
 	idxByCallID map[callIDKey]int
 
+	// idxByStepID 把同一 inline_step 下的 ToolPart / ThinkingPart / etc 聚合到 stepID。
+	// 用于 InlineStepPart 卡片展开时获取归属于该 step 的所有子 part 序列。
+	// stepID 由事件路由（commit 12）从 emitter event payload 取出后 attach 到 Part。
+	idxByStepID map[string][]int
+
+	// inlineStepIdxThisTurn 是 SubAgentsThisTurn 的姊妹索引——本 turn 内出现的所有
+	// InlineStepPart 在 parts 切片里的下标，按插入序保留。
+	inlineStepIdxThisTurn []int
+
 	// idxByThinkingGroup maps (agent, group) to the parts index of that
 	// agent's currently-open ThinkingPart in the named group. Streaming
 	// thinking deltas append into the existing part via this index in O(1)
@@ -105,6 +114,7 @@ func NewPartsStore() *PartsStore {
 		spawnByCallID:      make(map[string]agentSpawnInfo),
 		agentParent:        make(map[string]agentSpawnInfo),
 		idxByCallID:        make(map[callIDKey]int),
+		idxByStepID:        make(map[string][]int),
 		idxByThinkingGroup: make(map[thinkingKey]int),
 		lastUserIdx:        -1,
 		childPartsByCallID: make(map[string][]int),
@@ -168,9 +178,38 @@ func partCallIDKey(p DisplayPart) callIDKey {
 		if p.SubAgent != nil && p.SubAgent.CallID != "" {
 			return callIDKey{kind: PartTypeSubAgent, id: p.SubAgent.CallID}
 		}
+	case PartTypeInlineStep:
+		if p.InlineStep != nil && p.InlineStep.StepID != "" {
+			return callIDKey{kind: PartTypeInlineStep, id: p.InlineStep.StepID}
+		}
 	}
 	return callIDKey{}
 }
+
+// partStepID 返回 part 归属的 inline_step stepID（若有）；用于 idxByStepID 维护。
+// ToolPart / ThinkingPart 走自身 StepID 字段；InlineStepPart 自己也归属自己的 stepID
+// （让 PartsForStep 能找到卡片本体）。
+func partStepID(p DisplayPart) string {
+	switch p.Type {
+	case PartTypeTool:
+		if p.Tool != nil {
+			return p.Tool.StepID
+		}
+	case PartTypeThinking:
+		if p.Thinking != nil {
+			return thinkingStepID(p.Thinking)
+		}
+	case PartTypeInlineStep:
+		if p.InlineStep != nil {
+			return p.InlineStep.StepID
+		}
+	}
+	return ""
+}
+
+// thinkingStepID 占位：ThinkingPart 暂未加 StepID 字段（commit 12 路由时若需要再加）。
+// 当前固定返回空——thinking 仍按主路径分组。
+func thinkingStepID(_ *ThinkingPart) string { return "" }
 
 // Len returns the number of parts currently stored.
 func (s *PartsStore) Len() int { return len(s.parts) }
@@ -204,14 +243,24 @@ func (s *PartsStore) Append(p DisplayPart) uint64 {
 	if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 		s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = idx
 	}
+	if sid := partStepID(p); sid != "" {
+		if s.idxByStepID == nil {
+			s.idxByStepID = make(map[string][]int)
+		}
+		s.idxByStepID[sid] = append(s.idxByStepID[sid], idx)
+	}
 	switch p.Type {
 	case PartTypeUser:
 		s.lastUserIdx = idx
 		s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+		s.inlineStepIdxThisTurn = s.inlineStepIdxThisTurn[:0]
 		s.subAgentVersion++
 	case PartTypeSubAgent:
 		s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, idx)
 		s.subAgentVersion++
+	case PartTypeInlineStep:
+		s.inlineStepIdxThisTurn = append(s.inlineStepIdxThisTurn, idx)
+		s.subAgentVersion++ // 复用同一 version 计数器触发右侧 panel 失效（panel 不渲 inline_step 但 main 区会变）
 	}
 	if cid := s.attributeChildCallID(p); cid != "" {
 		s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], idx)
@@ -240,9 +289,11 @@ func (s *PartsStore) Replace(i int, fn func(*DisplayPart)) {
 func (s *PartsStore) SetAll(parts []DisplayPart) {
 	s.parts = parts
 	s.idxByCallID = make(map[callIDKey]int, len(parts))
+	s.idxByStepID = make(map[string][]int)
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+	s.inlineStepIdxThisTurn = s.inlineStepIdxThisTurn[:0]
 	s.childPartsByCallID = make(map[string][]int)
 	var maxID uint64
 	for i, p := range parts {
@@ -252,6 +303,9 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 		if k := partCallIDKey(p); k.id != "" {
 			s.idxByCallID[k] = i
 		}
+		if sid := partStepID(p); sid != "" {
+			s.idxByStepID[sid] = append(s.idxByStepID[sid], i)
+		}
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
 		}
@@ -259,8 +313,11 @@ func (s *PartsStore) SetAll(parts []DisplayPart) {
 		case PartTypeUser:
 			s.lastUserIdx = i
 			s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+			s.inlineStepIdxThisTurn = s.inlineStepIdxThisTurn[:0]
 		case PartTypeSubAgent:
 			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
+		case PartTypeInlineStep:
+			s.inlineStepIdxThisTurn = append(s.inlineStepIdxThisTurn, i)
 		}
 		if cid := s.attributeChildCallID(p); cid != "" {
 			s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], i)
@@ -287,6 +344,28 @@ func (s *PartsStore) IndexBySubAgentCallID(callID string) (int, bool) {
 	return i, ok
 }
 
+// IndexByInlineStepID 返回 InlineStepPart 在 parts 切片里的下标（callID = stepID）。
+func (s *PartsStore) IndexByInlineStepID(stepID string) (int, bool) {
+	i, ok := s.idxByCallID[callIDKey{kind: PartTypeInlineStep, id: stepID}]
+	return i, ok
+}
+
+// PartsForStep 返回归属于指定 stepID 的所有 part 下标——包括 InlineStepPart 本体、
+// 该 step 内的 ToolPart / ThinkingPart 等。
+// 渲染层用此切片在 InlineStepPart 卡片展开时列出子序列。
+func (s *PartsStore) PartsForStep(stepID string) []int {
+	if stepID == "" || s.idxByStepID == nil {
+		return nil
+	}
+	indices := s.idxByStepID[stepID]
+	if len(indices) == 0 {
+		return nil
+	}
+	out := make([]int, len(indices))
+	copy(out, indices)
+	return out
+}
+
 // RebuildIndex rebuilds the side indexes from the current parts slice and
 // back-fills ID/Version for any part that was assigned directly (tests that
 // seed a timeline via store.parts = [...] rather than going through Append).
@@ -294,9 +373,11 @@ func (s *PartsStore) IndexBySubAgentCallID(callID string) (int, bool) {
 // SetAll; this method is the explicit escape hatch for direct slice writes.
 func (s *PartsStore) RebuildIndex() {
 	s.idxByCallID = make(map[callIDKey]int, len(s.parts))
+	s.idxByStepID = make(map[string][]int)
 	s.idxByThinkingGroup = make(map[thinkingKey]int)
 	s.lastUserIdx = -1
 	s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+	s.inlineStepIdxThisTurn = s.inlineStepIdxThisTurn[:0]
 	s.childPartsByCallID = make(map[string][]int)
 	var maxID uint64
 	for i := range s.parts {
@@ -313,6 +394,9 @@ func (s *PartsStore) RebuildIndex() {
 		if k := partCallIDKey(p); k.id != "" {
 			s.idxByCallID[k] = i
 		}
+		if sid := partStepID(p); sid != "" {
+			s.idxByStepID[sid] = append(s.idxByStepID[sid], i)
+		}
 		if p.Type == PartTypeThinking && p.Thinking != nil && p.Thinking.GroupID != "" {
 			s.idxByThinkingGroup[thinkingKey{p.Thinking.AgentName, p.Thinking.GroupID}] = i
 		}
@@ -320,8 +404,11 @@ func (s *PartsStore) RebuildIndex() {
 		case PartTypeUser:
 			s.lastUserIdx = i
 			s.subAgentIdxThisTurn = s.subAgentIdxThisTurn[:0]
+			s.inlineStepIdxThisTurn = s.inlineStepIdxThisTurn[:0]
 		case PartTypeSubAgent:
 			s.subAgentIdxThisTurn = append(s.subAgentIdxThisTurn, i)
+		case PartTypeInlineStep:
+			s.inlineStepIdxThisTurn = append(s.inlineStepIdxThisTurn, i)
 		}
 		if cid := s.attributeChildCallID(p); cid != "" {
 			s.childPartsByCallID[cid] = append(s.childPartsByCallID[cid], i)
@@ -376,6 +463,25 @@ func (s *PartsStore) PartsForChild(callID string) []int {
 // LastUserIndex returns the index of the most recent UserPart, or -1 when
 // none has been added yet.
 func (s *PartsStore) LastUserIndex() int { return s.lastUserIdx }
+
+// InlineStepsThisTurn returns the InlineStepParts spawned in the current turn
+// (after lastUserIdx) in arrival order. Mirror of SubAgentsThisTurn but for
+// inline_step 卡片——commit 10 抽出独立类型后右侧 SubAgentPanel 仍按类型过滤，
+// 本切片仅供主时间线渲染卡片用。
+func (s *PartsStore) InlineStepsThisTurn() []InlineStepPart {
+	if len(s.inlineStepIdxThisTurn) == 0 {
+		return nil
+	}
+	out := make([]InlineStepPart, 0, len(s.inlineStepIdxThisTurn))
+	for _, i := range s.inlineStepIdxThisTurn {
+		if i >= 0 && i < len(s.parts) {
+			if p := s.parts[i]; p.Type == PartTypeInlineStep && p.InlineStep != nil {
+				out = append(out, *p.InlineStep)
+			}
+		}
+	}
+	return out
+}
 
 // SubAgentsThisTurn returns a fresh slice of SubAgentParts spawned in the
 // current turn (after lastUserIdx) in arrival order. The returned slice is a
