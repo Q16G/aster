@@ -33,7 +33,7 @@ func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 				continue
 			}
 			switch notif.Kind {
-			case AsyncAgentKindRemoteStep:
+			case AsyncAgentKindInlineStep:
 				a.handleInlineStepNotification(notif)
 			default: // "" 或 AsyncAgentKindSubAgent
 				a.handleSubAgentNotification(notif)
@@ -207,7 +207,7 @@ func (a *Agent) cancelRunningSubAgents() {
 		if entry == nil {
 			continue
 		}
-		if entry.Kind == AsyncAgentKindRemoteStep {
+		if entry.Kind == AsyncAgentKindInlineStep {
 			continue
 		}
 		a.emitter.EmitJSON(EventTypeSubAgentBgEnd, entry.AgentID, map[string]any{
@@ -221,7 +221,7 @@ func (a *Agent) cancelRunningSubAgents() {
 // inline_step registry entry still marked running. Pairs with cancelRunningSubAgents
 // in the same scheduler cancel/teardown call sites.
 //
-// 与 cancelRunningSubAgents 对称：只处理 Kind=inline_step (AsyncAgentKindRemoteStep
+// 与 cancelRunningSubAgents 对称：只处理 Kind=inline_step (AsyncAgentKindInlineStep
 // 仍是旧名，commit 14 改名)。sub_agent 卡片通过同位置的 cancelRunningSubAgents 清理。
 // Must only be called from the scheduler goroutine.
 func (a *Agent) cancelRunningInlineSteps() {
@@ -232,7 +232,7 @@ func (a *Agent) cancelRunningInlineSteps() {
 		if entry == nil {
 			continue
 		}
-		if entry.Kind != AsyncAgentKindRemoteStep {
+		if entry.Kind != AsyncAgentKindInlineStep {
 			continue
 		}
 		a.emitter.EmitJSON(EventTypeInlineStepEnd, entry.AgentID, map[string]any{

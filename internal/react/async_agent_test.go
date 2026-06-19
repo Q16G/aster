@@ -448,16 +448,16 @@ drain:
 	}
 }
 
-func TestAsyncAgentRegistry_RegisterRemoteStep_KindIsSet(t *testing.T) {
+func TestAsyncAgentRegistry_RegisterInlineStep_KindIsSet(t *testing.T) {
 	r := NewAsyncAgentRegistry()
-	r.RegisterRemoteStep("step-c", "/tmp/ws/step-c")
+	r.RegisterInlineStep("step-c", "/tmp/ws/step-c")
 
 	entry := r.Get("step-c")
 	if entry == nil {
 		t.Fatal("expected entry for step-c")
 	}
-	if entry.Kind != AsyncAgentKindRemoteStep {
-		t.Fatalf("expected Kind=%q, got %q", AsyncAgentKindRemoteStep, entry.Kind)
+	if entry.Kind != AsyncAgentKindInlineStep {
+		t.Fatalf("expected Kind=%q, got %q", AsyncAgentKindInlineStep, entry.Kind)
 	}
 	if entry.Status != "running" {
 		t.Fatalf("expected Status=running, got %q", entry.Status)
@@ -480,49 +480,49 @@ func TestAsyncAgentRegistry_RegisterSubAgent_DefaultKindEmpty(t *testing.T) {
 	}
 }
 
-func TestAsyncAgentRegistry_RunningRemoteSteps_CountsByKind(t *testing.T) {
+func TestAsyncAgentRegistry_RunningInlineSteps_CountsByKind(t *testing.T) {
 	r := NewAsyncAgentRegistry()
 	r.Register("sa-1", "sub", "/tmp/sa1")
 	r.Register("sa-2", "sub", "/tmp/sa2")
-	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
-	r.RegisterRemoteStep("rs-b", "/tmp/rsb")
-	r.RegisterRemoteStep("rs-c", "/tmp/rsc")
+	r.RegisterInlineStep("rs-a", "/tmp/rsa")
+	r.RegisterInlineStep("rs-b", "/tmp/rsb")
+	r.RegisterInlineStep("rs-c", "/tmp/rsc")
 
-	if got := r.RunningRemoteSteps(); got != 3 {
+	if got := r.RunningInlineSteps(); got != 3 {
 		t.Fatalf("expected 3 running remote_step, got %d", got)
 	}
 
 	// 完成一个 remote_step，剩 2 个
 	r.Complete("rs-a", &builtin_tools.RunResult{Success: true})
-	if got := r.RunningRemoteSteps(); got != 2 {
+	if got := r.RunningInlineSteps(); got != 2 {
 		t.Fatalf("after one Complete, expected 2 running remote_step, got %d", got)
 	}
 
 	// 完成一个 sub_agent，remote_step 计数不变
 	r.Complete("sa-1", &builtin_tools.RunResult{Success: true})
-	if got := r.RunningRemoteSteps(); got != 2 {
+	if got := r.RunningInlineSteps(); got != 2 {
 		t.Fatalf("after sub_agent Complete, remote_step count should be unchanged, got %d", got)
 	}
 }
 
-func TestAsyncAgentRegistry_HasRunningRemoteSteps_TrueFalse(t *testing.T) {
+func TestAsyncAgentRegistry_HasRunningInlineSteps_TrueFalse(t *testing.T) {
 	r := NewAsyncAgentRegistry()
-	if r.HasRunningRemoteSteps() {
+	if r.HasRunningInlineSteps() {
 		t.Fatal("empty registry should not have running remote_step")
 	}
 
 	r.Register("sa-1", "sub", "/tmp/sa1")
-	if r.HasRunningRemoteSteps() {
-		t.Fatal("only sub_agent registered, HasRunningRemoteSteps should be false")
+	if r.HasRunningInlineSteps() {
+		t.Fatal("only sub_agent registered, HasRunningInlineSteps should be false")
 	}
 
-	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
-	if !r.HasRunningRemoteSteps() {
-		t.Fatal("after RegisterRemoteStep, expected true")
+	r.RegisterInlineStep("rs-a", "/tmp/rsa")
+	if !r.HasRunningInlineSteps() {
+		t.Fatal("after RegisterInlineStep, expected true")
 	}
 
 	r.Complete("rs-a", &builtin_tools.RunResult{Success: true})
-	if r.HasRunningRemoteSteps() {
+	if r.HasRunningInlineSteps() {
 		t.Fatal("after Complete, remote_step should not be running anymore")
 	}
 }
@@ -530,7 +530,7 @@ func TestAsyncAgentRegistry_HasRunningRemoteSteps_TrueFalse(t *testing.T) {
 func TestAsyncAgentRegistry_NotificationCarriesKind(t *testing.T) {
 	r := NewAsyncAgentRegistry()
 	r.Register("sa-1", "sub", "/tmp/sa1")
-	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
+	r.RegisterInlineStep("rs-a", "/tmp/rsa")
 
 	r.Complete("sa-1", &builtin_tools.RunResult{Success: true, Result: "sub done"})
 	r.Complete("rs-a", &builtin_tools.RunResult{Success: true, Result: "remote done"})
@@ -548,7 +548,7 @@ func TestAsyncAgentRegistry_NotificationCarriesKind(t *testing.T) {
 	if kinds["sa-1"] != "" {
 		t.Fatalf("sub_agent notification Kind expected \"\", got %q", kinds["sa-1"])
 	}
-	if kinds["rs-a"] != AsyncAgentKindRemoteStep {
-		t.Fatalf("remote_step notification Kind expected %q, got %q", AsyncAgentKindRemoteStep, kinds["rs-a"])
+	if kinds["rs-a"] != AsyncAgentKindInlineStep {
+		t.Fatalf("remote_step notification Kind expected %q, got %q", AsyncAgentKindInlineStep, kinds["rs-a"])
 	}
 }

@@ -224,9 +224,9 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 		FinalAnswerAllowed: false, // peer 桶禁 finalize（防 state 双写——P0-2 防线）
 	}
 
-	// 注册到 asyncRegistry（仍走老 RegisterRemoteStep API 直到 commit 14 改名）。
+	// 注册到 asyncRegistry（仍走老 RegisterInlineStep API 直到 commit 14 改名）。
 	// drain 路径会通过该注册看到 peer 的生命周期。
-	a.asyncRegistry.RegisterRemoteStep(peerStepID, a.workspaceRootDir)
+	a.asyncRegistry.RegisterInlineStep(peerStepID, a.workspaceRootDir)
 	if a.state != nil {
 		a.state.MarkInlineStepInProgress(peerStepID)
 	}
@@ -362,7 +362,7 @@ func (a *Agent) collectInlineStepIDs(snap builtin_tools.StateSnapshot) []string 
 	}
 	peers := selectInlineStepPeers(
 		maxParallel,
-		a.asyncRegistry.RunningRemoteSteps(),
+		a.asyncRegistry.RunningInlineSteps(),
 		currentID,
 		builtin_tools.ReadyRunnablePlanStepIDs(snap.Plan),
 		func(id string) bool { return a.asyncRegistry.Get(id) != nil },

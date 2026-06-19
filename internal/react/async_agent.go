@@ -30,12 +30,12 @@ type AsyncAgentRegistry struct {
 // 空字符串视同 sub_agent，保持现状调用方零改动。
 const (
 	AsyncAgentKindSubAgent   = "sub_agent"
-	AsyncAgentKindRemoteStep = "remote_step"
+	AsyncAgentKindInlineStep = "inline_step"
 )
 
 type AsyncAgentEntry struct {
 	AgentID      string
-	Kind         string // "" 或 AsyncAgentKindSubAgent / AsyncAgentKindRemoteStep
+	Kind         string // "" 或 AsyncAgentKindSubAgent / AsyncAgentKindInlineStep
 	Status       string // "running" | "completed" | "failed"
 	Instruction  string
 	WorkspaceDir string
@@ -62,7 +62,7 @@ func NewAsyncAgentRegistry() *AsyncAgentRegistry {
 }
 
 // Register adds a new running async agent (sub_agent 路径，Kind 默认空).
-// 保持现有调用方零改动；新引入的 remote_step 走 RegisterRemoteStep。
+// 保持现有调用方零改动；新引入的 remote_step 走 RegisterInlineStep。
 func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -75,15 +75,15 @@ func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string)
 	}
 }
 
-// RegisterRemoteStep 注册一个 X2 远程 step。AgentID 复用 plan step ID，
-// Kind = AsyncAgentKindRemoteStep。drain 路径据此分流到 state.UpdateInlineStep，
+// RegisterInlineStep 注册一个 X2 远程 step。AgentID 复用 plan step ID，
+// Kind = AsyncAgentKindInlineStep。drain 路径据此分流到 state.UpdateInlineStep，
 // 不灌 stepHistory（远程 step 的 transcript 由 step_fanout 落 blob，按指针读）。
-func (r *AsyncAgentRegistry) RegisterRemoteStep(stepID, workspaceDir string) {
+func (r *AsyncAgentRegistry) RegisterInlineStep(stepID, workspaceDir string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.agents[stepID] = &AsyncAgentEntry{
 		AgentID:      stepID,
-		Kind:         AsyncAgentKindRemoteStep,
+		Kind:         AsyncAgentKindInlineStep,
 		Status:       "running",
 		WorkspaceDir: workspaceDir,
 		StartedAt:    time.Now(),
@@ -195,9 +195,9 @@ func (r *AsyncAgentRegistry) HasRunning() bool {
 	return false
 }
 
-// RunningRemoteSteps 返回当前仍 running 的 remote_step 数。供 X2 fan-out
+// RunningInlineSteps 返回当前仍 running 的 remote_step 数。供 X2 fan-out
 // 决策按 MaxParallelSteps 上限判断是否还可派发新远程 step（不影响 sub_agent 计数）。
-func (r *AsyncAgentRegistry) RunningRemoteSteps() int {
+func (r *AsyncAgentRegistry) RunningInlineSteps() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	count := 0
@@ -205,22 +205,22 @@ func (r *AsyncAgentRegistry) RunningRemoteSteps() int {
 		if entry == nil {
 			continue
 		}
-		if entry.Status == "running" && entry.Kind == AsyncAgentKindRemoteStep {
+		if entry.Status == "running" && entry.Kind == AsyncAgentKindInlineStep {
 			count++
 		}
 	}
 	return count
 }
 
-// HasRunningRemoteSteps O(1) 早退实现，语义等价 RunningRemoteSteps() > 0。
-func (r *AsyncAgentRegistry) HasRunningRemoteSteps() bool {
+// HasRunningInlineSteps O(1) 早退实现，语义等价 RunningInlineSteps() > 0。
+func (r *AsyncAgentRegistry) HasRunningInlineSteps() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, entry := range r.agents {
 		if entry == nil {
 			continue
 		}
-		if entry.Status == "running" && entry.Kind == AsyncAgentKindRemoteStep {
+		if entry.Status == "running" && entry.Kind == AsyncAgentKindInlineStep {
 			return true
 		}
 	}
