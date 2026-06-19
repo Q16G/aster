@@ -274,7 +274,7 @@ func TestAsyncAgentRegistry_DrainSkipsStaleNotification(t *testing.T) {
 
 	// build a minimal Agent to call drainAsyncAgentNotifications
 	agent := &Agent{asyncRegistry: r}
-	agent.drainAsyncAgentNotifications()
+	agent.drainAsyncAgentNotifications(context.Background())
 
 	// stepHistory should be empty — stale notification should be skipped
 	if len(agent.stepHistory) != 0 {
@@ -445,5 +445,110 @@ drain:
 	r.Reset()
 	if r.HasRunning() {
 		t.Fatal("should have no agents after Reset")
+	}
+}
+
+func TestAsyncAgentRegistry_RegisterRemoteStep_KindIsSet(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.RegisterRemoteStep("step-c", "/tmp/ws/step-c")
+
+	entry := r.Get("step-c")
+	if entry == nil {
+		t.Fatal("expected entry for step-c")
+	}
+	if entry.Kind != AsyncAgentKindRemoteStep {
+		t.Fatalf("expected Kind=%q, got %q", AsyncAgentKindRemoteStep, entry.Kind)
+	}
+	if entry.Status != "running" {
+		t.Fatalf("expected Status=running, got %q", entry.Status)
+	}
+	if entry.WorkspaceDir != "/tmp/ws/step-c" {
+		t.Fatalf("workspace dir not propagated, got %q", entry.WorkspaceDir)
+	}
+}
+
+func TestAsyncAgentRegistry_RegisterSubAgent_DefaultKindEmpty(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("bg", "task", "/tmp/ws")
+
+	entry := r.Get("bg")
+	if entry == nil {
+		t.Fatal("expected entry for bg")
+	}
+	if entry.Kind != "" {
+		t.Fatalf("expected default Kind=\"\" (back-compat), got %q", entry.Kind)
+	}
+}
+
+func TestAsyncAgentRegistry_RunningRemoteSteps_CountsByKind(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("sa-1", "sub", "/tmp/sa1")
+	r.Register("sa-2", "sub", "/tmp/sa2")
+	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
+	r.RegisterRemoteStep("rs-b", "/tmp/rsb")
+	r.RegisterRemoteStep("rs-c", "/tmp/rsc")
+
+	if got := r.RunningRemoteSteps(); got != 3 {
+		t.Fatalf("expected 3 running remote_step, got %d", got)
+	}
+
+	// 完成一个 remote_step，剩 2 个
+	r.Complete("rs-a", &builtin_tools.RunResult{Success: true})
+	if got := r.RunningRemoteSteps(); got != 2 {
+		t.Fatalf("after one Complete, expected 2 running remote_step, got %d", got)
+	}
+
+	// 完成一个 sub_agent，remote_step 计数不变
+	r.Complete("sa-1", &builtin_tools.RunResult{Success: true})
+	if got := r.RunningRemoteSteps(); got != 2 {
+		t.Fatalf("after sub_agent Complete, remote_step count should be unchanged, got %d", got)
+	}
+}
+
+func TestAsyncAgentRegistry_HasRunningRemoteSteps_TrueFalse(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	if r.HasRunningRemoteSteps() {
+		t.Fatal("empty registry should not have running remote_step")
+	}
+
+	r.Register("sa-1", "sub", "/tmp/sa1")
+	if r.HasRunningRemoteSteps() {
+		t.Fatal("only sub_agent registered, HasRunningRemoteSteps should be false")
+	}
+
+	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
+	if !r.HasRunningRemoteSteps() {
+		t.Fatal("after RegisterRemoteStep, expected true")
+	}
+
+	r.Complete("rs-a", &builtin_tools.RunResult{Success: true})
+	if r.HasRunningRemoteSteps() {
+		t.Fatal("after Complete, remote_step should not be running anymore")
+	}
+}
+
+func TestAsyncAgentRegistry_NotificationCarriesKind(t *testing.T) {
+	r := NewAsyncAgentRegistry()
+	r.Register("sa-1", "sub", "/tmp/sa1")
+	r.RegisterRemoteStep("rs-a", "/tmp/rsa")
+
+	r.Complete("sa-1", &builtin_tools.RunResult{Success: true, Result: "sub done"})
+	r.Complete("rs-a", &builtin_tools.RunResult{Success: true, Result: "remote done"})
+
+	kinds := map[string]string{}
+	for i := 0; i < 2; i++ {
+		select {
+		case notif := <-r.notifications:
+			kinds[notif.AgentID] = notif.Kind
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("timeout waiting for notification %d", i)
+		}
+	}
+
+	if kinds["sa-1"] != "" {
+		t.Fatalf("sub_agent notification Kind expected \"\", got %q", kinds["sa-1"])
+	}
+	if kinds["rs-a"] != AsyncAgentKindRemoteStep {
+		t.Fatalf("remote_step notification Kind expected %q, got %q", AsyncAgentKindRemoteStep, kinds["rs-a"])
 	}
 }

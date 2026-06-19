@@ -19,15 +19,28 @@ func subAgentElapsed(sa *SubAgentPart) time.Duration {
 	return 0
 }
 
+// Kind 常量：与 react.AsyncAgentKind* 对齐（不直接 import 避免循环）。
+const (
+	subAgentPartKindSubAgent   = "sub_agent"
+	subAgentPartKindRemoteStep = "remote_step"
+)
+
 func renderSubAgentCard(sa *SubAgentPart, maxWidth int, expanded, selected bool) string {
 	if sa == nil {
 		return ""
 	}
 
+	// 按 Kind 区分卡片样式：sub_agent=⚡，remote_step=⇶（fan-out 多线箭头）。
+	// 默认空字符串视同 sub_agent，保持现状向后兼容。
 	icon := "⚡"
+	titleFallback := "sub_agent"
+	if sa.Kind == subAgentPartKindRemoteStep {
+		icon = "⇶"
+		titleFallback = "remote_step"
+	}
 	title := sa.AgentName
 	if title == "" {
-		title = "sub_agent"
+		title = titleFallback
 	}
 
 	var statusStyle lipgloss.Style

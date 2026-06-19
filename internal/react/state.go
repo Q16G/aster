@@ -303,6 +303,51 @@ func (t *StateTracker) EnsureCurrentStep() builtin_tools.StateSnapshot {
 	return *t.state
 }
 
+// ResetCurrentStepIfTerminal 当 CurrentStepID 指向已终态 (Completed/Failed/Skipped) 的
+// PlanItem 时清空 CurrentStepID。X2 滚动调度专用：主路径 step 完成后 CurrentStepID
+// 仍指向已完成 step，下一 iter 入 runStepPhase 前调用本方法清空，让后续
+// EnsureCurrentStep 选下个 ready 作为新 current。
+//
+// 与 EnsureCurrentStep 解耦：现状 EnsureCurrentStep 故意保留指向已完成 step 的
+// CurrentStepID（state.go:436-437 注释，供 step_summary 用）。本 helper 只在 X2
+// 滚动路径上显式调用，不影响其他依赖该语义的调用方。
+//
+// CurrentStepID 为空、定位不到 PlanItem 或仍是 pending/in_progress 时无副作用。
+func (t *StateTracker) ResetCurrentStepIfTerminal() builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	currentID := strings.TrimSpace(t.state.CurrentStepID)
+	if currentID == "" {
+		return *t.state
+	}
+
+	var current *builtin_tools.PlanItem
+	for _, candidate := range t.state.Plan {
+		if candidate == nil {
+			continue
+		}
+		if strings.TrimSpace(candidate.ID) == currentID {
+			current = candidate
+			break
+		}
+	}
+	if current == nil {
+		// 防御：CurrentStepID 指向不存在的 ID 是不变量违反；no-op 不 touch。
+		return *t.state
+	}
+
+	switch current.Status {
+	case builtin_tools.PlanStepCompleted,
+		builtin_tools.PlanStepFailed,
+		builtin_tools.PlanStepSkipped:
+		t.state.CurrentStepID = ""
+		t.touchLocked()
+	}
+	// 非终态分支不 touch——状态未变更，与 SetGoalUnderstanding 空值不 touch 风格对齐。
+	return *t.state
+}
+
 func (t *StateTracker) syncGoalToCurrentStepLocked() {
 	step := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep()
 	if step == nil {
@@ -332,6 +377,44 @@ func (t *StateTracker) MarkCurrentStepInProgress() builtin_tools.StateSnapshot {
 	}
 
 	t.touchLocked()
+	return *t.state
+}
+
+// MarkRemotePlanItemInProgress 把远程 step 对应的 PlanItem 从 Pending 翻 InProgress。
+// 与 MarkCurrentStepInProgress 的差异：按入参 stepID 显式定位（不依赖 CurrentStepID），
+// 不动 t.state.Phase、不动 t.state.CurrentStepID——保持主路径独占。
+//
+// 仅在 status == PlanStepPending 时翻 InProgress：避免覆盖已成态（Completed/Failed/Skipped），
+// 也避免重复 spawn 同一 step 时把 InProgress 误改。
+// 空 ID / 找不到 / 非 Pending 时 no-op 不 touch。
+func (t *StateTracker) MarkRemotePlanItemInProgress(stepID string) builtin_tools.StateSnapshot {
+	stepID = strings.TrimSpace(stepID)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if stepID == "" {
+		return *t.state
+	}
+
+	var item *builtin_tools.PlanItem
+	for _, candidate := range t.state.Plan {
+		if candidate == nil {
+			continue
+		}
+		if strings.TrimSpace(candidate.ID) == stepID {
+			item = candidate
+			break
+		}
+	}
+	if item == nil {
+		return *t.state
+	}
+
+	if item.Status == builtin_tools.PlanStepPending {
+		item.Status = builtin_tools.PlanStepInProgress
+		t.touchLocked()
+	}
 	return *t.state
 }
 
@@ -438,6 +521,69 @@ func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate)
 	t.upsertStepOutcomeLocked(step, update)
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.state.Phase = builtin_tools.AgentPhaseStepReplan
+	t.touchLocked()
+	return *t.state
+}
+
+// UpdateRemotePlanItem 把远程 step 的完成状态回写到 PlanItem + StepOutcome。
+// 与 UpdateCurrentStep 的关键差异：
+//   - 按 stepID 显式定位（不依赖 t.state.CurrentStepID）
+//   - 绝不修改 t.state.Phase（主路径独占翻 Phase=StepReplan 的权力）
+//   - 绝不修改 t.state.CurrentStepID（不抢主路径的 current）
+//
+// 供 step_fanout.go 的远程 step 完成回调使用。
+// no-op 条件：stepID 空 / 找不到 PlanItem / update.Status 非终态
+// （只接受 Completed/Failed/Skipped，避免误把 PlanItem 退回非终态）。
+func (t *StateTracker) UpdateRemotePlanItem(stepID string, update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
+	stepID = strings.TrimSpace(stepID)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// 失败路径（空 ID / 非终态 / 找不到）不 touch——与 MarkRemotePlanItemInProgress
+	// 「非命中不 touch」对齐：异常输入不该触发 UI 抖动（订阅器 onChange 回调）。
+	if stepID == "" {
+		return *t.state
+	}
+
+	// Status 守卫：远程 step 完成回写只接受三种终态。误传 Pending/InProgress 会
+	// 把 PlanItem 退回非终态，且 upsertStepOutcomeLocked 把非 Failed 一律映射为
+	// StepOutcomeCompleted——是危险的隐式行为，直接 no-op 拒收。
+	switch update.Status {
+	case builtin_tools.PlanStepCompleted,
+		builtin_tools.PlanStepFailed,
+		builtin_tools.PlanStepSkipped:
+	default:
+		return *t.state
+	}
+
+	update.Summary = strings.TrimSpace(update.Summary)
+	update.DisplayResult = strings.TrimSpace(update.DisplayResult)
+	update.Result = strings.TrimSpace(update.Result)
+	update.Error = strings.TrimSpace(update.Error)
+	update.References = normalizeReferences(update.References)
+
+	var item *builtin_tools.PlanItem
+	for _, candidate := range t.state.Plan {
+		if candidate == nil {
+			continue
+		}
+		if strings.TrimSpace(candidate.ID) == stepID {
+			item = candidate
+			break
+		}
+	}
+	if item == nil {
+		return *t.state
+	}
+
+	item.Status = update.Status
+	if update.Status == builtin_tools.PlanStepFailed {
+		_ = builtin_tools.PropagateSkippedPlanSteps(t.state.Plan)
+	}
+	t.upsertStepOutcomeLocked(item, update)
+	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
+	// 不动 Phase、不动 CurrentStepID——主路径独占翻 Phase=StepReplan 的权力
 	t.touchLocked()
 	return *t.state
 }
@@ -924,11 +1070,20 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.LongSummary = update.LongSummary
 		outcome.KeyFacts = update.KeyFacts
 		outcome.CoverageChecklist = update.CoverageChecklist
+		// TranscriptBlobRef 仅在非空时覆盖：UpdateRemotePlanItem 路径（X2 远程）会填，
+		// 主路径 UpdateCurrentStep 不填——主路径的 ref 由 ApplyStepReplan 写入，不应
+		// 被主路径 step 完成时调用的 upsertStepOutcomeLocked 误清空。
+		if ref := strings.TrimSpace(update.TranscriptBlobRef); ref != "" {
+			outcome.TranscriptBlobRef = ref
+		}
 		outcome.UpdatedAt = time.Now()
 		return
 	}
 
-	t.state.StepOutcomes = append(t.state.StepOutcomes, &builtin_tools.StepOutcome{
+	// 新建 outcome：与既有 outcome 分支语义对称——只在 update 提供非空 ref 时填入，
+	// 空字符串保持零值；保证字段处理路径对称、避免 reader 在中间窗口读到空字符串
+	// 而误以为「已尝试过但失败」。
+	newOutcome := &builtin_tools.StepOutcome{
 		StepID:            stepID,
 		Status:            status,
 		Summary:           update.Summary,
@@ -942,7 +1097,11 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		KeyFacts:          update.KeyFacts,
 		CoverageChecklist: update.CoverageChecklist,
 		UpdatedAt:         time.Now(),
-	})
+	}
+	if ref := strings.TrimSpace(update.TranscriptBlobRef); ref != "" {
+		newOutcome.TranscriptBlobRef = ref
+	}
+	t.state.StepOutcomes = append(t.state.StepOutcomes, newOutcome)
 }
 
 func normalizeReferences(in []string) []string {

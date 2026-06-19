@@ -183,6 +183,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return builtin_tools.NewListSkillsTool(skillService)
 	})
 
+	maxParallelSteps := maxParallelStepsFromConfig(appCfg)
+	if maxParallelSteps >= 2 {
+		fmt.Fprintf(os.Stderr, "[aster] react.max_parallel_steps = %d (X2 滚动 fan-out 已启用)\n", maxParallelSteps)
+	} else {
+		fmt.Fprintf(os.Stderr, "[aster] react.max_parallel_steps = 1 (默认串行)\n")
+	}
+
 	factory := react.NewAgentFactory(
 		react.WithFactoryDefaultAIClient(aiClient),
 		react.WithFactoryAIClientFactory(clientFactory),
@@ -193,6 +200,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		react.WithFactoryOnHumanInput(humanBridge.OnHumanInput),
 		react.WithFactoryMCPManager(mcpManager),
 		react.WithFactoryPromptCacheConfig(providerCfg.PromptCache),
+		react.WithFactoryMaxParallelSteps(maxParallelSteps),
 	)
 
 	profileRegistry := tui.NewProfileRegistry()
@@ -280,6 +288,18 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tui: %w", err)
 	}
 	return nil
+}
+
+// maxParallelStepsFromConfig 从 AppConfig 提取 X2 滚动 fan-out 上限。
+// nil 防御 + 默认 1（向后兼容串行）；负数兜底为 1。
+func maxParallelStepsFromConfig(cfg *tui.AppConfig) int {
+	if cfg == nil || cfg.React == nil {
+		return 1
+	}
+	if cfg.React.MaxParallelSteps < 1 {
+		return 1
+	}
+	return cfg.React.MaxParallelSteps
 }
 
 func chooseDefaultAgentDefinition(profiles []react.AgentDefinition, preferred string) react.AgentDefinition {

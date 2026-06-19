@@ -30,12 +30,21 @@ type ProviderConfig struct {
 	Timeout        *int                      `yaml:"timeout,omitempty"`
 }
 
+// ReactConfig holds ReAct scheduling knobs propagated to the AgentFactory.
+// 独立结构便于后续扩展（如 history/transcript 压缩参数、ctx 超时策略等）。
+type ReactConfig struct {
+	// MaxParallelSteps 同层 ready step 最大并发数（含主路径）。
+	// 0/1 = 串行（默认，向后兼容现状）；≥2 启用 X2 滚动 fan-out。
+	MaxParallelSteps int `yaml:"max_parallel_steps,omitempty"`
+}
+
 type AppConfig struct {
 	Env              map[string]string               `yaml:"env,omitempty"`
 	Providers        map[string]*ProviderConfig      `yaml:"providers"`
 	DefaultProvider  string                          `yaml:"default_provider"`
 	ProviderPriority []string                        `yaml:"provider_priority,omitempty"`
 	MCPServers       map[string]*mcp.MCPServerConfig `yaml:"mcp_servers"`
+	React            *ReactConfig                    `yaml:"react,omitempty"`
 }
 
 var DefaultProviderPriority = []string{
@@ -297,6 +306,14 @@ providers:
   # ollama:
   #   base_url: http://localhost:11434/v1
   #   default_model: qwen2.5:latest
+
+# ReAct 调度策略
+# react:
+#   # X2 同层 ready step 最大并发数（含主路径）。
+#   # 0/1 = 串行（默认）；≥2 启用 X2 滚动 fan-out——调度器在 runStepPhase 入口扫
+#   # ReadyRunnablePlanStepIDs，把当前 current 以外的 ready 通过后台 goroutine 并发派发。
+#   # 实际并发受 step 间 depends_on DAG 形态约束；典型值 2-5。
+#   max_parallel_steps: 1
 
 # MCP 服务器配置
 mcp_servers:

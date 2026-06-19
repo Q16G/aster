@@ -424,7 +424,7 @@ func TestDrainAsyncAgentNotifications_InjectsUserMessage(t *testing.T) {
 		Result:  "found 3 vulnerabilities",
 	})
 
-	agent.drainAsyncAgentNotifications()
+	agent.drainAsyncAgentNotifications(context.Background())
 
 	if len(agent.stepHistory) != 1 {
 		t.Fatalf("expected 1 stepHistory entry, got %d", len(agent.stepHistory))
@@ -451,7 +451,7 @@ func TestDrainAsyncAgentNotifications_NilRegistry(t *testing.T) {
 	agent := newTestAgent()
 	agent.state = NewStateTracker()
 	// No panic when asyncRegistry is nil
-	agent.drainAsyncAgentNotifications()
+	agent.drainAsyncAgentNotifications(context.Background())
 	if len(agent.stepHistory) != 0 {
 		t.Fatal("expected empty stepHistory")
 	}
@@ -489,7 +489,7 @@ func TestDrainAsyncAgentNotifications_TruncatesLongResult(t *testing.T) {
 		Result:  longResult,
 	})
 
-	agent.drainAsyncAgentNotifications()
+	agent.drainAsyncAgentNotifications(context.Background())
 
 	content := fmt.Sprintf("%v", agent.stepHistory[0].Content)
 	if len(content) > 2000 {

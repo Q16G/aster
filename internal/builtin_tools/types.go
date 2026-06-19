@@ -32,6 +32,12 @@ type RunResult struct {
 	PendingInterrupt *PendingInterrupt `json:"pending_interrupt,omitempty"`
 
 	PlanSummary *PlanCompletionSummary `json:"plan_summary,omitempty"`
+
+	// TranscriptBlobRef 仅 X2 远程 step（spawnRemoteStep）使用：goroutine 完成时把
+	// child agent 的完整 history 落到父 agent v2Store 的 content-addressed blob，
+	// 返回 sha256:xxx ref 通过本字段传到 drain 路径，drain 把 ref 写入
+	// PlanItem 关联的 StepOutcome.TranscriptBlobRef 供 step_replan 指针化按需读。
+	TranscriptBlobRef string `json:"transcript_blob_ref,omitempty"`
 }
 
 type PlanCompletionSummary struct {
@@ -315,6 +321,12 @@ type CurrentStepUpdate struct {
 	LongSummary       string                  `json:"long_summary"`
 	KeyFacts          []string                `json:"key_facts"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
+
+	// TranscriptBlobRef 仅由 UpdateRemotePlanItem 路径使用（X2 远程 step 完成回写）。
+	// 主路径 UpdateCurrentStep 不填此字段——主路径的 transcript blob ref 由
+	// ApplyStepReplan 路径管理（state.go:645）。upsertStepOutcomeLocked 在写入时
+	// 只在非空时覆盖 outcome.TranscriptBlobRef，避免主路径调用误清空。
+	TranscriptBlobRef string `json:"transcript_blob_ref,omitempty"`
 }
 
 type ReplanContext struct {

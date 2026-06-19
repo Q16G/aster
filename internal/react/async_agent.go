@@ -25,8 +25,17 @@ type AsyncAgentRegistry struct {
 	completed chan struct{}
 }
 
+// AsyncAgent kind 区分两种后台任务：sub_agent 走 stepHistory 注入路径；
+// remote_step 走 state.UpdateRemotePlanItem 回写，不污染主 transcript。
+// 空字符串视同 sub_agent，保持现状调用方零改动。
+const (
+	AsyncAgentKindSubAgent   = "sub_agent"
+	AsyncAgentKindRemoteStep = "remote_step"
+)
+
 type AsyncAgentEntry struct {
 	AgentID      string
+	Kind         string // "" 或 AsyncAgentKindSubAgent / AsyncAgentKindRemoteStep
 	Status       string // "running" | "completed" | "failed"
 	Instruction  string
 	WorkspaceDir string
@@ -38,6 +47,7 @@ type AsyncAgentEntry struct {
 
 type AsyncAgentNotification struct {
 	AgentID      string
+	Kind         string // 从 entry.Kind 复制；drain 按此分流
 	Status       string
 	WorkspaceDir string
 	Result       *builtin_tools.RunResult
@@ -51,7 +61,8 @@ func NewAsyncAgentRegistry() *AsyncAgentRegistry {
 	}
 }
 
-// Register adds a new running async agent.
+// Register adds a new running async agent (sub_agent 路径，Kind 默认空).
+// 保持现有调用方零改动；新引入的 remote_step 走 RegisterRemoteStep。
 func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -59,6 +70,21 @@ func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string)
 		AgentID:      agentID,
 		Status:       "running",
 		Instruction:  instruction,
+		WorkspaceDir: workspaceDir,
+		StartedAt:    time.Now(),
+	}
+}
+
+// RegisterRemoteStep 注册一个 X2 远程 step。AgentID 复用 plan step ID，
+// Kind = AsyncAgentKindRemoteStep。drain 路径据此分流到 state.UpdateRemotePlanItem，
+// 不灌 stepHistory（远程 step 的 transcript 由 step_fanout 落 blob，按指针读）。
+func (r *AsyncAgentRegistry) RegisterRemoteStep(stepID, workspaceDir string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.agents[stepID] = &AsyncAgentEntry{
+		AgentID:      stepID,
+		Kind:         AsyncAgentKindRemoteStep,
+		Status:       "running",
 		WorkspaceDir: workspaceDir,
 		StartedAt:    time.Now(),
 	}
@@ -82,10 +108,12 @@ func (r *AsyncAgentRegistry) Complete(agentID string, result *builtin_tools.RunR
 	entry.closed = true
 	status := entry.Status
 	wsDir := entry.WorkspaceDir
+	kind := entry.Kind
 	r.mu.Unlock()
 
 	notif := &AsyncAgentNotification{
 		AgentID:      agentID,
+		Kind:         kind,
 		Status:       status,
 		WorkspaceDir: wsDir,
 		Result:       result,
@@ -161,6 +189,38 @@ func (r *AsyncAgentRegistry) HasRunning() bool {
 	defer r.mu.RUnlock()
 	for _, entry := range r.agents {
 		if entry.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// RunningRemoteSteps 返回当前仍 running 的 remote_step 数。供 X2 fan-out
+// 决策按 MaxParallelSteps 上限判断是否还可派发新远程 step（不影响 sub_agent 计数）。
+func (r *AsyncAgentRegistry) RunningRemoteSteps() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	count := 0
+	for _, entry := range r.agents {
+		if entry == nil {
+			continue
+		}
+		if entry.Status == "running" && entry.Kind == AsyncAgentKindRemoteStep {
+			count++
+		}
+	}
+	return count
+}
+
+// HasRunningRemoteSteps O(1) 早退实现，语义等价 RunningRemoteSteps() > 0。
+func (r *AsyncAgentRegistry) HasRunningRemoteSteps() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, entry := range r.agents {
+		if entry == nil {
+			continue
+		}
+		if entry.Status == "running" && entry.Kind == AsyncAgentKindRemoteStep {
 			return true
 		}
 	}

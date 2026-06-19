@@ -423,6 +423,37 @@ func NextRunnablePlanStepID(plan []*PlanItem) string {
 	return ""
 }
 
+// ReadyRunnablePlanStepIDs 返回所有 DependsOn 已满足的 pending step ID，
+// 顺序按 plan 数组原顺序。供 fan-out 调度选首个走主路径、余下派发为远程 step。
+// nil/空 plan 或无 ready 项时返回 nil。
+func ReadyRunnablePlanStepIDs(plan []*PlanItem) []string {
+	if len(plan) == 0 {
+		return nil
+	}
+	completed := planReadyDependencies(plan)
+	out := make([]string, 0, len(plan))
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		if item.Status != PlanStepPending {
+			continue
+		}
+		if !planItemDependenciesSatisfied(item, completed) {
+			continue
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func AllPlanStepsTerminal(plan []*PlanItem) bool {
 	for _, item := range plan {
 		if item == nil {

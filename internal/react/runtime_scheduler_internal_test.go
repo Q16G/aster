@@ -471,7 +471,7 @@ func TestCurrentPhaseGuard(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			snap := builtin_tools.StateSnapshot{Phase: tc.phase, Plan: tc.plan}
-			if got := currentPhase(snap); got != tc.want {
+			if got := currentPhase(snap, 1); got != tc.want {
 				t.Fatalf("currentPhase(phase=%q) = %q, want %q", tc.phase, got, tc.want)
 			}
 		})

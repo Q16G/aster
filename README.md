@@ -32,6 +32,7 @@
 - **54+ 安全技能** — 按需注入 Agent 上下文，运行时动态启用/禁用，覆盖 SAST、数据流、Web 安全、认证、注入、主机防护
 - **7 大 LLM Provider** — OpenAI、Anthropic、DeepSeek、Groq、OpenRouter、Together、Ollama（本地离线）
 - **ReAct 推理引擎** — Plan → Think-Act-Observe → Summary → FinalAnswer 四阶段循环
+- **X2 并发调度** — 同层依赖 ready 的 step 自动并发，对齐 [LLM Compiler](https://arxiv.org/abs/2312.04511) 范式，详见 [docs/x2-parallel-steps.md](docs/x2-parallel-steps.md)
 - **Semgrep SAST** — 内嵌本地规则集，覆盖 Go / Java / Python / JS / PHP / C，零在线依赖
 - **SyntaxFlow 数据流** — 通过 yak SSA 引擎的 topdef/bottomUse 追踪验证漏洞可达性
 - **MCP 协议扩展** — stdio / SSE / Streamable HTTP 三种传输，全局或按 Agent 挂载工具
