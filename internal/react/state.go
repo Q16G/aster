@@ -380,14 +380,14 @@ func (t *StateTracker) MarkCurrentStepInProgress() builtin_tools.StateSnapshot {
 	return *t.state
 }
 
-// MarkRemotePlanItemInProgress 把远程 step 对应的 PlanItem 从 Pending 翻 InProgress。
+// MarkInlineStepInProgress 把 inline step 对应的 PlanItem 从 Pending 翻 InProgress。
 // 与 MarkCurrentStepInProgress 的差异：按入参 stepID 显式定位（不依赖 CurrentStepID），
 // 不动 t.state.Phase、不动 t.state.CurrentStepID——保持主路径独占。
 //
 // 仅在 status == PlanStepPending 时翻 InProgress：避免覆盖已成态（Completed/Failed/Skipped），
 // 也避免重复 spawn 同一 step 时把 InProgress 误改。
 // 空 ID / 找不到 / 非 Pending 时 no-op 不 touch。
-func (t *StateTracker) MarkRemotePlanItemInProgress(stepID string) builtin_tools.StateSnapshot {
+func (t *StateTracker) MarkInlineStepInProgress(stepID string) builtin_tools.StateSnapshot {
 	stepID = strings.TrimSpace(stepID)
 
 	t.mu.Lock()
@@ -525,28 +525,28 @@ func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate)
 	return *t.state
 }
 
-// UpdateRemotePlanItem 把远程 step 的完成状态回写到 PlanItem + StepOutcome。
+// UpdateInlineStep 把 inline step 的完成状态回写到 PlanItem + StepOutcome。
 // 与 UpdateCurrentStep 的关键差异：
 //   - 按 stepID 显式定位（不依赖 t.state.CurrentStepID）
 //   - 绝不修改 t.state.Phase（主路径独占翻 Phase=StepReplan 的权力）
 //   - 绝不修改 t.state.CurrentStepID（不抢主路径的 current）
 //
-// 供 step_fanout.go 的远程 step 完成回调使用。
+// 供 step_inline.go 的 inline step 完成回调使用（drain 路径）。
 // no-op 条件：stepID 空 / 找不到 PlanItem / update.Status 非终态
 // （只接受 Completed/Failed/Skipped，避免误把 PlanItem 退回非终态）。
-func (t *StateTracker) UpdateRemotePlanItem(stepID string, update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
+func (t *StateTracker) UpdateInlineStep(stepID string, update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
 	stepID = strings.TrimSpace(stepID)
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// 失败路径（空 ID / 非终态 / 找不到）不 touch——与 MarkRemotePlanItemInProgress
+	// 失败路径（空 ID / 非终态 / 找不到）不 touch——与 MarkInlineStepInProgress
 	// 「非命中不 touch」对齐：异常输入不该触发 UI 抖动（订阅器 onChange 回调）。
 	if stepID == "" {
 		return *t.state
 	}
 
-	// Status 守卫：远程 step 完成回写只接受三种终态。误传 Pending/InProgress 会
+	// Status 守卫：inline step 完成回写只接受三种终态。误传 Pending/InProgress 会
 	// 把 PlanItem 退回非终态，且 upsertStepOutcomeLocked 把非 Failed 一律映射为
 	// StepOutcomeCompleted——是危险的隐式行为，直接 no-op 拒收。
 	switch update.Status {
@@ -1070,7 +1070,7 @@ func (t *StateTracker) upsertStepOutcomeLocked(step *builtin_tools.PlanItem, upd
 		outcome.LongSummary = update.LongSummary
 		outcome.KeyFacts = update.KeyFacts
 		outcome.CoverageChecklist = update.CoverageChecklist
-		// TranscriptBlobRef 仅在非空时覆盖：UpdateRemotePlanItem 路径（X2 远程）会填，
+		// TranscriptBlobRef 仅在非空时覆盖：UpdateInlineStep 路径（inline step）会填，
 		// 主路径 UpdateCurrentStep 不填——主路径的 ref 由 ApplyStepReplan 写入，不应
 		// 被主路径 step 完成时调用的 upsertStepOutcomeLocked 误清空。
 		if ref := strings.TrimSpace(update.TranscriptBlobRef); ref != "" {

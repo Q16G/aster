@@ -16,7 +16,7 @@ import (
 
 // spawnRemoteStep 派发一个远程 step 到后台 goroutine 独立执行。
 // 复用 sub_agent_tool.executeAsync 的 spawn 模型，但走 RegisterRemoteStep 路径——
-// 完成后通过 asyncRegistry.Complete → drain → state.UpdateRemotePlanItem 自动回写 PlanItem。
+// 完成后通过 asyncRegistry.Complete → drain → state.UpdateInlineStep 自动回写 PlanItem。
 //
 // 与 sub_agent 的关键差异：
 //   - Kind = remote_step（drain 分流到 handleRemoteStepNotification）
@@ -114,7 +114,7 @@ func (a *Agent) spawnRemoteStep(ctx context.Context, stepID string, plan []*buil
 	// 把 PlanItem.Status 从 Pending 翻 InProgress，让右侧 Todo 列表立刻显示 ▸。
 	// 与 MarkCurrentStepInProgress 的差异：按 stepID 显式定位，不动 CurrentStepID。
 	if a.state != nil {
-		a.state.MarkRemotePlanItemInProgress(stepID)
+		a.state.MarkInlineStepInProgress(stepID)
 	}
 
 	// 发 BgStart 事件，让 TUI 立即出现 running 卡片（goroutine 完成才发 BgEnd 翻终态）。
@@ -252,7 +252,7 @@ func (a *Agent) fanOutReadyPeers(ctx context.Context, snapshot builtin_tools.Sta
 		if err := a.spawnRemoteStep(ctx, id, snapshot.Plan); err != nil {
 			// TODO(面 3.3+)：spawn 失败的 step 保持 Pending，下个 iter / drain 会再次尝试。
 			// 若失败是确定性的（配置错误 / agentFactory.Build 一致失败），会刷屏日志。
-			// 后续应实现"失败 N 次后通过 UpdateRemotePlanItem 标 Failed 收敛"机制。
+			// 后续应实现"失败 N 次后通过 UpdateInlineStep 标 Failed 收敛"机制。
 			a.emitRuntimeLog("warn", "spawn remote step failed", snapshot, map[string]any{
 				"event":   "remote_step_spawn_failed",
 				"step_id": id,

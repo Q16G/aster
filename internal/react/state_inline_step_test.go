@@ -33,11 +33,11 @@ func planItemByIDInSnap(snap builtin_tools.StateSnapshot, id string) *builtin_to
 	return nil
 }
 
-func TestUpdateRemotePlanItem_EmptyStepID(t *testing.T) {
+func TestUpdateInlineStep_EmptyStepID(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	tracker.SetPhase(builtin_tools.AgentPhaseStep)
 	before := tracker.Snapshot()
-	snap := tracker.UpdateRemotePlanItem("", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepCompleted,
 	})
 	if snap.Phase != before.Phase {
@@ -50,11 +50,11 @@ func TestUpdateRemotePlanItem_EmptyStepID(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_StepNotFound(t *testing.T) {
+func TestUpdateInlineStep_StepNotFound(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	tracker.SetPhase(builtin_tools.AgentPhaseStep)
 	before := tracker.Snapshot()
-	snap := tracker.UpdateRemotePlanItem("nonexistent", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("nonexistent", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepCompleted,
 	})
 	if snap.Phase != before.Phase {
@@ -67,9 +67,9 @@ func TestUpdateRemotePlanItem_StepNotFound(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_CompletesItem(t *testing.T) {
+func TestUpdateInlineStep_CompletesItem(t *testing.T) {
 	tracker := setupFanOutPlan(t)
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:        builtin_tools.PlanStepCompleted,
 		StatusSummary: "ok",
 		ShortSummary:  "远程 c 完成",
@@ -102,10 +102,10 @@ func TestUpdateRemotePlanItem_CompletesItem(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_DoesNotTouchPhase(t *testing.T) {
+func TestUpdateInlineStep_DoesNotTouchPhase(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	tracker.SetPhase(builtin_tools.AgentPhaseStep)
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepCompleted,
 	})
 	if snap.Phase != builtin_tools.AgentPhaseStep {
@@ -113,13 +113,13 @@ func TestUpdateRemotePlanItem_DoesNotTouchPhase(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_DoesNotTouchCurrentStepID(t *testing.T) {
+func TestUpdateInlineStep_DoesNotTouchCurrentStepID(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	before := tracker.Snapshot()
 	if before.CurrentStepID != "b" {
 		t.Fatalf("setup precondition: expected CurrentStepID=b, got %q", before.CurrentStepID)
 	}
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepCompleted,
 	})
 	if snap.CurrentStepID != "b" {
@@ -127,9 +127,9 @@ func TestUpdateRemotePlanItem_DoesNotTouchCurrentStepID(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_FailedPropagatesSkipped(t *testing.T) {
+func TestUpdateInlineStep_FailedPropagatesSkipped(t *testing.T) {
 	tracker := setupFanOutPlan(t)
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepFailed,
 		Error:  "remote crash",
 	})
@@ -149,7 +149,7 @@ func TestUpdateRemotePlanItem_FailedPropagatesSkipped(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_RejectsNonTerminalStatus(t *testing.T) {
+func TestUpdateInlineStep_RejectsNonTerminalStatus(t *testing.T) {
 	// Status 守卫：误传 Pending / InProgress 应被 no-op 拒收，PlanItem 和 StepOutcome 都不变。
 	for _, badStatus := range []builtin_tools.PlanStepStatus{
 		builtin_tools.PlanStepPending,
@@ -162,7 +162,7 @@ func TestUpdateRemotePlanItem_RejectsNonTerminalStatus(t *testing.T) {
 			beforeC := planItemByIDInSnap(tracker.Snapshot(), "c")
 			beforeOutcomes := len(tracker.Snapshot().StepOutcomes)
 
-			snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+			snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 				Status:       badStatus,
 				ShortSummary: "should not be written",
 			})
@@ -178,7 +178,7 @@ func TestUpdateRemotePlanItem_RejectsNonTerminalStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateRemotePlanItem_FailedPropagatesTransitively(t *testing.T) {
+func TestUpdateInlineStep_FailedPropagatesTransitively(t *testing.T) {
 	// 链式失败传播：c failed → d skipped → e skipped。
 	// 验证 PropagateSkippedPlanSteps 走完所有传递性依赖，不仅止于一跳。
 	tracker := NewStateTracker()
@@ -191,7 +191,7 @@ func TestUpdateRemotePlanItem_FailedPropagatesTransitively(t *testing.T) {
 	}, "init", true)
 	tracker.EnsureCurrentStep()
 
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status: builtin_tools.PlanStepFailed,
 		Error:  "remote crash",
 	})
@@ -212,19 +212,19 @@ func TestUpdateRemotePlanItem_FailedPropagatesTransitively(t *testing.T) {
 }
 
 // =====================================================================
-// MarkRemotePlanItemInProgress — 面 7.A 新方法测试
+// MarkInlineStepInProgress — 面 7.A 新方法测试
 // =====================================================================
 
-func TestMarkRemotePlanItemInProgress_PendingToInProgress(t *testing.T) {
+func TestMarkInlineStepInProgress_PendingToInProgress(t *testing.T) {
 	tracker := setupFanOutPlan(t)
-	snap := tracker.MarkRemotePlanItemInProgress("c")
+	snap := tracker.MarkInlineStepInProgress("c")
 	c := planItemByIDInSnap(snap, "c")
 	if c.Status != builtin_tools.PlanStepInProgress {
 		t.Fatalf("expected c InProgress, got %q", c.Status)
 	}
 }
 
-func TestMarkRemotePlanItemInProgress_NoOpOnTerminal(t *testing.T) {
+func TestMarkInlineStepInProgress_NoOpOnTerminal(t *testing.T) {
 	for _, terminalStatus := range []builtin_tools.PlanStepStatus{
 		builtin_tools.PlanStepCompleted,
 		builtin_tools.PlanStepFailed,
@@ -235,7 +235,7 @@ func TestMarkRemotePlanItemInProgress_NoOpOnTerminal(t *testing.T) {
 			tracker.UpdatePlan([]*builtin_tools.PlanItem{
 				{ID: "x", Step: "x", Status: terminalStatus},
 			}, "init", true)
-			snap := tracker.MarkRemotePlanItemInProgress("x")
+			snap := tracker.MarkInlineStepInProgress("x")
 			x := planItemByIDInSnap(snap, "x")
 			if x.Status != terminalStatus {
 				t.Fatalf("expected status unchanged (%q), got %q", terminalStatus, x.Status)
@@ -244,28 +244,28 @@ func TestMarkRemotePlanItemInProgress_NoOpOnTerminal(t *testing.T) {
 	}
 }
 
-func TestMarkRemotePlanItemInProgress_NoOpOnInProgress(t *testing.T) {
+func TestMarkInlineStepInProgress_NoOpOnInProgress(t *testing.T) {
 	tracker := NewStateTracker()
 	tracker.UpdatePlan([]*builtin_tools.PlanItem{
 		{ID: "x", Step: "x", Status: builtin_tools.PlanStepInProgress},
 	}, "init", true)
 	// 重复调用应是 no-op，不应错误地翻回 Pending 或其他
-	snap := tracker.MarkRemotePlanItemInProgress("x")
+	snap := tracker.MarkInlineStepInProgress("x")
 	x := planItemByIDInSnap(snap, "x")
 	if x.Status != builtin_tools.PlanStepInProgress {
 		t.Fatalf("expected InProgress unchanged, got %q", x.Status)
 	}
 }
 
-func TestMarkRemotePlanItemInProgress_EmptyOrUnknownID(t *testing.T) {
+func TestMarkInlineStepInProgress_EmptyOrUnknownID(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	before := tracker.Snapshot()
 
 	// 空 ID
-	tracker.MarkRemotePlanItemInProgress("")
-	tracker.MarkRemotePlanItemInProgress("   ")
+	tracker.MarkInlineStepInProgress("")
+	tracker.MarkInlineStepInProgress("   ")
 	// 找不到 ID
-	tracker.MarkRemotePlanItemInProgress("nonexistent")
+	tracker.MarkInlineStepInProgress("nonexistent")
 
 	after := tracker.Snapshot()
 	for _, id := range []string{"a", "b", "c", "d"} {
@@ -275,23 +275,23 @@ func TestMarkRemotePlanItemInProgress_EmptyOrUnknownID(t *testing.T) {
 	}
 }
 
-func TestMarkRemotePlanItemInProgress_DoesNotTouchPhase(t *testing.T) {
+func TestMarkInlineStepInProgress_DoesNotTouchPhase(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	tracker.SetPhase(builtin_tools.AgentPhaseStep)
-	snap := tracker.MarkRemotePlanItemInProgress("c")
+	snap := tracker.MarkInlineStepInProgress("c")
 	if snap.Phase != builtin_tools.AgentPhaseStep {
 		t.Fatalf("expected Phase unchanged (Step), got %q", snap.Phase)
 	}
 }
 
-func TestMarkRemotePlanItemInProgress_DoesNotTouchCurrentStepID(t *testing.T) {
+func TestMarkInlineStepInProgress_DoesNotTouchCurrentStepID(t *testing.T) {
 	tracker := setupFanOutPlan(t)
 	// setupFanOutPlan 之后 CurrentStepID 应为 b（首个 ready pending）
 	before := tracker.Snapshot()
 	if before.CurrentStepID != "b" {
 		t.Fatalf("precondition: expected CurrentStepID=b, got %q", before.CurrentStepID)
 	}
-	snap := tracker.MarkRemotePlanItemInProgress("c")
+	snap := tracker.MarkInlineStepInProgress("c")
 	if snap.CurrentStepID != "b" {
 		t.Fatalf("expected CurrentStepID unchanged (b), got %q", snap.CurrentStepID)
 	}
@@ -299,10 +299,10 @@ func TestMarkRemotePlanItemInProgress_DoesNotTouchCurrentStepID(t *testing.T) {
 
 // =====================================================================
 
-func TestUpdateRemotePlanItem_TranscriptBlobRefWritten(t *testing.T) {
+func TestUpdateInlineStep_TranscriptBlobRefWritten(t *testing.T) {
 	// 远程 update 带 TranscriptBlobRef → outcome 应该获得该 ref。
 	tracker := setupFanOutPlan(t)
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:            builtin_tools.PlanStepCompleted,
 		Summary:           "ok",
 		TranscriptBlobRef: "sha256:abc123",
@@ -320,7 +320,7 @@ func TestUpdateRemotePlanItem_TranscriptBlobRefWritten(t *testing.T) {
 
 // TestMainPath_UpdateCurrentStep_DoesNotClearTranscriptBlobRef：端到端断言主路径
 // UpdateCurrentStep（不填 TranscriptBlobRef）不会清空已被远程路径填入的 ref。
-// 模拟 ApplyStepReplan + UpdateRemotePlanItem 等场景中 outcome 已有 ref，再调
+// 模拟 ApplyStepReplan + UpdateInlineStep 等场景中 outcome 已有 ref，再调
 // UpdateCurrentStep 验证 ref 仍在。
 func TestMainPath_UpdateCurrentStep_DoesNotClearTranscriptBlobRef(t *testing.T) {
 	tracker := NewStateTracker()
@@ -329,10 +329,10 @@ func TestMainPath_UpdateCurrentStep_DoesNotClearTranscriptBlobRef(t *testing.T) 
 	}, "init", true)
 	tracker.EnsureCurrentStep()
 
-	// 模拟远程路径或 ApplyStepReplan 已经写入 ref（用 UpdateRemotePlanItem 是最简）。
-	// 注意 a 现在是 current step，UpdateRemotePlanItem 不动 CurrentStepID，
+	// 模拟远程路径或 ApplyStepReplan 已经写入 ref（用 UpdateInlineStep 是最简）。
+	// 注意 a 现在是 current step，UpdateInlineStep 不动 CurrentStepID，
 	// 但会更新 outcome.TranscriptBlobRef + 把 PlanItem.Status 翻成 Completed。
-	tracker.UpdateRemotePlanItem("a", builtin_tools.CurrentStepUpdate{
+	tracker.UpdateInlineStep("a", builtin_tools.CurrentStepUpdate{
 		Status:            builtin_tools.PlanStepCompleted,
 		TranscriptBlobRef: "sha256:from-previous-path",
 	})
@@ -361,17 +361,17 @@ func TestMainPath_UpdateCurrentStep_DoesNotClearTranscriptBlobRef(t *testing.T) 
 	t.Fatal("expected StepOutcome for a")
 }
 
-func TestUpdateRemotePlanItem_TranscriptBlobRefEmptyNoOverwrite(t *testing.T) {
+func TestUpdateInlineStep_TranscriptBlobRefEmptyNoOverwrite(t *testing.T) {
 	// 关键防御：upsertStepOutcomeLocked 收到空 TranscriptBlobRef 时不该覆盖既有值。
 	// 保护主路径 UpdateCurrentStep（不填 TranscriptBlobRef）不误清空已有 ref。
 	tracker := setupFanOutPlan(t)
 	// 先设置一个 ref
-	tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:            builtin_tools.PlanStepCompleted,
 		TranscriptBlobRef: "sha256:existing",
 	})
 	// 再次更新但不带 ref（空字符串）
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:       builtin_tools.PlanStepCompleted,
 		ShortSummary: "second update",
 		// TranscriptBlobRef 留空
@@ -390,13 +390,13 @@ func TestUpdateRemotePlanItem_TranscriptBlobRefEmptyNoOverwrite(t *testing.T) {
 	t.Fatal("expected StepOutcome for c")
 }
 
-func TestUpdateRemotePlanItem_UpsertOutcomeIdempotent(t *testing.T) {
+func TestUpdateInlineStep_UpsertOutcomeIdempotent(t *testing.T) {
 	tracker := setupFanOutPlan(t)
-	tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:       builtin_tools.PlanStepCompleted,
 		ShortSummary: "first",
 	})
-	snap := tracker.UpdateRemotePlanItem("c", builtin_tools.CurrentStepUpdate{
+	snap := tracker.UpdateInlineStep("c", builtin_tools.CurrentStepUpdate{
 		Status:       builtin_tools.PlanStepCompleted,
 		ShortSummary: "second",
 	})

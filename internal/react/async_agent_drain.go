@@ -11,7 +11,7 @@ import (
 // drainAsyncAgentNotifications reads all pending completed/failed async agent notifications
 // and dispatches them by Kind:
 //   - sub_agent（默认）：注入 stepHistory（原路径，模型可见）
-//   - remote_step（X2）：调 state.UpdateRemotePlanItem 回写 PlanItem 并立即重扫 ready 二次 fan-out
+//   - remote_step（X2）：调 state.UpdateInlineStep 回写 PlanItem 并立即重扫 ready 二次 fan-out
 //
 // ctx 承自 scheduler 顶层（最终 TUI ctx，不 derive 不超时），供 handleRemoteStepNotification
 // 内 spawnRemoteStep 复用。Must only be called from the scheduler goroutine (single-writer invariant).
@@ -77,7 +77,7 @@ func (a *Agent) handleSubAgentNotification(notif *AsyncAgentNotification) {
 // 与 sub_agent 路径的差异：
 //   - 不写 async_result.json（远程 step 的 transcript 由 step_fanout 落 blob）
 //   - 不注入 stepHistory（主路径 transcript 不被远程 step 污染）
-//   - 直接调 state.UpdateRemotePlanItem 把 Status + Summary 回写 PlanItem
+//   - 直接调 state.UpdateInlineStep 把 Status + Summary 回写 PlanItem
 //   - 回写后立即重扫 ready 触发二次 fan-out（X2 滚动派发的核心）
 //
 // 面 2 仅做最小回写（Status + Summary + Error）；完整结构化字段
@@ -90,7 +90,7 @@ func (a *Agent) handleRemoteStepNotification(ctx context.Context, notif *AsyncAg
 	}
 
 	// 从 notif.Status（"completed"/"failed"）映射 PlanStepStatus。
-	// 兜底视为 Failed——绝不把 PlanItem 退回非终态（与 UpdateRemotePlanItem 守卫呼应）。
+	// 兜底视为 Failed——绝不把 PlanItem 退回非终态（与 UpdateInlineStep 守卫呼应）。
 	status := builtin_tools.PlanStepFailed
 	if notif.Status == "completed" {
 		status = builtin_tools.PlanStepCompleted
@@ -110,7 +110,7 @@ func (a *Agent) handleRemoteStepNotification(ctx context.Context, notif *AsyncAg
 	summary = truncateRuneString(summary, maxAsyncNotificationRunes)
 	errMsg = truncateRuneString(errMsg, maxAsyncNotificationRunes)
 
-	a.state.UpdateRemotePlanItem(notif.AgentID, builtin_tools.CurrentStepUpdate{
+	a.state.UpdateInlineStep(notif.AgentID, builtin_tools.CurrentStepUpdate{
 		Status:            status,
 		Summary:           summary,
 		Error:             errMsg,
@@ -152,7 +152,7 @@ func (a *Agent) handleRemoteStepNotification(ctx context.Context, notif *AsyncAg
 // has completed (含 sub_agent 与 X2 remote_step——HasRunning 不分 kind），
 // draining each completion as it arrives. drain 内部按 kind 分流：
 //   - sub_agent：注入 stepHistory（模型可见）
-//   - remote_step：state.UpdateRemotePlanItem 回写，不污染 stepHistory
+//   - remote_step：state.UpdateInlineStep 回写，不污染 stepHistory
 //
 // If ctx is cancelled it stops early; callers on cancel paths should follow up
 // with cancelRunningSubAgents 处理 sub_agent 卡片；remote_step 走 spawnRemoteStep
