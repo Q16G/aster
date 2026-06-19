@@ -18,14 +18,23 @@ type localWorkspaceRuntime struct {
 	rootDir   string
 	namespace string
 
-	// sharedFileLocks 给 inline_step 并发场景下的共享 ledger 文件（task_context.md /
-	// open_items.md）加 per-file RWMutex 兜底，防止两个 goroutine 同时 WriteFile 时
-	// 出现 torn write（OS write 对 ≤4KB 块本就原子，但跨多块时理论上可被中断）。
+	// sharedFileLocks 给 task_context.md / open_items.md 加 per-file RWMutex。
 	//
-	// 不解 RMW lost-update——LLM 的「read→merge→write 整文件」事务跨多个工具调用，
-	// 单次 WriteFile 锁拦不到事务级丢失。lost-update 由 prompt 纪律承担：
-	// 本 step 只能 append 自己的条目，已闭环迁移由 step_replan 串行处理。
-	// 参见 [[feedback_no_atomic_ledger_tools]]。
+	// **保护范围（实事求是）**：仅覆盖通过 WriteFileRel / ReadFileRel 走的写读——
+	// 即 runtime 自身的 skeleton 初始化（EnsureSharedScaffold、ensureTaskContextSkeleton）
+	// 和 commit 6 接进 runtime 的 prompt 注入读路径。
+	//
+	// **不覆盖**：LLM 通过 BashTool（`cat > file` / `tee` / `echo >>` 等）写 ledger
+	// 的真实路径——bash 进程直接 open() syscall，绕开 WorkspaceRuntime。当前没有
+	// write_file 工具强制 LLM 走 runtime，所以本锁对最高频写者无效。
+	//
+	// **lost-update 防线**：全部由 prompt 纪律承担（per-step OI 命名空间 + 本 step 只动
+	// 自己来源条目 + 已闭环迁移由 step_replan 串行整合）。参见
+	// [[feedback_no_atomic_ledger_tools]]。
+	//
+	// 本锁存在的实际意义：为未来引入 write_file 工具（让 LLM 写 ledger 经 runtime）
+	// 时的 hook 占位——届时此锁直接生效；现状下它保护 skeleton 初始化的少量并发场景
+	// （EnsureSharedScaffold 已有 os.Stat 幂等检查，所以保护面更窄）。
 	sharedFileLocksMu sync.Mutex
 	sharedFileLocks   map[string]*sync.RWMutex
 }
