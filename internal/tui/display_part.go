@@ -21,8 +21,32 @@ const (
 	PartTypeStepTriage  PartType = "step_triage"
 	PartTypeFinalAnswer PartType = "final_answer"
 	PartTypeSubAgent    PartType = "sub_agent"
+	PartTypeInlineStep  PartType = "inline_step"
 	PartTypePhaseBanner PartType = "phase_banner"
 )
+
+// CardKind 用于 ExpandableCardPart 接口的子类型 ID（避免在每个消费方写 switch 区分）。
+type CardKind int
+
+const (
+	CardKindSubAgent CardKind = iota
+	CardKindInlineStep
+)
+
+// ExpandableCardPart 是 sub_agent 卡片和 inline_step 卡片的共用接口。
+// 渲染层按接口处理（统一卡片样式 + 展开/折叠交互）；遍历层按具体类型过滤
+// （SubAgentsThisTurn / InlineStepsThisTurn 各自返回自己的类型）。
+//
+// **不**用 SubAgentPart.Kind 字段做 discriminator——type bloat 教科书案例：每个消费方
+// 都要散点 if Kind != "inline_step" 过滤，漏一个就串台。独立类型 + 接口让编译器在新增
+// 消费方时自动指认是否兼容新卡片类型。
+type ExpandableCardPart interface {
+	Title() string
+	StatusLabel() string
+	GetCallID() string
+	Elapsed() time.Duration
+	CardKind() CardKind
+}
 
 type DisplayPart struct {
 	Type PartType  `json:"type"`
@@ -54,6 +78,7 @@ type DisplayPart struct {
 	StepTriage  *StepTriagePart  `json:"step_triage,omitempty"`
 	FinalAnswer *FinalAnswerPart `json:"final_answer,omitempty"`
 	SubAgent    *SubAgentPart    `json:"sub_agent,omitempty"`
+	InlineStep  *InlineStepPart  `json:"inline_step,omitempty"`
 	PhaseBanner *PhaseBannerPart `json:"phase_banner,omitempty"`
 }
 
@@ -176,10 +201,38 @@ type SubAgentPart struct {
 	Duration      time.Duration `json:"duration,omitempty"`
 	StartedAt     time.Time     `json:"started_at,omitempty"`
 
-	// Kind 区分卡片类型：默认空字符串视同 "sub_agent"，X2 远程 step 走 "remote_step"。
-	// 卡片渲染按 Kind 选 icon / 标题前缀，PartsStore 索引、idxByCallID、cursor 等抽象与 Kind 解耦。
+	// Kind 旧字段，保留用于向后兼容反序列化老 session（曾承载 "remote_step"
+	// 区分语义）。新代码（commit 10+）不再用 Kind 区分，inline_step 卡片走独立
+	// InlineStepPart 类型；本字段在 commit 14 命名兜底时再删除。
 	Kind string `json:"kind,omitempty"`
 }
+
+// SubAgentPart 实现 ExpandableCardPart 接口。
+func (p *SubAgentPart) Title() string         { return p.AgentName }
+func (p *SubAgentPart) StatusLabel() string   { return p.Status }
+func (p *SubAgentPart) GetCallID() string     { return p.CallID }
+func (p *SubAgentPart) Elapsed() time.Duration { return p.Duration }
+func (p *SubAgentPart) CardKind() CardKind    { return CardKindSubAgent }
+
+// InlineStepPart 是 inline_step（commit 7-9 重构后的并发 step）独立卡片类型。
+// 与 SubAgentPart 同结构但语义不同——inline_step 共享主 agent workspace / state，
+// 没有 ChildRef 概念；WorkspaceRoot 指向父 workspace 而非独立子目录。
+type InlineStepPart struct {
+	StepID        string        `json:"step_id"`
+	Description   string        `json:"description,omitempty"` // 通常是 PlanItem.Step
+	Status        string        `json:"status"`                // running / completed / failed / cancelled
+	Summary       string        `json:"summary,omitempty"`
+	WorkspaceRoot string        `json:"workspace_root,omitempty"`
+	Duration      time.Duration `json:"duration,omitempty"`
+	StartedAt     time.Time     `json:"started_at,omitempty"`
+}
+
+// InlineStepPart 实现 ExpandableCardPart 接口。
+func (p *InlineStepPart) Title() string          { return p.StepID }
+func (p *InlineStepPart) StatusLabel() string    { return p.Status }
+func (p *InlineStepPart) GetCallID() string      { return p.StepID }
+func (p *InlineStepPart) Elapsed() time.Duration { return p.Duration }
+func (p *InlineStepPart) CardKind() CardKind     { return CardKindInlineStep }
 
 type FinalAnswerPart struct {
 	AgentName  string   `json:"agent_name,omitempty"`
