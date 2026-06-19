@@ -1177,21 +1177,17 @@ func (a *Agent) prepareTerminalInterrupt(err error) {
 func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatClient, extraText string, taskContext *TaskContextData) error {
 	_ = a.state.SetPhase(builtin_tools.AgentPhaseStep)
 
-	// X2 滚动：主路径 step 完成后 CurrentStepID 仍指向已终态 step（state.go:436 注释保留）。
-	// 入口前先清空，让 EnsureCurrentStep 选下个 ready 作 current。MaxParallel<2 时为 no-op。
-	if a.maxParallelSteps() >= 2 {
-		_ = a.state.ResetCurrentStepIfTerminal()
-	}
+	// 主路径 step 完成后 CurrentStepID 仍指向已终态 step（state.go:436 注释保留）。
+	// 入口前先清空，让 EnsureCurrentStep 选下个 ready 作 current。
+	// degenerate case：MaxParallel=1 时也走相同代码——ResetCurrentStepIfTerminal 在终态时
+	// 翻空、非终态时 no-op；不再保留 if maxParallel < 2 分叉特殊化（fallback 不变质原则，
+	// 参见 plan §fallback 不变质 + [[feedback_no_atomic_ledger_tools]]）。
+	_ = a.state.ResetCurrentStepIfTerminal()
 
 	_ = a.state.EnsureCurrentStep()
 	prevSnapshot := a.state.Snapshot()
 	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
 	snapshot := a.state.MarkCurrentStepInProgress()
-
-	// X2 fan-out：派发当前 ready 中除主路径以外的 peer step 到后台 goroutine。
-	// 主路径继续跑 think_act 循环，独立 step 在 goroutine 里跑各自的 child agent。
-	// MaxParallel<2 时为 no-op；slot 不足时不全部派发，剩下的留下一轮入口或 drain 二次 fan-out 接（面 3.2）。
-	a.fanOutReadyPeers(ctx, snapshot)
 
 	emitTaskItemDiffs(a.emitter, prevPlan, snapshot.Plan, snapshot.CurrentStepID, "")
 	// Ensure the in-step transcript layer is bound to current_step_id before calling the model.
@@ -1219,9 +1215,13 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 			})
 		}
 	}
-	// think_act 本体抽出为 runInlineStep（step_inline.go），主路径用 nil runCtx 调用——
-	// 行为与抽出前完全一致。commit 8c 在此处增加 runStepsConcurrently 并行调用 peer 桶。
-	return a.runInlineStep(ctx, nil, runClient, iter, snapshot, extraText)
+	// runStepsConcurrently 内部：
+	//   1. collectInlineStepIDs(snapshot) → [current, peer1, peer2, ...]
+	//   2. peers 各 spawn 后台 goroutine（spawnInlinePeer，跑 runInlineStep loop 至 terminal）
+	//   3. 主路径同步跑 current 的 runInlineStep（runCtx=nil，行为同抽出前）
+	// MaxParallel=1 时 peers 列表为空，仅主路径——纯串行 fallback 走相同代码路径，
+	// 无 if maxParallel<2 分叉特殊化（degenerate case）。
+	return a.runStepsConcurrently(ctx, runClient, iter, snapshot, extraText)
 }
 
 // executeToolCall 单条 tool_call 分发执行；runCtx 用于桶路由（同 dispatchToolCalls 注释）。
