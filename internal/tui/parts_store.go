@@ -581,6 +581,25 @@ func (s *PartsStore) UpdateSubAgentByCallID(callID string, fn func(*SubAgentPart
 // they observed; equal means the panel may safely reuse its cached View.
 func (s *PartsStore) SubAgentVersion() uint64 { return s.subAgentVersion }
 
+// UpdateInlineStepByStepID mutates the InlineStepPart for stepID via the closure.
+// Returns the parts index on success and -1 when none registered。callID 取值=stepID
+// （InlineStepPart 用 stepID 作 idxByCallID 主键，复用 PartTypeInlineStep 分桶）。
+func (s *PartsStore) UpdateInlineStepByStepID(stepID string, fn func(*InlineStepPart)) int {
+	idx, ok := s.idxByCallID[callIDKey{kind: PartTypeInlineStep, id: stepID}]
+	if !ok || idx < 0 || idx >= len(s.parts) {
+		return -1
+	}
+	p := &s.parts[idx]
+	if p.Type != PartTypeInlineStep || p.InlineStep == nil {
+		return -1
+	}
+	fn(p.InlineStep)
+	p.Version++
+	s.dirty[p.ID] = struct{}{}
+	s.subAgentVersion++ // 复用同一 version 计数器
+	return idx
+}
+
 // StreamingBuilder returns the in-progress text stream buffer for agentName,
 // creating it on first use. Mirrors the pre-migration streamBuilder helper.
 func (s *PartsStore) StreamingBuilder(agentName string) *strings.Builder {
