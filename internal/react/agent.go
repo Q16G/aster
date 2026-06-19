@@ -380,6 +380,33 @@ func (a *Agent) persistStepTranscriptBlob() {
 	a.lastStepTranscriptBlobRef = strings.TrimSpace(ref)
 }
 
+// persistBucketTranscriptBlob 把 inline peer 桶的 transcript 一次性写入主 v2Store。
+// 与 persistStepTranscriptBlob 的差异：
+//   - 显式接 bucket 参数，读 bucket.msgs 而非 a.stepHistory（peer 跑的是自己桶）
+//   - 单 writer：peer goroutine 走到 terminal 时调（loop 已退出，桶 msgs 不再写）；
+//     主路径不竞争同一 blob
+//   - 不更新 a.lastStepTranscriptBlobRef（那是主路径专用字段）；返回 ref 由调用方
+//     塞到 StepAttemptResult.TranscriptBlobRef 让 outcome 知道指向何处
+//
+// 调用方契约：在 spawnInlinePeer goroutine 内、Complete 之前、dropBucket 之前调用。
+// 失败返回 ""，由调用方决定是否当 result.Error。
+func (a *Agent) persistBucketTranscriptBlob(bucket *stepHistoryBucket) string {
+	if a == nil || a.v2Store == nil || bucket == nil || len(bucket.msgs) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(ai.NormalizeMsgInfoSlice(bucket.msgs))
+	if err != nil {
+		a.emitPersistenceWarning("marshal_inline_bucket_transcript", err)
+		return ""
+	}
+	ref, err := a.v2Store.WriteBlob(raw)
+	if err != nil {
+		a.emitPersistenceWarning("write_blob_inline_bucket_transcript", err)
+		return ""
+	}
+	return strings.TrimSpace(ref)
+}
+
 func (a *Agent) persistInFlightStepHistory() {
 	if a == nil || a.v2Store == nil {
 		return

@@ -250,6 +250,17 @@ func (a *Agent) spawnInlinePeer(parentCtx context.Context, runClient ai.ChatClie
 					Error:   fmt.Sprintf("inline peer panicked: %v", r),
 				}
 			}
+			// peer terminal：一次性持久化桶 transcript blob，ref 塞 RunResult.TranscriptBlobRef
+			// 让 drain 路径写到 StepAttemptResult.TranscriptBlobRef，下游 step_replan
+			// 可按 ref 解引用读 peer 跑过的完整 transcript（与主路径 lastStepTranscriptBlobRef
+			// 对称）。单 writer：本 goroutine 已退出 think_act loop，桶 msgs 不再写；
+			// 主路径不竞争该 blob。
+			if result == nil {
+				result = &builtin_tools.RunResult{Success: true}
+			}
+			if ref := a.persistBucketTranscriptBlob(bucket); ref != "" {
+				result.TranscriptBlobRef = ref
+			}
 			a.asyncRegistry.Complete(peerStepID, result)
 			a.dropBucket(peerStepID)
 		}()
