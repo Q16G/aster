@@ -202,6 +202,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		callID, _ := event.Payload["call_id"].(string)
 		isAgent, _ := event.Payload["is_agent"].(bool)
 		stackDepth := payloadInt(event.Payload, "stack_depth")
+		stepID, _ := event.Payload["step_id"].(string)
 		var args string
 		switch v := event.Payload["arguments"].(type) {
 		case string:
@@ -222,6 +223,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				IsAgent:    isAgent,
 				StackDepth: stackDepth,
 				AgentName:  event.AgentName,
+				StepID:     stepID, // P1-7: peer 桶 tool 归到 inline_step 卡片 idxByStepID
 			},
 		})
 		if isAgent {

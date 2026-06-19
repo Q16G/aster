@@ -18,8 +18,8 @@ type noopEmitter struct{}
 
 func (noopEmitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string) {
 }
-func (noopEmitter) EmitToolStart(iteration int, call ToolCall)        {}
-func (noopEmitter) EmitToolEnd(iteration int, result ToolResult)      {}
+func (noopEmitter) EmitToolStart(iteration int, call ToolCall, stepID string)        {}
+func (noopEmitter) EmitToolEnd(iteration int, result ToolResult, stepID string)      {}
 func (noopEmitter) EmitStateChange(snapshot StateSnapshot)            {}
 func (noopEmitter) EmitTaskPlan(plan []*PlanItem, explanation string) {}
 func (noopEmitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
