@@ -1311,10 +1311,15 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 		}
 		if estimateHistoryTokens(msgs) >= triggerTokens {
 			// Persist the full transcript snapshot before any in-memory compaction.
-			// 注：当前 persist 仅记录主 a.stepHistory；inline step 桶的 transcript 持久化
-			// 是 commit 13 测试改造时再决定的事（buckets 主要用于 live execution，
-			// 持久化 / resume 路径仍以主 stepHistory 为准）。
-			a.persistStepTranscriptBlob()
+			//
+			// **必须按 runCtx 守卫**：persistStepTranscriptBlob 无参数读 a.stepHistory，
+			// peer 触发 compaction 时如果不守卫，会写主 history 的 blob（与 peer 桶无关）
+			// + peer 读 a.stepHistory 主写正在 append → race。
+			// 主路径走完整持久化路径；peer 桶 in-flight 不持久化，
+			// 完整 transcript blob 在 peer 走到 terminal 时由 fix/04 一次性写入。
+			if runCtx == nil || runCtx.Bucket == nil {
+				a.persistStepTranscriptBlob()
+			}
 			compacted, err := a.cfg.StepHistoryCompactor.Compact(ctx, runClient, a.cfg.Instruction, parts.Joined(), stepHist)
 			if err != nil {
 				return nil, err
