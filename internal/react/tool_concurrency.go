@@ -222,7 +222,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			IsAgent:    slot.isAgent,
 			StackDepth: slot.stackDepth,
 			Arguments:  builtin_tools.CloneAnyMap(slot.argsMap),
-		})
+		}, effectiveStepID(runCtx, prevSnapshot))
 
 		wg.Add(1)
 		sem <- struct{}{}
@@ -342,7 +342,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			Result:     displayOut,
 			Error:      slot.errText,
 			Media:      render.Media,
-		})
+		}, effectiveStepID(runCtx, prevSnapshot))
 
 		executed++
 	}

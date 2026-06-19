@@ -107,7 +107,7 @@ func TestEmitter_EmitToolEndIncludesMediaMetadata(t *testing.T) {
 			Path:     "/tmp/demo.png",
 			MIMEType: "image/png",
 		}},
-	})
+	}, "")
 
 	if payload == nil {
 		t.Fatal("expected payload to be emitted")

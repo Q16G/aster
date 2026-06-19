@@ -1280,7 +1280,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		IsAgent:    isAgent,
 		StackDepth: stackDepth,
 		Arguments:  builtin_tools.CloneAnyMap(argsMap),
-	})
+	}, effectiveStepID(runCtx, prevSnapshot))
 
 	// Durable human-in-the-loop: raise a persisted interrupt and end the current turn.
 	// This must be crash-safe and resume-safe; we snapshot the runtime state + step transcript
@@ -1481,7 +1481,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 			StackDepth: stackDepth,
 			Result:     "WAITING_FOR_HUMAN",
 			Error:      "",
-		})
+		}, effectiveStepID(runCtx, prevSnapshot))
 
 		return &turnInterruptRaised{
 			pending: &builtin_tools.PendingInterrupt{
@@ -1586,7 +1586,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		Result:     displayOut,
 		Error:      errText,
 		Media:      render.Media,
-	})
+	}, effectiveStepID(runCtx, prevSnapshot))
 
 	if toolName == builtin_tools.UpdateCurrentStepToolName {
 		nextSnapshot := a.state.Snapshot()

@@ -234,25 +234,32 @@ func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
 	})
 }
 
-// EmitToolStart 发射工具开始事件
-func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall) {
+// EmitToolStart 发射工具开始事件。stepID 用于 TUI 把 tool_result 归到归属的
+// inline_step 卡片下（commit 11 idxByStepID 消费）。主路径和 plan/replan 等
+// 非 step phase 传空字符串。
+func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall, stepID string) {
 	e.ResetThinkGroupID()
+	payload := map[string]any{
+		"call_id":     call.ID,
+		"tool_name":   call.Name,
+		"is_agent":    call.IsAgent,
+		"stack_depth": call.StackDepth,
+		"arguments":   call.Arguments,
+	}
+	if stepID != "" {
+		payload["step_id"] = stepID
+	}
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolStart,
 		NodeID:    "tool:" + call.Name,
 		Iteration: iteration,
-		Payload: map[string]any{
-			"call_id":     call.ID,
-			"tool_name":   call.Name,
-			"is_agent":    call.IsAgent,
-			"stack_depth": call.StackDepth,
-			"arguments":   call.Arguments,
-		},
+		Payload:   payload,
 	})
 }
 
-// EmitToolEnd 发射工具结束事件
-func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
+// EmitToolEnd 发射工具结束事件。stepID 同 EmitToolStart——peer 桶 tool 走 runCtx.StepID，
+// 主路径走 snapshot.CurrentStepID。
+func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult, stepID string) {
 	e.ResetThinkGroupID()
 	payload := map[string]any{
 		"call_id":     result.ID,
@@ -264,6 +271,9 @@ func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult) {
 	}
 	if len(result.Media) > 0 {
 		payload["media"] = result.Media
+	}
+	if stepID != "" {
+		payload["step_id"] = stepID
 	}
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeToolEnd,
