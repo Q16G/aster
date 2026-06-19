@@ -64,7 +64,7 @@ func TestDrain_RemoteStepEmitsBgEndOnComplete(t *testing.T) {
 	em, snapshot := remoteStepEventRecorder()
 	a := drainAgentWithEmitter(t, em)
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{Success: true, Result: "remote done"})
 
 	deadline := time.After(500 * time.Millisecond)
@@ -89,7 +89,7 @@ func TestDrain_RemoteStepEmitsBgEndOnFailed(t *testing.T) {
 	em, snapshot := remoteStepEventRecorder()
 	a := drainAgentWithEmitter(t, em)
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{Success: false, Error: "boom"})
 
 	deadline := time.After(500 * time.Millisecond)
@@ -110,12 +110,12 @@ func TestDrain_RemoteStepEmitsBgEndOnFailed(t *testing.T) {
 	}
 }
 
-func TestCancelRunningRemoteSteps_EmitsBgEndCancelled(t *testing.T) {
+func TestCancelRunningInlineSteps_EmitsBgEndCancelled(t *testing.T) {
 	em, snapshot := remoteStepEventRecorder()
 	a := drainAgentWithEmitter(t, em)
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
-	a.asyncRegistry.RegisterRemoteStep("d", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("d", "")
 
 	a.cancelRunningInlineSteps()
 
@@ -128,12 +128,12 @@ func TestCancelRunningRemoteSteps_EmitsBgEndCancelled(t *testing.T) {
 	}
 }
 
-func TestCancelRunningRemoteSteps_IgnoresSubAgentEntries(t *testing.T) {
+func TestCancelRunningInlineSteps_IgnoresSubAgentEntries(t *testing.T) {
 	em, snapshot := remoteStepEventRecorder()
 	a := drainAgentWithEmitter(t, em)
 
 	a.asyncRegistry.Register("sub-1", "x", "")  // sub_agent kind=""
-	a.asyncRegistry.RegisterRemoteStep("c", "") // remote_step kind
+	a.asyncRegistry.RegisterInlineStep("c", "") // remote_step kind
 
 	a.cancelRunningInlineSteps()
 
@@ -171,7 +171,7 @@ func TestCancelRunningSubAgents_IgnoresRemoteStepEntries(t *testing.T) {
 	a := drainAgentWithEmitter(t, combinedEm)
 
 	a.asyncRegistry.Register("sub-1", "x", "")  // sub_agent
-	a.asyncRegistry.RegisterRemoteStep("c", "") // remote_step
+	a.asyncRegistry.RegisterInlineStep("c", "") // remote_step
 
 	a.cancelRunningSubAgents()
 

@@ -494,10 +494,9 @@ func (s *PartsStore) SubAgentsThisTurn() []SubAgentPart {
 	for _, i := range s.subAgentIdxThisTurn {
 		if i >= 0 && i < len(s.parts) {
 			if p := s.parts[i]; p.Type == PartTypeSubAgent && p.SubAgent != nil {
-				// X2 remote step 卡片虽然复用了 PartTypeSubAgent + SubAgentPart 结构，
-				// 但语义不同（不是 LLM 调 sub_agent 工具起的子 agent），不应混入
-				// SubAgentPanel 列表。按 Kind 字段过滤——sub_agent / "" 进 panel，
-				// remote_step 仅在主对话区内联渲染。
+				// 老 Kind="remote_step" 卡片（commit 12 之前的 session）兼容：仍按
+				// Kind 过滤排除掉，不混入 SubAgentPanel——新代码 commit 12+ 走
+				// 独立的 PartTypeInlineStep 类型，本字段在持续 1-2 个版本后可清。
 				if p.SubAgent.Kind == subAgentPartKindRemoteStep {
 					continue
 				}

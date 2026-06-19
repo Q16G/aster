@@ -27,7 +27,7 @@ func TestDrain_RemoteStepCallsUpdateRemotePlanItem(t *testing.T) {
 	a := drainAgent(t)
 
 	// 注册远程 step c 并完成（success）
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{
 		Success: true,
 		Result:  "远程完成摘要",
@@ -87,7 +87,7 @@ func TestDrain_RemoteStepCallsUpdateRemotePlanItem(t *testing.T) {
 func TestDrain_RemoteStepFailedMapsToPlanStepFailed(t *testing.T) {
 	a := drainAgent(t)
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{
 		Success: false,
 		Error:   "remote crash",
@@ -171,7 +171,7 @@ func TestDrain_RemoteStepNilStateNoOp(t *testing.T) {
 	r := NewAsyncAgentRegistry()
 	a := &Agent{asyncRegistry: r, state: nil}
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{Success: true, Result: "x"})
 
 	deadline := time.After(500 * time.Millisecond)
@@ -198,7 +198,7 @@ func TestDrain_RemoteStepNilResultMapsToFailed(t *testing.T) {
 	// drain 应安全把 PlanItem 标 Failed，不 panic 不 lockup。
 	a := drainAgent(t)
 
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", nil) // Result==nil
 
 	deadline := time.After(500 * time.Millisecond)
@@ -236,7 +236,7 @@ func TestDrain_RemoteStepStaleNotificationSkipped(t *testing.T) {
 	// drain 看到 Get() == nil 应立即 continue，state 不被回写。
 	a.asyncRegistry.notifications <- &AsyncAgentNotification{
 		AgentID: "c",
-		Kind:    AsyncAgentKindRemoteStep,
+		Kind:    AsyncAgentKindInlineStep,
 		Status:  "completed",
 		Result:  &builtin_tools.RunResult{Success: true, Result: "should be ignored"},
 	}
@@ -274,7 +274,7 @@ func TestDrain_RemoteStepCompletionUnlocksDependents(t *testing.T) {
 	}
 
 	// b 注册为 remote_step + 完成
-	a.asyncRegistry.RegisterRemoteStep("b", "")
+	a.asyncRegistry.RegisterInlineStep("b", "")
 	a.asyncRegistry.Complete("b", &builtin_tools.RunResult{Success: true, Result: "b done"})
 
 	deadline := time.After(500 * time.Millisecond)
@@ -316,7 +316,7 @@ func TestDrain_RemoteStepCompletionNoUnlockWhenLeaf(t *testing.T) {
 	a := &Agent{asyncRegistry: NewAsyncAgentRegistry(), state: tracker}
 
 	// c 注册并完成
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{Success: true})
 
 	// 由于 c 依赖未满足（b 还 pending），UpdateRemotePlanItem 仍会回写 c=Completed，
@@ -389,7 +389,7 @@ func TestDrain_RemoteStepFanOutEarlyExitsOnCanceledCtx(t *testing.T) {
 
 	// 注意：本测试构造一个会触发 fanOutReadyPeers 进入 spawn 路径的 agent
 	// （cfg.MaxParallelSteps>=2 + 非 nil agentFactory）。spawnRemoteStep 起手
-	// ctx.Err() 检查会早退，d 不应被 RegisterRemoteStep。
+	// ctx.Err() 检查会早退，d 不应被 RegisterInlineStep。
 	a := &Agent{
 		asyncRegistry: NewAsyncAgentRegistry(),
 		state:         tracker,
@@ -398,7 +398,7 @@ func TestDrain_RemoteStepFanOutEarlyExitsOnCanceledCtx(t *testing.T) {
 	}
 
 	// 注册 b 完成 + 准备取消的 ctx
-	a.asyncRegistry.RegisterRemoteStep("b", "")
+	a.asyncRegistry.RegisterInlineStep("b", "")
 	a.asyncRegistry.Complete("b", &builtin_tools.RunResult{Success: true})
 
 	deadline := time.After(500 * time.Millisecond)
@@ -428,7 +428,7 @@ func TestDrain_RemoteStepFanOutEarlyExitsOnCanceledCtx(t *testing.T) {
 		t.Fatalf("expected b Completed (state path is ctx-independent), got %q", b.Status)
 	}
 
-	// 2. d 不应被 RegisterRemoteStep（spawn 起手 ctx.Err() 早退）
+	// 2. d 不应被 RegisterInlineStep（spawn 起手 ctx.Err() 早退）
 	if a.asyncRegistry.Get("d") != nil {
 		t.Fatal("d should not be registered under canceled ctx (spawn early-exit)")
 	}
@@ -438,7 +438,7 @@ func TestDrain_RemoteStepFanOutEarlyExitsOnCanceledCtx(t *testing.T) {
 // 应该通过 drain 路径写到 StepOutcome.TranscriptBlobRef。
 func TestDrain_RemoteStepTranscriptBlobRefPropagated(t *testing.T) {
 	a := drainAgent(t)
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{
 		Success:           true,
 		Result:            "done",
@@ -474,7 +474,7 @@ func TestDrain_MixedKindsDispatchedCorrectly(t *testing.T) {
 	a := drainAgent(t)
 
 	a.asyncRegistry.Register("sa-1", "do something", "")
-	a.asyncRegistry.RegisterRemoteStep("c", "")
+	a.asyncRegistry.RegisterInlineStep("c", "")
 
 	a.asyncRegistry.Complete("sa-1", &builtin_tools.RunResult{Success: true, Result: "sub done"})
 	a.asyncRegistry.Complete("c", &builtin_tools.RunResult{Success: true, Result: "remote done"})
