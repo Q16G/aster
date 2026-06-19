@@ -1114,15 +1114,19 @@ func (a *Agent) resetRunHandoff() {
 // BuildFunctionTools 按 phase 构建出工具集合。
 //
 // runCtx 可为 nil（plan / step_replan / final_answer / intent 路径都传 nil）；
-// 仅 inline step 路径会传非 nil 的 runCtx。当 runCtx != nil && !FinalAnswerAllowed 时，
-// 软挡板拒绝注册 submit_final_answer——P0-2 防线之一：现状 step phase 不注册该工具，
-// 这条防护是"防御未来某天 step phase 把 final_answer 加进去时 inline peer 不该能调"的
-// 编译期 + 运行期双保险。
+// 仅 inline step 路径会传非 nil 的 runCtx。两条软挡板：
+//   - !FinalAnswerAllowed → 拒绝 submit_final_answer（P0-2 防 state 双写）
+//   - runCtx != nil（peer 桶）→ 拒绝 update_current_step（fix/09 P1-5 防 peer
+//     LLM 误调改主 CurrentStep 状态——peer 终态走 auto-complete + drain UpdateInlineStep
+//     路径，不需要也不应该 update_current_step）
 func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
 	if a == nil || a.tools == nil || a.tools.Len() == 0 {
 		return nil, nil
 	}
 	finalAnswerForbidden := runCtx != nil && !runCtx.FinalAnswerAllowed
+	// fix/09 P1-5：peer 桶（runCtx != nil 且有 Bucket）禁 update_current_step；
+	// 主路径 runCtx == nil 不挡板。
+	updateCurrentStepForbidden := runCtx != nil && runCtx.Bucket != nil
 	tools := make([]*ai.FunctionTool, 0, a.tools.Len())
 	allowed := make(map[string]struct{}, a.tools.Len())
 	a.tools.ForEach(func(_ string, tool Tool) {
@@ -1134,6 +1138,9 @@ func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.Ag
 			return
 		}
 		if finalAnswerForbidden && name == builtin_tools.SubmitFinalAnswerToolName {
+			return
+		}
+		if updateCurrentStepForbidden && name == builtin_tools.UpdateCurrentStepToolName {
 			return
 		}
 		allowed[name] = struct{}{}

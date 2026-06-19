@@ -7,6 +7,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/react/persistv2"
+	"aster/internal/utils"
 )
 
 // selectInlineStepPeers — 纯函数选择逻辑单测（迁移自 step_fanout_test.go::selectFanOutPeers）。
@@ -321,6 +322,41 @@ func TestPersistBucketTranscriptBlob(t *testing.T) {
 	// nil bucket 安全
 	if ref := a.persistBucketTranscriptBlob(nil); ref != "" {
 		t.Fatalf("nil bucket 应返回 ''，got %q", ref)
+	}
+}
+
+// TestBuildFunctionTools_PeerBucketBlocksUpdateCurrentStep（fix/09 P1-5 红线）：
+// peer 桶 LLM 不能调 update_current_step（防误改主 step 状态）。
+// 主路径 runCtx == nil 时不挡板。
+func TestBuildFunctionTools_PeerBucketBlocksUpdateCurrentStep(t *testing.T) {
+	// 注册一个 update_current_step 工具
+	a := &Agent{
+		cfg:   &AgentConfig{IsSubAgent: false},
+		tools: nil,
+	}
+	a.tools = utils.NewOrderMapx[string, Tool]()
+	updateTool := builtin_tools.NewUpdateCurrentStepTool(nil)
+	a.tools.Set(updateTool.Name(), updateTool)
+
+	// runCtx == nil（主路径）→ update_current_step 应在
+	tools, allowed := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed[builtin_tools.UpdateCurrentStepToolName]; !ok {
+		t.Fatalf("主路径 update_current_step 应可用 (peer 才挡)，allowed=%v", allowed)
+	}
+	if len(tools) == 0 {
+		t.Fatalf("expected at least update_current_step in tools, got %v", tools)
+	}
+
+	// peer 桶 runCtx 非 nil + Bucket 非 nil → update_current_step 应被屏蔽
+	runCtx := &InlineStepCtx{StepID: "peer-1", Bucket: &stepHistoryBucket{stepID: "peer-1"}}
+	tools2, allowed2 := a.BuildFunctionTools(runCtx, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed2[builtin_tools.UpdateCurrentStepToolName]; ok {
+		t.Fatalf("peer 桶 update_current_step 应被屏蔽，allowed=%v", allowed2)
+	}
+	for _, ft := range tools2 {
+		if ft.Function != nil && ft.Function.Name == builtin_tools.UpdateCurrentStepToolName {
+			t.Fatalf("peer 桶 tools 不应含 update_current_step，got %s", ft.Function.Name)
+		}
 	}
 }
 
