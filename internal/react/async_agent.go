@@ -26,7 +26,7 @@ type AsyncAgentRegistry struct {
 }
 
 // AsyncAgent kind 区分两种后台任务：sub_agent 走 stepHistory 注入路径；
-// remote_step 走 state.UpdateRemotePlanItem 回写，不污染主 transcript。
+// remote_step 走 state.UpdateInlineStep 回写，不污染主 transcript。
 // 空字符串视同 sub_agent，保持现状调用方零改动。
 const (
 	AsyncAgentKindSubAgent   = "sub_agent"
@@ -76,7 +76,7 @@ func (r *AsyncAgentRegistry) Register(agentID, instruction, workspaceDir string)
 }
 
 // RegisterRemoteStep 注册一个 X2 远程 step。AgentID 复用 plan step ID，
-// Kind = AsyncAgentKindRemoteStep。drain 路径据此分流到 state.UpdateRemotePlanItem，
+// Kind = AsyncAgentKindRemoteStep。drain 路径据此分流到 state.UpdateInlineStep，
 // 不灌 stepHistory（远程 step 的 transcript 由 step_fanout 落 blob，按指针读）。
 func (r *AsyncAgentRegistry) RegisterRemoteStep(stepID, workspaceDir string) {
 	r.mu.Lock()

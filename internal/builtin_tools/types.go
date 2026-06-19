@@ -322,7 +322,7 @@ type CurrentStepUpdate struct {
 	KeyFacts          []string                `json:"key_facts"`
 	CoverageChecklist []CoverageChecklistItem `json:"coverage_checklist,omitempty"`
 
-	// TranscriptBlobRef 仅由 UpdateRemotePlanItem 路径使用（X2 远程 step 完成回写）。
+	// TranscriptBlobRef 仅由 UpdateInlineStep 路径使用（inline step 完成回写）。
 	// 主路径 UpdateCurrentStep 不填此字段——主路径的 transcript blob ref 由
 	// ApplyStepReplan 路径管理（state.go:645）。upsertStepOutcomeLocked 在写入时
 	// 只在非空时覆盖 outcome.TranscriptBlobRef，避免主路径调用误清空。
