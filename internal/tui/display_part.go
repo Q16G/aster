@@ -105,6 +105,10 @@ type ToolPart struct {
 	WorkspaceRoot string        `json:"workspace_root,omitempty"`
 	Summary       string        `json:"summary,omitempty"`
 	ChildRef      string        `json:"child_ref,omitempty"`
+	// StepID 标记该 tool_result 归属哪个 inline_step（commit 12 事件路由填入）。
+	// 空字符串表示主路径（current step）或非 inline_step 上下文（plan/replan/intent/final）。
+	// 渲染层用此字段在 InlineStepPart 卡片下分组展示。
+	StepID string `json:"step_id,omitempty"`
 }
 
 type PlanPart struct {
