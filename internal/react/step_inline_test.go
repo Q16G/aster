@@ -251,6 +251,34 @@ func TestAsyncAgentRegistry_HasRunningSubAgent_FiltersInlineStep(t *testing.T) {
 	}
 }
 
+// TestEffectiveStepID（fix/02 P0-2 红线）：peer 路径必须用 runCtx.StepID 不能用主 snapshot.CurrentStepID。
+func TestEffectiveStepID(t *testing.T) {
+	snap := builtin_tools.StateSnapshot{CurrentStepID: "main-step"}
+
+	// 主路径：runCtx == nil 退化到 snapshot
+	if got := effectiveStepID(nil, snap); got != "main-step" {
+		t.Fatalf("main path: expected 'main-step', got %q", got)
+	}
+
+	// peer 路径：runCtx 优先
+	runCtx := &InlineStepCtx{StepID: "peer-step"}
+	if got := effectiveStepID(runCtx, snap); got != "peer-step" {
+		t.Fatalf("peer path: expected 'peer-step', got %q", got)
+	}
+
+	// runCtx 但 StepID 空：退化到 snapshot
+	runCtx2 := &InlineStepCtx{StepID: "  "}
+	if got := effectiveStepID(runCtx2, snap); got != "main-step" {
+		t.Fatalf("empty runCtx StepID: expected fallback 'main-step', got %q", got)
+	}
+
+	// runCtx StepID + trim
+	runCtx3 := &InlineStepCtx{StepID: "  trimmed-step  "}
+	if got := effectiveStepID(runCtx3, snap); got != "trimmed-step" {
+		t.Fatalf("runCtx StepID with whitespace: expected 'trimmed-step', got %q", got)
+	}
+}
+
 func TestIsInlineStepTerminal(t *testing.T) {
 	snap := builtin_tools.StateSnapshot{
 		Plan: []*builtin_tools.PlanItem{

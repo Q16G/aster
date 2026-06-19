@@ -262,7 +262,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 				GitBranch:          strings.TrimSpace(a.runtimeRepoContext.Branch),
 				GitRepoURL:         strings.TrimSpace(a.runtimeRepoContext.RemoteURL),
 				IsGitWorktree:      a.runtimeRepoContext.IsWorktree,
-				CurrentStepID:      strings.TrimSpace(prevSnapshot.CurrentStepID),
+				CurrentStepID:      effectiveStepID(runCtx, prevSnapshot),
 			})
 
 			toolTimeout := a.cfg.resolveToolTimeout(s.argsMap)
@@ -326,7 +326,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText)
 		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
-		if stepID := strings.TrimSpace(prevSnapshot.CurrentStepID); sharedDir != "" && stepID != "" {
+		if stepID := effectiveStepID(runCtx, prevSnapshot); sharedDir != "" && stepID != "" {
 			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)
 			if len(render.Media) > 0 {
 				event.Payload = map[string]any{"media": render.Media}
