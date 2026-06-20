@@ -531,16 +531,34 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					if granErr := validatePlanItemsGranularity(parsed.Plan); granErr != nil {
 						submitRetries++
 						if submitRetries > maxSubmitRetries {
-							return nil, fmt.Errorf("submit_plan granularity check failed after %d retries: %w", maxSubmitRetries, granErr)
+							// 降级放行：粒度是质量门（不是正确性门），3 次仍不收敛时不应
+							// 把整条 run 判死——下游 step 阶段本就承担动态拆条。emit warning
+							// 并在 Explanation 末尾打降级标记，便于 step 阶段 / 复盘可见。
+							violationIDs := collectGranularityViolationIDs(parsed.Plan)
+							a.emitRuntimeLog("warning", "submit_plan granularity check did not converge after retries; degrading to accept", a.state.Snapshot(), map[string]any{
+								"event":           "submit_plan_granularity_degraded",
+								"round":           round,
+								"violation_ids":   violationIDs,
+								"violation_count": len(violationIDs),
+								"last_error":      granErr.Error(),
+							})
+							degradeMark := fmt.Sprintf("[runtime] 粒度校验 %d 次未收敛（违例 step: %s），已按降级策略放行；建议执行阶段按账本机械拆条。", maxSubmitRetries, strings.Join(violationIDs, ", "))
+							parsed.Explanation = strings.TrimRight(parsed.Explanation, " \t\n")
+							if parsed.Explanation != "" {
+								parsed.Explanation += "\n"
+							}
+							parsed.Explanation += degradeMark
+							// fall through 让后续子 Agent 完成性 + 输入事实闸门继续生效
+						} else {
+							a.AICallProxyWriteToolResult(nil,
+								strings.TrimSpace(tc.Id), submitPlanToolName,
+								"", nil, "",
+								fmt.Sprintf("submit_plan 粒度校验失败（第 %d/%d 次重试）：%s", submitRetries, maxSubmitRetries, granErr.Error()),
+								false,
+							)
+							anyUsefulTool = true
+							continue
 						}
-						a.AICallProxyWriteToolResult(nil, 
-							strings.TrimSpace(tc.Id), submitPlanToolName,
-							"", nil, "",
-							fmt.Sprintf("submit_plan 粒度校验失败（第 %d/%d 次重试）：%s\n请把违例的 step 按工件/产出拆为多条独立可验收子项（一对象一动作一产出）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, granErr.Error()),
-							false,
-						)
-						anyUsefulTool = true
-						continue
 					}
 				}
 				// 子 Agent 完成性守卫：规划期委派的子 Agent 全部结束并归并产出后才允许
@@ -682,7 +700,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 							"required": []string{"id", "step", "status", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
-								"step": map[string]any{"type": "string", "description": "一条 step 必须是 atomic work item：object × action × acceptance。object 是一个具体执行对象（文件、接口、参数、页面、账户等对象标识）；action 是唯一动作维度（枚举、观测、验证某项属性、生成报告等）；acceptance 是一个可独立验收的产出或结论。规划时先列 objects，再列 actions，最后生成三元组；任一维度不同就拆成不同 step。清单是数据流：生成清单可作为一个 step，消费清单时必须展开清单内 objects，清单文件名本身不是批量执行对象。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
+								"step": map[string]any{"type": "string", "description": "一条 step 必须是 atomic work item：object × action × acceptance。object 是一个具体执行对象（文件、接口、参数、页面、账户等对象标识）；action 是唯一动作维度（枚举、观测、验证某项属性、生成报告等）；acceptance 是一个可独立验收的产出或结论。规划时先列 objects，再列 actions，最后生成三元组；任一维度不同就拆成不同 step。清单是数据流：生成清单可作为一个 step，消费清单时必须展开清单内 objects，清单文件名本身不是批量执行对象。机械兜底门：单条 step 文案 ≤120 字符，且不得出现中文分号「；」（多句堆叠强信号）；超限或含分号会被 runtime 拒绝并回写要求拆条重试。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
 								"status": map[string]any{
 									"type":        "string",
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},
@@ -740,13 +758,26 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 // 经验值：120 字符足够承载"动词 + 单工件 + 单动作维度 + 单产出 + 验收"标准句式（30-80 字），>120 一般有多句。
 const planItemStepMaxRunes = 120
 
-// validatePlanItemsGranularity 对 plan items 做两条机械粒度兜底检查（与 Atomic Step Contract 同口径）：
-//  1. step 文案 runes 数 ≤ planItemStepMaxRunes
-//  2. step 文案不含中文分号 `；`（多句堆叠的强信号）
-//
-// 返回首条违例的 error 描述。校验失败由调用方走 submit_plan 的 retry 通道让 LLM 拆条重试。
-// 这是对 prompt 侧自检（A-M + N0-N5 + P1/P2 计 20+ 条规则）的机械兜底——LLM 自觉失败时的最后一刀。
-func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
+// planItemStepExcerptRunes 是 retry 反馈里携带违例 step 文案摘要的 rune 截断上限。
+// 60 字足够定位违例点（首句通常含核心 object/action），又控制反馈面长度。
+const planItemStepExcerptRunes = 60
+
+// stepTextExcerpt 取 step 文案前 max 个 rune，超出加 `…` 截断标记——用于 retry 反馈定位。
+func stepTextExcerpt(step string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(step)
+	if len(runes) <= max {
+		return step
+	}
+	return string(runes[:max]) + "…"
+}
+
+// collectGranularityViolationIDs 列出违反 validatePlanItemsGranularity 任一规则的 step ID，
+// 供降级放行分支记录到 runtime warning 与 Explanation 降级标记中。
+func collectGranularityViolationIDs(items []*builtin_tools.PlanItem) []string {
+	var ids []string
 	for _, item := range items {
 		if item == nil {
 			continue
@@ -760,13 +791,64 @@ func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
 			id = "<unnamed>"
 		}
 		if strings.Contains(step, "；") {
-			return fmt.Errorf("step %q 文案包含中文分号 `；`（多句堆叠信号）——一条 step = object × action × acceptance，按三元组拆为多条", id)
+			ids = append(ids, id)
+			continue
 		}
-		if runeCount := utf8.RuneCountInString(step); runeCount > planItemStepMaxRunes {
-			return fmt.Errorf("step %q 文案长度 %d > %d 字符上限（超长几乎必然塞多事）——按 object/action/acceptance 拆为多条 atomic step", id, runeCount, planItemStepMaxRunes)
+		if utf8.RuneCountInString(step) > planItemStepMaxRunes {
+			ids = append(ids, id)
 		}
 	}
-	return nil
+	return ids
+}
+
+// validatePlanItemsGranularity 对 plan items 做两条机械粒度兜底检查（与 Atomic Step Contract 同口径）：
+//  1. step 文案 runes 数 ≤ planItemStepMaxRunes
+//  2. step 文案不含中文分号 `；`（多句堆叠的强信号）
+//
+// 遍历完整 plan，把所有违例聚合到一条 error 返回，并携带每条违例 step 的文案摘要——
+// 单次 retry 反馈即可让 LLM 一次整改完所有违例，避免「修对一条又留另一条」的死循环。
+// 校验失败由调用方走 submit_plan 的 retry 通道；3 次 retry 用尽后由 runtime 走降级放行
+// （粒度是质量门而非正确性门，不应让 8 小时 / 上亿 token 长跑被一条经验门判死）。
+// 这是对 prompt 侧自检（A-M + N0-N5 + P1/P2 计 20+ 条规则）的机械兜底——LLM 自觉失败时的最后一刀。
+func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
+	var violations []string
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		step := strings.TrimSpace(item.Step)
+		if step == "" {
+			continue
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = "<unnamed>"
+		}
+		excerpt := stepTextExcerpt(step, planItemStepExcerptRunes)
+		if strings.Contains(step, "；") {
+			violations = append(violations, fmt.Sprintf(
+				"step %q 文案包含中文分号 `；`（多句堆叠信号）——摘要：「%s」",
+				id, excerpt,
+			))
+			continue
+		}
+		if runeCount := utf8.RuneCountInString(step); runeCount > planItemStepMaxRunes {
+			violations = append(violations, fmt.Sprintf(
+				"step %q 文案长度 %d > %d 字符上限——摘要：「%s」",
+				id, runeCount, planItemStepMaxRunes, excerpt,
+			))
+		}
+	}
+	if len(violations) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "submit_plan 粒度校验共 %d 条违例（超长 / 多句堆叠几乎必然混合多个 object × action × acceptance）：", len(violations))
+	for i, v := range violations {
+		fmt.Fprintf(&b, "\n[%d] %s", i+1, v)
+	}
+	fmt.Fprintf(&b, "\n请把上述 step 按 object/action/acceptance 拆为多条 atomic step（单条 ≤%d 字符、不含 `；`）后重新调用 submit_plan。", planItemStepMaxRunes)
+	return errors.New(b.String())
 }
 
 func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {

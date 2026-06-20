@@ -1,6 +1,7 @@
 package react
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -379,6 +380,106 @@ func TestValidatePlanItemsGranularity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidatePlanItemsGranularity_AggregatesAllViolations 锁定聚合行为：
+// 多条 step 违例时单次 retry 必须一次性反馈所有违例，避免「修对一条又留另一条」死循环。
+func TestValidatePlanItemsGranularity_AggregatesAllViolations(t *testing.T) {
+	items := []*builtin_tools.PlanItem{
+		{ID: "long-a", Step: strings.Repeat("对", 130) + "象"},
+		{ID: "semicolon-b", Step: "检测安全头；分析 Cookie 安全属性；测试 CORS"},
+		{ID: "long-c", Step: strings.Repeat("枚", 125)},
+		{ID: "ok-d", Step: "枚举 /api/auth/login 产出请求快照"},
+	}
+	err := validatePlanItemsGranularity(items)
+	if err == nil {
+		t.Fatalf("expected error from mixed violations, got nil")
+	}
+	text := err.Error()
+	for _, id := range []string{"long-a", "semicolon-b", "long-c"} {
+		if !strings.Contains(text, id) {
+			t.Errorf("aggregated error must reference violation id %q, got:\n%s", id, text)
+		}
+	}
+	if strings.Contains(text, "ok-d") {
+		t.Errorf("non-violating step ok-d must not appear in error, got:\n%s", text)
+	}
+	if !strings.Contains(text, "共 3 条违例") {
+		t.Errorf("aggregated error must announce violation count, got:\n%s", text)
+	}
+	if !strings.Contains(text, fmt.Sprintf("≤%d 字符", planItemStepMaxRunes)) {
+		t.Errorf("aggregated error trailer must remind of %d-char ceiling, got:\n%s", planItemStepMaxRunes, text)
+	}
+}
+
+// TestValidatePlanItemsGranularity_ExcerptTruncated 锁定违例 step 文案摘要 ≤60 rune + 省略号。
+// 避免反馈面把整段超长 step 全文粘贴回去（既冗余又可能再次触发上下文上限）。
+func TestValidatePlanItemsGranularity_ExcerptTruncated(t *testing.T) {
+	longStep := strings.Repeat("甲", 200)
+	err := validatePlanItemsGranularity([]*builtin_tools.PlanItem{
+		{ID: "x1", Step: longStep},
+	})
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "…") {
+		t.Fatalf("error must include truncation marker `…`, got:\n%s", text)
+	}
+	// 摘要 ≤60 rune；整段 200 rune 不允许全部出现
+	if strings.Contains(text, strings.Repeat("甲", 100)) {
+		t.Fatalf("error must not contain the full untruncated step text")
+	}
+	full := strings.Repeat("甲", planItemStepExcerptRunes+1)
+	if strings.Contains(text, full) {
+		t.Fatalf("excerpt must be capped at %d runes, got more in:\n%s", planItemStepExcerptRunes, text)
+	}
+}
+
+// TestCollectGranularityViolationIDs 锁定 ID 收集助手——降级放行分支用它写 warning + 标记。
+func TestCollectGranularityViolationIDs(t *testing.T) {
+	ids := collectGranularityViolationIDs([]*builtin_tools.PlanItem{
+		nil,
+		{ID: "long-1", Step: strings.Repeat("对", 121)},
+		{ID: "semi-2", Step: "A；B"},
+		{ID: "ok-3", Step: "短步"},
+		{ID: "  ", Step: strings.Repeat("乙", 130)},
+	})
+	if want, got := []string{"long-1", "semi-2", "<unnamed>"}, ids; !equalStringSlice(want, got) {
+		t.Fatalf("violation IDs mismatch: want %v, got %v", want, got)
+	}
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestStepTextExcerpt 锁定摘要工具的边界。
+func TestStepTextExcerpt(t *testing.T) {
+	t.Run("under limit returns as-is", func(t *testing.T) {
+		if got := stepTextExcerpt("短", 10); got != "短" {
+			t.Fatalf("want 短, got %q", got)
+		}
+	})
+	t.Run("over limit truncates with ellipsis", func(t *testing.T) {
+		got := stepTextExcerpt(strings.Repeat("甲", 100), 5)
+		if got != strings.Repeat("甲", 5)+"…" {
+			t.Fatalf("unexpected excerpt: %q", got)
+		}
+	})
+	t.Run("zero max yields empty", func(t *testing.T) {
+		if got := stepTextExcerpt("任意", 0); got != "" {
+			t.Fatalf("want empty, got %q", got)
+		}
+	})
 }
 
 func nestedString(root map[string]any, path ...string) (string, bool) {
