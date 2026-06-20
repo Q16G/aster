@@ -2878,3 +2878,85 @@ func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
 		t.Fatalf("expected %d model calls (3 gate rejections + degrade accept + step + replan + final), got %d", len(client.replies), client.calls)
 	}
 }
+
+// TestPlanPhaseWithTools_GranularityGateRetriesThenDegrades 锁定粒度校验降级放行：
+// 粒度是质量门（非正确性门）——3 次 retry 仍不收敛时不再返 fatal err 杀整条 run，
+// 改为 emit warning + 在 Explanation 末尾打降级标记后接受当前 plan。
+// 用户场景：长跑 8 小时 / 127M tokens 因 1 条 156 字符 step 被判死。
+func TestPlanPhaseWithTools_GranularityGateRetriesThenDegrades(t *testing.T) {
+	// 130 个「对」+ 1 个「象」= 131 rune > 120 上限，必定触发粒度校验。
+	overlongStep := strings.Repeat("对", 130) + "象"
+	submitPlanReply := func(callID string) executeModelReply {
+		return executeModelReply{
+			toolCalls: []*ai.FunctionTool{
+				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
+					"needs_planning": true,
+					"plan": []any{
+						map[string]any{"id": "p14-ssi-testfile", "step": overlongStep, "status": "pending", "depends_on": []any{}},
+					},
+					"explanation":        "需要规划",
+					"goal_understanding": "核心目标：执行用户请求",
+					"current_phase":      "对象 的 深度探测",
+				}),
+			},
+		}
+	}
+	client := &executeModelTestClient{
+		replies: []executeModelReply{
+			// plan 回合 1-3：粒度校验失败，retry 通道反馈。
+			submitPlanReply("call-submit-1"),
+			submitPlanReply("call-submit-2"),
+			submitPlanReply("call-submit-3"),
+			// plan 回合 4：超过 3 次重试上限，降级放行接受计划。
+			submitPlanReply("call-submit-4"),
+			// step 完成。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-step-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
+						"status": "completed", "summary": "done", "display_result": "ok",
+						"result": "ok", "short_summary": "step done",
+					}),
+				},
+			},
+			// step_replan：不重排。
+			{
+				toolCalls: []*ai.FunctionTool{
+					mustBuildToolCall(t, "call-replan", "submit_plan", map[string]any{
+						"should_replan": false, "replan_reason": "", "next_goal": "",
+						"incomplete_items": []string{}, "new_surfaces": []string{}, "warnings": []string{},
+					}),
+				},
+			},
+			// final_answer。
+			{
+				content: `{"is_complete":true,"status":"completed","reason":"done","should_replan":false,"next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[],"user_message":"granularity-gate-final","references":[]}`,
+			},
+		},
+	}
+
+	agent, err := NewReActAgent(
+		"granularity-gate-agent",
+		client,
+		WithEmitter(NewDummyEmitter()),
+		WithMaxIterations(8),
+		WithHistoryCompressor(&noopHistoryCompressor{}),
+		WithTaskPlanner(&executeModelAgenticPlanner{prompt: "plan this task"}),
+	)
+	if err != nil {
+		t.Fatalf("NewReActAgent failed: %v", err)
+	}
+
+	runResult, err := agent.Execute(context.Background(), "hello", WithSkipIntentPrelude())
+	if err != nil {
+		t.Fatalf("Execute must not return error after granularity degrade-accept, got: %v", err)
+	}
+	if runResult == nil || !runResult.Success {
+		t.Fatalf("expected success after granularity gate degrade-accept, got %#v", runResult)
+	}
+	if strings.TrimSpace(runResult.Result) != "granularity-gate-final" {
+		t.Fatalf("expected final answer after degrade-accept, got %q", runResult.Result)
+	}
+	if client.calls != len(client.replies) {
+		t.Fatalf("expected %d model calls (3 granularity rejections + degrade accept + step + replan + final), got %d", len(client.replies), client.calls)
+	}
+}
