@@ -363,6 +363,54 @@ func TestBuildFunctionTools_PeerBucketBlocksAwaitSubAgents(t *testing.T) {
 	}
 }
 
+// TestBuildFunctionTools_PeerBucketBlocksSubmitFinalAnswer（fix/13 R2-5 补丁）：
+// peer 桶（FinalAnswerAllowed=false）必须屏蔽 submit_final_answer——peer 提交终态走
+// auto-complete + drain UpdateInlineStep 路径，submit_final_answer 会触发主路径
+// 终态化造成 state 双写（P0-2 旧防线）。原 TestFinalAnswerForbidInInlinePeerBucket
+// 仅守 nil tools 早退路径，未端到端验证「真注册 submit_final_answer 工具时被屏蔽」。
+//
+// 用 AgentPhaseStep 测：toolEnabledInPhase 在 Step 阶段对 submit_final_answer 走 default
+// 分支放行（agent_execute.go:1170-1179），所以 FinalAnswerAllowed 软挡板成为唯一过滤点。
+// FinalAnswer phase 自己不路由 submit_final_answer 工具（agent_execute.go:1210-1220），
+// 不在本测试范围。
+func TestBuildFunctionTools_PeerBucketBlocksSubmitFinalAnswer(t *testing.T) {
+	a := &Agent{
+		cfg:   &AgentConfig{IsSubAgent: false},
+		tools: nil,
+	}
+	a.tools = utils.NewOrderMapx[string, Tool]()
+	finalTool := builtin_tools.NewSubmitFinalAnswerTool()
+	a.tools.Set(finalTool.Name(), finalTool)
+
+	// 关键场景：peer 桶 FinalAnswerAllowed=false → 必屏蔽
+	runCtxPeer := &InlineStepCtx{
+		StepID:             "peer-1",
+		Bucket:             &stepHistoryBucket{stepID: "peer-1"},
+		FinalAnswerAllowed: false,
+	}
+	_, allowedPeer := a.BuildFunctionTools(runCtxPeer, builtin_tools.AgentPhaseStep)
+	if _, ok := allowedPeer[builtin_tools.SubmitFinalAnswerToolName]; ok {
+		t.Fatalf("peer 桶 (FinalAnswerAllowed=false) submit_final_answer 应被屏蔽，allowed=%v", allowedPeer)
+	}
+
+	// 对比：current step bucket FinalAnswerAllowed=true → 可用
+	runCtxCurrent := &InlineStepCtx{
+		StepID:             "current-step",
+		Bucket:             &stepHistoryBucket{stepID: "current-step"},
+		FinalAnswerAllowed: true,
+	}
+	_, allowedCurrent := a.BuildFunctionTools(runCtxCurrent, builtin_tools.AgentPhaseStep)
+	if _, ok := allowedCurrent[builtin_tools.SubmitFinalAnswerToolName]; !ok {
+		t.Fatalf("current step bucket (FinalAnswerAllowed=true) submit_final_answer 应可用，allowed=%v", allowedCurrent)
+	}
+
+	// 主路径 runCtx == nil → finalAnswerForbidden=false → 可用（基线对照）
+	_, allowedMain := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
+	if _, ok := allowedMain[builtin_tools.SubmitFinalAnswerToolName]; !ok {
+		t.Fatalf("主路径 submit_final_answer 应可用，allowed=%v", allowedMain)
+	}
+}
+
 // TestBuildFunctionTools_PeerBucketBlocksUpdateCurrentStep（fix/09 P1-5 红线）：
 // peer 桶 LLM 不能调 update_current_step（防误改主 step 状态）。
 // 主路径 runCtx == nil 时不挡板。
