@@ -325,6 +325,44 @@ func TestPersistBucketTranscriptBlob(t *testing.T) {
 	}
 }
 
+// TestBuildFunctionTools_PeerBucketBlocksAwaitSubAgents（fix/12 NEW-1 红线）：
+// peer 桶 LLM 不能调 await_subagents——该工具置位 awaitBackgroundRequested 让
+// scheduler 走 awaitAllBackgroundSubAgents，后者基于 HasRunning() 等 ALL 条目
+// （含 inline peer 自己）。peer 调它会让 scheduler 等 peer 自己 → 最坏死锁
+// （与 async_agent.go:220 注释描述的 A4 守卫死锁同源）。
+//
+// 主路径 runCtx == nil 时不挡板：主 turn 的 LLM 才是 await_subagents 的正确调用者。
+func TestBuildFunctionTools_PeerBucketBlocksAwaitSubAgents(t *testing.T) {
+	a := &Agent{
+		cfg:   &AgentConfig{IsSubAgent: false},
+		tools: nil,
+	}
+	a.tools = utils.NewOrderMapx[string, Tool]()
+	awaitTool := NewAwaitSubAgentsTool(a)
+	a.tools.Set(awaitTool.Name(), awaitTool)
+
+	// runCtx == nil（主路径）→ await_subagents 应可用
+	tools, allowed := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed[builtin_tools.AwaitSubAgentsToolName]; !ok {
+		t.Fatalf("主路径 await_subagents 应可用 (peer 才挡)，allowed=%v", allowed)
+	}
+	if len(tools) == 0 {
+		t.Fatalf("expected at least await_subagents in tools, got %v", tools)
+	}
+
+	// peer 桶 runCtx 非 nil + Bucket 非 nil → await_subagents 应被屏蔽
+	runCtx := &InlineStepCtx{StepID: "peer-1", Bucket: &stepHistoryBucket{stepID: "peer-1"}}
+	tools2, allowed2 := a.BuildFunctionTools(runCtx, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed2[builtin_tools.AwaitSubAgentsToolName]; ok {
+		t.Fatalf("peer 桶 await_subagents 应被屏蔽，allowed=%v", allowed2)
+	}
+	for _, ft := range tools2 {
+		if ft.Function != nil && ft.Function.Name == builtin_tools.AwaitSubAgentsToolName {
+			t.Fatalf("peer 桶 tools 不应含 await_subagents，got %s", ft.Function.Name)
+		}
+	}
+}
+
 // TestBuildFunctionTools_PeerBucketBlocksUpdateCurrentStep（fix/09 P1-5 红线）：
 // peer 桶 LLM 不能调 update_current_step（防误改主 step 状态）。
 // 主路径 runCtx == nil 时不挡板。

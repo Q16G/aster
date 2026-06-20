@@ -1114,11 +1114,17 @@ func (a *Agent) resetRunHandoff() {
 // BuildFunctionTools 按 phase 构建出工具集合。
 //
 // runCtx 可为 nil（plan / step_replan / final_answer / intent 路径都传 nil）；
-// 仅 inline step 路径会传非 nil 的 runCtx。两条软挡板：
+// 仅 inline step 路径会传非 nil 的 runCtx。三条软挡板：
 //   - !FinalAnswerAllowed → 拒绝 submit_final_answer（P0-2 防 state 双写）
 //   - runCtx != nil（peer 桶）→ 拒绝 update_current_step（fix/09 P1-5 防 peer
 //     LLM 误调改主 CurrentStep 状态——peer 终态走 auto-complete + drain UpdateInlineStep
 //     路径，不需要也不应该 update_current_step）
+//   - runCtx != nil（peer 桶）→ 拒绝 await_subagents（fix/12 NEW-1 防最坏死锁）：
+//     await_subagents 是 scheduler 级原语，置位 awaitBackgroundRequested 触发
+//     awaitAllBackgroundSubAgents 等 HasRunning() 全部条目（含 inline peer 自己）。
+//     peer 调它会让 scheduler 等 peer 自己 → 最坏死锁（同 async_agent.go:220 注释
+//     描述的「peer 把主路径 park 住，造成串行化倒退」隐患同源）。peer spawn 的
+//     sub_agent 由 scheduler 在主 turn 收尾时统一 await，peer 内不应自行调用。
 func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
 	if a == nil || a.tools == nil || a.tools.Len() == 0 {
 		return nil, nil
@@ -1127,6 +1133,8 @@ func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.Ag
 	// fix/09 P1-5：peer 桶（runCtx != nil 且有 Bucket）禁 update_current_step；
 	// 主路径 runCtx == nil 不挡板。
 	updateCurrentStepForbidden := runCtx != nil && runCtx.Bucket != nil
+	// fix/12 NEW-1：peer 桶禁 await_subagents（同上理由——scheduler 级原语 + 防死锁）。
+	awaitSubAgentsForbidden := runCtx != nil && runCtx.Bucket != nil
 	tools := make([]*ai.FunctionTool, 0, a.tools.Len())
 	allowed := make(map[string]struct{}, a.tools.Len())
 	a.tools.ForEach(func(_ string, tool Tool) {
@@ -1141,6 +1149,9 @@ func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.Ag
 			return
 		}
 		if updateCurrentStepForbidden && name == builtin_tools.UpdateCurrentStepToolName {
+			return
+		}
+		if awaitSubAgentsForbidden && name == builtin_tools.AwaitSubAgentsToolName {
 			return
 		}
 		allowed[name] = struct{}{}
