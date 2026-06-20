@@ -16,6 +16,26 @@ import (
 //     会导致与主 scheduler 在主 history 上 append 时产生 race（go test -race 必爆）。
 //   - 单桶 fallback：MaxParallelSteps=1 时 stepHistories 仍是 map 但仅 1 个 entry，
 //     代码路径与多桶一致——不保留独立分叉，避免 fallback 变质成死代码。
+//
+// **immutable contract（R1-4 防线）**：
+//
+// peer 桶 seed 来自 `append([]*ai.MsgInfo(nil), a.stepHistory...)`——slice header 是
+// 新数组，但元素是 *MsgInfo 指针，桶与主 history 共享同一组结构体。任何位置（含
+// compaction / sanitize / 重写）若就地 mutate `*MsgInfo` 的字段（Content / ToolCalls
+// / Role / ...），peer 与主路径会跨桶看见中间态——属于 R1 级污染。
+//
+// 修复模式：要重写一条 msg，clone 结构体 + 替换 slice 元素，绝不就地改：
+//
+//	newMsg := *msg                 // 值拷贝整个结构体
+//	newMsg.Content = rewritten     // 在 clone 上写
+//	stepHistory[idx] = &newMsg     // 替换 slice 元素，原 *MsgInfo 不动
+//
+// CI grep 守卫（PR 时确认）：
+//
+//	grep -rn 'msg\.Content\s*=\|msg\.ToolCalls\s*=' internal/react/ --include='*.go' \
+//	  | grep -v _test.go | grep -v inline_step_types.go
+//	# 应只命中：(a) 全新构造 ai.NewAIMsgInfo 后立即赋值（局部变量，未 enqueue）；
+//	#         (b) shortenOldToolResults 的 clone 替换路径（newMsg.Content = ...）。
 type stepHistoryBucket struct {
 	stepID  string
 	phase   builtin_tools.AgentPhase

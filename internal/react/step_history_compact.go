@@ -420,7 +420,13 @@ func shortenOldToolResults(stepHistory []*ai.MsgInfo, keepLastRounds int, maxRun
 				if !changed {
 					continue
 				}
-				msg.Content = next
+				// 不就地改 msg.Content：peer 桶与主 history 通过 *MsgInfo 指针共享
+				// 同一组结构体（spawnInlinePeer seed 只 deep-copy slice header），
+				// in-place mutate 会让对方读到截断后的中间态。改为整体替换 slice 元素，
+				// 原 *MsgInfo 保持不变（详见 [[inline_step_types.go]] 的 immutable 契约）。
+				newMsg := *msg
+				newMsg.Content = next
+				stepHistory[idx] = &newMsg
 				did = true
 			case []*ai.ChatContext:
 				var stripped []*ai.ChatContext
@@ -448,11 +454,13 @@ func shortenOldToolResults(stepHistory []*ai.MsgInfo, keepLastRounds int, maxRun
 					stripped = append(stripped, ctx)
 				}
 				if changed {
+					newMsg := *msg
 					if len(stripped) == 0 {
-						msg.Content = "[content truncated]"
+						newMsg.Content = "[content truncated]"
 					} else {
-						msg.Content = stripped
+						newMsg.Content = stripped
 					}
+					stepHistory[idx] = &newMsg
 					did = true
 				}
 			}
