@@ -443,11 +443,11 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.bootstrapWorkspaceState(cfg.initialState)
 	a.frozenLineageByStep = nil
 	a.currentTaskContext = taskContext
+	a.identityEnvMu.Lock()
 	a.identityEnvPrompt = ""
 	a.identityEnvBuilt = false
-	a.frozenStepParts = nil
-	a.frozenStepPartsStepID = ""
-	a.frozenStepPartsPlanVer = 0
+	a.identityEnvMu.Unlock()
+	a.frozenStepCache.Reset()
 	a.lastStepTranscriptBlobRef = ""
 	a.resetRunHandoff()
 	if a.asyncRegistry != nil {
@@ -1432,7 +1432,7 @@ func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, it
 		}
 		if delta.Content != "" {
 			contentBuilder.WriteString(delta.Content)
-			a.emitter.EmitStream(iter, delta.Content)
+			a.emitter.EmitStream(iter, delta.Content, runCtxStepID(runCtx))
 		}
 		if len(delta.ToolCalls) > 0 {
 			toolCalls = mergeFunctionToolDeltas(toolCalls, delta.ToolCalls)
@@ -1442,6 +1442,10 @@ func (a *Agent) AICallProxyStream(ctx context.Context, runCtx *InlineStepCtx, it
 		}
 		return nil
 	}, tools...)
+	// 显式 stream 结束信号：无论 err 与否，只要进入过 streaming 都发——TUI 据此 flush
+	// (agentName, stepID) 桶为 TextPart，不再让 phase/iteration 等结构事件去猜该 flush 谁。
+	// 即使没有 token 产出，发空结束信号也无副作用（flush no-op）。
+	a.emitter.EmitStreamEnd(iter, runCtxStepID(runCtx))
 	if err != nil {
 		return nil, err
 	}

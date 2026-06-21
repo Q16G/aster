@@ -93,7 +93,7 @@ func TestBuildThinkActPrompt_VisionModelHint(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", agent.Snapshot()).Joined()
 
 	visionHints := []string{"多模态", "视觉", "图片", "image", "vision", "screenshot", "multimodal"}
 	found := false
@@ -116,7 +116,7 @@ func TestBuildThinkActPrompt_NoVisionModel_NoHint(t *testing.T) {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	prompt := agent.BuildThinkActPrompt(context.Background(), "").Joined()
+	prompt := agent.BuildThinkActPrompt(context.Background(), "", agent.Snapshot()).Joined()
 
 	if strings.Contains(prompt, "视觉输入") || strings.Contains(prompt, "多模态能力") {
 		t.Fatal("non-vision model should not have multimodal hint section in prompt")
