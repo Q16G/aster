@@ -40,11 +40,16 @@ func isConcurrencySafe(t Tool) bool {
 // neverConcurrentTools lists tools that must always run sequentially regardless
 // of ConcurrencySafe declarations. These tools mutate agent state, trigger
 // durable persistence, or have side effects that the concurrent path does not handle.
+//
+// **SkillToolName + EjectSkillToolName 必须成对出现**——两者都改 ActiveSkillNames
+// （主路径走 a.state，peer 路径走 runCtx.LocalActiveSkillNames），对称纳入 sequential
+// 名单防御未来谁给 eject 加 `ConcurrencySafe() bool { return true }` 触发 race。
 var neverConcurrentTools = map[string]bool{
 	builtin_tools.UpdateCurrentStepToolName: true,
 	builtin_tools.HumanConfirmToolName:      true,
 	builtin_tools.SubAgentToolName:          true,
 	builtin_tools.SkillToolName:             true,
+	builtin_tools.EjectSkillToolName:        true,
 	builtin_tools.BashToolName:              true,
 }
 
@@ -323,7 +328,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			displayOut = fmt.Sprintf("Error: %s", slot.errText)
 		}
 		render := buildToolResultRender(slot.toolName, slot.out)
-		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText)
+		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText, runCtx)
 		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
 		if stepID := effectiveStepID(runCtx, prevSnapshot); sharedDir != "" && stepID != "" {

@@ -18,8 +18,22 @@ type ejectSkillToolResult struct {
 	Name string `json:"name"`
 }
 
-func (a *Agent) handleSkillToolStateSync(toolName string, args map[string]any, out string, errText string) {
+// handleSkillToolStateSync 在 skill 工具（load_skill / eject_skill）执行成功后同步
+// agent 的 active skill 集合。
+//
+// runCtx 路由（方案 B per-peer 隔离）：
+//   - runCtx != nil 且 runCtx.LocalActiveSkillNames != nil（peer 路径）→ 改 overlay 不动全局
+//   - 其他情况（主路径 / 旧测试调用）→ 走全局 a.state.AddActiveSkillNames / Remove，并持久化
+//
+// peer 路径**不持久化** —— peer 内加载的 skill 仅在本 peer 跑的过程中生效，peer
+// 退出即丢弃。详见 InlineStepCtx.LocalActiveSkillNames doc。
+func (a *Agent) handleSkillToolStateSync(toolName string, args map[string]any, out string, errText string, runCtx *InlineStepCtx) {
 	if a == nil || strings.TrimSpace(errText) != "" {
+		return
+	}
+
+	if runCtx != nil && runCtx.LocalActiveSkillNames != nil {
+		applySkillToolToOverlay(runCtx.LocalActiveSkillNames, toolName, args, out)
 		return
 	}
 
@@ -42,6 +56,37 @@ func (a *Agent) handleSkillToolStateSync(toolName string, args map[string]any, o
 	}
 
 	a.persistActiveSkillNames(snapshot.ActiveSkillNames)
+}
+
+// applySkillToolToOverlay 在 peer 的 LocalActiveSkillNames overlay 上执行 load/eject。
+// 不动全局 state，不持久化——peer 退出后 overlay 自然被 GC 清理。
+func applySkillToolToOverlay(overlay *[]string, toolName string, args map[string]any, out string) {
+	if overlay == nil {
+		return
+	}
+	switch strings.TrimSpace(toolName) {
+	case builtin_tools.SkillToolName:
+		names := parseLoadedSkillNames(out)
+		if len(names) == 0 {
+			return
+		}
+		merged := append([]string(nil), *overlay...)
+		merged = append(merged, names...)
+		*overlay = normalizeSkillNames(merged)
+	case builtin_tools.EjectSkillToolName:
+		name := parseEjectedSkillName(args, out)
+		if name == "" {
+			return
+		}
+		next := make([]string, 0, len(*overlay))
+		for _, n := range *overlay {
+			if strings.TrimSpace(n) == name {
+				continue
+			}
+			next = append(next, n)
+		}
+		*overlay = next
+	}
 }
 
 func parseLoadedSkillNames(out string) []string {

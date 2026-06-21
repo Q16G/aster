@@ -191,4 +191,19 @@ type InlineStepCtx struct {
 	//   - current step 的 bucket：true（可调 final_answer 结束本轮主路径）
 	//   - peer step 的 bucket：  false（peer 完成只翻 PlanItem 终态，禁止 finalize 整个 agent）
 	FinalAnswerAllowed bool
+
+	// LocalActiveSkillNames 是 peer 自治的 skill 集合 overlay（方案 B per-peer 隔离）。
+	//
+	// 为什么需要：旧实现 ActiveSkillNames 是 Agent.state 全局单一 list，3 peer 并发
+	// 同时调 load_skill/eject_skill 会互相串扰（peer A 加的 skill peer B 也看见、peer A
+	// 拔掉 peer B 在用的 skill 让其 prompt 失去 injected 内容）。
+	//
+	// 行为：
+	//   - spawnInlinePeer 时 deep-copy 当时全局 snapshot.ActiveSkillNames 作为 baseline
+	//   - peer 内 load_skill / eject_skill 只改本 overlay，不动全局 state（互不串扰）
+	//   - peer 退出时整个 runCtx 丢弃，overlay 自然清理（不持久化、不污染主路径下一步）
+	//   - 主路径 runCtx == nil 或 LocalActiveSkillNames == nil 时退化到原行为（读写全局 state）
+	//
+	// 用 *[]string 而非 []string：nil 区分「未初始化（应继承全局）」与「已分叉但空（peer 手动 eject 干净）」。
+	LocalActiveSkillNames *[]string
 }
