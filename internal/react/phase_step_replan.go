@@ -405,7 +405,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		planVersion = 1
 	}
 
-	prevPlan := builtin_tools.ClonePlanItems(snapshot.Plan)
+	// ApplyStepReplan 内部 diff → observer 自动 emit task_item，不再手抓 prevPlan。
 	snapshot = a.state.ApplyStepReplan(stepID, stepReplanUpdate{
 		ArtifactDir:       artifactDir,
 		ContextKey:        contextKey,
@@ -443,7 +443,6 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	}
 	if newPlan != nil && a.emitter != nil && modelOut != nil {
 		a.emitter.EmitTaskPlan(snapshot.Plan, strings.TrimSpace(modelOut.ReplanReason))
-		emitTaskItemDiffs(a.emitter, prevPlan, snapshot.Plan, snapshot.CurrentStepID, strings.TrimSpace(modelOut.ReplanReason))
 	}
 
 	a.emitRuntimeLog("info", "step replan completed", snapshot, map[string]any{

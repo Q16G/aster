@@ -8,9 +8,13 @@ import (
 )
 
 // StateTracker 状态追踪器
+//
+// observers 由 RegisterObserver 注册，mutator 在持锁段产 []PlanItemChange，
+// 释放锁前调用 fanoutPlanItemChangesLocked 串行回调。详见 state_observer.go。
 type StateTracker struct {
-	mu    sync.RWMutex
-	state *builtin_tools.StateSnapshot
+	mu        sync.RWMutex
+	state     *builtin_tools.StateSnapshot
+	observers []StateObserver
 }
 
 // NewStateTracker 创建状态追踪器
@@ -199,6 +203,7 @@ func (t *StateTracker) Replace(snapshot builtin_tools.StateSnapshot) builtin_too
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(snapshot.Plan)
 	if snapshot.PlanVersion <= 0 && len(snapshot.Plan) > 0 {
 		snapshot.PlanVersion = 1
@@ -209,6 +214,7 @@ func (t *StateTracker) Replace(snapshot builtin_tools.StateSnapshot) builtin_too
 	snapshot.ActiveSkillNames = normalizeSkillNames(snapshot.ActiveSkillNames)
 	snapshot.UpdatedAt = time.Now()
 	t.state = &snapshot
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "replace"))
 	return *t.state
 }
 
@@ -363,6 +369,8 @@ func (t *StateTracker) MarkCurrentStepInProgress() builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	prev := t.snapshotPlanStatusesLocked()
+
 	step := builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}.CurrentStep()
 	if step == nil {
 		t.touchLocked()
@@ -377,6 +385,7 @@ func (t *StateTracker) MarkCurrentStepInProgress() builtin_tools.StateSnapshot {
 	}
 
 	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorMain, ""))
 	return *t.state
 }
 
@@ -412,8 +421,10 @@ func (t *StateTracker) MarkInlineStepInProgress(stepID string) builtin_tools.Sta
 	}
 
 	if item.Status == builtin_tools.PlanStepPending {
+		prev := t.snapshotPlanStatusesLocked()
 		item.Status = builtin_tools.PlanStepInProgress
 		t.touchLocked()
+		t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorPeer, ""))
 	}
 	return *t.state
 }
@@ -450,6 +461,7 @@ func (t *StateTracker) SetExternalInterrupt(info *builtin_tools.ExternalInterrup
 func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation string, needsPlanning bool) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(plan)
 	t.state.Plan = plan
 	t.state.NeedsPlanning = needsPlanning
@@ -467,6 +479,7 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	}
 	t.syncGoalToCurrentStepLocked()
 	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, explanation))
 	return *t.state
 }
 
@@ -505,6 +518,8 @@ func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate)
 	update.Error = strings.TrimSpace(update.Error)
 	update.References = normalizeReferences(update.References)
 
+	prev := t.snapshotPlanStatusesLocked()
+
 	step := builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}.CurrentStep()
 	if step == nil {
 		t.touchLocked()
@@ -522,6 +537,7 @@ func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate)
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.state.Phase = builtin_tools.AgentPhaseStepReplan
 	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorMain, update.Summary))
 	return *t.state
 }
 
@@ -590,6 +606,7 @@ func (t *StateTracker) UpdateInlineStep(stepID string, update builtin_tools.Curr
 		return *t.state
 	}
 
+	prev := t.snapshotPlanStatusesLocked()
 	item.Status = update.Status
 	if update.Status == builtin_tools.PlanStepFailed {
 		_ = builtin_tools.PropagateSkippedPlanSteps(t.state.Plan)
@@ -598,6 +615,7 @@ func (t *StateTracker) UpdateInlineStep(stepID string, update builtin_tools.Curr
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	// 不动 Phase、不动 CurrentStepID——主路径独占翻 Phase=StepReplan 的权力
 	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorPeer, update.Summary))
 	return *t.state
 }
 
@@ -665,6 +683,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 		t.touchLocked()
 		return *t.state
 	}
+	prev := t.snapshotPlanStatusesLocked()
 
 	update.ArtifactDir = strings.TrimSpace(update.ArtifactDir)
 	update.ResultFile = strings.TrimSpace(update.ResultFile)
@@ -739,6 +758,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	}
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, ""))
 	return *t.state
 }
 

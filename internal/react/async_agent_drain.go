@@ -116,24 +116,15 @@ func (a *Agent) handleInlineStepNotification(notif *AsyncAgentNotification) {
 	summary = truncateRuneString(summary, maxAsyncNotificationRunes)
 	errMsg = truncateRuneString(errMsg, maxAsyncNotificationRunes)
 
+	// UpdateInlineStep → observer 自动 emit task_item + inline_step_end（actor=peer 终态分支）。
+	// 旧的手 EmitJSON(EventTypeInlineStepEnd) 调用已删——参见 state_observer_emitter.go
+	// 的 emitPeerCardEvents。Summary 通过 PlanItemChange.Reason 传给 observer。
 	a.state.UpdateInlineStep(notif.AgentID, builtin_tools.CurrentStepUpdate{
 		Status:            status,
 		Summary:           summary,
 		Error:             errMsg,
 		TranscriptBlobRef: transcriptRef,
 	})
-
-	if a.emitter != nil {
-		cardStatus := "completed"
-		if status == builtin_tools.PlanStepFailed {
-			cardStatus = "failed"
-		}
-		a.emitter.EmitJSON(EventTypeInlineStepEnd, notif.AgentID, map[string]any{
-			"agent_id": notif.AgentID,
-			"status":   cardStatus,
-			"summary":  summary,
-		})
-	}
 
 	a.asyncRegistry.MarkDelivered(notif.AgentID)
 }

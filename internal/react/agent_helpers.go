@@ -10,7 +10,7 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 	if a == nil || a.state == nil {
 		return builtin_tools.StateSnapshot{}
 	}
-	prev := a.state.Snapshot()
+	// UpdatePlan 内部 diff → observer 自动 emit task_item，旧 emitTaskItemDiffs 调用已删。
 	snapshot := a.state.UpdatePlan(plan, explanation, needsPlanning)
 	a.appendPlannerJournalFullPlan(snapshot)
 	if writer, err := newArtifactWriter(a.workspaceRuntime); err == nil {
@@ -30,7 +30,6 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 	if a.emitter != nil {
 		a.emitter.EmitStateChange(snapshot)
 		a.emitter.EmitTaskPlan(snapshot.Plan, explanation)
-		emitTaskItemDiffs(a.emitter, prev.Plan, snapshot.Plan, snapshot.CurrentStepID, explanation)
 	}
 	return snapshot
 }

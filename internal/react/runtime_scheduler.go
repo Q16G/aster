@@ -1279,11 +1279,12 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	_ = a.state.ResetCurrentStepIfTerminal()
 
 	_ = a.state.EnsureCurrentStep()
-	prevSnapshot := a.state.Snapshot()
-	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
+	// 主路径翻 Pending→InProgress：observer 自动 emit task_item + ensureStepFileScaffold。
+	// 删掉旧 prevSnapshot/prevPlan/emitTaskItemDiffs 手抓 diff 与
+	// 显式 ensureStepFileScaffold 调用——参见 state_observer_emitter.go /
+	// state_observer_workspace.go。
 	snapshot := a.state.MarkCurrentStepInProgress()
 
-	emitTaskItemDiffs(a.emitter, prevPlan, snapshot.Plan, snapshot.CurrentStepID, "")
 	// Ensure the in-step transcript layer is bound to current_step_id before calling the model.
 	// Otherwise the first tool transcript may be written while step id is empty, and then
 	// cleared by the next sync transition.
@@ -1298,16 +1299,6 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// Freeze execution lineage at step start (before prompt building).
 	if _, err := a.ensureFrozenStepLineage(snapshot); err != nil {
 		return err
-	}
-	// 预创建 step 过程文件骨架：必须先于 prompt 冻结，注入的路径才指向已存在文件。
-	if a.workspaceRuntime != nil && currentStep != nil {
-		if err := ensureStepFileScaffold(a.workspaceRuntime, snapshot.CurrentStepID, currentStep.Step); err != nil {
-			a.emitRuntimeLog("warn", "ensure step file scaffold failed", snapshot, map[string]any{
-				"event":   "step_file_scaffold_failed",
-				"step_id": snapshot.CurrentStepID,
-				"error":   err.Error(),
-			})
-		}
 	}
 	// runStepsConcurrently 内部：
 	//   1. collectInlineStepIDs(snapshot) → [current, peer1, peer2, ...]
@@ -1331,7 +1322,6 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		return nil
 	}
 	prevSnapshot := a.state.Snapshot()
-	prevPlan := builtin_tools.ClonePlanItems(prevSnapshot.Plan)
 	if len(allowedTools) > 0 {
 		if _, ok := allowedTools[toolName]; !ok {
 			a.AICallProxyWriteToolResult(runCtx, callID, toolName, "", map[string]any{}, "", "tool not available in current phase", false)
@@ -1661,7 +1651,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		displayOut = fmt.Sprintf("Error: %s", errText)
 	}
 	render := buildToolResultRender(toolName, out)
-	a.handleSkillToolStateSync(toolName, argsMap, out, errText)
+	a.handleSkillToolStateSync(toolName, argsMap, out, errText, runCtx)
 	a.AICallProxyWriteToolResult(runCtx, callID, toolName, tool.Description(), argsMap, render.Content, errText, isAgent)
 
 	if stepID := effectiveStepID(runCtx, prevSnapshot); sharedDir != "" && stepID != "" {
@@ -1684,11 +1674,8 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 
 	if toolName == builtin_tools.UpdateCurrentStepToolName {
 		nextSnapshot := a.state.Snapshot()
-		explanation := builtin_tools.ToolRuntimeValue(argsMap["summary"])
-		if explanation == "" {
-			explanation = builtin_tools.ToolRuntimeValue(argsMap["display_result"])
-		}
-		emitTaskItemDiffs(a.emitter, prevPlan, nextSnapshot.Plan, nextSnapshot.CurrentStepID, explanation)
+		// update_current_step 工具内部已调 a.state.UpdateCurrentStep → observer 自动 emit
+		// task_item，不再手抓 prevPlan diff（参见 state_observer_emitter.go）。
 
 		// fix/02 补漏：peer 桶里 LLM 误调 update_current_step 时（fix/09 屏蔽前的窗口），
 		// outcome attempt 必须按 runCtx 路由——否则把 peer 的 attempt 写到主 step outcome。
