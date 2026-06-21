@@ -694,7 +694,8 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 					},
 					"plan": map[string]any{
 						"type":        "array",
-						"description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。",
+						"minItems":    1,
+						"description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。minItems=1 是 schema 级硬约束，传空数组 [] 会被 function-call 校验直接拒绝。needs_planning=false 时本字段可省略（function-call 协议层允许 required 字段缺省，由 runtime 走 direct_response 分支）。",
 						"items": map[string]any{
 							"type":     "object",
 							"required": []string{"id", "step", "status", "depends_on"},
@@ -874,8 +875,8 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 			"submit_plan: needs_planning=true 但 plan 为空。\n%s\n"+
 				"请根据任务实际状态二选一修正：补全 plan 字段走「需要规划」分支"+
 				"（遵循 Atomic Step Contract：单 step 单 object 单 action 单 acceptance）；"+
-				"或把 needs_planning 改为 false 并把对用户的完整答复写入 direct_response 走「不需要规划」分支",
-			submitPlanShapeReminder)
+				"或把 needs_planning 改为 false 并把对用户的完整答复写入 direct_response 走「不需要规划」分支\n%s",
+			submitPlanShapeReminder, submitPlanItemSample)
 	}
 	if requireGoalUnderstanding && result.NeedsPlanning && strings.TrimSpace(result.GoalUnderstanding) == "" {
 		return nil, fmt.Errorf("submit_plan: needs_planning=true 但 goal_understanding 为空。" +
@@ -891,8 +892,8 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 			"submit_plan: needs_planning=false 但 direct_response 为空。\n%s\n"+
 				"请根据任务实际状态二选一修正：补全 direct_response 字段（对用户的完整答复）"+
 				"走「不需要规划」分支；或把 needs_planning 改为 true 并把计划步骤写入 plan "+
-				"走「需要规划」分支",
-			submitPlanShapeReminder)
+				"走「需要规划」分支\n%s",
+			submitPlanShapeReminder, submitPlanItemSample)
 	}
 	return &result, nil
 }
@@ -904,6 +905,17 @@ const submitPlanShapeReminder = "" +
 	"submit_plan 的两种合法形态：\n" +
 	"- 需要规划：needs_planning=true，plan 写入计划步骤列表\n" +
 	"- 不需要规划：needs_planning=false，direct_response 写入对用户的完整答复"
+
+// submitPlanItemSample 给 LLM 一个 plan item 的最小可对照样板，避免「只告知错了
+// 没告知正确长啥样」导致 AI 3 次重试都修不好同类错误。校验失败时随 error 一起回写
+// 让模型能直接 copy 结构、按本次任务填具体字段。step 字段示例刻意保留具体性
+// （读取 → 确认 → 字段），避免模型从抽象描述里反向编造结构。
+const submitPlanItemSample = "" +
+	"plan item 最小结构样板（按当前任务调整 id/step 内容，status 新规划填 \"pending\"）：\n" +
+	"\"plan\": [\n" +
+	"  {\"id\":\"s1\",\"step\":\"读取 config.yaml 的 server.port 字段并确认当前值\",\"status\":\"pending\",\"depends_on\":[]},\n" +
+	"  {\"id\":\"s2\",\"step\":\"在 main.go 注册新 /healthz handler 并返回 200\",\"status\":\"pending\",\"depends_on\":[\"s1\"]}\n" +
+	"]"
 
 type PlannerInputOptions struct {
 	HandoffContext     string
