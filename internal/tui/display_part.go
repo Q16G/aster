@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -31,11 +32,27 @@ type CardKind int
 const (
 	CardKindSubAgent CardKind = iota
 	CardKindInlineStep
+	CardKindPlan
+	CardKindStepResult
+	CardKindStepSummary
+	CardKindStepReplan
+	CardKindStepTriage
+	CardKindFinalAnswer
 )
 
-// ExpandableCardPart 是 sub_agent 卡片和 inline_step 卡片的共用接口。
-// 渲染层按接口处理（统一卡片样式 + 展开/折叠交互）；遍历层按具体类型过滤
-// （SubAgentsThisTurn / InlineStepsThisTurn 各自返回自己的类型）。
+// ExpandableCardPart 是所有可展开/折叠卡片的统一接口（覆盖 sub_agent /
+// inline_step / plan / step_result / step_summary / final_answer）。
+//
+// **展开态归属接口本身**：旧设计把展开状态存在 `m.toolExpanded[idx int]`
+// 全局表里，导致：
+//   - idx 在 part 列表前插（concurrent peer / sub_agent reflow）时漂移
+//   - 每加一种可展开卡片就要在 key handler / expandAll / collapseAll 等
+//     N 处加 type 白名单（PartTypeInlineStep 漏白名单就是这类 bug）
+//   - 编译器不告警
+//
+// 改造后：展开态作为字段直接落在 part 实体上，key handler 退化为一处
+// `if card, ok := part.AsExpandable(); ok { card.SetExpanded(...) }`。
+// 新卡片类型只要实现接口就自动接入展开/折叠交互，编译期保证完备性。
 //
 // **不**用 SubAgentPart.Kind 字段做 discriminator——type bloat 教科书案例：每个消费方
 // 都要散点 if Kind != "inline_step" 过滤，漏一个就串台。独立类型 + 接口让编译器在新增
@@ -46,6 +63,51 @@ type ExpandableCardPart interface {
 	GetCallID() string
 	Elapsed() time.Duration
 	CardKind() CardKind
+	Expanded() bool
+	SetExpanded(bool)
+}
+
+// AsExpandable 把 DisplayPart 投到 ExpandableCardPart 接口。
+// 不是可展开卡片时第二返回值为 false。
+//
+// 添加新可展开卡片类型只需：（1）让对应 PartXxx 结构体实现接口；（2）在本
+// switch 加一个 case。不再触碰 key handler / refreshContent 等其他位置。
+func (p DisplayPart) AsExpandable() (ExpandableCardPart, bool) {
+	switch p.Type {
+	case PartTypeSubAgent:
+		if p.SubAgent != nil {
+			return p.SubAgent, true
+		}
+	case PartTypeInlineStep:
+		if p.InlineStep != nil {
+			return p.InlineStep, true
+		}
+	case PartTypePlan:
+		if p.Plan != nil {
+			return p.Plan, true
+		}
+	case PartTypeStepResult:
+		if p.StepResult != nil {
+			return p.StepResult, true
+		}
+	case PartTypeStepSummary:
+		if p.StepSummary != nil {
+			return p.StepSummary, true
+		}
+	case PartTypeStepReplan:
+		if p.StepReplan != nil {
+			return p.StepReplan, true
+		}
+	case PartTypeStepTriage:
+		if p.StepTriage != nil {
+			return p.StepTriage, true
+		}
+	case PartTypeFinalAnswer:
+		if p.FinalAnswer != nil {
+			return p.FinalAnswer, true
+		}
+	}
+	return nil, false
 }
 
 type DisplayPart struct {
@@ -89,6 +151,10 @@ type UserPart struct {
 type TextPart struct {
 	Content   string `json:"content"`
 	AgentName string `json:"agent_name,omitempty"`
+	// StepID 标记该流式文本归属哪个 inline_step（commit 后 fix: 把 peer 流式输出归到
+	// 各自卡片）。空字符串=主路径/非 inline 上下文。渲染层据此从主流中过滤、归集到
+	// InlineStepPart 卡片的展开子序列。
+	StepID string `json:"step_id,omitempty"`
 }
 
 type ToolPart struct {
@@ -117,7 +183,18 @@ type PlanPart struct {
 	ParentAgent  string         `json:"parent_agent,omitempty"`
 	Explanation  string         `json:"explanation,omitempty"`
 	Items        []PlanItemView `json:"items,omitempty"`
+	// IsExpanded 是 UI 展开/折叠状态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// PlanPart 实现 ExpandableCardPart。
+func (p *PlanPart) Title() string          { return strings.TrimSpace(p.AgentName) }
+func (p *PlanPart) StatusLabel() string    { return "" }
+func (p *PlanPart) GetCallID() string      { return strings.TrimSpace(p.ParentStepID) }
+func (p *PlanPart) Elapsed() time.Duration { return 0 }
+func (p *PlanPart) CardKind() CardKind     { return CardKindPlan }
+func (p *PlanPart) Expanded() bool         { return p.IsExpanded }
+func (p *PlanPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type PlanItemView struct {
 	ID        string `json:"id,omitempty"`
@@ -158,7 +235,19 @@ type StepResultPart struct {
 	DisplayResult string `json:"display_result,omitempty"`
 	Summary       string `json:"summary,omitempty"`
 	Error         string `json:"error,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// StepResultPart 实现 ExpandableCardPart 接口。
+func (p *StepResultPart) Title() string          { return strings.TrimSpace(p.StepName) }
+func (p *StepResultPart) StatusLabel() string    { return strings.TrimSpace(p.Status) }
+func (p *StepResultPart) GetCallID() string      { return strings.TrimSpace(p.StepID) }
+func (p *StepResultPart) Elapsed() time.Duration { return 0 }
+func (p *StepResultPart) CardKind() CardKind     { return CardKindStepResult }
+func (p *StepResultPart) Expanded() bool         { return p.IsExpanded }
+func (p *StepResultPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type StepSummaryPart struct {
 	AgentName       string   `json:"agent_name,omitempty"`
@@ -170,7 +259,19 @@ type StepSummaryPart struct {
 	OpenQuestions   []string `json:"open_questions,omitempty"`
 	ToolCallsDigest string   `json:"tool_calls_digest,omitempty"`
 	References      []string `json:"references,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// StepSummaryPart 实现 ExpandableCardPart 接口。
+func (p *StepSummaryPart) Title() string          { return strings.TrimSpace(p.StepName) }
+func (p *StepSummaryPart) StatusLabel() string    { return "" }
+func (p *StepSummaryPart) GetCallID() string      { return strings.TrimSpace(p.StepID) }
+func (p *StepSummaryPart) Elapsed() time.Duration { return 0 }
+func (p *StepSummaryPart) CardKind() CardKind     { return CardKindStepSummary }
+func (p *StepSummaryPart) Expanded() bool         { return p.IsExpanded }
+func (p *StepSummaryPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type StepReplanPart struct {
 	AgentName       string   `json:"agent_name,omitempty"`
@@ -183,7 +284,19 @@ type StepReplanPart struct {
 	IncompleteItems []string `json:"incomplete_items,omitempty"`
 	NewSurfaces     []string `json:"new_surfaces,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// StepReplanPart 实现 ExpandableCardPart 接口（最小子集 + Expanded）。
+func (p *StepReplanPart) Title() string          { return strings.TrimSpace(p.StepName) }
+func (p *StepReplanPart) StatusLabel() string    { return "" }
+func (p *StepReplanPart) GetCallID() string      { return strings.TrimSpace(p.StepID) }
+func (p *StepReplanPart) Elapsed() time.Duration { return 0 }
+func (p *StepReplanPart) CardKind() CardKind     { return CardKindStepReplan }
+func (p *StepReplanPart) Expanded() bool         { return p.IsExpanded }
+func (p *StepReplanPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 // StepTriagePart 是 Triage 廉价决策门控的 UI 展示载体。
 // 与 StepReplanPart 相比字段更瘦:Triage 是 prompt-only 调用,只产出 suggestion + reason,
@@ -195,7 +308,19 @@ type StepTriagePart struct {
 	Suggestion string `json:"suggestion"` // continue | replan
 	Reason     string `json:"reason,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// StepTriagePart 实现 ExpandableCardPart 接口。
+func (p *StepTriagePart) Title() string          { return strings.TrimSpace(p.StepName) }
+func (p *StepTriagePart) StatusLabel() string    { return strings.TrimSpace(p.Suggestion) }
+func (p *StepTriagePart) GetCallID() string      { return strings.TrimSpace(p.StepID) }
+func (p *StepTriagePart) Elapsed() time.Duration { return time.Duration(p.DurationMs) * time.Millisecond }
+func (p *StepTriagePart) CardKind() CardKind     { return CardKindStepTriage }
+func (p *StepTriagePart) Expanded() bool         { return p.IsExpanded }
+func (p *StepTriagePart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type SubAgentPart struct {
 	AgentName     string        `json:"agent_name"`
@@ -212,14 +337,19 @@ type SubAgentPart struct {
 	// 区分语义）。新代码（commit 10+）不再用 Kind 区分，inline_step 卡片走独立
 	// InlineStepPart 类型；本字段在 commit 14 命名兜底时再删除。
 	Kind string `json:"kind,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
 
 // SubAgentPart 实现 ExpandableCardPart 接口。
-func (p *SubAgentPart) Title() string         { return p.AgentName }
-func (p *SubAgentPart) StatusLabel() string   { return p.Status }
-func (p *SubAgentPart) GetCallID() string     { return p.CallID }
+func (p *SubAgentPart) Title() string          { return p.AgentName }
+func (p *SubAgentPart) StatusLabel() string    { return p.Status }
+func (p *SubAgentPart) GetCallID() string      { return p.CallID }
 func (p *SubAgentPart) Elapsed() time.Duration { return p.Duration }
-func (p *SubAgentPart) CardKind() CardKind    { return CardKindSubAgent }
+func (p *SubAgentPart) CardKind() CardKind     { return CardKindSubAgent }
+func (p *SubAgentPart) Expanded() bool         { return p.IsExpanded }
+func (p *SubAgentPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 // InlineStepPart 是 inline_step（commit 7-9 重构后的并发 step）独立卡片类型。
 // 与 SubAgentPart 同结构但语义不同——inline_step 共享主 agent workspace / state，
@@ -232,6 +362,9 @@ type InlineStepPart struct {
 	WorkspaceRoot string        `json:"workspace_root,omitempty"`
 	Duration      time.Duration `json:"duration,omitempty"`
 	StartedAt     time.Time     `json:"started_at,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
 
 // InlineStepPart 实现 ExpandableCardPart 接口。
@@ -240,13 +373,27 @@ func (p *InlineStepPart) StatusLabel() string    { return p.Status }
 func (p *InlineStepPart) GetCallID() string      { return p.StepID }
 func (p *InlineStepPart) Elapsed() time.Duration { return p.Duration }
 func (p *InlineStepPart) CardKind() CardKind     { return CardKindInlineStep }
+func (p *InlineStepPart) Expanded() bool         { return p.IsExpanded }
+func (p *InlineStepPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type FinalAnswerPart struct {
 	AgentName  string   `json:"agent_name,omitempty"`
 	Content    string   `json:"content"`
 	Source     string   `json:"source,omitempty"`
 	References []string `json:"references,omitempty"`
+
+	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
+	IsExpanded bool `json:"-"`
 }
+
+// FinalAnswerPart 实现 ExpandableCardPart 接口。
+func (p *FinalAnswerPart) Title() string          { return strings.TrimSpace(p.Source) }
+func (p *FinalAnswerPart) StatusLabel() string    { return "" }
+func (p *FinalAnswerPart) GetCallID() string      { return "" }
+func (p *FinalAnswerPart) Elapsed() time.Duration { return 0 }
+func (p *FinalAnswerPart) CardKind() CardKind     { return CardKindFinalAnswer }
+func (p *FinalAnswerPart) Expanded() bool         { return p.IsExpanded }
+func (p *FinalAnswerPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type PhaseBannerPart struct {
 	Phase     string `json:"phase"`

@@ -25,27 +25,36 @@ func (m *Model) markAgentStreamed(agentName string) {
 	m.hadStreamDuringRun = true
 }
 
-func (m *Model) flushStreamAndPersist(agentName string) bool {
-	content := m.chat.StreamContent(agentName)
-	flushed := m.chat.FlushStream(agentName)
+// flushStreamAndPersist 把 (agentName, stepID) 流式 buffer flush 成 TextPart 并落盘。
+// stepID="" 主路径、stepID="p1" 等 peer 路径。每个 (agentName, stepID) 独立 buffer，
+// flush 一个不影响其它——peer 中途 tool_start 不再 flush 掉主路径未完成的流。
+func (m *Model) flushStreamAndPersist(agentName, stepID string) bool {
+	content := m.chat.StreamContent(agentName, stepID)
+	flushed := m.chat.FlushStream(agentName, stepID)
 	if flushed && content != "" {
 		m.markAgentStreamed(agentName)
-		m.persistPartWithAgent("stream", "", agentName, content)
+		m.persistPartWithAgent("stream", stepID, agentName, content)
 	}
 	return flushed
 }
 
-// flushAllStreamsAndPersist flushes every agent's pending stream buffer. Used at
-// run completion, where no further per-agent boundary events will arrive.
+// flushAllStreamsAndPersist flushes every (agent, stepID) pending stream buffer.
+// Used at run completion, where no further per-agent boundary events will arrive.
 func (m *Model) flushAllStreamsAndPersist() bool {
 	flushed := false
-	for _, agentName := range m.chat.StreamingAgents() {
-		if m.flushStreamAndPersist(agentName) {
+	for _, k := range m.chat.StreamingAgents() {
+		if m.flushStreamAndPersist(k.agent, k.stepID) {
 			flushed = true
 		}
 	}
 	return flushed
 }
+
+// flushAgentStreamsAndPersist 已删除——以前在 phase/iteration/agent enter/exit/
+// task_plan/final_answer 等结构事件时全量 flush 该 agent 所有 (agentName, *) 桶，
+// 会切碎仍在跑的 peer 流（FR2 严重 bug）。整改 A 后 stream 终止由 emitter 端
+// EmitStreamEnd 显式触发，TUI 端仅由 EventTypeStreamEnd 调 flushStreamAndPersist，
+// 不再让结构事件去猜该 flush 谁。
 
 // childAgentCallToken extracts the truncated call_id token embedded in a child
 // agent name. Both spawning schemes append a truncation of the spawning tool's
@@ -172,13 +181,26 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 	switch event.Type {
 	case react.EventTypeStream:
 		m.chat.FlushThinking()
-		m.chat.AppendStream(event.AgentName, event.Content)
+		streamStepID, _ := event.Payload["step_id"].(string)
+		m.chat.AppendStream(event.AgentName, event.Content, streamStepID)
 		m.markAgentStreamed(event.AgentName)
+
+	case react.EventTypeStreamEnd:
+		// 唯一触发 (agentName, stepID) 桶 flush 的事件——emitter 端在每次 streaming
+		// AICallProxy 退出回调时主动发。整改 A 的核心：以前 phase/iteration/tool_start/
+		// step_summary 等结构事件散点猜测「该 flush 哪个 buffer」，FR1（step_summary
+		// 用错 stepID）+ FR2（phaseChanged 误 flush 仍在跑的 peer）都从这条不分层的设
+		// 计来。改 owner 显式终止后，TUI 只在这里 flush 一次。
+		endStepID, _ := event.Payload["step_id"].(string)
+		m.flushStreamAndPersist(event.AgentName, endStepID)
 
 	case react.EventTypeResult:
 		m.chat.FlushThinking()
-		hadStream := m.flushStreamAndPersist(event.AgentName)
-		if !hadStream && !m.hadStreamByAgent[event.AgentName] {
+		// result 事件不再自己 flush——stream 终止由 EventTypeStreamEnd 处理。但
+		// hadStream/markAgentStreamed 仍是 result 用于 fallback 判定的依据：如果本轮没
+		// 出过 stream，result 直接 fallback 成 TextPart。
+		hadStream := m.hadStreamByAgent[event.AgentName]
+		if !hadStream {
 			if result, ok := event.Payload["result"]; ok {
 				resultStr := fmt.Sprintf("%v", result)
 				if resultStr != "" && resultStr != "<nil>" {
@@ -197,7 +219,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeToolStart:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// tool_start 不再 flush stream——stream 已被它前面的 EventTypeStreamEnd flush
+		// 过了；不再次 flush 才不会与 peer 跑中流抢 buffer。
 		toolName, _ := event.Payload["tool_name"].(string)
 		callID, _ := event.Payload["call_id"].(string)
 		isAgent, _ := event.Payload["is_agent"].(bool)
@@ -449,7 +472,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		})
 
 	case react.EventTypeThink:
-		m.flushStreamAndPersist(event.AgentName)
+		// stream 终止已由 EventTypeStreamEnd 处理；不在这里重复 flush。
 		if thinkDelta, _ := event.Payload["think_content"].(string); thinkDelta != "" {
 			groupID := strings.TrimSpace(event.GroupID)
 			// Backward compatibility: if producer doesn't set group_id, fall back to event_id.
@@ -464,7 +487,8 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		}
 
 	case react.EventTypeIteration:
-		m.flushStreamAndPersist(event.AgentName)
+		// stream 不在这里 flush——由 EventTypeStreamEnd 显式触发。Iteration 是 scheduler
+		// 全局边界，不是 stream 自身的边界，强 flush 会切碎仍在跑的 peer 流（FR2）。
 		if isRoot {
 			current := payloadInt(event.Payload, "current")
 			max := payloadInt(event.Payload, "max")
@@ -507,10 +531,9 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				phaseStatus = "executing step..."
 			}
 			if phaseChanged {
-				// 先把上一阶段还在飘的 thinking/stream 落盘成 part,
-				// 否则下一次 AppendThinkingForAgent 会把旧 buf flush 到 banner 之后。
+				// 先把上一阶段还在飘的 thinking 落盘；stream 由 EventTypeStreamEnd 显式管，
+				// 这里不再强制 flush——否则会把仍在跑的 peer stream 误切碎（FR2）。
 				m.chat.FlushThinking()
-				m.flushStreamAndPersist(event.AgentName)
 				banner := PhaseBannerPart{
 					Phase:     phase,
 					Label:     phaseLabel(phase),
@@ -549,17 +572,17 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeAgentEnter:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// stream flush 由 EventTypeStreamEnd 显式管。
 		m.statusText = fmt.Sprintf("agent: %s", event.AgentName)
 
 	case react.EventTypeAgentExit:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// stream flush 由 EventTypeStreamEnd 显式管。
 		m.statusText = "ready"
 
 	case react.EventTypeTaskPlan:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// stream flush 由 EventTypeStreamEnd 显式管。
 		var items []PlanItemView
 		explanation, _ := event.Payload["explanation"].(string)
 		rawPlan := event.Payload["plan"]
@@ -729,7 +752,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 
 	case react.EventTypeStepSummaryResult:
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// FR1 修复：旧代码用 payload step_id（已完成主 step 的 ID）去 flush——但
+		// step_summary 的 stream 来自 phase_step_replan 的 AICallProxy(runCtx=nil)，
+		// stream 实际落在 (agent, "") 主路径桶。flush 错桶（残留僵尸 buffer）。
+		// 现在 stream 终止由 EventTypeStreamEnd 显式管，这里完全不需要 flush。
 		stepID := payloadString(event.Payload, "step_id")
 		stepName := payloadString(event.Payload, "step_name")
 		shortSummary := payloadString(event.Payload, "short_summary")
@@ -825,7 +851,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			m.hadFinalAnswerDuringRun = true
 		}
 		m.chat.FlushThinking()
-		m.flushStreamAndPersist(event.AgentName)
+		// stream flush 由 EventTypeStreamEnd 显式管。
 		content := payloadString(event.Payload, "content")
 		source := payloadString(event.Payload, "source")
 		references := payloadStringSlice(event.Payload, "references")

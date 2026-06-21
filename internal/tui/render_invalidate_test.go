@@ -29,7 +29,8 @@ func TestExpandToggle_InvalidatesFragment(t *testing.T) {
 	if m.cursor != 0 {
 		t.Fatalf("cursor: want 0, got %d", m.cursor)
 	}
-	if !m.toolExpanded[0] {
+	// 展开态从 m.toolExpanded[idx] 迁到 Part.<X>.IsExpanded 字段（B-1 改造）。
+	if part0 := m.store.At(0); part0.StepResult == nil || !part0.StepResult.Expanded() {
 		t.Fatal("StepResult should be auto-expanded after AddPart")
 	}
 
@@ -46,7 +47,7 @@ func TestExpandToggle_InvalidatesFragment(t *testing.T) {
 	collapsed := m.fullContent
 
 	if expanded == collapsed {
-		t.Fatalf("toggling toolExpanded must change rendered content; both renders are identical:\n%s", expanded)
+		t.Fatalf("toggling card expand must change rendered content; both renders are identical:\n%s", expanded)
 	}
 
 	// The expanded form embeds the full DisplayResult; the collapsed form
