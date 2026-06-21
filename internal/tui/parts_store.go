@@ -35,11 +35,19 @@ type callIDKey struct {
 // are introduced later in Stage 3; the wrapper here intentionally has no
 // indexing logic so the semantics are byte-for-byte identical to the
 // pre-Stage-2 ChatModel.
+// streamKey 是流式 buffer 的复合键：同一 agentName 但不同 stepID（主路径 vs 多 peer）
+// 必须独立 buffer，否则 peer 流式 token 会和主路径串台，flush 出来的 TextPart 内容
+// 是几条流的交错混合。stepID="" 表示主路径 / 非 inline 上下文。
+type streamKey struct {
+	agent  string
+	stepID string
+}
+
 type PartsStore struct {
 	parts []DisplayPart
 
-	streamingByAgent map[string]*strings.Builder
-	streamingOrder   []string
+	streamingByKey map[streamKey]*strings.Builder
+	streamingOrder []streamKey
 
 	spawnByCallID map[string]agentSpawnInfo
 	agentParent   map[string]agentSpawnInfo
@@ -110,7 +118,7 @@ type PartsStore struct {
 // keep a *PartsStore to share mutations across the model.
 func NewPartsStore() *PartsStore {
 	return &PartsStore{
-		streamingByAgent:   make(map[string]*strings.Builder),
+		streamingByKey:     make(map[streamKey]*strings.Builder),
 		spawnByCallID:      make(map[string]agentSpawnInfo),
 		agentParent:        make(map[string]agentSpawnInfo),
 		idxByCallID:        make(map[callIDKey]int),
@@ -198,6 +206,10 @@ func partStepID(p DisplayPart) string {
 	case PartTypeThinking:
 		if p.Thinking != nil {
 			return thinkingStepID(p.Thinking)
+		}
+	case PartTypeText:
+		if p.Text != nil {
+			return p.Text.StepID
 		}
 	case PartTypeInlineStep:
 		if p.InlineStep != nil {
@@ -355,8 +367,11 @@ func (s *PartsStore) IndexByInlineStepID(stepID string) (int, bool) {
 }
 
 // PartsForStep 返回归属于指定 stepID 的所有 part 下标——包括 InlineStepPart 本体、
-// 该 step 内的 ToolPart / ThinkingPart 等。
-// 渲染层用此切片在 InlineStepPart 卡片展开时列出子序列。
+// 该 step 内的 ToolPart / ThinkingPart / TextPart 等。
+//
+// **推荐使用 CardForStep + ChildrenForStep 显式 API**：本方法保留供既有调用方 +
+// 测试断言（idxByStepID 内容完整性）；新代码不要让调用方自己 `if ci == card { continue }`
+// 排除本体，那是 leaky abstraction（FR4 根因）。
 func (s *PartsStore) PartsForStep(stepID string) []int {
 	if stepID == "" || s.idxByStepID == nil {
 		return nil
@@ -367,6 +382,48 @@ func (s *PartsStore) PartsForStep(stepID string) []int {
 	}
 	out := make([]int, len(indices))
 	copy(out, indices)
+	return out
+}
+
+// CardForStep 返回指定 stepID 对应的 InlineStepPart 本体下标；找不到返回 -1。
+// 与 ChildrenForStep 配对——卡片渲染先用本方法拿到本体再用 ChildrenForStep 拿子序列，
+// 不必散点写 `if ci == idx { continue }` 手工跳过本体（FR4 根因修复）。
+func (s *PartsStore) CardForStep(stepID string) int {
+	if stepID == "" || s.idxByStepID == nil {
+		return -1
+	}
+	for _, idx := range s.idxByStepID[stepID] {
+		if idx < 0 || idx >= len(s.parts) {
+			continue
+		}
+		if s.parts[idx].Type == PartTypeInlineStep {
+			return idx
+		}
+	}
+	return -1
+}
+
+// ChildrenForStep 返回归属于指定 stepID 的子 part 下标（**不**含 InlineStepPart 本体）。
+// 渲染层用此切片在 InlineStepPart 卡片展开时列出子序列；childCount 用其长度后还应
+// 过滤渲染为空的类型以保证视觉准确（renderChildPart 返回 "" 的类型）。
+func (s *PartsStore) ChildrenForStep(stepID string) []int {
+	if stepID == "" || s.idxByStepID == nil {
+		return nil
+	}
+	indices := s.idxByStepID[stepID]
+	if len(indices) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(indices))
+	for _, idx := range indices {
+		if idx < 0 || idx >= len(s.parts) {
+			continue
+		}
+		if s.parts[idx].Type == PartTypeInlineStep {
+			continue
+		}
+		out = append(out, idx)
+	}
 	return out
 }
 
@@ -612,49 +669,50 @@ func (s *PartsStore) UpdateInlineStepByStepID(stepID string, fn func(*InlineStep
 	return idx
 }
 
-// StreamingBuilder returns the in-progress text stream buffer for agentName,
-// creating it on first use. Mirrors the pre-migration streamBuilder helper.
-func (s *PartsStore) StreamingBuilder(agentName string) *strings.Builder {
-	b, ok := s.streamingByAgent[agentName]
+// StreamingBuilder returns the in-progress text stream buffer for
+// (agentName, stepID), creating it on first use. stepID="" 表示主路径。
+func (s *PartsStore) StreamingBuilder(agentName, stepID string) *strings.Builder {
+	k := streamKey{agent: agentName, stepID: stepID}
+	b, ok := s.streamingByKey[k]
 	if !ok {
 		b = &strings.Builder{}
-		s.streamingByAgent[agentName] = b
-		s.streamingOrder = append(s.streamingOrder, agentName)
+		s.streamingByKey[k] = b
+		s.streamingOrder = append(s.streamingOrder, k)
 	}
 	return b
 }
 
-// StreamingLookup returns the existing builder for agentName without creating
-// one. The second return is false when no builder exists.
-func (s *PartsStore) StreamingLookup(agentName string) (*strings.Builder, bool) {
-	b, ok := s.streamingByAgent[agentName]
+// StreamingLookup returns the existing builder for (agentName, stepID) without
+// creating one. The second return is false when no builder exists.
+func (s *PartsStore) StreamingLookup(agentName, stepID string) (*strings.Builder, bool) {
+	b, ok := s.streamingByKey[streamKey{agent: agentName, stepID: stepID}]
 	return b, ok
 }
 
-// StreamingDrop removes agentName's stream buffer and de-registers it from the
-// ordered list. No-op when there is no buffer for agentName.
-func (s *PartsStore) StreamingDrop(agentName string) {
-	if _, ok := s.streamingByAgent[agentName]; !ok {
+// StreamingDrop removes (agentName, stepID)'s stream buffer.
+func (s *PartsStore) StreamingDrop(agentName, stepID string) {
+	k := streamKey{agent: agentName, stepID: stepID}
+	if _, ok := s.streamingByKey[k]; !ok {
 		return
 	}
-	delete(s.streamingByAgent, agentName)
-	for i, name := range s.streamingOrder {
-		if name == agentName {
+	delete(s.streamingByKey, k)
+	for i, key := range s.streamingOrder {
+		if key == k {
 			s.streamingOrder = append(s.streamingOrder[:i], s.streamingOrder[i+1:]...)
 			break
 		}
 	}
 }
 
-// StreamingOrder returns the agents with active stream buffers in arrival
-// order. A copy is returned so callers may mutate the slice freely.
-func (s *PartsStore) StreamingOrder() []string {
-	return append([]string(nil), s.streamingOrder...)
+// StreamingOrder returns the (agent, stepID) pairs with active stream buffers
+// in arrival order. A copy is returned so callers may mutate the slice freely.
+func (s *PartsStore) StreamingOrder() []streamKey {
+	return append([]streamKey(nil), s.streamingOrder...)
 }
 
 // StreamingHasContent reports whether any stream buffer currently has bytes.
 func (s *PartsStore) StreamingHasContent() bool {
-	for _, b := range s.streamingByAgent {
+	for _, b := range s.streamingByKey {
 		if b.Len() > 0 {
 			return true
 		}

@@ -112,15 +112,15 @@ func TestConcurrentSubAgentStreamingAttribution(t *testing.T) {
 	m := NewChatModel()
 	m.SetSize(80, 24)
 
-	m.AppendStream("sub-A", "alpha ")
-	m.AppendStream("sub-B", "beta ")
-	m.AppendStream("sub-A", "alpha2")
-	m.AppendStream("sub-B", "beta2")
+	m.AppendStream("sub-A", "alpha ", "")
+	m.AppendStream("sub-B", "beta ", "")
+	m.AppendStream("sub-A", "alpha2", "")
+	m.AppendStream("sub-B", "beta2", "")
 
-	if !m.FlushStream("sub-A") {
+	if !m.FlushStream("sub-A", "") {
 		t.Fatal("expected FlushStream(sub-A) to flush content")
 	}
-	if !m.FlushStream("sub-B") {
+	if !m.FlushStream("sub-B", "") {
 		t.Fatal("expected FlushStream(sub-B) to flush content")
 	}
 
@@ -151,7 +151,7 @@ func TestResultFallbackPerAgentIsolation(t *testing.T) {
 		AgentName: "sub-call_aaa",
 		Content:   "sub streamed text",
 	})
-	m.flushStreamAndPersist("sub-call_aaa")
+	m.flushStreamAndPersist("sub-call_aaa", "")
 
 	// Root emits a result with no prior streaming of its own. Its fallback must fire.
 	m.handleAgentEvent(&react.AgentOutputEvent{

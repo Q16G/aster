@@ -59,8 +59,9 @@ func TestRenderAgentTranscriptRestoresState(t *testing.T) {
 	if m.width != wantWidth {
 		t.Fatalf("width not restored: got %d want %d", m.width, wantWidth)
 	}
-	if m.toolExpanded[0] || m.toolExpanded[1] {
-		t.Fatalf("toolExpanded not restored: %v", m.toolExpanded)
+	// 展开态恢复检查：transcript 渲染会临时把卡片 Expanded() 设 true 再恢复。
+	if sa := m.store.parts[0].SubAgent; sa != nil && sa.Expanded() {
+		t.Fatalf("SubAgent expand state not restored: still expanded")
 	}
 
 	if _, ok := m.RenderAgentTranscript("call_missing", 70); ok {

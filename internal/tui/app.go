@@ -35,6 +35,17 @@ const (
 	FocusSidebar
 	FocusSubAgents
 	FocusChat
+	// FocusTileBar 是变体 C 的下区 peer tile bar 焦点档。视觉上 tile bar 在
+	// chat 之下、input 之上——焦点循环自上而下：input → sidebar → subagents
+	// → chat → tileBar → input。tileBarVisible()=false 时 setFocus 兜底转 chat。
+	FocusTileBar
+	// FocusStepDetail 是 inline_step 详情态独立焦点（方案 B 修复 P5）。
+	// 把详情态从 FocusChat 内部 `if ViewingStepID()!=""` 分叉提升为一等焦点档：
+	//   - Update 顶层独立 case 完全不走 m.chat.Update(msg)——避免 enter 撞 chat 的
+	//     ExpandableCard.SetExpanded 副作用面（旧实现 P5 根因）
+	//   - 仅接受 h/l/esc/q 切 peer/退出；上下方向走 viewport 滚动；其他按键 noop
+	//   - tileBarVisible() 改读 m.focus 派生，去掉双源真相
+	FocusStepDetail
 )
 
 type renderTickMsg struct{}
@@ -74,6 +85,10 @@ type Model struct {
 	input           InputModel
 	sidebar         SidebarModel
 	subAgentPanel   SubAgentPanel
+	// tileBar 是变体 C（Split Pane Horizontal）的下区 peer tile bar，渲染当前 turn
+	// 内的所有 InlineStepPart 为水平排列的 mini-card。tileBarVisible() 判定是否上屏
+	// （modeSplit + 非 viewingChild + Count() > 0），refreshTileBar() 同步 store 快照。
+	tileBar         TileBarModel
 	// subAgentPanelVer is the last PartsStore.SubAgentVersion value that was
 	// reflected into subAgentPanel via refreshSubAgentPanel. The version
 	// comparison + refresh happens inside Update (renderTickMsg path /
@@ -181,6 +196,7 @@ func NewModel(deps ModelDeps) Model {
 		input:           NewInputModel(),
 		sidebar:         NewSidebarModel(),
 		subAgentPanel:   NewSubAgentPanel(),
+		tileBar:         NewTileBarModel(),
 		agentCtx:        deps.AgentCtx,
 		humanBridge:     deps.HumanBridge,
 		profileRegistry: deps.ProfileRegistry,
@@ -259,7 +275,19 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.input.Focus(), m.refreshSidebarCmd(), func() tea.Msg { return sessionRestoreMsg{} })
 }
 
+// Update 是 bubbletea 主入口。方案 A：拆 wrapper + body，wrapper 在 body 返回前
+// 统一调 syncChrome 把 chrome（tile bar 数据 / focus 健康度）收敛到当前 store +
+// focus 真相源，作为单一出口兜底防止散落 updateLayout 漏调时 chrome 状态错位。
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	out, cmd := m.updateBody(msg)
+	if mm, ok := out.(Model); ok {
+		mm.syncChrome()
+		return mm, cmd
+	}
+	return out, cmd
+}
+
+func (m Model) updateBody(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -401,6 +429,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// inline_step detail mode（方案 B FocusStepDetail）：拦截在 keybind 解析前，
+		// 避免 esc 被 KeyActionEscape 抢走（默认 esc 切 FocusInput / cancel turn）。
+		if m.focus == FocusStepDetail {
+			switch msg.String() {
+			case "esc", "q":
+				m.chat.ExitStepDetail()
+				m.setFocus(FocusChat)
+				m.updateLayout()
+				return m, nil
+			}
+		}
+
 		if action, ok := m.keybindProvider.Resolve(msg.String()); ok {
 			switch action {
 			case tuicontext.KeyActionOpenAgents:
@@ -487,6 +527,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat, cmd = m.chat.Update(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
+		case FocusStepDetail:
+			// 方案 B 修复 P5：详情态独立 case，完全不走 m.chat.Update(msg)。
+			// 仅接受切换 peer + 退出 + viewport 滚动，其他按键 noop——避免 enter
+			// 撞 chat 的 ExpandableCard.SetExpanded 副作用面（旧实现 P5 根因）。
+			switch msg.String() {
+			case "h", "left":
+				if !m.tileBar.AtLeftEdge() {
+					m.tileBar.MoveLeft()
+					m.chat.SetViewingStepID(m.tileBar.SelectedStepID())
+				}
+				return m, tea.Batch(cmds...)
+			case "l", "right":
+				if !m.tileBar.AtRightEdge() {
+					m.tileBar.MoveRight()
+					m.chat.SetViewingStepID(m.tileBar.SelectedStepID())
+				}
+				return m, tea.Batch(cmds...)
+			case "esc", "q":
+				m.chat.ExitStepDetail()
+				m.setFocus(FocusChat)
+				m.updateLayout()
+				return m, tea.Batch(cmds...)
+			case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
+				// 上下方向走 viewport 滚动（detail 内容可能很长）
+				var cmd tea.Cmd
+				m.chat.viewport, cmd = m.chat.viewport.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return m, tea.Batch(cmds...)
+			}
+			// 任何其他按键（含 enter / space / 字母键）在详情态 noop——刻意不走 chat.Update
+			return m, tea.Batch(cmds...)
+		case FocusTileBar:
+			// 变体 C 下区焦点：h/l 切 tile；enter/space 弹 detail；shift+tab 回 chat。
+			// 端点折返：cursor==0 时 h 跳焦点回 chat；末尾 时 l 跳到 input（同 cycleFocus 自然延伸）。
+			switch msg.String() {
+			case "left", "h":
+				if m.tileBar.AtLeftEdge() {
+					m.setFocus(FocusChat)
+				} else {
+					m.tileBar.MoveLeft()
+				}
+			case "right", "l":
+				if m.tileBar.AtRightEdge() {
+					m.setFocus(FocusInput)
+				} else {
+					m.tileBar.MoveRight()
+				}
+			case "enter", " ":
+				if stepID := m.tileBar.SelectedStepID(); stepID != "" {
+					if m.chat.EnterStepDetail(stepID) {
+						// 详情态走独立 FocusStepDetail（方案 B）——不再 FocusChat，
+						// 避免 enter 撞 chat 的 ExpandableCard.SetExpanded 副作用（P5）。
+						m.updateLayout()
+						m.setFocus(FocusStepDetail)
+					}
+				}
+			case "esc":
+				m.setFocus(FocusChat)
 			}
 			return m, tea.Batch(cmds...)
 		default:
@@ -1163,7 +1265,18 @@ func (m *Model) cycleFocus() {
 	case FocusSubAgents:
 		m.setFocus(FocusChat)
 	case FocusChat:
+		// 变体 C：chat → tileBar → input。tileBar 不可见时直接跳 input。
+		if m.tileBarVisible() {
+			m.setFocus(FocusTileBar)
+		} else {
+			m.setFocus(FocusInput)
+		}
+	case FocusTileBar:
 		m.setFocus(FocusInput)
+	case FocusStepDetail:
+		// Tab 在详情态等价于 Esc 退出（避免「Tab 啥也不做」的困惑）
+		m.chat.ExitStepDetail()
+		m.setFocus(FocusChat)
 	default:
 		m.setFocus(FocusInput)
 	}
@@ -1176,10 +1289,21 @@ func (m *Model) setFocus(target FocusTarget) {
 	if target == FocusSubAgents && !m.subAgentPanelVisible() {
 		target = FocusChat
 	}
+	// 变体 C：tileBar 不可见时（modeDetail / viewingChild / 无 InlineStep）兜底转 chat
+	if target == FocusTileBar && !m.tileBarVisible() {
+		target = FocusChat
+	}
+	// 方案 B：FocusStepDetail 需要 chat.ViewingStepID() 非空才有意义；
+	// 没有正在查看的 stepID 时兜底转 chat。
+	if target == FocusStepDetail && m.chat.ViewingStepID() == "" {
+		target = FocusChat
+	}
 	m.focus = target
 	m.sidebar.SetFocused(target == FocusSidebar)
 	m.subAgentPanel.SetFocused(target == FocusSubAgents)
-	m.chat.SetFocused(target == FocusChat)
+	// FocusStepDetail 视觉上仍属于 chat 区域（detail body 在 chat viewport）——chat 接焦点
+	m.chat.SetFocused(target == FocusChat || target == FocusStepDetail)
+	m.tileBar.SetFocused(target == FocusTileBar)
 	m.input.SetEnabled(target == FocusInput)
 }
 
@@ -1575,6 +1699,109 @@ func (m *Model) logMCPError(name string) {
 
 // --- Layout ---
 
+// syncChrome 是 Model.Update 出口的兜底，把 chrome（tile bar 快照 + focus 健康度）
+// 收敛到当前 store + focus 真相源（方案 A）。
+//
+// 由 Update wrapper 在 body 返回后无条件调一次：
+//   - refreshTileBar：把 store 当前 turn 的 InlineStepPart 快照 + 派生 summary 同步到 TileBarModel
+//   - reconcileFocus：focus 指向「已不该可见」目标时自动 setFocus(FocusChat) 兜底
+//
+// 这取代了散落在 event_handlers 各 case 末尾的 m.updateLayout() 调用——后者本来
+// 是为了拉刷新 tile bar，但漏调一处就是一个 P1 类 bug。出口统一兜底后，event_handlers
+// 里只做语义性 layout 重算（高度变化），不再为「记得刷新」负责。
+func (m *Model) syncChrome() {
+	m.refreshTileBar()
+	m.reconcileFocus()
+}
+
+// reconcileFocus：focus 指向已不可见的目标时自动回退 FocusChat（方案 A 修复 P2）。
+//   - FocusTileBar 但 tile bar 不可见（所有 peer 完成 / 新 turn 等）→ 回 FocusChat
+//   - FocusSidebar 但 sidebar 不可见 → 回 FocusChat
+//   - FocusSubAgents 但 sub-agent panel 不可见 → 回 FocusChat
+//   - FocusStepDetail 但 chat.ViewingStepID() 已为空 → 回 FocusChat
+func (m *Model) reconcileFocus() {
+	switch m.focus {
+	case FocusTileBar:
+		if !m.tileBarVisible() {
+			m.setFocus(FocusChat)
+		}
+	case FocusSidebar:
+		if !m.sidebarVisible() {
+			m.setFocus(FocusChat)
+		}
+	case FocusSubAgents:
+		if !m.subAgentPanelVisible() {
+			m.setFocus(FocusChat)
+		}
+	case FocusStepDetail:
+		if m.chat.ViewingStepID() == "" {
+			m.setFocus(FocusChat)
+		}
+	}
+}
+
+// tileBarVisible 判定下区 tile bar 是否上屏（方案 B 后改读 m.focus 派生）。
+// 规则：
+//   - **不**在 FocusStepDetail（详情态——下区隐藏避免重复信息；tileBar.cursor 仍维持
+//     以支持 detail 下 h/l 切 peer）
+//   - **不**在 viewingChild（sub-agent transcript 模式下下区暂不参与）
+//   - 当前 turn 至少一个 InlineStepPart（与 SubAgentPanel 一致——空 turn 不占高度）
+//
+// 双源真相消除：旧版同时读 `m.chat.ViewingStepID()` 和 `m.focus`，两者可能错位。
+// 改读 m.focus 派生后 EnterStepDetail / ExitStepDetail 通过 setFocus 唯一驱动。
+func (m *Model) tileBarVisible() bool {
+	if m.focus == FocusStepDetail {
+		return false
+	}
+	if m.chat.ViewingChild() != "" {
+		return false
+	}
+	return m.tileBar.Count() > 0
+}
+
+// refreshTileBar 把 store 当前 turn 的 InlineStepPart 快照 + 派生 summary 同步到
+// TileBarModel。调用时机：observer / tool_start / tool_end / inline_step_start/end
+// 后任意 layout 路径——典型放在 updateLayout 同级。
+//
+// PartsStore 单 goroutine 模型（无 mutex），从 Model.Update 直接拉是线程安全的。
+func (m *Model) refreshTileBar() {
+	items := m.chat.store.InlineStepsThisTurn()
+	summary := make(map[string]tileSummary, len(items))
+	for _, it := range items {
+		stepID := strings.TrimSpace(it.StepID)
+		if stepID == "" {
+			continue
+		}
+		children := m.chat.store.ChildrenForStep(stepID)
+		var s tileSummary
+		s.Total = len(children)
+		for _, idx := range children {
+			if idx < 0 || idx >= m.chat.store.Len() {
+				continue
+			}
+			p := m.chat.store.At(idx)
+			if p.Type == PartTypeTool && p.Tool != nil {
+				if strings.EqualFold(strings.TrimSpace(p.Tool.State), "running") {
+					s.LastTool = strings.TrimSpace(p.Tool.Name)
+					s.LastPending = true
+				} else {
+					s.Done++
+					s.LastTool = strings.TrimSpace(p.Tool.Name)
+					s.LastPending = false
+				}
+			} else if !strings.EqualFold(strings.TrimSpace(string(p.Type)), "thinking") {
+				// 非 tool 也不 thinking 的 child 视为「计数已完成」（如 TextPart）
+				s.Done++
+			} else {
+				// thinking 算 done（已经产生过 think 内容）
+				s.Done++
+			}
+		}
+		summary[stepID] = s
+	}
+	m.tileBar.SetSnapshot(items, summary)
+}
+
 // subAgentPanelVisible reports whether the right-side sub-agent panel should
 // render: while the current turn has any sub-agent (running or already settled),
 // so the panel persists after the children finish — like the Todo nesting — and
@@ -1790,6 +2017,23 @@ func (m *Model) updateLayout() {
 		contentWidth = 1
 	}
 
+	// 变体 C 下区 tile bar：先按当前 items 让 TileBarModel 自报 MinHeight，
+	// 从 chatHeight 里扣掉给下区留位（plan v2 §Step 4 + [v2-fix P3]）。
+	// 必须在 m.chat.SetSize 之前完成 tileBar.SetSnapshot——MinHeight 依赖 items 数量。
+	m.refreshTileBar()
+	tileBarHeight := 0
+	if m.tileBarVisible() {
+		tileBarHeight = m.tileBar.MinHeight()
+		if tileBarHeight > chatHeight-1 {
+			// 下区不能挤掉 chat 全部高度；至少给 chat 留 1 行
+			tileBarHeight = chatHeight - 1
+			if tileBarHeight < 0 {
+				tileBarHeight = 0
+			}
+		}
+	}
+	chatHeight -= tileBarHeight
+
 	m.layoutChatWidth = chatWidth
 	m.layoutChatHeight = chatHeight
 	m.layoutMainHeight = mainHeight
@@ -1802,6 +2046,9 @@ func (m *Model) updateLayout() {
 	if m.subAgentPanelVisible() {
 		m.subAgentPanel.SetSize(subAgentPanelWidth, mainHeight)
 		m.refreshSubAgentPanel()
+	}
+	if tileBarHeight > 0 {
+		m.tileBar.SetSize(contentWidth, tileBarHeight)
 	}
 	m.chat.SetSize(contentWidth, chatHeight)
 	m.input.SetWidth(contentWidth)
@@ -1890,12 +2137,23 @@ func (m Model) View() string {
 		pickerView = m.filePicker.View()
 	}
 
-	var leftPane string
-	if pickerView != "" {
-		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, pickerView, inputView)
-	} else {
-		leftPane = lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
+	// 变体 C 下区 tile bar：在 chat 与 input 之间插入。仅 modeSplit 且非 viewingChild
+	// 且当前 turn 有 InlineStep 时显示——空 turn 不占高度。
+	tileBarView := ""
+	if m.tileBarVisible() {
+		tileBarView = m.tileBar.View()
 	}
+
+	var leftPane string
+	parts := []string{chatView}
+	if tileBarView != "" {
+		parts = append(parts, tileBarView)
+	}
+	if pickerView != "" {
+		parts = append(parts, pickerView)
+	}
+	parts = append(parts, inputView)
+	leftPane = lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	cols := []string{leftPane}
 	if m.subAgentPanelVisible() {

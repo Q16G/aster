@@ -36,11 +36,17 @@ type ChatModel struct {
 	// every part each frame.
 	renderer *Renderer
 
-	thinkingByAgent  map[string]*thinkingState
-	thinkingOrder    []string
+	// thinkingByKey 把活体 thinking buffer 按 (agentName, stepID) 复合键隔离——
+	// 同一 agentName 下 main（stepID=""）和多个 peer（stepID="p1" 等）各自独立 buffer。
+	// 旧设计单 agentName 单 buffer 导致 peer 的 reasoning content 渗入 root thinking
+	// 流，主屏幕上 InlineStep 卡片下方仍能看到 `| Thinking: ...` 大段内容（截图症状）。
+	thinkingByKey    map[thinkBufKey]*thinkingState
+	thinkingOrder    []thinkBufKey
 	width            int
 	height           int
-	toolExpanded     map[int]bool
+	// 展开/折叠态已迁到 ExpandableCardPart 接口字段（Part.<X>.IsExpanded）；
+	// 旧的 `m.toolExpanded[idx int]` 全局表已删除——idx 在 part 列表前插
+	// （concurrent peer / sub_agent reflow）时会漂移，导致展开态错位（FR3 根因）。
 	cursor           int
 	focused          bool
 	partLineOffsets  []int
@@ -51,6 +57,11 @@ type ChatModel struct {
 	// viewingChild is the call_id of the sub-agent whose transcript currently
 	// replaces the main timeline in-place ("" = showing the main timeline).
 	viewingChild string
+	// viewingStepID 是 inline_step 详情态（变体 C「全屏 detail view」）下查看的
+	// peer stepID。"" 表示非详情态。与 viewingChild 互斥（见 EnterStepDetail
+	// 实现的 viewingChild 守卫）——sub-agent transcript 内部的并发 step 走
+	// sub-agent 自己的渲染机制，不通过本字段。
+	viewingStepID string
 
 	activeStepByAgent map[string]string
 }
@@ -62,8 +73,7 @@ func NewChatModel() ChatModel {
 		viewport:          vp,
 		store:             NewPartsStore(),
 		renderer:          NewRenderer(),
-		thinkingByAgent:   make(map[string]*thinkingState),
-		toolExpanded:      make(map[int]bool),
+		thinkingByKey:     make(map[thinkBufKey]*thinkingState),
 		autoFollowBottom:  true,
 		activeStepByAgent: make(map[string]string),
 	}
@@ -99,21 +109,27 @@ func (m *ChatModel) setFocused(v bool) {
 	m.focused = v
 }
 
-// setToolExpanded flips the expand/collapse flag for parts[idx] and marks the
-// part dirty so the Renderer's fragment cache invalidates it on the next
-// pass. Direct writes to m.toolExpanded outside this helper would leave the
-// cached fragment intact (the renderer keys on id+version+width and the
-// expand flag is none of those), producing the F2 bug where Enter/Space on
-// StepResult/StepSummary/FinalAnswer/Plan/SubAgent cards had no visual effect.
-func (m *ChatModel) setToolExpanded(idx int, v bool) {
+// setCardExpanded 把指定 idx 的卡片切换展开/折叠并打 dirty 让 Renderer 重画。
+// 调用方负责确保 idx 指向一个 ExpandableCardPart 类型；非可展开 part 直接 no-op。
+//
+// 把展开态从 `m.toolExpanded[idx int]` 全局表迁到 part 实体字段后（FR3 根因
+// 修复）：状态不再因 idx 漂移失效；新卡片类型只需实现 ExpandableCardPart 接口
+// 即可获得 enter/space 切换、SetAll 恢复、expandAll 等所有能力——编译器兜底。
+func (m *ChatModel) setCardExpanded(idx int, v bool) bool {
 	if idx < 0 || idx >= m.store.Len() {
-		return
+		return false
 	}
-	if m.toolExpanded[idx] == v {
-		return
+	part := m.store.At(idx)
+	card, ok := part.AsExpandable()
+	if !ok {
+		return false
 	}
-	m.toolExpanded[idx] = v
-	m.store.MarkDirty(m.store.At(idx).ID)
+	if card.Expanded() == v {
+		return false
+	}
+	card.SetExpanded(v)
+	m.store.MarkDirty(part.ID)
+	return true
 }
 
 func (m *ChatModel) SetSize(w, h int) {
@@ -127,113 +143,151 @@ func (m *ChatModel) SetSize(w, h int) {
 	m.refreshContent()
 }
 
-func (m *ChatModel) AddPart(part DisplayPart) {
+// AddPart 追加 part 并返回新 part 的 store 下标。
+//
+// **不再无条件 setCursor 到新 part**（方案 C，commit 后修复 P6）：旧设计每次都把
+// cursor 强设到新 idx，导致不可见的 InlineStep / 子 part 也成 cursor 目标。一旦
+// enter/space 在不可见 cursor 上触发，scrollToCursor 用 partLineOffsets[idx]=0
+// 的 sentinel 默认值就把 viewport 拽到顶部，autoFollowBottom 反复被打断。
+//
+// 新设计：AddPart 是「哑 append」，cursor 不动；autoFollowBottom 维持时 GotoBottom。
+// 调用方需要把 cursor 跟到最新 part 时显式调 FocusLastVisiblePart()。
+//
+// 自动展开（StepResult 等 shouldAutoExpandPart=true 类型）仍然在 part 实体上设置
+// Expanded=true——这跟 cursor 无关，纯粹是新 part 默认渲染状态。
+func (m *ChatModel) AddPart(part DisplayPart) int {
 	if part.Time.IsZero() {
 		part.Time = time.Now()
 	}
 	m.store.Append(part)
 	idx := m.store.Len() - 1
 	part = m.store.At(idx)
-	m.setCursor(idx)
 	if shouldAutoExpandPart(part.Type) {
-		m.toolExpanded[idx] = true
+		if card, ok := part.AsExpandable(); ok {
+			card.SetExpanded(true)
+		}
 	}
 	m.refreshContent()
 	if m.autoFollowBottom {
 		m.viewport.GotoBottom()
 	}
 	m.syncAutoFollowFromViewport()
+	return idx
 }
 
-func (m *ChatModel) streamBuilder(agentName string) *strings.Builder {
-	b, ok := m.store.streamingByAgent[agentName]
-	if !ok {
-		b = &strings.Builder{}
-		m.store.streamingByAgent[agentName] = b
-		m.store.streamingOrder = append(m.store.streamingOrder, agentName)
-	}
-	return b
-}
-
-func (m *ChatModel) dropStreamBuilder(agentName string) {
-	if _, ok := m.store.streamingByAgent[agentName]; !ok {
-		return
-	}
-	delete(m.store.streamingByAgent, agentName)
-	for i, name := range m.store.streamingOrder {
-		if name == agentName {
-			m.store.streamingOrder = append(m.store.streamingOrder[:i], m.store.streamingOrder[i+1:]...)
-			break
+// FocusLastVisiblePart 把 cursor 移到主时间线最后一个 mainVisible 的 part。
+// 调用方语义：「我刚加了一个用户可感知的 part，希望 cursor 跟随它（或它之前的可见 part）」。
+// 没有可见 part 时 cursor 置 -1（无效），不影响 viewport。
+//
+// 与原 AddPart 自动 setCursor 的关键差异：永远跳到 **mainVisible** 的 idx——
+// 即使最新 part 是 InlineStep（不进主流）也不会把 cursor 卡在那。
+func (m *ChatModel) FocusLastVisiblePart() {
+	for j := m.store.Len() - 1; j >= 0; j-- {
+		if m.mainVisible(j) {
+			m.setCursor(j)
+			return
 		}
 	}
+	m.setCursor(-1)
 }
 
-func (m *ChatModel) StreamingAgents() []string {
-	return append([]string(nil), m.store.streamingOrder...)
+// allocPartLineOffsets 分配 partLineOffsets 切片，所有位置预填 sentinel -1。
+// 渲染阶段把可见 part 的 idx 写入真实 lineCount，scrollToCursor 见 -1 直接 noop。
+// 解决「idx=0 既表示首行又表示未布局」二义性（方案 C P6 根治）。
+func allocPartLineOffsets(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = -1
+	}
+	return out
+}
+
+func (m *ChatModel) streamBuilder(agentName, stepID string) *strings.Builder {
+	return m.store.StreamingBuilder(agentName, stepID)
+}
+
+func (m *ChatModel) dropStreamBuilder(agentName, stepID string) {
+	m.store.StreamingDrop(agentName, stepID)
+}
+
+// StreamingAgents 返回当前活跃流 buffer 的 (agent, stepID) 键列表。
+// 调用方按需筛 stepID==""（仅主路径）或 agent==某个 root agent 等。
+func (m *ChatModel) StreamingAgents() []streamKey {
+	return m.store.StreamingOrder()
 }
 
 func (m *ChatModel) hasStreamingContent() bool {
-	for _, b := range m.store.streamingByAgent {
-		if b.Len() > 0 {
-			return true
-		}
-	}
-	return false
+	return m.store.StreamingHasContent()
 }
 
-func (m *ChatModel) StreamContent(agentName string) string {
-	if b, ok := m.store.streamingByAgent[agentName]; ok {
+func (m *ChatModel) StreamContent(agentName, stepID string) string {
+	if b, ok := m.store.StreamingLookup(agentName, stepID); ok {
 		return b.String()
 	}
 	return ""
 }
 
-func (m *ChatModel) AppendStream(agentName, delta string) {
-	m.streamBuilder(agentName).WriteString(delta)
+// AppendStream 把流式 token 追加到 (agentName, stepID) 对应 buffer。
+// stepID="" 表示主路径流；stepID="p1" 等表示 peer 流——两者独立 buffer 互不串扰。
+func (m *ChatModel) AppendStream(agentName, delta, stepID string) {
+	m.streamBuilder(agentName, stepID).WriteString(delta)
 	m.markDirty()
 }
 
-func (m *ChatModel) FlushStream(agentName string) bool {
+// FlushStream 把 (agentName, stepID) 当前 buffer 落成 TextPart 后释放 buffer。
+// TextPart.StepID 字段携带 stepID 让 parts_store.idxByStepID 把该 TextPart 归到
+// 对应 InlineStepPart 卡片子序列。
+func (m *ChatModel) FlushStream(agentName, stepID string) bool {
 	flushed := false
-	if b, ok := m.store.streamingByAgent[agentName]; ok && b.Len() > 0 {
+	if b, ok := m.store.StreamingLookup(agentName, stepID); ok && b.Len() > 0 {
 		m.store.Append(DisplayPart{
 			Type: PartTypeText,
 			Time: time.Now(),
-			Text: &TextPart{Content: b.String(), AgentName: agentName},
+			Text: &TextPart{Content: b.String(), AgentName: agentName, StepID: stepID},
 		})
 		flushed = true
 	}
-	m.dropStreamBuilder(agentName)
+	m.dropStreamBuilder(agentName, stepID)
 	m.markDirty()
 	return flushed
 }
 
-// thinkingState is one agent's in-progress thinking buffer. Per-agent buffers
-// keep concurrent sub-agents' thinking from cross-contaminating each other,
-// mirroring streamingByAgent.
+// thinkBufKey 是 thinking buffer 的复合键。同一 agentName 下 main 路径（stepID=""）
+// 与多个 peer（stepID="p1" 等）必须独立 buffer，否则 peer 的 reasoning delta 会和
+// 主路径混在同一 buffer 里 → rootThinkingState 把 peer 内容也当 root 显示在主屏幕
+// renderThinkingStream 里（截图症状）。与 streamKey 模式对齐。
+type thinkBufKey struct {
+	agent  string
+	stepID string
+}
+
+// thinkingState is one (agent, stepID) bucket's in-progress thinking buffer.
+// stepID 已经在 key 里，不再作字段——避免「首次冻结」陷阱（旧版 thinkingState.stepID
+// 字段 once set never changes，混入后无法纠正归属）。
 type thinkingState struct {
 	buf     strings.Builder
 	groupID string
-	stepID  string // fix/06：peer 桶 thinking 归到 inline_step 卡片
 }
 
-func (m *ChatModel) thinkingStateFor(agentName string) *thinkingState {
-	s, ok := m.thinkingByAgent[agentName]
+func (m *ChatModel) thinkingStateFor(agentName, stepID string) *thinkingState {
+	k := thinkBufKey{agent: agentName, stepID: stepID}
+	s, ok := m.thinkingByKey[k]
 	if !ok {
 		s = &thinkingState{}
-		m.thinkingByAgent[agentName] = s
-		m.thinkingOrder = append(m.thinkingOrder, agentName)
+		m.thinkingByKey[k] = s
+		m.thinkingOrder = append(m.thinkingOrder, k)
 	}
 	return s
 }
 
-func (m *ChatModel) dropThinking(agentName string) {
-	if _, ok := m.thinkingByAgent[agentName]; !ok {
+func (m *ChatModel) dropThinking(agentName, stepID string) {
+	k := thinkBufKey{agent: agentName, stepID: stepID}
+	if _, ok := m.thinkingByKey[k]; !ok {
 		return
 	}
-	delete(m.thinkingByAgent, agentName)
-	for i, n := range m.thinkingOrder {
-		if n == agentName {
+	delete(m.thinkingByKey, k)
+	for i, key := range m.thinkingOrder {
+		if key == k {
 			m.thinkingOrder = append(m.thinkingOrder[:i], m.thinkingOrder[i+1:]...)
 			break
 		}
@@ -241,7 +295,7 @@ func (m *ChatModel) dropThinking(agentName string) {
 }
 
 func (m *ChatModel) anyThinking() bool {
-	for _, s := range m.thinkingByAgent {
+	for _, s := range m.thinkingByKey {
 		if s.buf.Len() > 0 {
 			return true
 		}
@@ -253,14 +307,20 @@ func (m *ChatModel) isRootAgent(name string) bool {
 	return name == m.rootAgentName || name == ""
 }
 
-// rootThinkingState returns the first root-agent thinking buffer with pending
-// content, or nil. Only root thinking is shown live in the main timeline.
+// rootThinkingState returns the first **main path** (stepID="") root-agent thinking
+// buffer with pending content, or nil. peer thinking（stepID!=""）的活体内容被显式
+// 排除——它们应当通过 InlineStepPart 卡片展开层呈现，不应在主屏 renderThinkingStream
+// 抢戏（修复主屏幕 `| Thinking: ...` 漏到卡片下方的症状）。
 func (m *ChatModel) rootThinkingState() *thinkingState {
-	for _, name := range m.thinkingOrder {
-		if m.isRootAgent(name) {
-			if s := m.thinkingByAgent[name]; s != nil && s.buf.Len() > 0 {
-				return s
-			}
+	for _, k := range m.thinkingOrder {
+		if k.stepID != "" {
+			continue
+		}
+		if !m.isRootAgent(k.agent) {
+			continue
+		}
+		if s := m.thinkingByKey[k]; s != nil && s.buf.Len() > 0 {
+			return s
 		}
 	}
 	return nil
@@ -276,16 +336,16 @@ func (m *ChatModel) AppendThinkingWithGroupID(delta string, groupID string) {
 	m.AppendThinkingForAgent("", delta, groupID, "")
 }
 
-// AppendThinkingForAgent appends a thinking delta for a specific agent and
-// aggregates by group_id within that agent's stream. group_id is the primary
-// aggregation key; event_id is record-unique and should not be used for grouping.
-// stepID 用于 inline_step 桶分组（peer think → 卡片展开可见）；主路径/plan/replan 传 ""。
+// AppendThinkingForAgent appends a thinking delta for a specific (agent, stepID)
+// bucket and aggregates by group_id within that bucket's stream. group_id 是
+// 主聚合键；event_id 是记录唯一不能用于分组。stepID="" 主路径，非空为 peer 桶
+// 归属——不同 (agent, stepID) 独立 buffer，互不串扰。
 func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID, stepID string) {
-	s := m.thinkingStateFor(agentName)
+	s := m.thinkingStateFor(agentName, stepID)
 
 	if groupID != "" && s.groupID != "" && groupID != s.groupID {
-		m.FlushThinkingForAgent(agentName)
-		s = m.thinkingStateFor(agentName)
+		m.FlushThinkingForAgentStep(agentName, stepID)
+		s = m.thinkingStateFor(agentName, stepID)
 	}
 
 	if groupID != "" && s.buf.Len() == 0 {
@@ -303,9 +363,6 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID, stepID str
 				p.Version++
 				m.store.MarkDirty(p.ID)
 				s.groupID = groupID
-				if s.stepID == "" {
-					s.stepID = stepID
-				}
 				m.markDirty()
 				return
 			}
@@ -313,36 +370,51 @@ func (m *ChatModel) AppendThinkingForAgent(agentName, delta, groupID, stepID str
 	}
 
 	s.groupID = groupID
-	if s.stepID == "" {
-		s.stepID = stepID
-	}
 	s.buf.WriteString(delta)
 	m.markDirty()
 }
 
-// FlushThinking flushes every agent's pending thinking buffer into parts. Used
-// at boundaries (stream/tool/result/run-end) where no single agent is implied.
+// FlushThinking flushes every (agent, stepID) pending thinking buffer into parts.
+// Used at boundaries (stream/tool/result/run-end) where no single bucket is implied.
 func (m *ChatModel) FlushThinking() bool {
 	flushed := false
-	for _, name := range append([]string(nil), m.thinkingOrder...) {
-		if m.FlushThinkingForAgent(name) {
+	for _, k := range append([]thinkBufKey(nil), m.thinkingOrder...) {
+		if m.FlushThinkingForAgentStep(k.agent, k.stepID) {
 			flushed = true
 		}
 	}
 	return flushed
 }
 
+// FlushThinkingForAgent flushes 所有（agent, *）下任意 stepID 的 thinking buffer。
+// 兼容旧调用方语义——agent-global boundary 事件（tool_start / result 等）想 settle
+// 那个 agent 所有未完 thinking。
 func (m *ChatModel) FlushThinkingForAgent(agentName string) bool {
-	s, ok := m.thinkingByAgent[agentName]
+	flushed := false
+	for _, k := range append([]thinkBufKey(nil), m.thinkingOrder...) {
+		if k.agent != agentName {
+			continue
+		}
+		if m.FlushThinkingForAgentStep(k.agent, k.stepID) {
+			flushed = true
+		}
+	}
+	return flushed
+}
+
+// FlushThinkingForAgentStep flush 指定 (agent, stepID) 桶。每个桶独立 settle。
+func (m *ChatModel) FlushThinkingForAgentStep(agentName, stepID string) bool {
+	k := thinkBufKey{agent: agentName, stepID: stepID}
+	s, ok := m.thinkingByKey[k]
 	if !ok || s.buf.Len() == 0 {
-		m.dropThinking(agentName)
+		m.dropThinking(agentName, stepID)
 		return false
 	}
 	content := s.buf.String()
 	groupID := s.groupID
 
-	m.store.AppendThinkingDelta(agentName, groupID, s.stepID, content, time.Now())
-	m.dropThinking(agentName)
+	m.store.AppendThinkingDelta(agentName, groupID, stepID, content, time.Now())
+	m.dropThinking(agentName, stepID)
 	m.markDirty()
 	return true
 }
@@ -622,6 +694,63 @@ func (m *ChatModel) ExitChild() {
 
 func (m *ChatModel) ViewingChild() string { return m.viewingChild }
 
+// EnterStepDetail 切到 inline_step 详情态（变体 C 的「全屏 detail view」）。
+// 返回 false 表示拒绝：
+//   - stepID 为空
+//   - 当前已在 viewingChild（sub-agent transcript）——子 agent 内部的并发 step
+//     不通过本机制呈现，避免嵌套渲染歧义（plan 文档 [v2-fix P5]）
+//   - store 里找不到对应 InlineStepPart
+func (m *ChatModel) EnterStepDetail(stepID string) bool {
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return false
+	}
+	if m.viewingChild != "" {
+		return false
+	}
+	if m.store.CardForStep(stepID) < 0 {
+		return false
+	}
+	m.viewingStepID = stepID
+	m.refreshContent()
+	m.viewport.GotoTop()
+	return true
+}
+
+// ExitStepDetail 退回主时间线（split 模式）。已是非详情态时 no-op。
+func (m *ChatModel) ExitStepDetail() {
+	if m.viewingStepID == "" {
+		return
+	}
+	m.viewingStepID = ""
+	m.refreshContent()
+}
+
+// ViewingStepID 返回当前 inline_step 详情态的 stepID（""=非详情态）。
+func (m *ChatModel) ViewingStepID() string { return m.viewingStepID }
+
+// SetViewingStepID 给 detail 模式下 h/l 切 peer 用——viewingStepID 已知改变时
+// 同步触发 refreshContent。stepID="" 等价于 ExitStepDetail。
+func (m *ChatModel) SetViewingStepID(stepID string) {
+	stepID = strings.TrimSpace(stepID)
+	if stepID == m.viewingStepID {
+		return
+	}
+	if stepID == "" {
+		m.ExitStepDetail()
+		return
+	}
+	if m.viewingChild != "" {
+		return
+	}
+	if m.store.CardForStep(stepID) < 0 {
+		return
+	}
+	m.viewingStepID = stepID
+	m.refreshContent()
+	m.viewport.GotoTop()
+}
+
 // RenderAgentTranscript builds the drill-in transcript for the sub-agent spawned
 // by callID: its filtered parts rendered at the given width with cards
 // force-expanded. The expand/width mutations are restored before returning, so
@@ -640,12 +769,21 @@ func (m *ChatModel) renderChildTranscript(callID string, width int) (string, boo
 	m.width = width
 	// The transcript is a standalone view: no cursor selection should be drawn.
 	m.focused = false
-	saved := make(map[int]bool, len(idxs))
+	// Force 所有相关卡片展开来产出 transcript 文本，渲染完恢复——展开态现在落在
+	// part 实体的 IsExpanded 字段（B-1 改造），直接操作字段即可。
+	type savedExpanded struct {
+		card ExpandableCardPart
+		prev bool
+	}
+	saved := make([]savedExpanded, 0, len(idxs))
 	indexed := make([]IndexedPart, 0, len(idxs))
 	for _, i := range idxs {
-		saved[i] = m.toolExpanded[i]
-		m.toolExpanded[i] = true
-		indexed = append(indexed, IndexedPart{Index: i, Part: m.store.parts[i]})
+		p := m.store.parts[i]
+		if card, ok := p.AsExpandable(); ok {
+			saved = append(saved, savedExpanded{card: card, prev: card.Expanded()})
+			card.SetExpanded(true)
+		}
+		indexed = append(indexed, IndexedPart{Index: i, Part: p})
 	}
 
 	var sb strings.Builder
@@ -671,8 +809,8 @@ func (m *ChatModel) renderChildTranscript(callID string, width int) (string, boo
 
 	m.width = savedWidth
 	m.focused = savedFocused
-	for i, v := range saved {
-		m.toolExpanded[i] = v
+	for _, s := range saved {
+		s.card.SetExpanded(s.prev)
 	}
 	return strings.TrimRight(sb.String(), "\n"), true
 }
@@ -863,13 +1001,18 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 						return EnterSubAgentMsg{CallID: sa.CallID}
 					}
 				}
-				if t == PartTypeStepResult || t == PartTypeStepSummary || t == PartTypeFinalAnswer || t == PartTypePlan || t == PartTypeSubAgent {
-					m.setToolExpanded(m.cursor, !m.toolExpanded[m.cursor])
+				// 任何实现 ExpandableCardPart 的 part 都接入 enter/space 展开切换。
+				// 新增卡片类型只需 DisplayPart.AsExpandable 加 case 即可，编译器
+				// 保证完备性，不再需要在这里维护类型白名单（FR3 的根因）。
+				if card, ok := part.AsExpandable(); ok {
+					card.SetExpanded(!card.Expanded())
+					m.store.MarkDirty(part.ID)
 					m.refreshContent()
 					m.scrollToCursor()
 					m.syncAutoFollowFromViewport()
 					return m, nil
 				}
+				_ = t
 			}
 		}
 	}
@@ -893,11 +1036,23 @@ func (m ChatModel) ViewWithSelection(sel *SelectionModel) string {
 	return strings.Join(highlighted, "\n")
 }
 
-// filterMainParts keeps only parts that belong in the main timeline: root-agent
-// parts and SubAgent cards. Non-root details collapse behind their card.
+// filterMainParts keeps only parts that belong in the main timeline:
+//   - root-agent parts
+//   - SubAgent cards (sub-agent 本体仍 inline 主流——子 agent 是独立 agent 实例)
+//
+// **InlineStep 本体不再进主流**：变体 C 移植后 InlineStepPart 由下区 tile bar
+// 负责呈现，主流不再 inline 卡片（plan v2 §Step 3）。partStepID(p) != "" 的
+// 子 part（ThinkingPart / ToolPart / TextPart 等）仍归集到对应 InlineStep 子
+// 序列——通过 InlineStep detail view（chat.viewingStepID）显示。
 func (m *ChatModel) filterMainParts(parts []IndexedPart) []IndexedPart {
 	out := make([]IndexedPart, 0, len(parts))
 	for _, ip := range parts {
+		if partStepID(ip.Part) != "" {
+			continue
+		}
+		if ip.Part.Type == PartTypeInlineStep {
+			continue
+		}
 		if ip.Part.Type == PartTypeSubAgent || m.isRootAgent(partAgentName(ip.Part)) {
 			out = append(out, ip)
 		}
@@ -912,14 +1067,28 @@ func (m *ChatModel) mainVisible(i int) bool {
 		return false
 	}
 	p := m.store.parts[i]
+	if partStepID(p) != "" {
+		return false
+	}
+	if p.Type == PartTypeInlineStep {
+		return false
+	}
 	return p.Type == PartTypeSubAgent || m.isRootAgent(partAgentName(p))
 }
 
 // hasRootStreamingContent reports whether any root agent has pending live stream
 // content. Non-root live streams are not shown inline in the main timeline.
+// 仅主路径 stream（stepID==""）参与主流活体显示；peer 流（stepID!=""）属于
+// InlineStepPart 卡片内部内容，不在主流抢戏。
 func (m *ChatModel) hasRootStreamingContent() bool {
-	for name, b := range m.store.streamingByAgent {
-		if m.isRootAgent(name) && b.Len() > 0 {
+	for _, k := range m.store.streamingOrder {
+		if k.stepID != "" {
+			continue
+		}
+		if !m.isRootAgent(k.agent) {
+			continue
+		}
+		if b, ok := m.store.streamingByKey[k]; ok && b.Len() > 0 {
 			return true
 		}
 	}
@@ -931,6 +1100,10 @@ func (m *ChatModel) refreshContent() {
 		m.refreshChildContent()
 		return
 	}
+	if m.viewingStepID != "" {
+		m.refreshStepDetailContent()
+		return
+	}
 
 	// Drain the store's dirty set into the renderer cache so this pass sees
 	// fresh fragments for any part that was appended, mutated, or whose
@@ -938,7 +1111,7 @@ func (m *ChatModel) refreshContent() {
 	m.renderer.drainStore(m.store)
 
 	var sb strings.Builder
-	m.partLineOffsets = make([]int, len(m.store.parts))
+	m.partLineOffsets = allocPartLineOffsets(len(m.store.parts))
 	lineCount := 0
 
 	turns := groupPartsIntoTurns(m.store.parts)
@@ -996,10 +1169,74 @@ func (m *ChatModel) refreshContent() {
 	m.viewport.SetContent(m.fullContent)
 }
 
+// refreshStepDetailContent 渲染 inline_step 详情态（变体 C 的「全屏 detail view」）。
+// 与 refreshChildContent 平行：用 store.CardForStep + ChildrenForStep 拉子序列、
+// 复用 renderPart 渲染每条 ToolPart/ThinkingPart/TextPart。
+//
+// 头部提示 "‹ Peer: <stepID> <description>   （Esc 返回 / h-l 切 peer）"。
+func (m *ChatModel) refreshStepDetailContent() {
+	m.partLineOffsets = allocPartLineOffsets(len(m.store.parts))
+
+	stepID := m.viewingStepID
+	cardIdx := m.store.CardForStep(stepID)
+	var card *InlineStepPart
+	if cardIdx >= 0 && cardIdx < m.store.Len() {
+		if p := m.store.At(cardIdx); p.InlineStep != nil {
+			card = p.InlineStep
+		}
+	}
+
+	desc := ""
+	statusText := ""
+	if card != nil {
+		desc = strings.TrimSpace(card.Description)
+		statusText = strings.TrimSpace(card.Status)
+	}
+
+	headTitle := "‹ Peer: " + stepID
+	if desc != "" {
+		headTitle += "  " + desc
+	}
+	if statusText != "" {
+		headTitle += " [" + statusText + "]"
+	}
+	header := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Render(headTitle) +
+		lipgloss.NewStyle().Faint(true).Render("   （Esc 返回 · h/l 切 peer）")
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	sb.WriteString("\n\n")
+
+	children := m.store.ChildrenForStep(stepID)
+	if len(children) == 0 {
+		sb.WriteString(lipgloss.NewStyle().Faint(true).Render("（该 peer 暂无 think/tool）"))
+	} else {
+		for _, idx := range children {
+			if idx < 0 || idx >= m.store.Len() {
+				continue
+			}
+			part := m.store.At(idx)
+			rendered, _ := m.renderer.fragmentFor(part, m.width, func() string {
+				return m.renderPart(idx, part)
+			})
+			if rendered == "" {
+				continue
+			}
+			sb.WriteString(rendered)
+			if !strings.HasSuffix(rendered, "\n") {
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	m.fullContent = sb.String()
+	m.viewport.SetContent(m.fullContent)
+}
+
 // refreshChildContent renders the in-place sub-agent transcript (drill-in view)
 // into the chat viewport, with a header pointing back to the main timeline.
 func (m *ChatModel) refreshChildContent() {
-	m.partLineOffsets = make([]int, len(m.store.parts))
+	m.partLineOffsets = allocPartLineOffsets(len(m.store.parts))
 
 	title := m.childTitle(m.viewingChild)
 	header := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true).
@@ -1085,6 +1322,12 @@ func (m *ChatModel) scrollToCursor() {
 		return
 	}
 	targetLine := m.partLineOffsets[m.cursor]
+	// sentinel -1 = part 未在主时间线渲染（filterMainParts 过滤掉的 InlineStep /
+	// 子 part 等）。viewport 不动——避免把视口拽到顶部（P6 用户感知最强的 bug
+	// 根因：旧设计用 0 既表示首行又表示未布局，二义性）。
+	if targetLine < 0 {
+		return
+	}
 	viewTop := m.viewport.YOffset
 	viewBottom := viewTop + m.viewport.Height - 1
 
@@ -1118,10 +1361,15 @@ func (m *ChatModel) SetParts(parts []DisplayPart) {
 	// at the session boundary; subsequent refreshContent passes repopulate
 	// it from the freshly loaded parts.
 	m.renderer = NewRenderer()
-	m.toolExpanded = make(map[int]bool)
-	for i, part := range parts {
+	// 展开态恢复：旧设计 m.toolExpanded 在 SetAll 时按 idx 重建——idx 跨 session
+	// 没意义、且不持久化。新设计展开态直接落在 part 实体的 IsExpanded 字段（json:"-"
+	// 不参与持久化），跨 session 默认全折叠；shouldAutoExpandPart 的类型仍触发自动
+	// 展开（如 StepResult 默认展开），通过 AsExpandable 接口写入。
+	for _, part := range parts {
 		if shouldAutoExpandPart(part.Type) {
-			m.toolExpanded[i] = true
+			if card, ok := part.AsExpandable(); ok {
+				card.SetExpanded(true)
+			}
 		}
 		// Rebuild the spawn map from loaded parts: the live EventTypeToolStart
 		// handler is the only other writer, so a freshly loaded session would
@@ -1210,6 +1458,11 @@ func (m *ChatModel) renderPart(idx int, part DisplayPart) string {
 		return m.renderFinalAnswerPart(idx, part, maxWidth)
 	case PartTypeSubAgent:
 		return m.renderSubAgentPart(idx, part, maxWidth)
+	case PartTypeInlineStep:
+		// 变体 C 移植后 InlineStep 由下区 tile bar 负责呈现；filterMainParts
+		// 也已不让本 part 进主流。这里保留 no-op return 防止意外路径（renderer
+		// 直接调用 renderPart 而非走 filterMainParts）渲染出空行——返回 "" 即可。
+		return ""
 	case PartTypePhaseBanner:
 		return m.renderPhaseBannerPart(part, maxWidth)
 	default:
@@ -1280,12 +1533,16 @@ func (m *ChatModel) renderStreamingContent() string {
 		Width(maxWidth)
 	var sb strings.Builder
 	first := true
-	for _, name := range m.store.streamingOrder {
-		// Only root live streams render inline; sub-agent streams stay collapsed.
-		if !m.isRootAgent(name) {
+	for _, k := range m.store.streamingOrder {
+		// Only root + main-path (stepID="") live streams render inline; peer/sub-agent
+		// streams stay collapsed under their card.
+		if k.stepID != "" {
 			continue
 		}
-		b, ok := m.store.streamingByAgent[name]
+		if !m.isRootAgent(k.agent) {
+			continue
+		}
+		b, ok := m.store.streamingByKey[k]
 		if !ok || b.Len() == 0 {
 			continue
 		}
@@ -1322,7 +1579,10 @@ func (m *ChatModel) renderThinkingStream() string {
 }
 
 func (m *ChatModel) renderSubAgentPart(idx int, part DisplayPart, maxWidth int) string {
-	expanded := m.toolExpanded[idx]
+	expanded := false
+	if part.SubAgent != nil {
+		expanded = part.SubAgent.Expanded()
+	}
 	selected := m.focused && idx == m.cursor
 	return renderSubAgentCard(part.SubAgent, maxWidth, expanded, selected)
 }
@@ -1370,7 +1630,7 @@ func (m *ChatModel) renderStepResultPart(idx int, part DisplayPart, maxWidth int
 	if sr == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
+	expanded := sr.Expanded()
 	selected := m.focused && idx == m.cursor
 
 	icon := "▣"
@@ -1428,7 +1688,7 @@ func (m *ChatModel) renderStepSummaryPart(idx int, part DisplayPart, maxWidth in
 	if s == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
+	expanded := s.Expanded()
 	selected := m.focused && idx == m.cursor
 
 	icon := "◆"
@@ -1493,7 +1753,7 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 	if r == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
+	expanded := r.Expanded()
 	selected := m.focused && idx == m.cursor
 
 	icon := "↻"
@@ -1582,7 +1842,7 @@ func (m *ChatModel) renderStepTriagePart(idx int, part DisplayPart, maxWidth int
 	if r == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
+	expanded := r.Expanded()
 	selected := m.focused && idx == m.cursor
 
 	// continue 路径用 ✓(通过/确认),replan 路径用 ↻(重新)
@@ -1684,7 +1944,7 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 	if p == nil {
 		return ""
 	}
-	expanded := m.toolExpanded[idx]
+	expanded := p.Expanded()
 	selected := m.focused && idx == m.cursor
 
 	total := len(p.Items)
