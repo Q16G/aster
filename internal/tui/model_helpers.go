@@ -304,28 +304,31 @@ func modelStatusRank(s string) int {
 	}
 }
 
+// ParseModelVariant 拆解 ASTER 的 model:variant 语法。
+//
+// 不变量：configVariants 必须是【当前 provider】的 Variants，禁止传全局合并表，
+// 否则别的 provider 的 variant 名会污染本 provider 的解析。
+//
+// 仅当冒号后缀是已注册 variant（当前 provider 的 configVariants，或 registry 中对应
+// 模型的 Variants）时才切分；否则整名保留、variant 为空。这样 Ollama 等原生 name:tag
+// 模型名（含多冒号 host/lib/model:tag）不会被截断成第一个冒号之前的部分。
 func ParseModelVariant(modelID string, reg *provider.Registry, providerID string, configVariants map[string]map[string]any) (baseModel, variant string, opts map[string]any) {
-	if idx := strings.Index(modelID, ":"); idx > 0 {
-		baseModel = modelID[:idx]
-		variant = modelID[idx+1:]
-	} else {
-		baseModel = modelID
-		return baseModel, "", nil
+	idx := strings.Index(modelID, ":")
+	if idx <= 0 {
+		return modelID, "", nil
 	}
+	base, vname := modelID[:idx], modelID[idx+1:]
 
-	if vo, ok := configVariants[variant]; ok {
-		return baseModel, variant, vo
+	if vo, ok := configVariants[vname]; ok {
+		return base, vname, vo
 	}
-
-	if reg == nil {
-		return baseModel, variant, nil
+	if reg != nil {
+		if mi, ok := reg.GetModel(providerID, base); ok && mi.Variants != nil {
+			if vo, ok := mi.Variants[vname]; ok {
+				return base, vname, vo
+			}
+		}
 	}
-	mi, ok := reg.GetModel(providerID, baseModel)
-	if !ok || mi.Variants == nil {
-		return baseModel, variant, nil
-	}
-	if vo, ok := mi.Variants[variant]; ok {
-		return baseModel, variant, vo
-	}
-	return baseModel, variant, nil
+	// 后缀非已注册 variant（如 ollama name:tag）→ 整名保留
+	return modelID, "", nil
 }
