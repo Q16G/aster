@@ -31,6 +31,11 @@ const (
 	EventTypeRetry             EventType = "retry"
 	EventTypeLog               EventType = "log"
 	EventTypeStream            EventType = "stream"
+	// EventTypeStreamEnd 是一次模型生成 streaming 结束的显式信号——TUI 端据此 flush
+	// 对应 (agentName, stepID) 桶，不再让结构事件（phase/iteration/tool_start/
+	// step_summary 等）反推「该 flush 哪个 buffer」。emitter 端在 AICallProxyStream
+	// 退出 streaming 回调时主动发该事件，owner=runCtxStepID(runCtx)。
+	EventTypeStreamEnd         EventType = "stream_end"
 	EventTypeStepFinish        EventType = "step_finish"
 	EventTypeHistoryCompacted  EventType = "history_compacted"
 	EventTypeStepSummaryResult EventType = "step_summary_result"
@@ -184,6 +189,25 @@ func (e *Emitter) EnsureThinkGroupID() string {
 	return e.thinkGroupID
 }
 
+// ResetThinkGroupID 重置 thinking 分组 UUID——使下一个 EmitThink 起新 ThinkingPart。
+//
+// **不变量（reset 边界 = 真正 reasoning 段终结 / 真正阶段切换）**：
+//
+// 只在下面这些场景被调用：
+//   - 终结类：EmitThink finishReason 非空 / EmitStepFinish / EmitStepSummaryResult /
+//     EmitStepReplanResult / EmitFinalAnswerResult
+//   - 切换类：EmitToolStart / EmitToolEnd / EmitStateChange / EmitHumanRequest / EmitTaskPlan
+//
+// **禁止边界**（曾被错误使用、commit 后移除）：
+//   - 每 token Content stream（EmitStream）—— deepseek 等 reasoning 模型在同 chunk
+//     内同时吐 ReasoningContent + Content 是正常行为，不构成 reasoning 段终结。
+//     旧实现 EmitStream 调 reset → 让下一段 reasoning 起新 GroupID → ThinkingPart
+//     被切碎为 200 条 1-3 token 的独立 part（主屏「Thinking: -b/rowser/.」碎片化症状）
+//   - observer 细粒度 plan_item 状态变化（EmitTaskItem）—— peer 状态变化与主路径
+//     thinking 段边界正交，主路径 thinking 中间不应被 peer 边界事件切断
+//
+// 新增 emit 路径时若不确定要不要 reset：默认**不调用** reset，除非你的事件语义
+// 上确实是「一段 reasoning 段终结」或「跨阶段切换」。
 func (e *Emitter) ResetThinkGroupID() {
 	if e == nil {
 		return
@@ -219,14 +243,43 @@ func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, 
 	}
 }
 
-func (e *Emitter) EmitStream(iteration int, delta string) {
-	e.ResetThinkGroupID()
-	e.Emit(&AgentOutputEvent{
+// EmitStream 发射流式 token 事件。stepID 标记该流归属哪个 inline_step（peer 走
+// runCtx.StepID；主路径 / 非 step phase 传空字符串）。空字符串 stepID 不入 payload，
+// 与 EmitThink/EmitToolStart 对称——保证 TUI 端 payload["step_id"] 仅当 peer 出现，
+// stream buffer / TextPart 据此做 (agentName, stepID) 隔离与 idxByStepID 索引。
+func (e *Emitter) EmitStream(iteration int, delta string, stepID string) {
+	// **不调** ResetThinkGroupID：每个 content chunk 不构成 reasoning 段终结。
+	// 旧实现这里 reset 会让交错 reasoning/content 的 deepseek 等模型把 200 个 1-3
+	// token 的 ThinkingPart 切碎渲染。详见 ResetThinkGroupID doc 的「禁止边界」。
+	event := &AgentOutputEvent{
 		Type:      EventTypeStream,
 		NodeID:    "stream",
 		Iteration: iteration,
 		Content:   delta,
-	})
+	}
+	if stepID != "" {
+		event.Payload = map[string]any{"step_id": stepID}
+	}
+	e.Emit(event)
+}
+
+// EmitStreamEnd 发射「一次模型生成 streaming 结束」的显式信号。owner 通过 stepID
+// 字段标记（runCtxStepID(runCtx)，主路径 ""，peer 路径 peerStepID）。TUI 端据此
+// 唯一触发 (agentName, stepID) 桶的 flush——不再让 phase/iteration/tool_start/
+// step_summary 等结构事件反推该 flush 谁。
+//
+// 调用纪律：每个 streaming AICallProxy 退出 streaming 回调时**必须**调用一次本方法，
+// 无论是否真正产生 stream token（保证 TUI 端有终结信号；空 buffer flush 是 no-op）。
+func (e *Emitter) EmitStreamEnd(iteration int, stepID string) {
+	event := &AgentOutputEvent{
+		Type:      EventTypeStreamEnd,
+		NodeID:    "stream_end",
+		Iteration: iteration,
+	}
+	if stepID != "" {
+		event.Payload = map[string]any{"step_id": stepID}
+	}
+	e.Emit(event)
 }
 
 func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
@@ -342,7 +395,9 @@ func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation strin
 }
 
 func (e *Emitter) EmitTaskItem(item *builtin_tools.PlanItem, prevStatus builtin_tools.PlanStepStatus, index int, explanation string) {
-	e.ResetThinkGroupID()
+	// **不调** ResetThinkGroupID：observer 模式下任意 plan_item 状态变化都触发本事件
+	// （peer 完成、新 peer 开始、主路径 step 翻 in_progress 等），与主路径 thinking 段
+	// 边界正交，不应切断 ThinkingPart。详见 ResetThinkGroupID doc 的「禁止边界」。
 	if item == nil {
 		return
 	}
