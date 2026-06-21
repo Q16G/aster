@@ -333,6 +333,11 @@ type SubAgentPart struct {
 	Duration      time.Duration `json:"duration,omitempty"`
 	StartedAt     time.Time     `json:"started_at,omitempty"`
 
+	// StepID 是派生该子 agent 的 peer step；并发 step 下用它把卡片归到正确的
+	// step detail（partStepID → idxByStepID），不再依赖会被其它 peer 覆盖的
+	// activeStepByAgent 单槽。空串表示主路径/非并发场景。
+	StepID string `json:"step_id,omitempty"`
+
 	// Kind 旧字段，保留用于向后兼容反序列化老 session（曾承载 "remote_step"
 	// 区分语义）。新代码（commit 10+）不再用 Kind 区分，inline_step 卡片走独立
 	// InlineStepPart 类型；本字段在 commit 14 命名兜底时再删除。

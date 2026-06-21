@@ -256,9 +256,16 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			// ("sub-<callID[:8]>") and skill fork ("skill-<name>-<callID[:6]>")
 			// children, whose names both embed a truncation of it.
 			if callID != "" {
+				// 并发 step 下优先用 tool_start 自带的 step_id（= effectiveStepID(runCtx)，
+				// 已在上方 line 228 读出并用于 ToolPart.StepID），它精确指向派生该子 agent
+				// 的 peer；activeStepByAgent 单槽会被其它 peer 的 in_progress 覆盖，只能作兜底。
+				parentStepID := stepID
+				if parentStepID == "" {
+					parentStepID = m.chat.activeStepByAgent[event.AgentName]
+				}
 				m.chat.store.spawnByCallID[callID] = agentSpawnInfo{
 					ParentAgent:  event.AgentName,
-					ParentStepID: m.chat.activeStepByAgent[event.AgentName],
+					ParentStepID: parentStepID,
 					CallID:       callID,
 					SubScheme:    toolName == builtin_tools.SubAgentToolName,
 				}
@@ -275,6 +282,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					SubAgent: &SubAgentPart{
 						AgentName:   toolName,
 						CallID:      callID,
+						StepID:      stepID, // 归到派生它的 peer step（与 spawn ParentStepID 同源）
 						Status:      "running",
 						Description: subAgentDescription(event.Payload["arguments"], args),
 						StartedAt:   time.Now(),
@@ -349,8 +357,14 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		// so EnterChild / partsForChild / spawn attribution all resolve. The
 		// agent_id (childName) only embeds a truncation of that call_id.
 		cardCallID := agentID
+		stepID, _ := event.Payload["step_id"].(string)
 		if info, ok := m.chat.lookupSpawnByChild(agentID); ok {
 			cardCallID = info.CallID
+			// spawn 信息携带的 ParentStepID（来自 tool_start 的 step_id）是权威来源；
+			// 并发 step 下与 BgStart payload 的 step_id 应一致，缺一时互为兜底。
+			if stepID == "" {
+				stepID = info.ParentStepID
+			}
 		}
 		m.chat.AddPart(DisplayPart{
 			Type: PartTypeSubAgent,
@@ -358,6 +372,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			SubAgent: &SubAgentPart{
 				AgentName:   toolName,
 				CallID:      cardCallID,
+				StepID:      stepID,
 				Status:      "running",
 				Description: subAgentDescription(event.Payload["instruction"], ""),
 				StartedAt:   time.Now(),
