@@ -59,7 +59,7 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 		ActiveSkillNames: []string{"data-flow"},
 	})
 
-	parts := agent.BuildThinkActPrompt(context.Background(), "")
+	parts := agent.BuildThinkActPrompt(context.Background(), "", agent.state.Snapshot())
 	// Skills 索引与 Injected Skills 落首条 user message；eject_skill 纪律在 system 规则。
 	for _, expected := range []string{
 		"## Skills 索引",
@@ -102,6 +102,7 @@ func TestHandleSkillToolStateSync_LoadAndEjectPersistActiveSkillNames(t *testing
 		map[string]any{"skill": "data-flow"},
 		`{"ok":true,"count":2,"skills":[{"name":"data-flow"},{"name":"syntaxflow-syntax-guide"},{"name":"data-flow"}]}`,
 		"",
+		nil, // 主路径
 	)
 
 	snapshot := agent.State()
@@ -122,6 +123,7 @@ func TestHandleSkillToolStateSync_LoadAndEjectPersistActiveSkillNames(t *testing
 		map[string]any{"name": "data-flow"},
 		`{"ok":true,"name":"data-flow"}`,
 		"",
+		nil, // 主路径
 	)
 
 	snapshot = agent.State()

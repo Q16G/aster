@@ -18,12 +18,21 @@ var thinkActSystemPrompt string
 //go:embed prompts/think_act_user.prompt
 var thinkActUserPrompt string
 
-func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptParts {
+// BuildThinkActPrompt 构造 think_act phase 的 prompt。
+//
+// **snapshot 参数必传**（commit 修复 peer-prompt 注入 bug）：
+//   - 主路径调用方传 a.state.Snapshot()
+//   - peer 路径调用方传 promptSnapshot（已 swap CurrentStepID = runCtx.StepID）
+//
+// 旧版本内部 `snap := a.state.Snapshot()` 会忽略 caller-injected snapshot，
+// 让所有 peer 都看到主路径 CurrentStepID（= 主 step），导致 STEP_FILE_PATH /
+// dependencyItems 都按主 step 派生，3 个并发 peer 全部跑成同一个 step（症状 B）。
+func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot builtin_tools.StateSnapshot) PromptParts {
 	if a == nil || a.promptManager == nil {
 		return PromptParts{}
 	}
 
-	snap := a.state.Snapshot()
+	snap := snapshot
 	currentStep := snap.CurrentStep()
 	dependencyItems := SelectDependencyPlanItemCards(snap, currentStep, a.workspaceRootDir)
 	skillsContext := a.buildSkillsPromptContext(ctx, snap)
@@ -81,6 +90,11 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string) PromptPar
 // 按 step 入口冻结（按 stepID + planVersion 键缓存），step 内各轮字节恒定——
 // mid-step 的 skill 加载经 tool result 通道即时生效，§Injected Skills 快照固定在
 // step 入口，消息前缀的移动缓存断点得以全程命中。
+// thinkActPartsForStep 为指定 snapshot 派生 think_act 入口 prompt。
+//
+// **缓存按 (stepID, planVer) 分桶**：旧版用 a.frozenStepParts 单字段，多 peer 并发
+// 会 race + 抖动（详见 frozenStepPromptCache doc）。本版改用并发安全 cache type，
+// 每个 (stepID, planVer) 独立 entry——主路径 + 多 peer 同时跑互不干扰。
 func (a *Agent) thinkActPartsForStep(ctx context.Context, extra string, snapshot builtin_tools.StateSnapshot) PromptParts {
 	stepID := strings.TrimSpace(snapshot.CurrentStepID)
 	if stepID == "" {
@@ -88,26 +102,38 @@ func (a *Agent) thinkActPartsForStep(ctx context.Context, extra string, snapshot
 			stepID = strings.TrimSpace(cs.ID)
 		}
 	}
-	if a.frozenStepParts != nil && stepID != "" &&
-		a.frozenStepPartsStepID == stepID && a.frozenStepPartsPlanVer == snapshot.PlanVersion {
-		return *a.frozenStepParts
+	if cached, ok := a.frozenStepCache.Get(stepID, snapshot.PlanVersion); ok && cached != nil {
+		return *cached
 	}
-	parts := a.BuildThinkActPrompt(ctx, extra)
-	if stepID != "" {
-		frozen := parts
-		a.frozenStepParts = &frozen
-		a.frozenStepPartsStepID = stepID
-		a.frozenStepPartsPlanVer = snapshot.PlanVersion
-	}
+	parts := a.BuildThinkActPrompt(ctx, extra, snapshot)
+	a.frozenStepCache.Put(stepID, snapshot.PlanVersion, parts)
 	return parts
 }
 
 // identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。输入全部为 run 内
 // 稳定值，各阶段复用同一渲染结果以保证字节一致（同一缓存条目）。
+// identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。
+//
+// **并发安全**：旧版用 `identityEnvBuilt bool` + `identityEnvPrompt string` 双字段
+// 无锁——多 peer 同时调 BuildThinkActPrompt 会 race（peer A 写 prompt 时 peer B 读
+// builtFlag）。RWMutex + double-check 保护：fast path 持 RLock 直接读已 build 的值；
+// 未 build 时升级 WLock 构建一次。
 func (a *Agent) identityEnvBlock() string {
 	if a == nil || a.promptManager == nil {
 		return ""
 	}
+	// Fast path：已构造则 RLock 直读
+	a.identityEnvMu.RLock()
+	if a.identityEnvBuilt {
+		out := a.identityEnvPrompt
+		a.identityEnvMu.RUnlock()
+		return out
+	}
+	a.identityEnvMu.RUnlock()
+
+	// Slow path：未构造，升级 WLock 一次性构造（double-check 防多 goroutine 重复 build）
+	a.identityEnvMu.Lock()
+	defer a.identityEnvMu.Unlock()
 	if a.identityEnvBuilt {
 		return a.identityEnvPrompt
 	}
