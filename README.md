@@ -45,6 +45,7 @@
 - [快速开始](#快速开始)
 - [安装](#安装)
 - [模型配置](#模型配置)
+- [并发执行（X2 调度）](#并发执行x2-调度)
 - [MCP 集成](#mcp-集成)
 - [Skills 的使用](#skills-的使用)
 - [自建 Agent 场景](#自建-agent-场景)
@@ -403,6 +404,32 @@ providers:
 ```
 
 > **注意**：本地模型推理能力通常弱于云端大模型，复杂审计场景（多步推理、长上下文）效果可能下降。
+
+---
+
+## 并发执行（X2 调度）
+
+ASTER 支持把同层依赖 ready 的多个 step 并发推进，对齐 [LLM Compiler](https://arxiv.org/abs/2312.04511) 范式：调度器在每轮入口扫描就绪 step，把当前主路径之外的 ready step 通过后台 inline_step peer 并发执行，缩短长任务的整体墙钟时间。
+
+默认串行。通过 `~/.aster/config.yaml` 顶层 `react.max_parallel_steps` 开启：
+
+```yaml
+# ~/.aster/config.yaml
+react:
+  # 同层 ready step 最大并发数（含主路径）
+  #   0 / 1 = 串行（默认，向后兼容）
+  #   ≥ 2  = 启用 X2 滚动 fan-out；典型值 2-5
+  max_parallel_steps: 3
+```
+
+| 取值 | 行为 |
+|------|------|
+| `0` / `1` | 串行执行（默认） |
+| `≥ 2` | 启用并发，上限为该值；实际并发度还受 step 间 `depends_on` DAG 形态约束 |
+
+每个并发 step 拥有独立的状态桶、prompt 缓存、skill overlay 与共享账本写入锁，彼此隔离互不串扰；流式输出、思考过程与 TUI 卡片均按 step 归属分流，下区 peer tile bar 实时展示各并发分支进度。
+
+> 调度机制与设计细节见 [docs/x2-parallel-steps.md](docs/x2-parallel-steps.md)。
 
 ---
 
