@@ -195,8 +195,9 @@ func partCallIDKey(p DisplayPart) callIDKey {
 }
 
 // partStepID 返回 part 归属的 inline_step stepID（若有）；用于 idxByStepID 维护。
-// ToolPart / ThinkingPart 走自身 StepID 字段；InlineStepPart 自己也归属自己的 stepID
-// （让 PartsForStep 能找到卡片本体）。
+// ToolPart / ThinkingPart / TextPart / SubAgentPart 走自身 StepID 字段；InlineStepPart
+// 自己也归属自己的 stepID（让 PartsForStep 能找到卡片本体）。SubAgentPart 的 StepID 来自
+// 派生它的 peer step，使并发 step 下子 agent 卡片不串台。
 func partStepID(p DisplayPart) string {
 	switch p.Type {
 	case PartTypeTool:
@@ -214,6 +215,12 @@ func partStepID(p DisplayPart) string {
 	case PartTypeInlineStep:
 		if p.InlineStep != nil {
 			return p.InlineStep.StepID
+		}
+	case PartTypeSubAgent:
+		// 子 agent 卡片归到派生它的 peer step，让 PartsForStep 能把它分流到
+		// 对应 step detail；StepID 由 BgStart payload 的 step_id 填入。
+		if p.SubAgent != nil {
+			return p.SubAgent.StepID
 		}
 	}
 	return ""

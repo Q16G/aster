@@ -203,6 +203,10 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 		"tool_name":   builtin_tools.SubAgentToolName,
 		"instruction": instrSummary,
 		"workspace":   setup.childRootDir,
+		// step_id 让 TUI 把后台子 agent 卡片归到派生它的那个 peer step——并发 step 下
+		// 不能依赖 activeStepByAgent 单槽（会被其它 peer 的 in_progress 覆盖）。
+		// setup.runtime.CurrentStepID 即 effectiveStepID(runCtx)（见 buildChild 捕获）。
+		"step_id": strings.TrimSpace(setup.runtime.CurrentStepID),
 	})
 
 	// ctx is the parent scheduler's context: child is cancelled when parent finishes or is aborted.

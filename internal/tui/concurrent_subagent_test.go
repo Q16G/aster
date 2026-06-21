@@ -106,6 +106,113 @@ func TestConcurrentSubAgentPlanAttribution(t *testing.T) {
 	}
 }
 
+// When two peer steps run concurrently, the sub_agent spawned by one peer must
+// be attributed to THAT peer's step, not to whichever peer last flipped to
+// in_progress. The pre-fix code read activeStepByAgent[agentName] — a single
+// slot per agent that concurrent peers overwrite — so P1's sub-agent leaked
+// onto P2. The fix prefers the tool_start event's own step_id (=
+// effectiveStepID(runCtx)), which precisely identifies the spawning peer.
+func TestConcurrentSubAgentStepIDAttribution(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	// Both peers flip to in_progress; the single activeStepByAgent slot ends up
+	// holding the last writer (p2), modelling the race that mis-attributed P1.
+	flipInProgress := func(stepID string) {
+		m.handleAgentEvent(&react.AgentOutputEvent{
+			Type:      react.EventTypeTaskItem,
+			AgentName: "root",
+			Payload:   map[string]any{"id": stepID, "status": "in_progress"},
+		})
+	}
+	flipInProgress("p1")
+	flipInProgress("p2")
+	if got := m.chat.activeStepByAgent["root"]; got != "p2" {
+		t.Fatalf("precondition: activeStepByAgent[root] = %q, want p2 (last writer)", got)
+	}
+
+	// Peer p1 spawns a sync sub_agent. Its tool_start carries step_id=p1.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeToolStart,
+		AgentName: "root",
+		Payload: map[string]any{
+			"tool_name": "sub_agent",
+			"call_id":   "call_p1aaaa",
+			"is_agent":  true,
+			"step_id":   "p1",
+		},
+	})
+
+	// Spawn attribution must honour the event's step_id, not the raced slot.
+	if info := m.chat.store.spawnByCallID["call_p1aaaa"]; info.ParentStepID != "p1" {
+		t.Fatalf("spawn ParentStepID = %q, want p1 (not the raced activeStepByAgent=p2)", info.ParentStepID)
+	}
+
+	// The sync sub-agent card must carry StepID=p1 and index under p1 only.
+	var card *SubAgentPart
+	for _, p := range m.chat.store.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil && p.SubAgent.CallID == "call_p1aaaa" {
+			card = p.SubAgent
+		}
+	}
+	if card == nil {
+		t.Fatal("expected a sub-agent card for call_p1aaaa")
+	}
+	if card.StepID != "p1" {
+		t.Fatalf("sub-agent card StepID = %q, want p1", card.StepID)
+	}
+	if len(m.chat.store.PartsForStep("p1")) == 0 {
+		t.Fatal("sub-agent card should be indexed under step p1")
+	}
+	for _, idx := range m.chat.store.PartsForStep("p2") {
+		if p := m.chat.store.parts[idx]; p.Type == PartTypeSubAgent {
+			t.Fatal("sub-agent card leaked into step p2's index")
+		}
+	}
+}
+
+// The background sub_agent card (driven by the BgStart bridge, not the collapsed
+// tool_start/end) must also carry its spawning peer's step_id so concurrent
+// peers' panel cards don't cross-attribute.
+func TestBackgroundSubAgentCardCarriesStepID(t *testing.T) {
+	m := NewModel(ModelDeps{})
+
+	// p1 launches a background sub_agent: tool_start (run_in_background) records
+	// the spawn but creates no sync card; the durable card comes from BgStart.
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeToolStart,
+		AgentName: "root",
+		Payload: map[string]any{
+			"tool_name": "sub_agent",
+			"call_id":   "call_p1bbbb",
+			"is_agent":  true,
+			"step_id":   "p1",
+			"arguments": map[string]any{"run_in_background": true},
+		},
+	})
+	m.handleAgentEvent(&react.AgentOutputEvent{
+		Type:      react.EventTypeSubAgentBgStart,
+		AgentName: "root",
+		Payload: map[string]any{
+			"agent_id":  "sub-call_p1bbbb",
+			"tool_name": "sub_agent",
+			"step_id":   "p1",
+		},
+	})
+
+	var card *SubAgentPart
+	for _, p := range m.chat.store.parts {
+		if p.Type == PartTypeSubAgent && p.SubAgent != nil {
+			card = p.SubAgent
+		}
+	}
+	if card == nil {
+		t.Fatal("expected a background sub-agent card")
+	}
+	if card.StepID != "p1" {
+		t.Fatalf("background sub-agent card StepID = %q, want p1", card.StepID)
+	}
+}
+
 // Concurrent sub-agent streams must stay in separate, attributed buffers and
 // flush into distinct TextParts rather than merging into one blob.
 func TestConcurrentSubAgentStreamingAttribution(t *testing.T) {
