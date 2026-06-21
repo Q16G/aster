@@ -67,15 +67,22 @@ type Agent struct {
 	runtimeRepoContext  RuntimeRepoContext
 	frozenLineageByStep map[string]*frozenStepLineage
 	// currentTaskContext 与 identityEnv* 为 run 内稳定的 system block2 素材与缓存；
-	// frozenStepParts* 是 think_act 首条 user message 的 step 入口冻结快照
-	//（step 内字节恒定，使消息前缀的移动缓存断点全程命中）。
-	currentTaskContext     *TaskContextData
-	identityEnvPrompt      string
-	identityEnvBuilt       bool
-	frozenStepParts        *PromptParts
-	frozenStepPartsStepID  string
-	frozenStepPartsPlanVer int
-	currentResultSource    ResultSource
+	// frozenStepCache 是 think_act 首条 user message 的「按 (stepID, planVer) 分桶」
+	// 冻结快照（step 内字节恒定，使消息前缀的移动缓存断点全程命中）。
+	//
+	// **多 peer 并发安全**：旧版用 3 个独立 frozen 字段（*PromptParts + stepID + planVer）
+	// 单字段无锁——主路径 + 多 peer 同时调 thinkActPartsForStep 会 race + 缓存抖动
+	// （peer A 写 s2 顶掉 peer B 的 s3）。改 map + RWMutex 后每个 (stepID, planVer)
+	// 独立 entry，并发 peer 互不串扰，与 streamKey / thinkBufKey 同款分桶哲学。
+	currentTaskContext *TaskContextData
+	// identityEnv* run 内稳定（agent 启动后不变直到下次 run）。多 peer 并发
+	// thinkActPartsForStep 会同时调 identityEnvBlock，旧版无锁导致 race。
+	// identityEnvMu 保护双字段，double-check 模式见 identityEnvBlock。
+	identityEnvMu       sync.RWMutex
+	identityEnvPrompt   string
+	identityEnvBuilt    bool
+	frozenStepCache     *frozenStepPromptCache
+	currentResultSource ResultSource
 	workspaceRuntime       builtin_tools.WorkspaceRuntime
 	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
 	stepFileGateMu         sync.Mutex
@@ -186,19 +193,29 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	}
 
 	agent := &Agent{
-		agentName:     name,
-		cfg:           cfg,
-		tools:         utils.NewOrderMapx[string, Tool](),
-		promptManager: cfg.PromptManager,
-		state:         NewStateTracker(),
-		handoff:       &handoffState{},
-		stepHistories: make(map[string]*stepHistoryBucket),
+		agentName:       name,
+		cfg:             cfg,
+		tools:           utils.NewOrderMapx[string, Tool](),
+		promptManager:   cfg.PromptManager,
+		state:           NewStateTracker(),
+		handoff:         &handoffState{},
+		stepHistories:   make(map[string]*stepHistoryBucket),
+		frozenStepCache: newFrozenStepPromptCache(),
 	}
 
 	if cfg.Emitter == nil {
 		return nil, fmt.Errorf("emitter is required")
 	}
 	agent.emitter = cfg.Emitter
+
+	// 把 emitter 绑成 PlanItemChange observer：mutator 翻 PlanItem.Status 时自动 emit
+	// task_item / inline_step_start / inline_step_end。替代散落各处的 emitTaskItemDiffs
+	// 与 EmitJSON(EventTypeInlineStepStart/End) 显式调用。
+	agent.state.RegisterObserver(newEmitterStateObserver(agent))
+	// workspaceRuntime observer：PlanItem Pending→InProgress 自动 ensureStepFileScaffold。
+	// observer 持 agent 活引用，在回调时按 a.workspaceRuntime 现读——allow workspaceRuntime
+	// 由 Execute 注入（在 Agent 构造时仍为 nil）。
+	agent.state.RegisterObserver(newWorkspaceStateObserver(agent))
 
 	if len(cfg.InitialHistory) > 0 {
 		agent.history = make([]*ai.MsgInfo, 0, len(cfg.InitialHistory))

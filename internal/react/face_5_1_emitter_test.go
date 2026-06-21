@@ -47,6 +47,9 @@ func remoteStepEventRecorder() (*Emitter, func() (map[string]string, map[string]
 }
 
 // drainAgentWithEmitter 构造 drain 测试 agent + 注入 emitter，让事件被记录。
+// inline_step_start/end 现在走 state observer（commit 2 之后），所以构造 Agent 后
+// 必须 RegisterObserver(newEmitterStateObserver(a))，否则 UpdateInlineStep 翻终态
+// 不会触发 inline_step_end emit。
 func drainAgentWithEmitter(t *testing.T, em *Emitter) *Agent {
 	t.Helper()
 	r := NewAsyncAgentRegistry()
@@ -57,7 +60,9 @@ func drainAgentWithEmitter(t *testing.T, em *Emitter) *Agent {
 		{ID: "c", Step: "远程 c", Status: builtin_tools.PlanStepPending, DependsOn: []string{"a"}},
 	}, "init", true)
 	state.EnsureCurrentStep()
-	return &Agent{asyncRegistry: r, state: state, emitter: em}
+	a := &Agent{asyncRegistry: r, state: state, emitter: em}
+	a.state.RegisterObserver(newEmitterStateObserver(a))
+	return a
 }
 
 func TestDrain_RemoteStepEmitsBgEndOnComplete(t *testing.T) {
