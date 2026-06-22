@@ -18,12 +18,16 @@ arguments:
 
 ## 1. 触发线索 / 适用信号
 
-本能力是 Cat-B-Cross 跨漏洞数据流工具，按"上游候选 + 链路不可见性 + 跨端点共源"识别命中场景。
+本能力是 Cat-B-Cross 跨漏洞数据流工具，按"已定位 source/sink + 链路不可见性 + 跨端点共源"识别命中场景。起点既可来自直接阅读 / 框架侦察自定位的 sink，也可来自上游 sast-scan 候选——后者只是可选加速输入，其缺位 / 空命中不阻塞本能力（参 §5 起点来源）。
 
-**承接 sast-scan 候选维度**：
-- [sast-scan](../sast-scan/SKILL.md) 产出 `needs_dataflow_confirmation` 桶条目——sink pattern 已命中但跨函数 source 可达性未证
-- sast-scan 命中 `Runtime.exec(String[])` / `JdbcTemplate.queryForObject(sql, args)` 等"同名 API 既能拼也能参数化"的弱 sink，需追上游确认实际形态
+**直接定位 sink 维度（主路径）**：
+- 直接阅读源码 / 框架侦察 / grep 自盘点定位到的危险 sink（含项目自有 wrapper），需证跨函数 source 可达性
+- 语义链路追踪：request→session、cookie→auth、owner→mapper 等跨函数调用链路需证可达
 - 同一 source pool 被多个不同类型 sink 消费（用户输入既流入 SQL 又流入命令执行，需共用追踪起点）
+
+**承接 sast-scan 候选维度（可选加速）**：
+- [sast-scan](../sast-scan/SKILL.md) 若已产出 `needs_dataflow_confirmation` 桶条目——sink pattern 已命中但跨函数 source 可达性未证，可直接消费其 `file_location` 省去再定位
+- sast-scan 命中 `Runtime.exec(String[])` / `JdbcTemplate.queryForObject(sql, args)` 等"同名 API 既能拼也能参数化"的弱 sink，需追上游确认实际形态
 
 **已定位 source/sink 但中间链路问题维度**：
 - 调用栈多层（Controller → Service → DAO / Mapper）+ 中间过滤层 / wrapper / AOP 拦截不可见
@@ -50,7 +54,7 @@ arguments:
 
 ## 3. 领域 source-sink 数据流模型
 
-本能力作为跨漏洞数据流工具，**source-sink 集合按调用者意图动态决定**（由 sast-scan 候选或用户给定的 source / sink 模式驱动）；本节只描述通用框架与 SyntaxFlow 表达方式，**不固化某类漏洞的 source-sink 列表**——单漏洞专属集合归对应单漏洞 skill 的 §3。
+本能力作为跨漏洞数据流工具，**source-sink 集合按调用者意图动态决定**（由直接阅读 / 框架侦察自定位、用户给定、或 sast-scan 候选等 source / sink 模式驱动）；本节只描述通用框架与 SyntaxFlow 表达方式，**不固化某类漏洞的 source-sink 列表**——单漏洞专属集合归对应单漏洞 skill 的 §3。
 
 ### 通用 source 类别（按白盒视角）
 
@@ -103,11 +107,12 @@ SyntaxFlow DSL 是 SSA 上的图查询语言。基本运算符：
 
 ### 起点来源
 
-按优先级三选一作为追踪起点：
+起点来源并列，按上下文选，无固定优先级；sast-scan 候选只是可选加速输入，缺位时直接走自定位（grep / read / 框架侦察），不阻塞：
 
-1. **sast-scan 候选承接**：读 `shared/coverage-ledger/findings/sast-scan.jsonl` 里 `confidence=needs_dataflow_confirmation` 的条目，每条带 `file_location` 即 sink 位置；source 由本能力跨函数追溯
-2. **用户给定端点**：用户直接传入"某 Controller 方法 + 某 sink 形态"，按代码 pattern 定位
-3. **单漏洞 skill 委托**：单漏洞 skill 已自定位 sink 但跨函数链路追不动，转交本能力补链路证明
+- **直接 grep / read 自定位 sink**：直接阅读源码 / 框架侦察 / `rg` 盘点危险 sink（含项目自有 wrapper），按代码 pattern 锚定，再跨函数追 source。这是不依赖任何上游产物的主路径
+- **用户给定端点**：用户直接传入"某 Controller 方法 + 某 sink 形态"，按代码 pattern 定位
+- **单漏洞 skill 委托**：单漏洞 skill 已自定位 sink 但跨函数链路追不动，转交本能力补链路证明
+- **sast-scan 候选承接（可选加速）**：若已有 `shared/coverage-ledger/findings/sast-scan.jsonl` 里 `confidence=needs_dataflow_confirmation` 的条目，可直接读其 `file_location` 当 sink 位置省去再定位；source 由本能力跨函数追溯。无此产物或其空命中时不影响上述自定位路径
 
 ### 项目 SSA IR 准备
 

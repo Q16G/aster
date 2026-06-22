@@ -248,7 +248,7 @@ rg -i "admin.*admin|root.*root|password.*password" --type yaml --type properties
 - `k8s/*.yaml` 的 `ConfigMap` / `Secret` —— 运行时真实注入值
 - CI workflow 看部署阶段是否真把 `SPRING_PROFILES_ACTIVE=prod` 注入
 
-工具加速：调用 [sast-scan](../sast-scan/SKILL.md) 的配置类规则（`high_confidence` 桶含 `debug=true` / 默认凭据 / Jackson default typing 等）作为粗筛起点；本能力对每条命中做"profile + 优先级 + 消费代码"的复核。
+工具加速（可选）：若已有 [sast-scan](../sast-scan/SKILL.md) 的配置类规则命中（`high_confidence` 桶含 `debug=true` / 默认凭据 / Jackson default typing 等）可消费其候选加速；缺位 / 空命中不阻塞——直接 grep / read 上述配置介质（Step 1–4）自盘点。本能力对每条命中做"profile + 优先级 + 消费代码"的复核。
 
 ### 基线检查项
 
