@@ -446,6 +446,47 @@ func TestBuildFunctionTools_PeerBucketBlocksUpdateCurrentStep(t *testing.T) {
 	}
 }
 
+// TestBuildFunctionTools_PeerBucketBlocksHumanConfirm：peer 桶 LLM 不能调 human_confirm。
+// human_confirm 落 durable interrupt 并 unwind turn，是仅供顶层主路径的人机通道；peer 是
+// fire-and-forget goroutine，中断永远送不到人——raise 返回 error → peer 非完成态收尾 →
+// drain 兜底把本该 completed 的 step 误判 Failed（即「步骤文件写全但 planner 标 failed」）。
+// 与 plan 阶段的 IsSubAgent 门控同源（子 agent 同样无人机通道）。
+//
+// 主路径 runCtx == nil 时不挡板：step 阶段主 turn 的 LLM 仍可发起人工确认。
+func TestBuildFunctionTools_PeerBucketBlocksHumanConfirm(t *testing.T) {
+	a := &Agent{
+		cfg:   &AgentConfig{IsSubAgent: false},
+		tools: nil,
+	}
+	a.tools = utils.NewOrderMapx[string, Tool]()
+	confirmTool := builtin_tools.NewHumanConfirmTool(nil)
+	a.tools.Set(confirmTool.Name(), confirmTool)
+
+	// runCtx == nil（主路径）→ human_confirm 应可用
+	tools, allowed := a.BuildFunctionTools(nil, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed[builtin_tools.HumanConfirmToolName]; !ok {
+		t.Fatalf("主路径 human_confirm 应可用 (peer 才挡)，allowed=%v", allowed)
+	}
+	if len(tools) == 0 {
+		t.Fatalf("expected at least human_confirm in tools, got %v", tools)
+	}
+
+	// peer 桶 runCtx 非 nil + Bucket 非 nil → human_confirm 应被屏蔽。
+	// 注：运行期非 nil runCtx 仅由 spawnInlinePeer 构造（即 peer）；主路径 current step
+	// 走 runInlineStep(ctx, nil, ...) 即 runCtx==nil，不在本挡板范围。所谓「current-step-bucket」
+	//（Bucket 非 nil + FinalAnswerAllowed=true）当前并非运行期路径，仅为软挡板对照 fixture。
+	runCtx := &InlineStepCtx{StepID: "peer-1", Bucket: &stepHistoryBucket{stepID: "peer-1"}}
+	tools2, allowed2 := a.BuildFunctionTools(runCtx, builtin_tools.AgentPhaseStep)
+	if _, ok := allowed2[builtin_tools.HumanConfirmToolName]; ok {
+		t.Fatalf("peer 桶 human_confirm 应被屏蔽，allowed=%v", allowed2)
+	}
+	for _, ft := range tools2 {
+		if ft.Function != nil && ft.Function.Name == builtin_tools.HumanConfirmToolName {
+			t.Fatalf("peer 桶 tools 不应含 human_confirm，got %s", ft.Function.Name)
+		}
+	}
+}
+
 // TestCompaction_PeerBucketNoBlob（fix/03 P0-3 止血红线 —— 补 commit message 声称却漏写的测试）：
 // peer 桶 compaction 触发时不应调 persistStepTranscriptBlob（防 race + 写错 blob）。
 // 通过观察 a.lastStepTranscriptBlobRef 未被修改间接验证——peer 路径走不到这条赋值。

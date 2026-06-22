@@ -1126,6 +1126,11 @@ func (a *Agent) resetRunHandoff() {
 //     peer 调它会让 scheduler 等 peer 自己 → 最坏死锁（同 async_agent.go:220 注释
 //     描述的「peer 把主路径 park 住，造成串行化倒退」隐患同源）。peer spawn 的
 //     sub_agent 由 scheduler 在主 turn 收尾时统一 await，peer 内不应自行调用。
+//   - runCtx != nil（peer 桶）→ 拒绝 human_confirm：human_confirm 落 durable
+//     interrupt 并 unwind turn，是仅供顶层主路径的人机通道。peer 是 fire-and-forget
+//     goroutine，中断永远送不到人——raise 返回 error → peer 非完成态收尾 → drain
+//     兜底把本该 completed 的 step 误判 Failed（即「内容写全但 planner 标 failed」）。
+//     与 config.go IsSubAgent 门控同源（子 agent 同样无人机通道，故 plan 阶段也禁）。
 func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.AgentPhase) ([]*ai.FunctionTool, map[string]struct{}) {
 	if a == nil || a.tools == nil || a.tools.Len() == 0 {
 		return nil, nil
@@ -1136,6 +1141,11 @@ func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.Ag
 	updateCurrentStepForbidden := runCtx != nil && runCtx.Bucket != nil
 	// fix/12 NEW-1：peer 桶禁 await_subagents（同上理由——scheduler 级原语 + 防死锁）。
 	awaitSubAgentsForbidden := runCtx != nil && runCtx.Bucket != nil
+	// peer 桶禁 human_confirm：durable interrupt 送不到 fire-and-forget peer，会被 drain
+	// 兜底误判 Failed。peer 终态走 auto-complete + drain，无需也不应人机确认。
+	// 维度同 update_current_step/await_subagents：运行期 runCtx != nil ⟹ Bucket != nil
+	//（spawnInlinePeer 是唯一非 nil 构造点，且永远带桶；主路径 current step 走 runCtx==nil）。
+	humanConfirmForbidden := runCtx != nil && runCtx.Bucket != nil
 	tools := make([]*ai.FunctionTool, 0, a.tools.Len())
 	allowed := make(map[string]struct{}, a.tools.Len())
 	a.tools.ForEach(func(_ string, tool Tool) {
@@ -1153,6 +1163,9 @@ func (a *Agent) BuildFunctionTools(runCtx *InlineStepCtx, phase builtin_tools.Ag
 			return
 		}
 		if awaitSubAgentsForbidden && name == builtin_tools.AwaitSubAgentsToolName {
+			return
+		}
+		if humanConfirmForbidden && name == builtin_tools.HumanConfirmToolName {
 			return
 		}
 		allowed[name] = struct{}{}
