@@ -463,11 +463,15 @@ func (m Model) updateBody(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case tuicontext.KeyActionClearChat:
-				m.chat = NewChatModel()
-				if m.agentCtx != nil {
-					m.chat.rootAgentName = m.agentCtx.Definition.Name
+				// 与 NewSession / OpenSessions / OpenModels 一致:运行中不清空 chat,
+				// 避免误按 ctrl+l 丢失正在显示的 turn 输出。
+				if !m.agentRunning {
+					m.chat = NewChatModel()
+					if m.agentCtx != nil {
+						m.chat.rootAgentName = m.agentCtx.Definition.Name
+					}
+					m.updateLayout()
 				}
-				m.updateLayout()
 				return m, nil
 			case tuicontext.KeyActionOpenModels:
 				if !m.agentRunning {
@@ -482,8 +486,9 @@ func (m Model) updateBody(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tuicontext.KeyActionEscape:
 				// 取消运行中的 turn 统一只走 ctrl+c。esc 是方向键 / 滚轮转义序列(ESC[...)的
 				// 公共前缀,快速滚动或导航时孤立的 ESC 易被识别成 esc 键,曾导致浏览时误取消
-				// 正在跑的 turn(context canceled)。这里 esc 仅用于切回输入焦点,不再取消 turn。
-				if m.focus != FocusInput {
+				// 正在跑的 turn(context canceled)。运行中 esc 一律不做事(input 处于禁用态,
+				// 切焦点会经 setFocus 启用 input 造成状态不一致);仅在非运行态用于切回输入焦点。
+				if !m.agentRunning && m.focus != FocusInput {
 					m.setFocus(FocusInput)
 					return m, m.focusCmd()
 				}
