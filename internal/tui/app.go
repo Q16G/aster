@@ -1765,7 +1765,17 @@ func (m *Model) tileBarVisible() bool {
 //
 // PartsStore 单 goroutine 模型（无 mutex），从 Model.Update 直接拉是线程安全的。
 func (m *Model) refreshTileBar() {
-	items := m.chat.store.InlineStepsThisTurn()
+	all := m.chat.store.InlineStepsThisTurn()
+	// 只显示运行中的 step：空状态视为 running（与 renderTileStatusBadge 的
+	// `case "running", ""` 一致）；completed/failed/cancelled 等终态全部隐藏。
+	// 过滤后若为空，tileBarVisible() 因 Count()==0 自动隐藏整块。
+	items := all[:0:0]
+	for _, it := range all {
+		switch strings.ToLower(strings.TrimSpace(it.Status)) {
+		case "running", "":
+			items = append(items, it)
+		}
+	}
 	summary := make(map[string]tileSummary, len(items))
 	for _, it := range items {
 		stepID := strings.TrimSpace(it.StepID)
