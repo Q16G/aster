@@ -1,6 +1,7 @@
 package react
 
 import (
+	"context"
 	"testing"
 
 	"aster/internal/builtin_tools"
@@ -137,6 +138,73 @@ func TestShouldEscalateStepReplan_InProgressPeerBlocksPlanExhausted(t *testing.T
 	noPeer := &Agent{asyncRegistry: NewAsyncAgentRegistry()}
 	if escalate, reason := noPeer.shouldEscalateStepReplan(snapshot, outcome); !escalate || reason != "plan_exhausted" {
 		t.Fatalf("expected plan_exhausted escalation with no peer, got (%v, %q)", escalate, reason)
+	}
+}
+
+// TestFinalizeUnjournaledTerminalSteps_SkipsPeerUntilDrained 验证修复 A(竞态):
+// peer auto-complete 翻终态后、其 registry entry 被 drain/purge 之前,sweep 必须跳过它——
+// 否则会把缺 TranscriptBlobRef 的半成品永久落盘。entry purge 后才允许固化。
+func TestFinalizeUnjournaledTerminalSteps_SkipsPeerUntilDrained(t *testing.T) {
+	a, rootDir := buildFinalizeTestAgent(t)
+	// 模拟 s2 的 peer goroutine 已翻终态(buildFinalizeTestAgent 里已 UpdateInlineStep completed),
+	// 但其 registry entry 仍在(尚未 Complete→drain→purge)。
+	a.asyncRegistry.RegisterInlineStep("s2", "")
+
+	a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+	if _, ok := journalIDs(t, rootDir)["s2"]; ok {
+		t.Fatalf("s2 must NOT be journaled while its registry entry is present (not yet drained)")
+	}
+	if a.stepAlreadyJournaled("s2") {
+		t.Fatalf("s2 must not be marked journaled while undrained")
+	}
+
+	// 完成 + drain → entry 被 purge、ref 回写到位 → 再 sweep 应固化。
+	a.asyncRegistry.Complete("s2", &builtin_tools.RunResult{Success: true, Result: "s2 done"})
+	a.drainAsyncAgentNotifications(context.Background())
+	if a.asyncRegistry.Get("s2") != nil {
+		t.Fatalf("setup: s2 registry entry should be purged after drain")
+	}
+
+	a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+	if _, ok := journalIDs(t, rootDir)["s2"]; !ok {
+		t.Fatalf("s2 should be journaled after its peer fully drained")
+	}
+}
+
+// TestFinalizeUnjournaledTerminalSteps_SkipsSkippedWithoutOutcome 验证修复 B(串行行为不变):
+// 被依赖失败传播为 skipped 的 step 无 outcome,sweep 不应为其写 kind=step 记录。
+func TestFinalizeUnjournaledTerminalSteps_SkipsSkippedWithoutOutcome(t *testing.T) {
+	rootDir := t.TempDir()
+	runtime, err := newLocalWorkspaceRuntime("s1", rootDir, "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	tracker := NewStateTracker()
+	tracker.UpdatePlan([]*builtin_tools.PlanItem{
+		{ID: "s1", Step: "main", Status: builtin_tools.PlanStepPending},
+		{ID: "s4", Step: "dep", Status: builtin_tools.PlanStepPending, DependsOn: []string{"s1"}},
+	}, "init", true)
+	tracker.EnsureCurrentStep() // current = s1
+	// s1 失败 → PropagateSkippedPlanSteps 把依赖 s1 的 s4 标 skipped(s4 无 outcome)。
+	tracker.UpdateCurrentStep(builtin_tools.CurrentStepUpdate{
+		Status:  builtin_tools.PlanStepFailed,
+		Summary: "boom",
+	})
+	a := &Agent{
+		state:            tracker,
+		asyncRegistry:    NewAsyncAgentRegistry(),
+		workspaceRuntime: runtime,
+		workspaceRootDir: rootDir,
+	}
+
+	a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+
+	j := journalIDs(t, rootDir)
+	if _, ok := j["s4"]; ok {
+		t.Fatalf("skipped step s4 without outcome should not be journaled (serial behavior preserved)")
+	}
+	if _, ok := j["s1"]; ok {
+		t.Fatalf("current step s1 should be skipped by sweep, journal=%v", keysOf(j))
 	}
 }
 

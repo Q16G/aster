@@ -139,6 +139,18 @@ func (a *Agent) finalizeUnjournaledTerminalSteps(snapshot builtin_tools.StateSna
 		default:
 			continue
 		}
+		// 跳过 registry 中仍有 entry 的 peer：peer auto-complete（step_inline 仅翻终态、不带
+		// TranscriptBlobRef）后，ref / Inherited* 要等 goroutine defer 持久化 + drain 回写 outcome；
+		// registry entry 在 Complete→drain→PurgeDelivered 后才消失。此前固化会把缺 ref 的半成品
+		// 永久落盘（单维幂等不再重写）。等 entry 被 purge（Get==nil ⟺ 已完全 drain、ref 已落）再固化。
+		if a.asyncRegistry != nil && a.asyncRegistry.Get(id) != nil {
+			continue
+		}
+		// 只固化有 outcome 的 step：completed/failed 必有 outcome；被依赖失败传播为 skipped 的 step
+		// 无产出，不写空 kind=step 记录——与串行旧行为一致（skipped 从不进 planner.jsonl 的 step 记录）。
+		if findOutcome(snapshot.StepOutcomes, id) == nil {
+			continue
+		}
 		a.finalizeTerminalStep(id, snapshot)
 	}
 }
