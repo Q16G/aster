@@ -290,6 +290,12 @@ func isContextOverflowMessage(haystack string) bool {
 	return false
 }
 
+// IsContextOverflowText 判定错误文本是否表示上下文溢出。导出供其它包（如 react step 错误
+// 分类）复用同一套 marker，避免各处各维护一份列表导致漂移。
+func IsContextOverflowText(text string) bool {
+	return isContextOverflowMessage(strings.ToLower(strings.TrimSpace(text)))
+}
+
 func isRetryableHTTPStatus(statusCode int, retryCodes []int, haystack string) bool {
 	// 所有 5xx 视为可重试：覆盖标准 500/502/503/504，也覆盖 Cloudflare 等网关的非标准
 	// 码 520-524、505/507/509 等。5xx 基本都是服务端 / 网关瞬时问题，适合带退避重试。
