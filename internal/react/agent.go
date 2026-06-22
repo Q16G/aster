@@ -83,7 +83,7 @@ type Agent struct {
 	identityEnvBuilt    bool
 	frozenStepCache     *frozenStepPromptCache
 	currentResultSource ResultSource
-	workspaceRuntime       builtin_tools.WorkspaceRuntime
+	workspaceRuntime    builtin_tools.WorkspaceRuntime
 	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
 	stepFileGateMu         sync.Mutex
 	stepFileGateRejections map[string]int
@@ -128,6 +128,15 @@ type Agent struct {
 	// resume 后字段重置为空串 → 首次升级窗口含全部历史 completed/failed step（偏保守、可接受）。
 	// 仅在调度 goroutine 上读写，无并发问题。
 	lastReplanBoundaryStepID string
+
+	// journaledStepIDs 记录已固化（烘焙 + 写 planner.jsonl 的 kind=step 记录）的 step，
+	// 按 step_id 单维去重（不带 plan_version——每个 step 的 kind=step 记录只在它完成那刻落盘
+	// 一次、归属完成时的 plan_version；重规划把已完成 step 并入新 plan 时不应在新版本下重复落盘）。
+	// X2 滚动收尾扫描（finalizeUnjournaledTerminalSteps）与 applyReplanResult 共用它做幂等：
+	// 任一路径固化某 step 后登记，另一路径见已登记即跳过，保证每个终态 step 恰好落盘一次。
+	// 仅在调度 goroutine 上读写（收尾扫描与 step_replan 都在调度 goroutine），无并发问题；
+	// 运行时态、不经 durable_resume 持久化，每轮 Execute 重置。
+	journaledStepIDs map[string]struct{}
 }
 
 // NewReActAgent 创建 ReAct Agent

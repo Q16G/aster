@@ -696,38 +696,24 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	update.Warnings = normalizeReferences(update.Warnings)
 	update.ReplanContext = builtin_tools.CloneReplanContext(update.ReplanContext)
 
-	var backfilled *builtin_tools.StepOutcome
-	for _, outcome := range t.state.StepOutcomes {
-		if outcome == nil {
-			continue
-		}
-		if strings.TrimSpace(outcome.StepID) != stepID {
-			continue
-		}
-		outcome.ArtifactDir = update.ArtifactDir
-		outcome.ResultFile = update.ResultFile
-		outcome.TimelineFile = update.TimelineFile
-		outcome.CoverageFile = update.CoverageFile
-		outcome.ContextKey = update.ContextKey
-		outcome.Namespace = update.Namespace
-		outcome.PlanVersion = update.PlanVersion
-		outcome.TranscriptBlobRef = update.TranscriptBlobRef
-		outcome.InheritedContextKeys = builtin_tools.CloneStringSlice(update.InheritedContextKeys)
-		outcome.InheritedRefIDs = builtin_tools.CloneStringSlice(update.InheritedRefIDs)
-		outcome.References = normalizeReferences(append(outcome.References, update.References...))
-		outcome.UpdatedAt = time.Now()
-		backfilled = outcome
-		break
-	}
-
-	// 终态烘焙：把 outcome 产出写回 plan_item，使 plan 真相源（planner.jsonl）携带完整产出与指针。
-	if item := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: stepID}).CurrentStep(); item != nil {
-		item.BakeOutcome(backfilled)
-		// step 过程文件指针不经 outcome（StepOutcome 无该字段），由 runtime 探测后直填。
-		if sf := strings.TrimSpace(update.StepFile); sf != "" {
-			item.StepFile = sf
-		}
-	}
+	// 终态烘焙：回填产出指针进 StepOutcome、再烘焙进 plan_item，使 plan 真相源
+	// （planner.jsonl）携带完整产出与指针。逻辑抽到 bakeTerminalStepLocked 与 X2 滚动
+	// 收尾扫描（FinalizeTerminalStep）共用，确保两条路径烘焙语义同源。
+	t.bakeTerminalStepLocked(stepID, stepFinalizePaths{
+		ArtifactDir:          update.ArtifactDir,
+		ResultFile:           update.ResultFile,
+		TimelineFile:         update.TimelineFile,
+		StepFile:             update.StepFile,
+		CoverageFile:         update.CoverageFile,
+		ContextKey:           update.ContextKey,
+		Namespace:            update.Namespace,
+		PlanVersion:          update.PlanVersion,
+		TranscriptBlobRef:    update.TranscriptBlobRef,
+		InheritedContextKeys: update.InheritedContextKeys,
+		InheritedRefIDs:      update.InheritedRefIDs,
+		References:           update.References,
+		ForceMeta:            true,
+	})
 
 	// step replan 完成后释放 current_step_id，下一轮由 EnsureCurrentStep 选择下一步
 	if strings.TrimSpace(t.state.CurrentStepID) == stepID {
@@ -759,6 +745,106 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.touchLocked()
 	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, ""))
+	return *t.state
+}
+
+// stepFinalizePaths 承载一个终态 step 的产出指针 / 元数据，供烘焙写回 StepOutcome
+// 与 plan_item。ForceMeta 区分两类调用方：
+//   - ApplyStepReplan（重规划权威路径）：ForceMeta=true，无条件覆盖 TranscriptBlobRef /
+//     Inherited*，保持原 ApplyStepReplan 语义不变。
+//   - X2 滚动收尾扫描（FinalizeTerminalStep）：ForceMeta=false，只补缺省指针，绝不覆盖
+//     peer 在 drain 时已写入的 TranscriptBlobRef / Inherited*（否则会清空 peer 现场）。
+type stepFinalizePaths struct {
+	ArtifactDir          string
+	ResultFile           string
+	TimelineFile         string
+	StepFile             string
+	CoverageFile         string
+	ContextKey           string
+	Namespace            string
+	PlanVersion          int
+	TranscriptBlobRef    string
+	InheritedContextKeys []string
+	InheritedRefIDs      []string
+	References           []string
+	ForceMeta            bool
+}
+
+// bakeTerminalStepLocked 把终态 step 的产出指针回填进 StepOutcome、再烘焙进 PlanItem。
+// 不改 Status / Phase / CurrentStepID / Plan —— 纯产出固化，供 ApplyStepReplan 与
+// FinalizeTerminalStep 共用。调用方须持 t.mu。
+func (t *StateTracker) bakeTerminalStepLocked(stepID string, p stepFinalizePaths) {
+	stepID = strings.TrimSpace(stepID)
+	var backfilled *builtin_tools.StepOutcome
+	for _, outcome := range t.state.StepOutcomes {
+		if outcome == nil {
+			continue
+		}
+		if strings.TrimSpace(outcome.StepID) != stepID {
+			continue
+		}
+		outcome.ArtifactDir = p.ArtifactDir
+		outcome.ResultFile = p.ResultFile
+		outcome.TimelineFile = p.TimelineFile
+		outcome.CoverageFile = p.CoverageFile
+		outcome.ContextKey = p.ContextKey
+		outcome.Namespace = p.Namespace
+		outcome.PlanVersion = p.PlanVersion
+		// ForceMeta=false（收尾扫描）只在入参非空时覆盖，避免清空 peer drain 已写入的现场。
+		if p.ForceMeta || strings.TrimSpace(p.TranscriptBlobRef) != "" {
+			outcome.TranscriptBlobRef = p.TranscriptBlobRef
+		}
+		if p.ForceMeta || len(p.InheritedContextKeys) > 0 {
+			outcome.InheritedContextKeys = builtin_tools.CloneStringSlice(p.InheritedContextKeys)
+		}
+		if p.ForceMeta || len(p.InheritedRefIDs) > 0 {
+			outcome.InheritedRefIDs = builtin_tools.CloneStringSlice(p.InheritedRefIDs)
+		}
+		outcome.References = normalizeReferences(append(outcome.References, p.References...))
+		outcome.UpdatedAt = time.Now()
+		backfilled = outcome
+		break
+	}
+
+	if item := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: stepID}).CurrentStep(); item != nil {
+		item.BakeOutcome(backfilled)
+		// step 过程文件指针不经 outcome（StepOutcome 无该字段），由 runtime 探测后直填。
+		if sf := strings.TrimSpace(p.StepFile); sf != "" {
+			item.StepFile = sf
+		}
+	}
+}
+
+// FinalizeTerminalStep 对一个已终态的 step 做纯产出固化（回填指针 + 烘焙 PlanItem），
+// 不改 Status / Phase / CurrentStepID / Plan。供 X2 滚动收尾扫描固化那些不经
+// step_replan 的 step（peer、以及滚动中已过的主路径 current）；与 ApplyStepReplan 的
+// 烘焙同源（bakeTerminalStepLocked）。非终态 / 找不到的 step 直接 no-op——只固化已落定者。
+func (t *StateTracker) FinalizeTerminalStep(stepID string, p stepFinalizePaths) builtin_tools.StateSnapshot {
+	stepID = strings.TrimSpace(stepID)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if stepID == "" {
+		return *t.state
+	}
+	var item *builtin_tools.PlanItem
+	for _, candidate := range t.state.Plan {
+		if candidate != nil && strings.TrimSpace(candidate.ID) == stepID {
+			item = candidate
+			break
+		}
+	}
+	if item == nil {
+		return *t.state
+	}
+	switch item.Status {
+	case builtin_tools.PlanStepCompleted,
+		builtin_tools.PlanStepFailed,
+		builtin_tools.PlanStepSkipped:
+	default:
+		return *t.state
+	}
+	t.bakeTerminalStepLocked(stepID, p)
+	t.touchLocked()
 	return *t.state
 }
 
