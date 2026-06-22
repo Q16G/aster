@@ -480,12 +480,9 @@ func (m Model) updateBody(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cycleFocus()
 				return m, m.focusCmd()
 			case tuicontext.KeyActionEscape:
-				if m.agentRunning && m.agentCtx != nil {
-					m.agentCtx.CancelTurn()
-					m.clearRetryState()
-					m.statusText = "cancelling..."
-					return m, nil
-				}
+				// 取消运行中的 turn 统一只走 ctrl+c。esc 是方向键 / 滚轮转义序列(ESC[...)的
+				// 公共前缀,快速滚动或导航时孤立的 ESC 易被识别成 esc 键,曾导致浏览时误取消
+				// 正在跑的 turn(context canceled)。这里 esc 仅用于切回输入焦点,不再取消 turn。
 				if m.focus != FocusInput {
 					m.setFocus(FocusInput)
 					return m, m.focusCmd()
