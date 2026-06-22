@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"aster/internal/ai"
 )
@@ -32,6 +34,34 @@ func NormalizeConfig(cfg Config) Config {
 		cfg.RetryCount = DefaultRetryCount
 	}
 	return cfg
+}
+
+// backoffWait 在第 attempt 次失败后、下一次重试前等待。指数退避 1s→2s→4s…（cap 10s）
+// 叠加 [0, base/2) 抖动避免并发请求惊群。等待期间响应 ctx 取消，立即返回 ctx.Err()。
+// attempt 从 1 起（与 RunWithRetry 的循环计数一致）。
+func backoffWait(ctx context.Context, attempt int) error {
+	if attempt < 1 {
+		attempt = 1
+	}
+	base := time.Second << (attempt - 1)
+	if base > 10*time.Second || base <= 0 {
+		base = 10 * time.Second
+	}
+	// jitter 取 [0, base/2)。base 经上面 cap 后恒 ≥1s、base/2 恒 ≥500ms，这里再加下限
+	// 兜底，确保 rand.Int63n 永不收到 0/负数（防御未来若调整 cap 逻辑引入回归）。
+	jitter := base / 2
+	if jitter < 1 {
+		jitter = 1
+	}
+	wait := base + time.Duration(rand.Int63n(int64(jitter)))
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 type ErrorType string
@@ -220,6 +250,15 @@ func RunWithRetry[T any](ctx context.Context, client ai.ChatClient, phase string
 		})
 		if attempt >= cfg.RetryCount {
 			break
+		}
+		// model_call 失败（网络 / 网关瞬时错误，如 HTTP 520）做指数退避 + jitter，给上游
+		// 恢复时间——否则连续 N 次无间隔重试会瞬间撞满同一个持续中的故障。parse 类失败
+		// （missing_json / unmarshal / validation）不退避：它们靠 buildRetryPrompt 把错误
+		// 反馈回模型纠正，立即重试更快收敛。
+		if last.ErrorType == ErrorTypeModelCallFailed {
+			if waitErr := backoffWait(ctx, attempt); waitErr != nil {
+				return result, waitErr
+			}
 		}
 		currentPrompt = buildRetryPrompt(prompt, phase, attempt+1, last)
 	}
