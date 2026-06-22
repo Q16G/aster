@@ -2,8 +2,9 @@
 name: sast-scan
 description: >-
   多语言多介质静态粗筛——基于本地 Semgrep 规则扫描源码 / XML 配置 / 模板，产出按
-  high_confidence / needs_dataflow_confirmation / high_noise 分桶的漏洞候选清单。
-when-to-use: 当需要对代码进行静态安全扫描、建立高价值漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时
+  high_confidence / needs_dataflow_confirmation / high_noise 分桶的漏洞候选清单。本能力是
+  辅助加速器：只加速结构型 sink 候选，不替代直接阅读源码，不覆盖语义型漏洞（逻辑 / 越权 / RBAC）。
+when-to-use: 当需要为大体量 / 多介质项目快速建立结构型漏洞候选集、发现强 sink 或动态 SQL/模板/配置风险时（可选加速手段，非深读前置门槛）
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path] [--lang java|go|python|js|php|c]"
@@ -21,7 +22,7 @@ arguments:
 **项目规模维度**：
 - `list_files` 在目标根目录被截断（默认 5000 / 上限 20000）
 - monorepo / 多模块 / 多语言混合项目
-- Controller / Service 单文件超过 2000 行（人读分页成本远高于先粗筛）
+- Controller / Service 单文件超过 2000 行（人读分页成本高，可用粗筛先圈定密集区再针对性读）
 
 **介质维度**（按项目结构识别——单看扩展名会漏 XML / 模板）：
 - 含 `**/mapper/**/*.xml` 或 `**/*Mapper.xml`（MyBatis 模板里的 `${}`）
@@ -36,14 +37,16 @@ arguments:
 - `requirements.txt` 含 `django` / `flask` / `sqlalchemy`
 - `composer.json` 含 `laravel/framework` / `thinkphp`
 
-**流程位置维度**：
-- 已完成 [project-framework-analysis](../project-framework-analysis/SKILL.md)，但还没建立漏洞候选集
-- 准备进入按漏洞维度深挖前的"分发"时点——直接对未粗筛的代码逐文件深读会浪费大量 context
+**流程位置维度**（本能力是可选加速器，不是深读前置门槛——直接阅读源码始终是合法主路径）：
+- 已完成 [project-framework-analysis](../project-framework-analysis/SKILL.md)，且代码体量 / 介质丰富度足以让粗筛为结构型 sink 候选提速
+- 大体量 / 多介质项目想先快速圈出结构型 sink 高密度区，再用直接阅读做深挖（粗筛加速候选构建，不代替逐链路阅读）
 - 已有上一轮 sast-scan 候选但发现规则覆盖不全（如新规则集发布、新框架进入扫描面）
 
 **反向信号**（不命中本能力）：
 - 目标已经是单文件或<100 行的小修改半径——直接走对应漏洞 skill 即可
 - 用户已显式指定单漏洞类型（"只看 SQLi"）——直接 [dataflow-analysis](../dataflow-analysis/SKILL.md) + 对应漏洞 skill
+
+**底线：本能力未命中 ≠ 该子系统安全。** 空 / 低命中只代表"规则没匹配到"，常见漏报有项目自有 wrapper（`Runtime.exec` → `CmdUtil.run`）、注解内 SQL（`@Select("... ${} ...")`）、规则未覆盖的栈；而语义型漏洞（业务逻辑 / 越权 / RBAC / 状态机 / 影响评估）完全在本能力（正则 / AST 模式匹配）覆盖外。**不得据本能力空命中下"安全"结论**——这些维度必须靠直接阅读源码触达，与粗筛是否命中无关（参 §11 静态分析边界、§9 反例义务）。
 
 ---
 
@@ -102,6 +105,40 @@ ASTER 启动时把本地嵌入规则提取到：
 ```
 
 每个语言目录同时包含自建高价值规则与 `community/` 子目录（Semgrep 社区高质量规则）。**禁止**用 `--config auto` / `--config p/xxx` 拉在线规则（why：审计环境可能离线、在线规则版本不可固定影响可追溯性）。
+
+### 自研封装层的自定义规则
+
+项目把标准库 sink 封装进自有 wrapper（`CmdUtil.run` 包 `Runtime.exec`、`BaseRepository.rawQuery` 包 JDBC、自有 `Sql.exec` 等）时，内置规则只查标准 API → 命中数异常少（FN）。判据：[project-framework-analysis](../project-framework-analysis/SKILL.md) 的"自有类与方法"清单提示有封装层，但本能力命中数与项目规模不匹配。
+
+此时优先**为自研 wrapper 现写一条项目级 Semgrep 规则并补扫**——wrapper 调用点往往系统性散布多处，规则对"多调用点"的扩展性远好于逐点人读（逐点读留给一次性 / 需语义判断的场景）。操作：
+
+1. 从 framework-analysis / 直接阅读确认 wrapper 的**完整签名与危险参数位**（哪个入参是命令 / SQL / 路径 / 反序列化数据的终点）。
+2. 写一条项目级规则，存到工作区项目级规则目录（如 `shared/coverage-ledger/custom-rules/<lang>-wrappers.yml`，不污染 `~/.aster/rules`）。最小形态：
+
+   ```yaml
+   rules:
+     - id: project-cmdutil-run-cmd-injection
+       languages: [java]
+       severity: ERROR
+       message: "CmdUtil.run 封装 Runtime.exec；入参用户可控即命令注入候选"
+       metadata: { confidence: needs_dataflow_confirmation, source_report: sast-scan }  # metadata 仅人读默认标注，不决定最终桶位
+       pattern: CmdUtil.run(...)
+   ```
+
+3. 与内置规则一起跑（`--config` 可多次传，自定义规则叠加在语言规则之上；仍是本地文件，不违反"禁拉在线规则"；自定义规则路径相对工作区根）：
+
+   ```bash
+   semgrep scan \
+     --config "$HOME/.aster/rules/<lang>" \
+     --config shared/coverage-ledger/custom-rules/<lang>-wrappers.yml \
+     <target_path> --json --timeout 600 --max-memory 4096 --jobs 4 \
+     --exclude .git --exclude node_modules --exclude vendor \
+     --exclude dist --exclude build --exclude out --exclude target
+   ```
+
+4. 命中按 §7 思考检查点归入三桶、按 §9 落 jsonl（`source_report` 仍记 `sast-scan`，`description` 注明命中自研 wrapper 规则）；最终归桶按命中点形态判定，不由规则 metadata 决定——wrapper 仅"可能危险"、无法静态定参数化形态时归 `needs_dataflow_confirmation` 交 [dataflow-analysis](../dataflow-analysis/SKILL.md) 追上游。
+
+**适用边界**：自定义规则只为**结构型 sink 的自研封装**（命令 / SQL / 路径 / 反序列化 / 模板执行等）扩展召回；语义型漏洞（逻辑 / 越权 / RBAC / 状态机）规则写不出，仍靠直接阅读。也**不为"水货"维度造规则**（弱加密 / 弱 hash / 弱 TLS 等非安全场景高噪声项——见 §10 高噪声模式）。
 
 ### 按项目结构扫描面构建
 
@@ -187,6 +224,7 @@ ASTER 启动时把本地嵌入规则提取到：
 
    - 优先用工具内置 `--jobs N`（共享规则集解析与 AST 缓存，比多进程高效，避免多 semgrep 同时驻留 OOM）
    - 通过 bash 工具显式传 `timeout_ms`（如 `600000`），避免提前截断；被取消时整棵进程树（含 `semgrep-core`）会被自动清理
+   - 识别到自研封装层（命中数与项目规模不匹配）时，按 §5「自研封装层的自定义规则」现写项目级规则、与内置规则 `--config` 叠加补扫，再回到三桶分类
 
 5. **大项目分批**：扫描面文件数 > 5000 时按顶层模块 / 目录边界**串行**切分；详见 [references/semgrep-batching.md](references/semgrep-batching.md)。
 6. **三桶分类**：按 §7 思考检查点把每条命中归入 `high_confidence` / `needs_dataflow_confirmation` / `high_noise_patterns`。
@@ -198,6 +236,7 @@ ASTER 启动时把本地嵌入规则提取到：
 
 - [ ] 扫描面统计完整（Java 文件 / XML mapper / 配置 / 模板四个介质都有数字）
 - [ ] Java 项目识别到 MyBatis 信号时 XML mapper 数 > 0；否则已记入扫描缺口并阻断"已审"结论
+- [ ] 识别到自研封装层（命中数与规模不匹配）时，已为其结构型 sink 现写项目级规则补扫（或记入扫描缺口）
 - [ ] 每条命中按 sink 语义入三桶之一（不漏不重）
 - [ ] high_noise_patterns 桶单独列出，未挤入主结论
 - [ ] 每条候选含 `file:line` + source/sink 表达式片段
@@ -305,7 +344,7 @@ ASTER 启动时把本地嵌入规则提取到：
 - 抽象规则：项目把 `Runtime.exec` 封装成 `CmdUtil.run(String)`，sast-scan 规则只查 JDK API 漏报
 - 具体场景：调用点全是 `CmdUtil.run(userInput)`，扫描结果一片"安全"
 - 关键识别特征：[project-framework-analysis](../project-framework-analysis/SKILL.md) 的"自有类与方法"清单提示项目有自定义封装但 sast-scan 命中数异常少
-- 确认方法：把项目 wrapper API 加入本地规则集（自建规则）或交 [dataflow-analysis](../dataflow-analysis/SKILL.md) 用 source-sink 模式追
+- 确认方法：按 §5「自研封装层的自定义规则」为 wrapper API 现写项目级 Semgrep 规则补扫（系统性多调用点首选），或交 [dataflow-analysis](../dataflow-analysis/SKILL.md) 用 source-sink 模式追（一次性 / 需语义判断时）
 
 **反例 5：MyBatis 注解里的 `${}`（XML 扫描面外）**
 

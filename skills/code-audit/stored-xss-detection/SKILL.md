@@ -124,7 +124,7 @@ encoder 必须**匹配输出上下文**：HTML entity encoding 救不了 `<scrip
 | Go / Gin + html/template | handler → Gorm `db.Create(...)` | `.tmpl` / `.html` 模板；`template.HTML(s)` 强类型旁路；`text/template` 全无转义 |
 | PHP / Laravel + Blade | Controller → Eloquent `Model::create()` | Blade `{!! $var !!}`（raw）vs `{{ $var }}` |
 
-**通用建议**：用 [sast-scan](../sast-scan/SKILL.md) 先粗筛模板 raw 输出 sink 与 ORM 写入点；用 [dataflow-analysis](../dataflow-analysis/SKILL.md) 跨函数追写入字段在哪些查询/接口被回读；路由文件（Spring 注解 / Express `routes/` / Django `urls.py` / Gin `router.go`）作为入口锚点反向追 sink 候选；闭源富文本 / 闭源 sanitizer 见 §11 静态分析边界。
+**通用建议**：主路径直接读代码——路由文件（Spring 注解 / Express `routes/` / Django `urls.py` / Gin `router.go`）作为入口锚点反向追 sink 候选，`rg` 上表的 raw 输出 / 写入点 pattern 自盘点；用 [dataflow-analysis](../dataflow-analysis/SKILL.md) 跨函数追写入字段在哪些查询/接口被回读；若已有 [sast-scan](../sast-scan/SKILL.md) 候选可消费其模板 raw 输出 sink 与 ORM 写入点条目加速（可选，缺位 / 空命中不阻塞，直接走上述 grep）；闭源富文本 / 闭源 sanitizer 见 §11 静态分析边界。
 
 ---
 
@@ -182,7 +182,7 @@ encoder 必须**匹配输出上下文**：HTML entity encoding 救不了 `<scrip
 
 - 加载 [project-framework-analysis](../project-framework-analysis/SKILL.md) 输出，识别 web 框架 / 模板引擎 / 前端框架 / ORM / sanitizer 库及版本
 - 列出本项目持久层模型所有字段（`models/` / `*Mapper.xml` / `entity/`），用户可控字段集合作为 source 候选
-- 已有 [sast-scan](../sast-scan/SKILL.md) 输出时优先消费其 high_noise_patterns + needs_dataflow_confirmation 桶里 XSS 相关条目
+- 已有 [sast-scan](../sast-scan/SKILL.md) 输出时可消费其 high_noise_patterns + needs_dataflow_confirmation 桶里 XSS 相关条目加速（可选，缺位 / 空命中不阻塞，直接走 Step 1 grep）
 
 ### Step 1：grep 出所有写入点
 
