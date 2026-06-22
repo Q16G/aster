@@ -2,10 +2,12 @@ package react
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"aster/internal/ai"
+	"aster/internal/ai/openai"
 	"aster/internal/builtin_tools"
 )
 
@@ -129,7 +131,22 @@ func (a *Agent) runInlineStep(
 	defer thinkCancel()
 	callResult, err := a.AICallProxy(thinkCtx, runCtx, iter, runClient, parts, promptFamilyThinkAct, fnTools...)
 	if err != nil {
-		return err
+		// 致命错误（ctx 取消 / turn 中断 / 历史压缩终止 / 上下文溢出）仍冒泡，让 scheduler
+		// 走 handlePhaseError 体面收尾。其余「可归属单 step」的错误（模型调用重试耗尽、parse
+		// 失败等 transient / 局部问题）不再杀整个 turn：把该 step 标 failed，turn 继续滚动或
+		// 收尾，缺口由 step_replan 承接、下轮重试。主路径与 peer 共用本段——串行（MaxParallel<2，
+		// runCtx==nil 退化）与并行行为一致。
+		if isFatalStepError(err) {
+			return err
+		}
+		failSnap := a.markStepFailedOnError(runCtx, err)
+		a.emitter.EmitStateChange(failSnap)
+		a.emitRuntimeLog("warning", "step failed on recoverable error, marked for replan", peerScopedSnapshot(failSnap, runCtx), map[string]any{
+			"event":   "step_recoverable_error_failed",
+			"step_id": stepIDOf(currentStep),
+			"error":   err.Error(),
+		})
+		return nil
 	}
 
 	snapshot = a.state.Snapshot()
@@ -211,6 +228,63 @@ func (a *Agent) runInlineStep(
 		"will_continue":        !snapshot.Terminal(),
 	})
 	return nil
+}
+
+// isFatalStepError 判定一个 step 执行错误是否「致命」——致命错误应继续冒泡，让 scheduler
+// 走 handlePhaseError 终止 turn；非致命（可归属单 step）错误则由调用方标 step failed、turn 续跑。
+//
+// 致命集合：ctx 取消 / 超时、turn 中断（human_confirm 等）、历史压缩终止、上下文溢出。
+// 这些要么是全局信号、要么重试无意义（标 failed 重跑同样会撞），必须 turn 级处理。
+// 其余（模型调用重试耗尽 ExhaustedError、parse 失败、empty output 等）视为可归属、可下轮重试。
+func isFatalStepError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if _, ok := isTurnInterruptRaised(err); ok {
+		return true
+	}
+	if IsCompactionTerminated(err) {
+		return true
+	}
+	if isContextOverflowError(err) {
+		return true
+	}
+	// provider auth / quota 是持久错误：client 已判不可重试，标 failed 后重规划重试同样会
+	// 再撞同一个错误，会空转到（默认不限的）迭代上限。直接致命终止 turn，给用户清晰错误。
+	// 用 ReasonCode 精准识别，避免误伤网络瞬时错误（它们 ReasonCode 不是 auth/quota）。
+	switch openai.BuildRetryDecisionFromText(normalizeRuntimeErrorText(err), nil).ReasonCode {
+	case openai.RetryReasonProviderAuth, openai.RetryReasonProviderQuota:
+		return true
+	}
+	return false
+}
+
+// isContextOverflowError 判定错误是否为上下文溢出。复用 openai 的 IsContextOverflowText
+// 单一判据（避免双份 marker 漂移）；ExhaustedError.Error() 会带上最后一次 model_call 的原始
+// 错误文本，故对其也能命中。
+func isContextOverflowError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return openai.IsContextOverflowText(err.Error())
+}
+
+// markStepFailedOnError 把当前 step 标 failed 并回写 state，返回新 snapshot。
+// 主路径（runCtx==nil）走 UpdateCurrentStep（会翻 Phase→StepReplan 并 PropagateSkippedPlanSteps）；
+// peer 走 UpdateInlineStep（不动 Phase/CurrentStepID）。错误文本经 normalizeRuntimeErrorText
+// 提取，避免把整个 ExhaustedError 的多 attempt 串塞进 step.Error。
+func (a *Agent) markStepFailedOnError(runCtx *InlineStepCtx, err error) builtin_tools.StateSnapshot {
+	update := builtin_tools.CurrentStepUpdate{
+		Status: builtin_tools.PlanStepFailed,
+		Error:  normalizeRuntimeErrorText(err),
+	}
+	if runCtx == nil {
+		return a.state.UpdateCurrentStep(update)
+	}
+	return a.state.UpdateInlineStep(strings.TrimSpace(runCtx.StepID), update)
 }
 
 // spawnInlinePeer 为指定的 peer stepID 起后台 goroutine 跑 runInlineStep 循环。
