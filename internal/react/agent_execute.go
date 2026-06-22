@@ -449,6 +449,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.identityEnvMu.Unlock()
 	a.frozenStepCache.Reset()
 	a.lastStepTranscriptBlobRef = ""
+	a.journaledStepIDs = nil
 	a.resetRunHandoff()
 	if a.asyncRegistry != nil {
 		a.asyncRegistry.Reset()

@@ -66,6 +66,11 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		_ = a.state.SetIteration(iter)
 
+		// X2 滚动收尾扫描：把已终态但从未经 step_replan 的 step（peer、滚动中已过的
+		// 主路径 current）烘焙并写入 planner.jsonl。必须在 reduceStepOutcomesInState 之前——
+		// 后者可能压缩旧 step outcome，先固化才不丢产出。
+		a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+
 		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
 		phase := currentPhase(snapshot, a.maxParallelSteps())
@@ -73,6 +78,23 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			_ = a.state.SetPhase(phase)
 			snapshot = a.state.Snapshot()
 		}
+
+		// X2 并发屏障：真正进 step_replan 前等所有 in_progress inline peer 落定。
+		// step_replan 会读 plan 做复核 / 整盘替换（NewPlan），若此刻还有 peer 在跑，会基于
+		// 不完整状态重规划、且与 peer 完成回写竞态（结果丢失 / plan_version 错配）。await 后
+		// 重算 phase：peer 落定可能解锁新 ready → 回 Step 继续滚动；否则全 terminal 才进 step_replan。
+		// 仅在 phase 解析为 StepReplan 时阻塞，不影响 X2 滚动派发（那条路 phase=Step）。
+		if phase == builtin_tools.AgentPhaseStepReplan && a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
+			a.awaitRunningInlineSteps(ctx)
+			a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+			snapshot = a.state.Snapshot()
+			phase = currentPhase(snapshot, a.maxParallelSteps())
+			if phase != snapshot.Phase {
+				_ = a.state.SetPhase(phase)
+				snapshot = a.state.Snapshot()
+			}
+		}
+
 		a.syncStepHistoryLayer(snapshot)
 		a.emitRuntimeLog("info", "scheduler iteration started", snapshot, map[string]any{
 			"event":                "scheduler_iteration_start",
@@ -500,7 +522,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					if submitRetries > maxSubmitRetries {
 						return nil, fmt.Errorf("submit_plan failed after %d retries: %w", maxSubmitRetries, parseErr)
 					}
-					a.AICallProxyWriteToolResult(nil, 
+					a.AICallProxyWriteToolResult(nil,
 						strings.TrimSpace(tc.Id), submitPlanToolName,
 						"", nil, "",
 						fmt.Sprintf("submit_plan 参数校验失败（第 %d/%d 次重试）：%s", submitRetries, maxSubmitRetries, parseErr.Error()),
@@ -515,7 +537,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 						if submitRetries > maxSubmitRetries {
 							return nil, fmt.Errorf("submit_plan plan validation failed after %d retries: %w", maxSubmitRetries, normErr)
 						}
-						a.AICallProxyWriteToolResult(nil, 
+						a.AICallProxyWriteToolResult(nil,
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
 							fmt.Sprintf("submit_plan plan 结构校验失败（第 %d/%d 次重试）：%s\n请按报错指示修正 plan 结构（含 step_id 唯一性、depends_on 引用闭包等）后重新调用 submit_plan。", submitRetries, maxSubmitRetries, normErr.Error()),
@@ -569,7 +591,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					running := a.runningChildAgentNames()
 					submitRetries++
 					if submitRetries <= maxSubmitRetries {
-						a.AICallProxyWriteToolResult(nil, 
+						a.AICallProxyWriteToolResult(nil,
 							strings.TrimSpace(tc.Id), submitPlanToolName,
 							"", nil, "",
 							fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：仍有后台子 Agent 运行中：%s。请先调用 await_subagents 等待其全部结束、把有价值产出按入板闸门归并进 `## 执行中补充` 后再 submit_plan。", submitRetries, maxSubmitRetries, strings.Join(running, ", ")),
@@ -593,7 +615,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					if !taskContextInputFactsPresent(raw) {
 						submitRetries++
 						if submitRetries <= maxSubmitRetries {
-							a.AICallProxyWriteToolResult(nil, 
+							a.AICallProxyWriteToolResult(nil,
 								strings.TrimSpace(tc.Id), submitPlanToolName,
 								"", nil, "",
 								fmt.Sprintf("submit_plan 阻塞（第 %d/%d 次重试）：共享区终态未成立：task_context.md 的 `## 输入事实` 为空。请把用户输入中确定的具体操作事实逐条写入该节（每行 `- 名称: 值`）后重新调用 submit_plan。", submitRetries, maxSubmitRetries),

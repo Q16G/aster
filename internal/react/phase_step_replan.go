@@ -405,6 +405,18 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		planVersion = 1
 	}
 
+	// 防御断言：NewPlan 整盘替换前不应再有 in_progress inline peer 在跑——调度器的 X2 并发
+	// 屏障（runtime_scheduler 进 step_replan 前 awaitRunningInlineSteps）已保证这点。若此处仍
+	// 命中，说明屏障被绕过，整盘替换会与 peer 完成回写竞态（结果丢失 / plan_version 错配），
+	// 落 error 日志以便定位（不阻断，交由 UpdateInlineStep 的终态守卫兜底）。
+	if newPlan != nil && a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
+		a.emitRuntimeLog("error", "step_replan applying NewPlan while inline peers still running", snapshot, map[string]any{
+			"event":          "step_replan_newplan_inline_race",
+			"step_id":        stepID,
+			"running_inline": a.asyncRegistry.RunningInlineSteps(),
+		})
+	}
+
 	// ApplyStepReplan 内部 diff → observer 自动 emit task_item，不再手抓 prevPlan。
 	snapshot = a.state.ApplyStepReplan(stepID, stepReplanUpdate{
 		ArtifactDir:       artifactDir,
@@ -427,6 +439,9 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	// step 烘焙记录归属旧 plan_version（snapshot.PlanVersion 在 NewPlan 路径下已经 ++，
 	// 这里显式用 planVersion 这个本轮入参对应的旧值，避免 step / plan 两类记录的 plan_version 错配）。
 	a.appendPlannerJournalStepRecordAt(stepID, snapshot, planVersion)
+	// 登记：current step 已由本路径固化落盘。X2 滚动收尾扫描（finalizeUnjournaledTerminalSteps）
+	// 跳过 current、且对已登记者 no-op，故此 step 后续不再被扫描重复落盘。
+	a.markStepJournaled(stepID)
 	if newPlan != nil {
 		// 重编排直达 Step：plan 真相源（planner.jsonl）按新计划全量重写一条 plan 级记录，
 		// 对齐 ApplyPlanAndEmit 的持久化纪律；UI / 下游通过 EmitTaskPlan 看见新 plan。
@@ -488,6 +503,13 @@ func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, r
 		return true, "heartbeat"
 	}
 	if strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(snapshot.Plan)) == "" {
+		// 防御：plan_exhausted（ready 枯竭）只代表“没有可派发的 pending”，不代表“这批跑完”。
+		// 仍有 in_progress inline peer 在跑时不升级——否则会基于不完整状态做 LLM 重规划。
+		// 调度器的 X2 屏障已先 await peer，正常流程下此处 HasRunningInlineSteps 必为 false；
+		// 此条为纵深防御，屏障被绕过时退化为“跳过本轮、下一轮 peer 落定再升级”。
+		if a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
+			return false, ""
+		}
 		return true, "plan_exhausted"
 	}
 	return false, ""
