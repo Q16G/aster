@@ -248,7 +248,8 @@ func WithUsagePricing(model aiusage.PricingModel) Option {
 	}
 }
 
-var defaultRetryCodes = []int{429, 500, 502, 503, 504}
+// 含 Cloudflare 非标准网关码 520-524（与 isRetryableHTTPStatus 的全量 5xx 放行双保险）。
+var defaultRetryCodes = []int{429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
 func DefaultConfig() *Config {
 	return &Config{

@@ -16,7 +16,7 @@ func TestDefaultConfigRetryCodes(t *testing.T) {
 		t.Fatalf("expected default retry codes")
 	}
 
-	want := []int{429, 500, 502, 503, 504}
+	want := []int{429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 	if len(cfg.RetryCodes) != len(want) {
 		t.Fatalf("unexpected default retry codes length: got=%d want=%d", len(cfg.RetryCodes), len(want))
 	}
@@ -66,7 +66,7 @@ func TestIsRetryableError_DefaultRetryUnlessCanceled(t *testing.T) {
 
 func TestNormalizeRetryCodesFallback(t *testing.T) {
 	codes := NormalizeRetryCodes([]int{700, 0})
-	want := []int{429, 500, 502, 503, 504}
+	want := []int{429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 	if len(codes) != len(want) {
 		t.Fatalf("unexpected fallback retry codes length: got=%d want=%d", len(codes), len(want))
 	}
@@ -250,6 +250,21 @@ func TestBuildRetryDecision_HTTP502Retried(t *testing.T) {
 	}
 	if d.ReasonCode != "provider_transient" {
 		t.Fatalf("expected reason code provider_transient, got %q", d.ReasonCode)
+	}
+}
+
+func TestBuildRetryDecision_Cloudflare5xxRetried(t *testing.T) {
+	// 所有 5xx（含 Cloudflare 非标准网关码 520-524、505/507/509）都应可重试，
+	// 即便未在 retryCodes 中显式列出。
+	for _, code := range []int{505, 507, 509, 520, 521, 522, 523, 524, 599} {
+		d := BuildRetryDecision(&HTTPError{StatusCode: code, Body: fmt.Sprintf("error code: %d", code)}, nil)
+		if !d.Retry {
+			t.Fatalf("expected HTTP %d (5xx) to be retryable", code)
+		}
+	}
+	// 非 5xx 的未知码（如 418）仍不可重试，除非显式配置在 retryCodes 中。
+	if IsRetryableError(&HTTPError{StatusCode: 418, Body: "teapot"}, []int{429, 500}) {
+		t.Fatal("expected HTTP 418 to remain non-retryable")
 	}
 }
 

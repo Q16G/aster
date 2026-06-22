@@ -291,10 +291,11 @@ func isContextOverflowMessage(haystack string) bool {
 }
 
 func isRetryableHTTPStatus(statusCode int, retryCodes []int, haystack string) bool {
-	switch statusCode {
-	case http.StatusTooManyRequests:
-		return true
-	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	// 所有 5xx 视为可重试：覆盖标准 500/502/503/504，也覆盖 Cloudflare 等网关的非标准
+	// 码 520-524、505/507/509 等。5xx 基本都是服务端 / 网关瞬时问题，适合带退避重试。
+	// auth(401/403)、quota、context-overflow 已在 buildHTTPRetryDecision 中先行拦截，
+	// 不会落到这里，故全量放行 5xx 不会误伤这些 non-retryable 情况。
+	if statusCode == http.StatusTooManyRequests || (statusCode >= 500 && statusCode <= 599) {
 		return true
 	}
 
