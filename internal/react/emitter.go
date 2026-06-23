@@ -82,16 +82,21 @@ type Emitter struct {
 	baseEmitter    BaseEmitterFunc
 	processorStack []EventProcessor
 	seqID          *atomic.Uint64
-	thinkGroupID   string
+	// thinkGroupIDs 按 stepID 作用域维护 thinking 分组 UUID（key=stepID，""=主路径）。
+	// 并发 step 共享同一 Emitter（spawnInlinePeer 复用同一 Agent），分组键必须 per-stepID
+	// 隔离——否则一个 step 的边界事件会清掉另一个并发 step 的 in-flight reasoning 分组，
+	// 把连贯 reasoning 切成单 token 碎片。
+	thinkGroupIDs map[string]string
 }
 
 // NewEmitter 创建事件发射器
 func NewEmitter(id string, agentName string, emitter BaseEmitterFunc) *Emitter {
 	return &Emitter{
-		id:          id,
-		agentName:   agentName,
-		baseEmitter: emitter,
-		seqID:       &atomic.Uint64{},
+		id:            id,
+		agentName:     agentName,
+		baseEmitter:   emitter,
+		seqID:         &atomic.Uint64{},
+		thinkGroupIDs: make(map[string]string),
 	}
 }
 
@@ -177,26 +182,32 @@ func (e *Emitter) EmitJSON(eventType EventType, nodeID string, payload map[strin
 	})
 }
 
-func (e *Emitter) EnsureThinkGroupID() string {
+// EnsureThinkGroupID 返回（必要时新建）stepID 作用域下的 thinking 分组 UUID。
+// stepID="" 为主路径；peer 走 runCtx.StepID。并发 step 各自独立 entry，互不串扰。
+func (e *Emitter) EnsureThinkGroupID(stepID string) string {
 	if e == nil {
 		return ""
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.thinkGroupID == "" {
-		e.thinkGroupID = uuid.NewString()
+	if e.thinkGroupIDs == nil {
+		e.thinkGroupIDs = make(map[string]string)
 	}
-	return e.thinkGroupID
+	if e.thinkGroupIDs[stepID] == "" {
+		e.thinkGroupIDs[stepID] = uuid.NewString()
+	}
+	return e.thinkGroupIDs[stepID]
 }
 
-// ResetThinkGroupID 重置 thinking 分组 UUID——使下一个 EmitThink 起新 ThinkingPart。
+// ResetThinkGroupID 重置**指定 stepID 作用域**的 thinking 分组——使该 step 的下一个
+// EmitThink 起新 ThinkingPart，且**不影响**其它并发 step 的 in-flight 分组。
 //
-// **不变量（reset 边界 = 真正 reasoning 段终结 / 真正阶段切换）**：
+// **不变量（reset 边界 = 该 step 真正 reasoning 段终结 / 真正阶段切换）**：
 //
-// 只在下面这些场景被调用：
+// 只在下面这些场景被调用（均携带 stepID）：
 //   - 终结类：EmitThink finishReason 非空 / EmitStepFinish / EmitStepSummaryResult /
-//     EmitStepReplanResult / EmitFinalAnswerResult
-//   - 切换类：EmitToolStart / EmitToolEnd / EmitStateChange / EmitHumanRequest / EmitTaskPlan
+//     EmitStepReplanResult
+//   - 切换类：EmitToolStart / EmitToolEnd
 //
 // **禁止边界**（曾被错误使用、commit 后移除）：
 //   - 每 token Content stream（EmitStream）—— deepseek 等 reasoning 模型在同 chunk
@@ -205,22 +216,37 @@ func (e *Emitter) EnsureThinkGroupID() string {
 //     被切碎为 200 条 1-3 token 的独立 part（主屏「Thinking: -b/rowser/.」碎片化症状）
 //   - observer 细粒度 plan_item 状态变化（EmitTaskItem）—— peer 状态变化与主路径
 //     thinking 段边界正交，主路径 thinking 中间不应被 peer 边界事件切断
+//   - 全局 observer 状态翻转（EmitStateChange）/ 人工请求（EmitHumanRequest）/ 计划
+//     重建（EmitTaskPlan）—— 这些事件与任何 step 的 reasoning 段边界正交，且在并发下
+//     高频触发，曾全局 reset 把别的 step 的 reasoning 切碎；现一律不 reset，真边界由
+//     tool / step_finish / summary / replan（均 per-step）覆盖。
 //
 // 新增 emit 路径时若不确定要不要 reset：默认**不调用** reset，除非你的事件语义
-// 上确实是「一段 reasoning 段终结」或「跨阶段切换」。
-func (e *Emitter) ResetThinkGroupID() {
+// 上确实是「该 step 一段 reasoning 段终结」。turn 级终结用 ResetAllThinkGroupIDs。
+func (e *Emitter) ResetThinkGroupID(stepID string) {
 	if e == nil {
 		return
 	}
 	e.mu.Lock()
-	e.thinkGroupID = ""
+	delete(e.thinkGroupIDs, stepID)
+	e.mu.Unlock()
+}
+
+// ResetAllThinkGroupIDs 清空所有作用域的 thinking 分组——仅用于 turn 级终结
+// （EmitFinalAnswerResult），此时所有 step 的 reasoning 都应封口。
+func (e *Emitter) ResetAllThinkGroupIDs() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	e.thinkGroupIDs = make(map[string]string)
 	e.mu.Unlock()
 }
 
 // EmitThink 发射思考事件。stepID 标记 inline_step 归属（peer 走 runCtx.StepID；
 // 主路径 / 非 step phase 传空字符串），TUI 用于 ThinkingPart.StepID + idxByStepID。
 func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string, stepID string) {
-	groupID := e.EnsureThinkGroupID()
+	groupID := e.EnsureThinkGroupID(stepID)
 	payload := map[string]any{
 		"content":           content,
 		"think_content":     thinkContent,
@@ -239,7 +265,7 @@ func (e *Emitter) EmitThink(iteration int, content string, thinkContent string, 
 		Payload:   payload,
 	})
 	if strings.TrimSpace(finishReason) != "" {
-		e.ResetThinkGroupID()
+		e.ResetThinkGroupID(stepID)
 	}
 }
 
@@ -282,8 +308,8 @@ func (e *Emitter) EmitStreamEnd(iteration int, stepID string) {
 	e.Emit(event)
 }
 
-func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
-	e.ResetThinkGroupID()
+func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any, stepID string) {
+	e.ResetThinkGroupID(stepID)
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStepFinish,
 		NodeID:    "step_finish",
@@ -296,7 +322,7 @@ func (e *Emitter) EmitStepFinish(iteration int, payload map[string]any) {
 // inline_step 卡片下（commit 11 idxByStepID 消费）。主路径和 plan/replan 等
 // 非 step phase 传空字符串。
 func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall, stepID string) {
-	e.ResetThinkGroupID()
+	e.ResetThinkGroupID(stepID)
 	payload := map[string]any{
 		"call_id":     call.ID,
 		"tool_name":   call.Name,
@@ -318,7 +344,7 @@ func (e *Emitter) EmitToolStart(iteration int, call builtin_tools.ToolCall, step
 // EmitToolEnd 发射工具结束事件。stepID 同 EmitToolStart——peer 桶 tool 走 runCtx.StepID，
 // 主路径走 snapshot.CurrentStepID。
 func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult, stepID string) {
-	e.ResetThinkGroupID()
+	e.ResetThinkGroupID(stepID)
 	payload := map[string]any{
 		"call_id":     result.ID,
 		"tool_name":   result.Name,
@@ -341,9 +367,11 @@ func (e *Emitter) EmitToolEnd(iteration int, result builtin_tools.ToolResult, st
 	})
 }
 
-// EmitStateChange 发射状态变更事件
+// EmitStateChange 发射状态变更事件。
+// **不调** ResetThinkGroupID：状态翻转与任何 step 的 reasoning 段边界正交，且作为全局
+// observer 在并发下高频触发，曾全局 reset 把别的 step 的 reasoning 切碎。详见
+// ResetThinkGroupID doc 的「禁止边界」。
 func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
-	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeStateChange,
 		NodeID:    "state",
@@ -366,9 +394,10 @@ func (e *Emitter) EmitStateChange(snapshot builtin_tools.StateSnapshot) {
 	})
 }
 
-// EmitHumanRequest 发射人工请求事件
+// EmitHumanRequest 发射人工请求事件。
+// **不调** ResetThinkGroupID：人工请求不是某段 reasoning 的终结边界（且本方法不携带
+// stepID）；真正的 step 边界由 tool / step_finish 等覆盖。详见 ResetThinkGroupID doc。
 func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
-	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:      EventTypeHumanRequest,
 		NodeID:    "human_request",
@@ -382,8 +411,9 @@ func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question str
 }
 
 // EmitTaskPlan 发射任务计划事件。phases 是业务 lane 清单，供 TUI 按 lane 分组展示 step。
+// **不调** ResetThinkGroupID：计划重建是结构事件，与逐 step reasoning 边界正交（与
+// EmitTaskItem 同类）。详见 ResetThinkGroupID doc 的「禁止边界」。
 func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, phases []*builtin_tools.PlanPhase, explanation string) {
-	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeTaskPlan,
 		NodeID: "task_plan",
@@ -512,7 +542,7 @@ func (e *Emitter) EmitError(message string) {
 }
 
 func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome *builtin_tools.StepOutcome) {
-	e.ResetThinkGroupID()
+	e.ResetThinkGroupID(stepID)
 	if outcome == nil {
 		return
 	}
@@ -533,7 +563,7 @@ func (e *Emitter) EmitStepSummaryResult(stepID string, stepName string, outcome 
 }
 
 func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *stepReplanModelOutput) {
-	e.ResetThinkGroupID()
+	e.ResetThinkGroupID(stepID)
 	if result == nil {
 		return
 	}
@@ -568,7 +598,7 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 }
 
 func (e *Emitter) EmitFinalAnswerResult(answer *builtin_tools.FinalAnswer) {
-	e.ResetThinkGroupID()
+	e.ResetAllThinkGroupIDs()
 	if answer == nil || strings.TrimSpace(answer.Content) == "" {
 		return
 	}
