@@ -1540,7 +1540,7 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, runCtx *InlineStepCtx, ite
 	if len(msg.ToolCalls) > 0 {
 		stepPayload["tool_calls"] = msg.ToolCalls
 	}
-	a.emitter.EmitStepFinish(iter, stepPayload)
+	a.emitter.EmitStepFinish(iter, stepPayload, runCtxStepID(runCtx))
 
 	// Step phase: keep tool calling transcript within the step window only.
 	sanitizeToolCallArguments(msg)
