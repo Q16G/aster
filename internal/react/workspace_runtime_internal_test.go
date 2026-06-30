@@ -4,7 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"aster/internal/builtin_tools"
 )
 
 func TestEnsureSharedScaffoldCreatesFiles(t *testing.T) {
@@ -72,5 +75,81 @@ func TestEnsureSharedScaffoldDoesNotClobber(t *testing.T) {
 	// open_items.md was absent → should now be seeded.
 	if _, err := os.Stat(filepath.Join(sharedDir, "open_items.md")); err != nil {
 		t.Errorf("open_items.md not seeded: %v", err)
+	}
+}
+
+// TestMutateChildAgent_AtomicNoLostUpdate 锁定 A.3：并发 MutateChildAgent
+// 必须串行化 load→改→save，N 路并发派发 N 条 ChildAgents 时不能丢更新。
+func TestMutateChildAgent_AtomicNoLostUpdate(t *testing.T) {
+	rootDir := t.TempDir()
+	rt, err := newLocalWorkspaceRuntime("sess-mut", rootDir, "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
+
+	const n = 16
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			name := "sub-" + string(rune('a'+idx%26)) + string(rune('0'+idx/26))
+			_ = rt.MutateChildAgent(name, func(_ *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+				return &builtin_tools.WorkspaceChildAgentPointer{
+					Status:          "running",
+					ParentStepKey:   "step-x",
+					ArtifactRootDir: "/tmp/" + name,
+				}
+			})
+			_ = rt.MutateChildAgent(name, func(prev *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+				if prev == nil {
+					t.Errorf("finalize observed nil prev for %s — register lost", name)
+					return nil
+				}
+				prev.Status = "completed"
+				return prev
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	state, err := rt.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("LoadWorkspaceState: %v", err)
+	}
+	if got := len(state.ChildAgents); got != n {
+		t.Fatalf("expected %d ChildAgents after concurrent mutate, got %d", n, got)
+	}
+	for name, ptr := range state.ChildAgents {
+		if ptr == nil {
+			t.Fatalf("nil pointer for %s", name)
+		}
+		if ptr.Status != "completed" {
+			t.Fatalf("expected status=completed for %s, got %q", name, ptr.Status)
+		}
+	}
+}
+
+// TestMutateChildAgent_DeleteOnNilReturn 锁定 mutate 返回 nil 时删除该条。
+func TestMutateChildAgent_DeleteOnNilReturn(t *testing.T) {
+	rootDir := t.TempDir()
+	rt, err := newLocalWorkspaceRuntime("sess-del", rootDir, "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
+
+	_ = rt.MutateChildAgent("sub-x", func(_ *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+		return &builtin_tools.WorkspaceChildAgentPointer{Status: "running"}
+	})
+	_ = rt.MutateChildAgent("sub-x", func(_ *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+		return nil
+	})
+
+	state, err := rt.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("LoadWorkspaceState: %v", err)
+	}
+	if _, ok := state.ChildAgents["sub-x"]; ok {
+		t.Fatal("sub-x should have been deleted when mutate returned nil")
 	}
 }

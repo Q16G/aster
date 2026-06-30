@@ -277,6 +277,11 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		MCPContext:      mcpCtx,
 		HasSkillsTable:  skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
+		// MaxParallelSteps 注入 planner system prompt 的「同手段子任务集的并发预算」段
+		// （仅 ≥2 时渲染）。让 planner 知道执行阶段同层 ready peer + 同回合 sub_agent
+		// 并发预算上限，按 §同类范围识别 / §DAG fan-out 已有纪律放心释放 N 路 atomic
+		// step。a.maxParallelSteps() 已 nil 防御 + min 1 兜底（agent.go）。
+		MaxParallelSteps: a.maxParallelSteps(),
 	}
 	if a.workspaceRuntime != nil {
 		if sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir()); sharedDir != "" {

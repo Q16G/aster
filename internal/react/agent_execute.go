@@ -1307,6 +1307,11 @@ func (a *Agent) AICallProxy(ctx context.Context, runCtx *InlineStepCtx, iter int
 		return nil, fmt.Errorf("ai client is nil")
 	}
 
+	// 把 factory 全局 limiter 挂进 ctx，让所有 outbound AI 请求（含 history compaction
+	// 在 AICallProxy 内嵌套调 ai.ChatExWithOptions）走 ai 包统一入口时被同一把信号量
+	// 限流。nil pool 时直通不动 ctx（未经 factory.Build 的实例，主要是单测）。
+	ctx = ai.WithRequestLimiter(ctx, a.requestPool)
+
 	if promptFamily == "" {
 		promptFamily = promptFamilyThinkAct
 	}

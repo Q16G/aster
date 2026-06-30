@@ -47,6 +47,40 @@ func (t *unsafeTool) Execute(_ context.Context, _ map[string]any) (string, error
 	return t.result, nil
 }
 
+// fakeAgentTool 既是 ConcurrencySafeTool 也是 AgentTool（IsAgent=true），用于验证
+// executeToolCallsConcurrently 按 slot.isAgent 走 agentSem 信号量。
+type fakeAgentTool struct {
+	name    string
+	delay   time.Duration
+	result  string
+	current *atomic.Int32 // 当前进入数
+	peak    *atomic.Int32 // 历史峰值（CAS 维护）
+}
+
+func (t *fakeAgentTool) Name() string          { return t.name }
+func (t *fakeAgentTool) Description() string   { return t.name + " desc" }
+func (t *fakeAgentTool) Parameters() any       { return map[string]any{"type": "object"} }
+func (t *fakeAgentTool) IsAgent() bool         { return true }
+func (t *fakeAgentTool) ConcurrencySafe() bool { return true }
+func (t *fakeAgentTool) Execute(_ context.Context, _ map[string]any) (string, error) {
+	if t.current != nil {
+		cur := t.current.Add(1)
+		defer t.current.Add(-1)
+		if t.peak != nil {
+			for {
+				p := t.peak.Load()
+				if cur <= p || t.peak.CompareAndSwap(p, cur) {
+					break
+				}
+			}
+		}
+	}
+	if t.delay > 0 {
+		time.Sleep(t.delay)
+	}
+	return t.result, nil
+}
+
 func makeTC(id, name string) *ai.FunctionTool {
 	return &ai.FunctionTool{
 		Id: id,
@@ -138,6 +172,44 @@ func TestPartitionToolCalls_NeverConcurrentOverridesSafeDeclaration(t *testing.T
 		if len(unsafe) != 1 {
 			t.Fatalf("tool %q should be in unsafe partition, got %d", name, len(unsafe))
 		}
+	}
+}
+
+// TestPartitionToolCalls_SubAgentGoesToSafeBucket 回归 A.1：sub_agent 已从
+// neverConcurrentTools 摘出（由 SubAgentTool.ConcurrencySafe() 显式声明并发安全），
+// partition 必须把它分入 safe 桶，让 executeToolCallsConcurrently 按 a.maxParallelSteps()
+// 信号量并发跑同回合多路 sub_agent。
+func TestPartitionToolCalls_SubAgentGoesToSafeBucket(t *testing.T) {
+	// sub_agent 名字下挂一个声明 ConcurrencySafe=true 的 fake 工具——partition
+	// 仅看 isConcurrencySafe + neverConcurrentTools，不依赖 SubAgentTool 实现。
+	agent := newTestAgent(&safeTool{name: builtin_tools.SubAgentToolName})
+
+	tcs := []*ai.FunctionTool{
+		makeTC("1", builtin_tools.SubAgentToolName),
+		makeTC("2", builtin_tools.SubAgentToolName),
+		makeTC("3", builtin_tools.SubAgentToolName),
+	}
+
+	safe, unsafe := partitionToolCalls(agent, tcs)
+	if len(safe) != 3 {
+		t.Fatalf("expected 3 sub_agent calls in safe bucket, got safe=%d unsafe=%d", len(safe), len(unsafe))
+	}
+	if len(unsafe) != 0 {
+		t.Fatalf("expected 0 unsafe, got %d", len(unsafe))
+	}
+}
+
+// TestSubAgentToolImplementsConcurrencySafe：A.1 验证 *SubAgentTool 实现
+// ConcurrencySafeTool 接口且 ConcurrencySafe() 返回 true。
+func TestSubAgentToolImplementsConcurrencySafe(t *testing.T) {
+	var tool any = (*SubAgentTool)(nil)
+	if _, ok := tool.(ConcurrencySafeTool); !ok {
+		t.Fatal("*SubAgentTool must satisfy ConcurrencySafeTool interface")
+	}
+	// 用一个空实例确认值（nil 调用 ConcurrencySafe 安全，方法不依赖 receiver）。
+	st := &SubAgentTool{}
+	if !st.ConcurrencySafe() {
+		t.Fatal("SubAgentTool.ConcurrencySafe() must return true")
 	}
 }
 
@@ -497,5 +569,87 @@ func TestDrainAsyncAgentNotifications_TruncatesLongResult(t *testing.T) {
 	}
 	if !strings.Contains(content, "truncated") {
 		t.Fatal("truncated result should contain truncation marker")
+	}
+}
+
+// TestConcurrent_AgentToolUsesGenericSem 回归撤回 agentSem 后行为：sub_agent /
+// agent-tool 现在与普通 safe 工具共用 cap=defaultMaxToolConcurrency=5 的同一信号量；
+// 真正的 outbound AI 请求并发由 AgentRequestPool 在 ai 包统一入口限流。
+//
+// 本测试单纯断言 tool dispatch 层的 fakeAgentTool 在 cap=5 下并发跑通，**不**断言
+// 严格上限（peak 可能就是 5 或调度上来时还更低，关键是不被任何"agent-tool 专用 sem"
+// 卡到 a.maxParallelSteps=2 这种与 dispatch 无关的预算）。
+func TestConcurrent_AgentToolUsesGenericSem(t *testing.T) {
+	current := &atomic.Int32{}
+	peak := &atomic.Int32{}
+
+	tool := &fakeAgentTool{
+		name:    "fake_agent",
+		delay:   30 * time.Millisecond,
+		result:  "ok",
+		current: current,
+		peak:    peak,
+	}
+
+	agent := newTestAgent(tool)
+	agent.state = NewStateTracker()
+	// 故意把 cfg.MaxParallelSteps 设成 2——撤回 agentSem 后该字段不再约束 dispatch；
+	// 真正的 AI 请求限流靠 requestPool（本测试不构造 pool，故无限制）。
+	agent.cfg.MaxParallelSteps = 2
+
+	const n = 5
+	tcs := make([]*ai.FunctionTool, n)
+	for i := 0; i < n; i++ {
+		tcs[i] = makeTC(fmt.Sprintf("call-%d", i), "fake_agent")
+	}
+
+	executed, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if executed != n {
+		t.Fatalf("expected %d executed, got %d", n, executed)
+	}
+	// 峰值上限 = defaultMaxToolConcurrency(5)；agent-tool 不再被 MaxParallelSteps=2 卡。
+	if got := peak.Load(); got > int32(defaultMaxToolConcurrency) {
+		t.Fatalf("peak=%d exceeds defaultMaxToolConcurrency=%d", got, defaultMaxToolConcurrency)
+	}
+	if peak.Load() < 2 {
+		t.Fatalf("expected agent-tool calls to actually run concurrently (peak>=2), got %d", peak.Load())
+	}
+}
+
+// TestConcurrent_GenericSafeToolUsesDefaultMaxConcurrency 回归 A.2：非 agent-tool
+// 的 safe 工具不吃 MaxParallelSteps，仍按 defaultMaxToolConcurrency=5 限流。
+// 这条用例的关键是确认 MaxParallelSteps=1 不会反向砍读类工具的并发。
+func TestConcurrent_GenericSafeToolUsesDefaultMaxConcurrency(t *testing.T) {
+	counter := &atomic.Int32{}
+	agent := newTestAgent(
+		&safeTool{name: "rg_a", delay: 30 * time.Millisecond, result: "a", counter: counter},
+		&safeTool{name: "rg_b", delay: 30 * time.Millisecond, result: "b", counter: counter},
+		&safeTool{name: "rg_c", delay: 30 * time.Millisecond, result: "c", counter: counter},
+	)
+	agent.state = NewStateTracker()
+	agent.cfg.MaxParallelSteps = 1 // 串行 step 调度，但读类工具仍应并发
+
+	tcs := []*ai.FunctionTool{
+		makeTC("1", "rg_a"),
+		makeTC("2", "rg_b"),
+		makeTC("3", "rg_c"),
+	}
+
+	start := time.Now()
+	executed, err := agent.dispatchToolCalls(context.Background(), nil, 1, tcs, nil)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if executed != 3 {
+		t.Fatalf("expected 3 executed, got %d", executed)
+	}
+	// 3 路 30ms 并发 ≈ 30ms；若被 MaxParallelSteps=1 误伤会变成 ≈ 90ms。
+	if elapsed > 70*time.Millisecond {
+		t.Fatalf("generic safe tools should NOT be throttled by MaxParallelSteps=1; elapsed=%v", elapsed)
 	}
 }

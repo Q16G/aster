@@ -101,6 +101,12 @@ type Agent struct {
 	// sub_agent 自身的 Agent 实例不持有 factory，避免嵌套 spawn。
 	agentFactory *AgentFactory
 
+	// requestPool 引用 AgentFactory 持有的 ai 请求 limiter。
+	// AICallProxy / runStructuredOutputWithRetry 入口把它注入 ctx，
+	// ai.ChatExWithOptions / ChatStreamWithOptions 在统一入口 Acquire/Release。
+	// nil 时（未经 factory.Build 的实例，主要是单测）AI 请求不受限。
+	requestPool *AgentRequestPool
+
 	// awaitBackgroundRequested 由 await_subagents 工具置位，调度循环读到后会在
 	// 非终态时 park 等待后台子 Agent 完成（等待期间零模型调用），随后无条件清除。
 	// 仅在调度 goroutine 上读写，无并发问题。

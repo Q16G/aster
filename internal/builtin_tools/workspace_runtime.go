@@ -22,6 +22,14 @@ type WorkspaceRuntime interface {
 	LoadWorkspaceState() (*WorkspaceState, error)
 	SaveWorkspaceState(state *WorkspaceState) error
 
+	// MutateChildAgent atomically reads workspace state, applies mutate to the
+	// ChildAgents[name] pointer (prev may be nil for first insert), and writes
+	// the result back. Implementations must serialize concurrent calls so that
+	// multiple sub_agent tool calls in the same think_act round don't lose
+	// updates via load-A → load-B → save-A → save-B races. Returning nil from
+	// mutate deletes the entry.
+	MutateChildAgent(name string, mutate func(prev *WorkspaceChildAgentPointer) *WorkspaceChildAgentPointer) error
+
 	LoadWorkspaceReferences() ([]*WorkspaceReferenceRecord, error)
 	AppendWorkspaceReferences(refs []*WorkspaceReferenceRecord) error
 

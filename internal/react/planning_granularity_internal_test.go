@@ -298,7 +298,7 @@ func TestCorePromptAtomicBudget(t *testing.T) {
 		text     string
 		maxLines int
 	}{
-		"planning_system":    {text: planningSystemPrompt, maxLines: 140},
+		"planning_system":    {text: planningSystemPrompt, maxLines: 145},
 		"step_replan_system": {text: stepReplanSystemPrompt, maxLines: 225},
 		"think_act_system":   {text: thinkActSystemPrompt, maxLines: 95},
 	}
@@ -313,8 +313,8 @@ func TestCorePromptAtomicBudget(t *testing.T) {
 			t.Fatalf("%s prompt line budget exceeded: got %d, want <= %d", name, lines, budget.maxLines)
 		}
 	}
-	if totalLines > 465 {
-		t.Fatalf("core prompt total line budget exceeded: got %d, want <= 465", totalLines)
+	if totalLines > 470 {
+		t.Fatalf("core prompt total line budget exceeded: got %d, want <= 470", totalLines)
 	}
 	if count := strings.Count(combined.String(), "塌缩"); count > 1 {
 		t.Fatalf("core prompts should not re-grow collapse blacklist wording: got %d occurrences", count)
@@ -480,6 +480,88 @@ func TestStepTextExcerpt(t *testing.T) {
 			t.Fatalf("want empty, got %q", got)
 		}
 	})
+}
+
+// TestPlanningSystemPromptRendersParallelBudgetWhenN2 锁定 B：planner 注入
+// MaxParallelSteps≥2 时 system prompt 渲染「同手段子任务集的并发预算」段。
+func TestPlanningSystemPromptRendersParallelBudgetWhenN2(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "test",
+		MaxParallelSteps: 4,
+	})
+	if err != nil {
+		t.Fatalf("BuildTaskPlannerPrompt failed: %v", err)
+	}
+	rendered := parts.SystemRules
+
+	required := []string{
+		"同手段子任务集的并发预算",
+		"MAX_PARALLEL_STEPS = 4",
+		"不是新的拆分维度",
+		"运行时由调度按 N 排队，不需要规划侧封顶",
+	}
+	for _, needle := range required {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("parallel budget section missing %q, got:\n%s", needle, rendered)
+		}
+	}
+}
+
+// TestPlanningSystemPromptHidesParallelBudgetWhenDegenerate 锁定 N=1（默认串行）
+// 时不渲染并发预算段，prompt 字节级等价之前。
+func TestPlanningSystemPromptHidesParallelBudgetWhenDegenerate(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	for _, n := range []int{0, 1} {
+		parts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+			Input:            "test",
+			MaxParallelSteps: n,
+		})
+		if err != nil {
+			t.Fatalf("BuildTaskPlannerPrompt failed (N=%d): %v", n, err)
+		}
+		rendered := parts.SystemRules
+		if strings.Contains(rendered, "同手段子任务集的并发预算") {
+			t.Fatalf("parallel budget section must not render when MaxParallelSteps=%d", n)
+		}
+		if strings.Contains(rendered, "MAX_PARALLEL_STEPS") {
+			t.Fatalf("MAX_PARALLEL_STEPS variable must not leak when MaxParallelSteps=%d", n)
+		}
+	}
+}
+
+// TestPlanningSystemPromptStillForbidsExecutionFormShape 锁定新段 B 与既有
+// §能力索引不入文案 约束共存——MaxParallelSteps=N 注入后仍要禁止 step 文案
+// 出现执行形态修辞。
+func TestPlanningSystemPromptStillForbidsExecutionFormShape(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager failed: %v", err)
+	}
+	parts, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{
+		Input:            "test",
+		MaxParallelSteps: 4,
+	})
+	if err != nil {
+		t.Fatalf("BuildTaskPlannerPrompt failed: %v", err)
+	}
+	rendered := parts.SystemRules
+
+	required := []string{
+		"能力索引不入文案",
+		"不描述以何种执行形态",
+	}
+	for _, needle := range required {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("既有约束被覆盖 — missing %q in rendered prompt", needle)
+		}
+	}
 }
 
 func nestedString(root map[string]any, path ...string) (string, bool) {

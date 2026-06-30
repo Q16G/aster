@@ -22,6 +22,7 @@ type SubAgentTool struct {
 }
 
 var _ AgentTool = (*SubAgentTool)(nil)
+var _ ConcurrencySafeTool = (*SubAgentTool)(nil)
 
 func NewSubAgentTool(parent *Agent, factory *AgentFactory) *SubAgentTool {
 	return &SubAgentTool{parentAgent: parent, factory: factory}
@@ -29,6 +30,11 @@ func NewSubAgentTool(parent *Agent, factory *AgentFactory) *SubAgentTool {
 
 func (t *SubAgentTool) Name() string  { return builtin_tools.SubAgentToolName }
 func (t *SubAgentTool) IsAgent() bool { return true }
+
+// ConcurrencySafe 让 sub_agent 走 executeToolCallsConcurrently 的 safe 桶，
+// 由 a.maxParallelSteps() 信号量限流（与 X2 inline_step 同一并发预算）。
+// 并发安全由 workspaceRuntime.MutateChildAgent 原子接口 + emitter 内部锁兜底。
+func (t *SubAgentTool) ConcurrencySafe() bool { return true }
 
 func (t *SubAgentTool) Description() string {
 	return "派生子 Agent 独立执行任务。当前阶段需处理同手段/同产物口径独立可验收的子任务集（已落清单）时是默认动作；自己串行处理是反模式。"
@@ -277,16 +283,16 @@ func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeIn
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
 		return
 	}
-	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || parentState == nil {
-		return
-	}
-	parentState.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
-		Status:          "running",
-		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
-		ArtifactRootDir: childRootDir,
-	}
-	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+	// MutateChildAgent 原子 load-mutate-save，根除并发 sub_agent 派发时 preRegister
+	// / finalize 的 lost-update（A.3 防线，参见 workspace_runtime.go stateRMWMu）。
+	err := t.parentAgent.workspaceRuntime.MutateChildAgent(childName, func(_ *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+		return &builtin_tools.WorkspaceChildAgentPointer{
+			Status:          "running",
+			ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
+			ArtifactRootDir: childRootDir,
+		}
+	})
+	if err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "pre_register_child_agent_save_failed",
 			"child": childName,
@@ -302,24 +308,24 @@ func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo,
 	// 不再机械回流子 agent 共享区到父级账本：父 AI 在 think_act「子 Agent 委派 → 产出归并」
 	// 原则约束下，按主 Agent 视角主动消费子工作区并归类写入父级两区/事实板/归档。
 	// 这里仅更新 ChildAgents 指针，AI 通过事实板汇总表的读取路径下钻。
-	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || parentState == nil {
-		return
-	}
 	status := "completed"
 	if result == nil || !result.Success {
 		status = "failed"
 	}
-	ptr := &builtin_tools.WorkspaceChildAgentPointer{
-		Status:          status,
-		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
-		ArtifactRootDir: childRootDir,
-	}
-	if result != nil {
-		ptr.PlanSummary = result.PlanSummary
-	}
-	parentState.ChildAgents[childName] = ptr
-	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+	// MutateChildAgent 原子 load-mutate-save，根除并发 sub_agent 派发时 preRegister
+	// / finalize 的 lost-update（A.3 防线，参见 workspace_runtime.go stateRMWMu）。
+	err := t.parentAgent.workspaceRuntime.MutateChildAgent(childName, func(_ *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer {
+		ptr := &builtin_tools.WorkspaceChildAgentPointer{
+			Status:          status,
+			ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
+			ArtifactRootDir: childRootDir,
+		}
+		if result != nil {
+			ptr.PlanSummary = result.PlanSummary
+		}
+		return ptr
+	})
+	if err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "finalize_child_agent_save_failed",
 			"child": childName,

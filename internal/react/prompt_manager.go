@@ -174,6 +174,11 @@ type TaskPlannerPromptInput struct {
 	MCPOverflowPath    string
 	AvailableTools     []AvailableToolInfo
 	HasAvailableTools  bool
+	// MaxParallelSteps 同层 ready step + 同回合 sub_agent 并发预算。
+	// 0 表示未知/不渲染（兼容现存测试与子 Agent 路径）；≥2 才在模板中渲染
+	// 「并发预算」段告诉 planner fan-out 规模感知（不是新拆分维度，详见
+	// planning_system.prompt 同名段）。
+	MaxParallelSteps int
 }
 
 type IntentClassificationPromptInput struct {
@@ -486,6 +491,10 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),
 		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
 		"STEP_FILE_PATH":    "",
+		// MAX_PARALLEL_STEPS / HAS_PARALLEL_BUDGET 控制「同手段子任务集的并发预算」段
+		// 渲染：仅 ≥2 时渲染；N=1 时不渲染，prompt 字节级等价之前。
+		"MAX_PARALLEL_STEPS":  input.MaxParallelSteps,
+		"HAS_PARALLEL_BUDGET": input.MaxParallelSteps >= 2,
 	}
 	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),

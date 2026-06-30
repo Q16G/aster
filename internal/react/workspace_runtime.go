@@ -37,6 +37,17 @@ type localWorkspaceRuntime struct {
 	// （EnsureSharedScaffold 已有 os.Stat 幂等检查，所以保护面更窄）。
 	sharedFileLocksMu sync.Mutex
 	sharedFileLocks   map[string]*sync.RWMutex
+
+	// stateRMWMu 串行化 workspace/state.json 的 load-mutate-save 临界区，供
+	// MutateChildAgent（以及未来的同款 RMW 接口）使用。与 sharedFileLockFor 正交：
+	// 后者保护 task_context.md / open_items.md 的 WriteFileRel/ReadFileRel 路径，本锁
+	// 保护 LoadWorkspaceState/SaveWorkspaceState 的原子组合。
+	//
+	// **为什么需要**：sub_agent_tool.go 的 preRegisterChildAgent / finalizeChildAgent
+	// 都做 Load→改 ChildAgents→Save；同一 think_act 回合多路并发 sub_agent 派发时
+	// （A.1+A.2 解锁后），load-A → load-B → save-A → save-B 会丢更新。本锁把
+	// load-mutate-save 包成单临界区，根除 lost-update。
+	stateRMWMu sync.Mutex
 }
 
 var _ builtin_tools.WorkspaceRuntime = (*localWorkspaceRuntime)(nil)
@@ -232,6 +243,48 @@ func (w *localWorkspaceRuntime) SaveWorkspaceState(state *builtin_tools.Workspac
 	}
 	data = append(data, '\n')
 	return w.WriteFileRel(filepath.ToSlash(filepath.Join("workspace", "state.json")), data)
+}
+
+// MutateChildAgent 在 stateRMWMu 临界区内 load-mutate-save state.ChildAgents[name]，
+// 根除并发 sub_agent 派发时 preRegister/finalize 的 lost-update（参见结构体注释）。
+// mutate 收 prev 指针（nil = 首次插入），返回新指针；返回 nil 等价"删除该条"。
+func (w *localWorkspaceRuntime) MutateChildAgent(
+	name string,
+	mutate func(prev *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer,
+) error {
+	if w == nil {
+		return fmt.Errorf("workspace runtime is nil")
+	}
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("child agent name is empty")
+	}
+	if mutate == nil {
+		return fmt.Errorf("mutate fn is nil")
+	}
+	w.stateRMWMu.Lock()
+	defer w.stateRMWMu.Unlock()
+	state, err := w.LoadWorkspaceState()
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		state = &builtin_tools.WorkspaceState{
+			SessionID:          strings.TrimSpace(w.SessionID()),
+			LatestStepOutcomes: make(map[string]*builtin_tools.WorkspaceStepOutcomePointer),
+			ChildAgents:        make(map[string]*builtin_tools.WorkspaceChildAgentPointer),
+		}
+	}
+	if state.ChildAgents == nil {
+		state.ChildAgents = make(map[string]*builtin_tools.WorkspaceChildAgentPointer)
+	}
+	prev := state.ChildAgents[name]
+	next := mutate(prev)
+	if next == nil {
+		delete(state.ChildAgents, name)
+	} else {
+		state.ChildAgents[name] = next
+	}
+	return w.SaveWorkspaceState(state)
 }
 
 func (w *localWorkspaceRuntime) LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {

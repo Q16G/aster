@@ -91,3 +91,46 @@ func TestAgentFactory_MaxParallelStepsBelowTwoDoesNotInjectOption(t *testing.T) 
 		t.Fatalf("expected cfg.MaxParallelSteps=0 (no Option injected), got %d", got)
 	}
 }
+
+// TestAgentFactory_BuildPropagatesRequestPool 锁定 AI 请求 pool 全程贯通：
+// factory 持有同一把 pool；root 与 sub-agent 都拿到同一引用；cap 与 maxParallelSteps 对齐。
+func TestAgentFactory_BuildPropagatesRequestPool(t *testing.T) {
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+		WithFactoryMaxParallelSteps(7),
+	)
+	if factory.requestPool == nil {
+		t.Fatal("factory.requestPool must be initialized by NewAgentFactory")
+	}
+	if got := factory.requestPool.Capacity(); got != 7 {
+		t.Fatalf("expected pool cap=7, got %d", got)
+	}
+
+	root, err := factory.Build(AgentDefinition{Name: "root", Instruction: "x"})
+	if err != nil {
+		t.Fatalf("Build root: %v", err)
+	}
+	if root.requestPool != factory.requestPool {
+		t.Fatal("root.requestPool must be the same reference as factory.requestPool")
+	}
+
+	sub, err := factory.Build(AgentDefinition{Name: "sub", Instruction: "x", IsSubAgent: true})
+	if err != nil {
+		t.Fatalf("Build sub: %v", err)
+	}
+	if sub.requestPool != factory.requestPool {
+		t.Fatal("sub-agent.requestPool must share the same factory pool")
+	}
+}
+
+// TestAgentFactory_RequestPoolFloorsAtOne 锁定 N=0 / N=1 / 未设场景 pool cap=1。
+func TestAgentFactory_RequestPoolFloorsAtOne(t *testing.T) {
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	if got := factory.requestPool.Capacity(); got != 1 {
+		t.Fatalf("unset MaxParallelSteps must floor pool cap to 1, got %d", got)
+	}
+}

@@ -2059,6 +2059,12 @@ func (w *realFileWorkspaceRuntime) LoadWorkspaceState() (*builtin_tools.Workspac
 func (w *realFileWorkspaceRuntime) SaveWorkspaceState(_ *builtin_tools.WorkspaceState) error {
 	return nil
 }
+func (w *realFileWorkspaceRuntime) MutateChildAgent(
+	_ string,
+	_ func(prev *builtin_tools.WorkspaceChildAgentPointer) *builtin_tools.WorkspaceChildAgentPointer,
+) error {
+	return nil
+}
 func (w *realFileWorkspaceRuntime) LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {
 	return nil, nil
 }

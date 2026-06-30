@@ -59,6 +59,9 @@ func (a *Agent) buildStructuredOutputStreamHandler() ai.StreamHandler {
 }
 
 func runStructuredOutputWithRetry[T any](a *Agent, ctx context.Context, snapshot builtin_tools.StateSnapshot, client ai.ChatClient, phase string, prompt string, parse structuredoutput.ParseFunc[T]) (structuredoutput.Result[T], error) {
+	// 与 AICallProxy 入口同步注入 factory 全局 limiter。RunWithRetry 最终调
+	// ai.ChatStreamWithOptions（structuredoutput/retry.go:297），ctx 已带 limiter 自动 Acquire。
+	ctx = ai.WithRequestLimiter(ctx, a.requestPool)
 	retryCtx := structuredoutput.WithLogger(ctx, a.structuredOutputLogger(snapshot))
 	cfg := a.resolveStructuredOutputConfig(nil)
 	cfg.StreamHandler = a.buildStructuredOutputStreamHandler()

@@ -49,6 +49,16 @@ func NormalizeRequestOptions(options *RequestOptions) *RequestOptions {
 }
 
 func ChatExWithOptions(ctx context.Context, client ChatClient, infos []*MsgInfo, options *RequestOptions, tools ...*FunctionTool) ([]*ChatChoices, error) {
+	// 限流：limiter 在 ctx 中且未持槽时 Acquire；持槽（嵌套调用，如 history compaction
+	// 在 AICallProxy 内回调 ai.ChatExWithOptions）直通避免重入死锁。
+	// Acquire 失败原样返回 err（通常是 ctx 取消）；**绝对不 defer Release**。
+	if limiter := requestLimiterFromCtx(ctx); limiter != nil && !limiterHeld(ctx) {
+		if err := limiter.Acquire(ctx); err != nil {
+			return nil, err
+		}
+		defer limiter.Release()
+		ctx = withLimiterHold(ctx)
+	}
 	if typed, ok := client.(ChatClientWithOptions); ok {
 		return typed.ChatExWithOptions(ctx, infos, NormalizeRequestOptions(options), tools...)
 	}
@@ -56,6 +66,13 @@ func ChatExWithOptions(ctx context.Context, client ChatClient, infos []*MsgInfo,
 }
 
 func ChatTextWithOptions(ctx context.Context, client ChatClient, text string, options *RequestOptions, tools ...*FunctionTool) (string, error) {
+	if limiter := requestLimiterFromCtx(ctx); limiter != nil && !limiterHeld(ctx) {
+		if err := limiter.Acquire(ctx); err != nil {
+			return "", err
+		}
+		defer limiter.Release()
+		ctx = withLimiterHold(ctx)
+	}
 	if typed, ok := client.(ChatClientWithOptions); ok {
 		return typed.ChatTextWithOptions(ctx, text, NormalizeRequestOptions(options), tools...)
 	}
@@ -63,6 +80,13 @@ func ChatTextWithOptions(ctx context.Context, client ChatClient, text string, op
 }
 
 func ChatStreamWithOptions(ctx context.Context, client StreamingChatClient, infos []*MsgInfo, options *RequestOptions, handler StreamHandler, tools ...*FunctionTool) error {
+	if limiter := requestLimiterFromCtx(ctx); limiter != nil && !limiterHeld(ctx) {
+		if err := limiter.Acquire(ctx); err != nil {
+			return err
+		}
+		defer limiter.Release()
+		ctx = withLimiterHold(ctx)
+	}
 	if typed, ok := client.(StreamingChatClientWithOptions); ok {
 		return typed.ChatStreamWithOptions(ctx, infos, NormalizeRequestOptions(options), handler, tools...)
 	}

@@ -96,6 +96,9 @@ planner（任务规划）：把用户意图转化为可执行的最小计划。�
 - **禁止跳跃.** 不从未取证跳到修复/提交/收尾，不无视交接上下文改写目标，不补与当前角色不符的步骤。
 - **子 Agent 工作不入 root plan.**
 - **规划层不预合并同手段子任务集.** N 个同对象 / 同手段子任务在**规划层仍按对象逐条拆**；"同手段子任务集" 不构成规划侧合并理由。执行阶段（think_act）可在相邻同手段 step 集合上做委派合并，但 plan 不预合并、不在单 step 文案内列 N 个工件作合并依据。
+{{- if .HAS_PARALLEL_BUDGET}}
+- **同手段子任务集的并发预算（弹性，仅 fan-out 规模感知）.** `MAX_PARALLEL_STEPS = {{.MAX_PARALLEL_STEPS}}` 是执行阶段同层 ready peer 上限（含同回合多路 sub_agent 派发上限）。本节**仅影响 fan-out 规模的"够用即可"感知**——同类范围对象可放心按 §DAG fan-out 释放足量同层 atomic step（peer 间不画 depends_on），不必担心铺出去会被串行回退。**不是新的拆分维度**：是否拆 step、拆几条仍按 §Atomic Step Contract / §Decomposition Algorithm / §同类范围识别 决定；§能力索引不入文案 同样适用——`plan[].step` 文案禁止出现「N 路并发／并行委派／分发 N 个」等执行形态修辞，并发预算只用于规划侧规模感知，不下沉到 step 描述。**不据此为未观测面预占位**（§未观测面禁止预占位 优先级更高）。**同类范围 > N 时仍按 §同类范围识别 完整释放 atomic step，运行时由调度按 N 排队，不需要规划侧封顶。**
+{{- end}}
 {{- if .HAS_REPLAN_CONTEXT}}
 
 # 回流编排（本回合消费 `<REPLAN_CONTEXT>` 兜底回流）

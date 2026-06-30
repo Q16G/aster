@@ -27,6 +27,12 @@ type AgentFactory struct {
 	// 由 cmd/aster/main.go 从 AppConfig.React.MaxParallelSteps 读取并通过
 	// WithFactoryMaxParallelSteps 注入；Build 时仅在 ≥2 时附加 react.WithMaxParallelSteps Option。
 	maxParallelSteps int
+
+	// requestPool 限流所有经本 factory 构造的 Agent 实例（root + 子 Agent + skill fork child）
+	// 的 outbound AI 请求并发。容量 = max(1, maxParallelSteps)；NewAgentFactory 末尾一次性初始化。
+	// AICallProxy / runStructuredOutputWithRetry 入口把 pool 注入 ctx，ai.ChatExWithOptions /
+	// ChatStreamWithOptions 在统一入口 Acquire/Release。
+	requestPool *AgentRequestPool
 }
 
 type FactoryOption func(*AgentFactory)
@@ -110,6 +116,14 @@ func NewAgentFactory(opts ...FactoryOption) *AgentFactory {
 			opt(f)
 		}
 	}
+	// requestPool 容量按 maxParallelSteps 兜底 ≥1：root + 所有 child Agent 共享一把
+	// 信号量限制 outbound AI 请求并发，从源头防 N × N 级联放大（多 inline peer × 多
+	// sub_agent × 各自 think_act/plan/replan）。
+	poolCap := f.maxParallelSteps
+	if poolCap < 1 {
+		poolCap = 1
+	}
+	f.requestPool = newAgentRequestPool(poolCap)
 	return f
 }
 
@@ -183,6 +197,11 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build agent %q failed: %w", def.Name, err)
 	}
+
+	// 全局 outbound AI 请求 limiter：root + 所有子 Agent 共享 factory 同一把 pool。
+	// AICallProxy / runStructuredOutputWithRetry 入口把它注入 ctx，让 ai 包统一入口
+	// Acquire/Release。子 Agent 内部 AI 请求也抢同一把信号量。
+	agent.requestPool = f.requestPool
 
 	// Orchestration tools are only registered for non-sub-agents. Sub-agents
 	// (depth>0) must neither register nor expose these in their prompt.

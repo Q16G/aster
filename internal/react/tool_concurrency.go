@@ -13,6 +13,12 @@ import (
 
 const defaultMaxToolConcurrency = 5
 
+// defaultMaxToolConcurrency 是 executeToolCallsConcurrently 内单信号量的 cap：
+// read_file / rg / list_files / task_status_query 等 safe 工具与 sub_agent 共用。
+// sub_agent 的"真正资源"（outbound AI 请求）由 AgentRequestPool 在 ai 包统一入口
+// （ai.ChatExWithOptions / ChatStreamWithOptions）Acquire/Release 限流——无论
+// tool dispatch 层起多少 sub_agent goroutine，HTTP 请求总并发 ≤ MaxParallelSteps。
+
 // ConcurrencySafeTool marks a Tool as safe for concurrent execution with other safe tools.
 // Read-only tools that don't modify shared state should implement this interface.
 type ConcurrencySafeTool interface {
@@ -41,13 +47,16 @@ func isConcurrencySafe(t Tool) bool {
 // of ConcurrencySafe declarations. These tools mutate agent state, trigger
 // durable persistence, or have side effects that the concurrent path does not handle.
 //
+// **sub_agent 不在此名单**：A.1+A.2 解锁后 sub_agent 走 safe 桶并发，
+// 由 a.maxParallelSteps() 限流；并发安全由 A.3 的 workspaceRuntime.MutateChildAgent
+// 互斥 + emitter 内部锁兜底。
+//
 // **SkillToolName + EjectSkillToolName 必须成对出现**——两者都改 ActiveSkillNames
 // （主路径走 a.state，peer 路径走 runCtx.LocalActiveSkillNames），对称纳入 sequential
 // 名单防御未来谁给 eject 加 `ConcurrencySafe() bool { return true }` 触发 race。
 var neverConcurrentTools = map[string]bool{
 	builtin_tools.UpdateCurrentStepToolName: true,
 	builtin_tools.HumanConfirmToolName:      true,
-	builtin_tools.SubAgentToolName:          true,
 	builtin_tools.SkillToolName:             true,
 	builtin_tools.EjectSkillToolName:        true,
 	builtin_tools.BashToolName:              true,
@@ -214,6 +223,10 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 
 	// Emit ToolStart for all validated tools, then execute concurrently.
 	var wg sync.WaitGroup
+	// 单信号量 cap=defaultMaxToolConcurrency=5：read/rg/list_files 等 safe 工具的并发上限。
+	// sub_agent（IsAgent+ConcurrencySafe）共用本 sem，但其真正资源消耗（outbound AI 请求）
+	// 由 AgentRequestPool 在 ai 包统一入口 Acquire/Release 限流——无论同回合起多少 sub_agent
+	// goroutine，发出去的 HTTP 请求总并发 ≤ factory.MaxParallelSteps。
 	sem := make(chan struct{}, defaultMaxToolConcurrency)
 
 	for _, slot := range slots {
