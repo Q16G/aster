@@ -73,7 +73,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
-		phase := currentPhase(snapshot, a.maxParallelSteps())
+		phase := currentPhase(snapshot, a.effectiveWaveWidth())
 		if phase != snapshot.Phase {
 			_ = a.state.SetPhase(phase)
 			snapshot = a.state.Snapshot()
@@ -88,7 +88,7 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			a.awaitRunningInlineSteps(ctx)
 			a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
 			snapshot = a.state.Snapshot()
-			phase = currentPhase(snapshot, a.maxParallelSteps())
+			phase = currentPhase(snapshot, a.effectiveWaveWidth())
 			if phase != snapshot.Phase {
 				_ = a.state.SetPhase(phase)
 				snapshot = a.state.Snapshot()
@@ -277,11 +277,12 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		MCPContext:      mcpCtx,
 		HasSkillsTable:  skillsCtx != nil && skillsCtx.HasTable(),
 		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
-		// MaxParallelSteps 注入 planner system prompt 的「同手段子任务集的并发预算」段
-		// （仅 ≥2 时渲染）。让 planner 知道执行阶段同层 ready peer + 同回合 sub_agent
-		// 并发预算上限，按 §同类范围识别 / §DAG fan-out 已有纪律放心释放 N 路 atomic
-		// step。a.maxParallelSteps() 已 nil 防御 + min 1 兜底（agent.go）。
-		MaxParallelSteps: a.maxParallelSteps(),
+		// MaxParallelSteps / MaxParallelChains 注入 planner system prompt 的两段并发预算
+		// （各自 ≥2 时渲染）：MAX_PARALLEL_STEPS = 链内单对象深度并行；MAX_PARALLEL_CHAINS
+		// = 链间同类对象并行。让 planner 按 §同类范围识别 / §DAG fan-out 已有纪律放心释放
+		// breadth×depth 的 atomic step。两 getter 均 nil 防御 + min 1 兜底（agent.go）。
+		MaxParallelSteps:  a.maxParallelSteps(),
+		MaxParallelChains: a.maxParallelChains(),
 	}
 	if a.workspaceRuntime != nil {
 		if sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir()); sharedDir != "" {

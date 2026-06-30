@@ -505,7 +505,9 @@ func (a *Agent) collectInlineStepIDs(snap builtin_tools.StateSnapshot) []string 
 	if a.asyncRegistry == nil {
 		return out
 	}
-	maxParallel := a.maxParallelSteps()
+	// 有效波宽 E = N_step × N_chain：链内深度并行 × 链间对象并行的乘积。N_chain=1 时
+	// 退化为 maxParallelSteps()，与引入链间维度前一致。
+	maxParallel := a.effectiveWaveWidth()
 	if maxParallel < 2 {
 		return out
 	}

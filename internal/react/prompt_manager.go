@@ -174,11 +174,12 @@ type TaskPlannerPromptInput struct {
 	MCPOverflowPath    string
 	AvailableTools     []AvailableToolInfo
 	HasAvailableTools  bool
-	// MaxParallelSteps 同层 ready step + 同回合 sub_agent 并发预算。
-	// 0 表示未知/不渲染（兼容现存测试与子 Agent 路径）；≥2 才在模板中渲染
-	// 「并发预算」段告诉 planner fan-out 规模感知（不是新拆分维度，详见
-	// planning_system.prompt 同名段）。
+	// MaxParallelSteps 链内维度：单对象浅→深推进的同层 ready 深度 step 并发预算。
+	// 0 表示未知/不渲染（兼容现存测试与子 Agent 路径）；≥2 才渲染链内并发预算段。
 	MaxParallelSteps int
+	// MaxParallelChains 链间维度：同类范围内并行推进的同类对象数预算。
+	// 0/1 表示不渲染；≥2 才渲染链间并发预算段。与 MaxParallelSteps 正交，各自独立渲染。
+	MaxParallelChains int
 }
 
 type IntentClassificationPromptInput struct {
@@ -491,10 +492,13 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),
 		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
 		"STEP_FILE_PATH":    "",
-		// MAX_PARALLEL_STEPS / HAS_PARALLEL_BUDGET 控制「同手段子任务集的并发预算」段
-		// 渲染：仅 ≥2 时渲染；N=1 时不渲染，prompt 字节级等价之前。
+		// MAX_PARALLEL_STEPS / HAS_PARALLEL_BUDGET 控制链内深度并发预算段；
+		// MAX_PARALLEL_CHAINS / HAS_CHAIN_BUDGET 控制链间对象并发预算段。
+		// 各维度仅 ≥2 时渲染；两维都 <2 时整段不渲染，prompt 字节级等价引入前。
 		"MAX_PARALLEL_STEPS":  input.MaxParallelSteps,
 		"HAS_PARALLEL_BUDGET": input.MaxParallelSteps >= 2,
+		"MAX_PARALLEL_CHAINS": input.MaxParallelChains,
+		"HAS_CHAIN_BUDGET":    input.MaxParallelChains >= 2,
 	}
 	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),

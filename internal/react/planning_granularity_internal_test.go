@@ -298,7 +298,7 @@ func TestCorePromptAtomicBudget(t *testing.T) {
 		text     string
 		maxLines int
 	}{
-		"planning_system":    {text: planningSystemPrompt, maxLines: 145},
+		"planning_system":    {text: planningSystemPrompt, maxLines: 148},
 		"step_replan_system": {text: stepReplanSystemPrompt, maxLines: 225},
 		"think_act_system":   {text: thinkActSystemPrompt, maxLines: 95},
 	}
@@ -499,15 +499,20 @@ func TestPlanningSystemPromptRendersParallelBudgetWhenN2(t *testing.T) {
 	rendered := parts.SystemRules
 
 	required := []string{
-		"同手段子任务集的并发预算",
+		"并发预算",
+		"链内深度并行",
 		"MAX_PARALLEL_STEPS = 4",
-		"不是新的拆分维度",
-		"运行时由调度按 N 排队，不需要规划侧封顶",
+		"不是新拆分维度",
+		"运行时由调度按有效波宽排队，不需要规划侧封顶",
 	}
 	for _, needle := range required {
 		if !strings.Contains(rendered, needle) {
 			t.Fatalf("parallel budget section missing %q, got:\n%s", needle, rendered)
 		}
+	}
+	// 仅链内维度（N_chain 未设）时不应渲染链间段。
+	if strings.Contains(rendered, "MAX_PARALLEL_CHAINS") {
+		t.Fatalf("MAX_PARALLEL_CHAINS must not render when MaxParallelChains unset")
 	}
 }
 
@@ -527,11 +532,14 @@ func TestPlanningSystemPromptHidesParallelBudgetWhenDegenerate(t *testing.T) {
 			t.Fatalf("BuildTaskPlannerPrompt failed (N=%d): %v", n, err)
 		}
 		rendered := parts.SystemRules
-		if strings.Contains(rendered, "同手段子任务集的并发预算") {
-			t.Fatalf("parallel budget section must not render when MaxParallelSteps=%d", n)
+		if strings.Contains(rendered, "并发预算") {
+			t.Fatalf("parallel budget section must not render when MaxParallelSteps=%d (chains unset)", n)
 		}
 		if strings.Contains(rendered, "MAX_PARALLEL_STEPS") {
 			t.Fatalf("MAX_PARALLEL_STEPS variable must not leak when MaxParallelSteps=%d", n)
+		}
+		if strings.Contains(rendered, "MAX_PARALLEL_CHAINS") {
+			t.Fatalf("MAX_PARALLEL_CHAINS variable must not leak when both dims degenerate")
 		}
 	}
 }

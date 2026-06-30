@@ -95,6 +95,12 @@ type AgentConfig struct {
 	// ReadyRunnablePlanStepIDs，把当前 current 以外的 ready 通过 spawnRemoteStep
 	// 派发为 inline step；drain 路径按 kind 分流到 state.UpdateInlineStep。
 	MaxParallelSteps int
+
+	// MaxParallelChains 链间维度：并行推进的同类对象数（乘数语义）。0 或 1 = 不放大
+	// （默认，向后兼容现状）；≥2 时与 MaxParallelSteps 相乘得有效波宽 E = max(1,N_step)
+	// × max(1,N_chain)，决定 selectInlineStepPeers 波宽与全局 AI 请求池容量。getter
+	// effectiveWaveWidth() 兜底各维度 ≥1。
+	MaxParallelChains int
 }
 
 // Option Agent 配置选项
@@ -131,6 +137,17 @@ func WithMaxParallelSteps(n int) Option {
 			return
 		}
 		c.MaxParallelSteps = n
+	}
+}
+
+// WithMaxParallelChains 设置链间维度并行同类对象数（乘数语义）。
+// 0/1 = 不放大（默认）；≥2 时与 MaxParallelSteps 相乘得有效波宽 E。
+func WithMaxParallelChains(n int) Option {
+	return func(c *AgentConfig) {
+		if c == nil {
+			return
+		}
+		c.MaxParallelChains = n
 	}
 }
 

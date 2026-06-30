@@ -36,6 +36,11 @@ type ReactConfig struct {
 	// MaxParallelSteps 同层 ready step 最大并发数（含主路径）。
 	// 0/1 = 串行（默认，向后兼容现状）；≥2 启用 X2 滚动 fan-out。
 	MaxParallelSteps int `yaml:"max_parallel_steps,omitempty"`
+
+	// MaxParallelChains 链间维度：并行推进的同类对象数（乘数语义）。
+	// 0/1 = 不放大（默认，向后兼容现状）；≥2 时与 MaxParallelSteps 相乘得有效波宽 E，
+	// 决定运行时 inline peer 波宽与全局 AI 请求池容量。
+	MaxParallelChains int `yaml:"max_parallel_chains,omitempty"`
 }
 
 type AppConfig struct {

@@ -28,6 +28,12 @@ type AgentFactory struct {
 	// WithFactoryMaxParallelSteps 注入；Build 时仅在 ≥2 时附加 react.WithMaxParallelSteps Option。
 	maxParallelSteps int
 
+	// maxParallelChains 链间维度：并行推进的同类对象数（乘数语义）。0 或 1 = 不放大
+	// （默认）。由 cmd/aster/main.go 从 AppConfig.React.MaxParallelChains 读取并通过
+	// WithFactoryMaxParallelChains 注入；与 maxParallelSteps 相乘得有效波宽 E，决定
+	// requestPool 容量；Build 时仅在 ≥2 时附加 react.WithMaxParallelChains Option。
+	maxParallelChains int
+
 	// requestPool 限流所有经本 factory 构造的 Agent 实例（root + 子 Agent + skill fork child）
 	// 的 outbound AI 请求并发。容量 = max(1, maxParallelSteps)；NewAgentFactory 末尾一次性初始化。
 	// AICallProxy / runStructuredOutputWithRetry 入口把 pool 注入 ctx，ai.ChatExWithOptions /
@@ -108,6 +114,14 @@ func WithFactoryMaxParallelSteps(n int) FactoryOption {
 	}
 }
 
+// WithFactoryMaxParallelChains 设置链间维度并行同类对象数（乘数语义）。
+// 0/1 = 不放大（保持现状）；≥2 时与 maxParallelSteps 相乘放大有效波宽 E 与 AI 请求池容量。
+func WithFactoryMaxParallelChains(n int) FactoryOption {
+	return func(f *AgentFactory) {
+		f.maxParallelChains = n
+	}
+}
+
 // NewAgentFactory creates a factory with the given options.
 func NewAgentFactory(opts ...FactoryOption) *AgentFactory {
 	f := &AgentFactory{}
@@ -116,14 +130,18 @@ func NewAgentFactory(opts ...FactoryOption) *AgentFactory {
 			opt(f)
 		}
 	}
-	// requestPool 容量按 maxParallelSteps 兜底 ≥1：root + 所有 child Agent 共享一把
-	// 信号量限制 outbound AI 请求并发，从源头防 N × N 级联放大（多 inline peer × 多
-	// sub_agent × 各自 think_act/plan/replan）。
-	poolCap := f.maxParallelSteps
-	if poolCap < 1 {
-		poolCap = 1
+	// requestPool 容量 = 有效波宽 E = max(1,N_step) × max(1,N_chain)：root + 所有 child
+	// Agent 共享一把信号量限制 outbound AI 请求并发，作为两维并发的单一兜底硬上限。
+	// N_chain=1 时退化为 max(1,N_step)，与引入链间维度前一致。
+	nStep := f.maxParallelSteps
+	if nStep < 1 {
+		nStep = 1
 	}
-	f.requestPool = newAgentRequestPool(poolCap)
+	nChain := f.maxParallelChains
+	if nChain < 1 {
+		nChain = 1
+	}
+	f.requestPool = newAgentRequestPool(nStep * nChain)
 	return f
 }
 
@@ -160,6 +178,10 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 	// sub_agent 自身不 spawn 远程 step（agentFactory 不注入），即使配置了也无副作用。
 	if f.maxParallelSteps >= 2 {
 		opts = append(opts, WithMaxParallelSteps(f.maxParallelSteps))
+	}
+	// 链间维度乘数：≥2 时附加；<2 保持 AgentConfig 零值 + effectiveWaveWidth() 兜底 ×1。
+	if f.maxParallelChains >= 2 {
+		opts = append(opts, WithMaxParallelChains(f.maxParallelChains))
 	}
 
 	// Policies

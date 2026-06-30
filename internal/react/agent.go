@@ -536,7 +536,7 @@ func (a *Agent) syncStepHistoryLayer(snapshot builtin_tools.StateSnapshot) {
 	if a == nil {
 		return
 	}
-	currentPhase := currentPhase(snapshot, a.maxParallelSteps())
+	currentPhase := currentPhase(snapshot, a.effectiveWaveWidth())
 	prevPhase := a.stepHistoryPhase
 	prevStepID := strings.TrimSpace(a.stepHistoryStepID)
 	prevPlanVer := a.stepHistoryPlanVer
@@ -884,4 +884,22 @@ func (a *Agent) maxParallelSteps() int {
 		return 1
 	}
 	return a.cfg.MaxParallelSteps
+}
+
+// maxParallelChains 链间维度乘数。nil 防御 + 默认 1（不放大）。0 / 负数回退到 1。
+func (a *Agent) maxParallelChains() int {
+	if a == nil || a.cfg == nil {
+		return 1
+	}
+	if a.cfg.MaxParallelChains < 1 {
+		return 1
+	}
+	return a.cfg.MaxParallelChains
+}
+
+// effectiveWaveWidth 有效波宽 E = max(1,N_step) × max(1,N_chain)：运行时 inline peer
+// 同波并发上限（含主路径），同时也是全局 AI 请求池容量的依据。N_chain=1 时退化为
+// maxParallelSteps()，行为与引入链间维度前完全一致。
+func (a *Agent) effectiveWaveWidth() int {
+	return a.maxParallelSteps() * a.maxParallelChains()
 }

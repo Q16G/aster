@@ -184,6 +184,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	})
 
 	maxParallelSteps := maxParallelStepsFromConfig(appCfg)
+	maxParallelChains := maxParallelChainsFromConfig(appCfg)
 	if maxParallelSteps >= 2 {
 		fmt.Fprintf(os.Stderr, "[aster] react.max_parallel_steps = %d (X2 滚动 fan-out 已启用)\n", maxParallelSteps)
 	} else {
@@ -201,6 +202,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		react.WithFactoryMCPManager(mcpManager),
 		react.WithFactoryPromptCacheConfig(providerCfg.PromptCache),
 		react.WithFactoryMaxParallelSteps(maxParallelSteps),
+		react.WithFactoryMaxParallelChains(maxParallelChains),
 	)
 
 	profileRegistry := tui.NewProfileRegistry()
@@ -300,6 +302,18 @@ func maxParallelStepsFromConfig(cfg *tui.AppConfig) int {
 		return 1
 	}
 	return cfg.React.MaxParallelSteps
+}
+
+// maxParallelChainsFromConfig 从 AppConfig 提取链间维度乘数。
+// nil 防御 + 默认 1（不放大）；0 / 负数兜底为 1。乘数语义不是准入门，clamp 到 1 安全。
+func maxParallelChainsFromConfig(cfg *tui.AppConfig) int {
+	if cfg == nil || cfg.React == nil {
+		return 1
+	}
+	if cfg.React.MaxParallelChains < 1 {
+		return 1
+	}
+	return cfg.React.MaxParallelChains
 }
 
 func chooseDefaultAgentDefinition(profiles []react.AgentDefinition, preferred string) react.AgentDefinition {
