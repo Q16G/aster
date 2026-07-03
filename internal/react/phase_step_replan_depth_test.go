@@ -4,86 +4,159 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"aster/internal/builtin_tools"
 )
+
+func activeReplanTool(t *testing.T) *submitReplanTool {
+	t.Helper()
+	phases := []*builtin_tools.PlanPhase{
+		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
+		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	}
+	plan := []*builtin_tools.PlanItem{
+		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
+		// phase-b 仍有 pending step，用于 completed-with-pending 守卫测试
+		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+	}
+	return newSubmitReplanTool(phases, plan)
+}
 
 // TestSubmitReplanTool_ReplanReasonRequired 校验 should_replan=true 时 replan_reason 必填。
 func TestSubmitReplanTool_ReplanReasonRequired(t *testing.T) {
 	args := map[string]any{
-		"should_replan":    true,
-		"replan_reason":    "",
-		"incomplete_items": []any{"接口 B 从未覆盖"},
+		"should_replan": true,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-a", "status": "continue"},
+		},
 	}
-	tool := newSubmitReplanTool()
-	_, err := tool.Execute(context.Background(), args)
-	if err == nil {
+	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
 		t.Fatalf("expected error when replan_reason is empty under should_replan=true")
 	}
 }
 
-// TestSubmitReplanTool_NoReplanSucceeds 校验 should_replan=false 时可以无三轴内容。
+// TestSubmitReplanTool_NoReplanSucceeds 校验 should_replan=false + 全 completed/blocked 可通过。
 func TestSubmitReplanTool_NoReplanSucceeds(t *testing.T) {
 	args := map[string]any{
-		"should_replan":      false,
-		"replan_reason":      "",
-		"current_phase_done": true,
+		"should_replan": false,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		},
 	}
-	tool := newSubmitReplanTool()
-	out, err := tool.Execute(context.Background(), args)
+	out, err := activeReplanTool(t).Execute(context.Background(), args)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out != `{"ok":true}` {
 		t.Fatalf("unexpected output: %s", out)
 	}
-	result := tool.getResult()
-	if result == nil {
-		t.Fatalf("result should be stored after successful Execute")
-	}
-	if result.ShouldReplan {
-		t.Fatalf("expected should_replan=false")
-	}
 }
 
-// TestSubmitReplanTool_ThreeAxesParsed 校验三轴字段正确解析。
-func TestSubmitReplanTool_ThreeAxesParsed(t *testing.T) {
+// TestSubmitReplanTool_PhaseAssessmentsParsed 校验 phase_assessments 与其三轴正确解析。
+func TestSubmitReplanTool_PhaseAssessmentsParsed(t *testing.T) {
 	args := map[string]any{
-		"should_replan":    true,
-		"replan_reason":    "发现多类缺口",
-		"incomplete_items": []any{"接口 B 从未覆盖（evidence: 目录清单第 7 行）"},
-		"depth_gaps":       []any{"auth 结论停在 JWT 层，未回溯到签发逻辑（evidence: digest 第 12 行）"},
-		"new_surfaces":     []any{"同目录下 /api/user/delete 未审计（evidence: 文件扫描）"},
+		"should_replan": true,
+		"replan_reason": "phase-a 仍有深度缺口",
+		"phase_assessments": []any{
+			map[string]any{
+				"phase_id":         "phase-a",
+				"status":           "continue",
+				"incomplete_items": []any{"接口 B 从未覆盖"},
+				"depth_gaps":       []any{"auth 结论停在 JWT 层"},
+				"new_surfaces":     []any{"/api/user/delete 未审计"},
+			},
+		},
 	}
-	tool := newSubmitReplanTool()
-	_, err := tool.Execute(context.Background(), args)
-	if err != nil {
+	tool := activeReplanTool(t)
+	if _, err := tool.Execute(context.Background(), args); err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
 	result := tool.getResult()
-	if result == nil {
-		t.Fatalf("result not stored")
+	if result == nil || !result.ShouldReplan || len(result.PhaseAssessments) != 1 {
+		t.Fatalf("unexpected result: %+v", result)
 	}
-	if !result.ShouldReplan {
-		t.Fatalf("expected should_replan=true")
+	a := result.PhaseAssessments[0]
+	if a.PhaseID != "phase-a" || a.Status != builtin_tools.PhaseAssessContinue {
+		t.Fatalf("assessment mismatch: %+v", a)
 	}
-	if len(result.IncompleteItems) != 1 {
-		t.Fatalf("expected 1 incomplete_item, got %d", len(result.IncompleteItems))
-	}
-	if len(result.DepthGaps) != 1 {
-		t.Fatalf("expected 1 depth_gap, got %d", len(result.DepthGaps))
-	}
-	if len(result.NewSurfaces) != 1 {
-		t.Fatalf("expected 1 new_surface, got %d", len(result.NewSurfaces))
+	if len(a.IncompleteItems) != 1 || len(a.DepthGaps) != 1 || len(a.NewSurfaces) != 1 {
+		t.Fatalf("axes not parsed: %+v", a)
 	}
 }
 
-// TestStepReplanModelOutput_ThreeAxesJSONTags 校验三轴字段 json tag 正确，且无 plan / 已删字段。
-func TestStepReplanModelOutput_ThreeAxesJSONTags(t *testing.T) {
+// TestSubmitReplanTool_UnknownPhaseIDRejected 校验 phase_id 必须是本轮 active phase。
+func TestSubmitReplanTool_UnknownPhaseIDRejected(t *testing.T) {
+	args := map[string]any{
+		"should_replan": true,
+		"replan_reason": "x",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-ghost", "status": "continue"},
+		},
+	}
+	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
+		t.Fatal("expected error for phase_id not in active phases")
+	}
+}
+
+// TestSubmitReplanTool_CompletedWithPendingRejected 校验 D7a①：completed 的 phase
+// 若仍有 pending step 则拒绝。
+func TestSubmitReplanTool_CompletedWithPendingRejected(t *testing.T) {
+	args := map[string]any{
+		"should_replan": false,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			// phase-b 仍有 pending step b1
+			map[string]any{"phase_id": "phase-b", "status": "completed"},
+		},
+	}
+	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
+		t.Fatal("expected error: completed phase must not have pending steps")
+	}
+}
+
+// TestSubmitReplanTool_ContinueRequiresShouldReplan 校验 D7a②：存在 continue ⇒ should_replan=true。
+func TestSubmitReplanTool_ContinueRequiresShouldReplan(t *testing.T) {
+	args := map[string]any{
+		"should_replan": false,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-a", "status": "continue"},
+		},
+	}
+	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
+		t.Fatal("expected error: continue assessment requires should_replan=true")
+	}
+}
+
+// TestSubmitReplanTool_BlockedAccepted 校验 blocked 状态被接受（其下 pending 由 runtime 收敛）。
+func TestSubmitReplanTool_BlockedAccepted(t *testing.T) {
+	args := map[string]any{
+		"should_replan": false,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-b", "status": "blocked", "reason": "外部依赖不可用"},
+		},
+	}
+	tool := activeReplanTool(t)
+	if _, err := tool.Execute(context.Background(), args); err != nil {
+		t.Fatalf("blocked assessment should be accepted: %v", err)
+	}
+	if tool.getResult().PhaseAssessments[0].Status != builtin_tools.PhaseAssessBlocked {
+		t.Fatal("expected blocked status stored")
+	}
+}
+
+// TestStepReplanModelOutput_JSONTags 校验输出 json tag：含 phase_assessments，
+// 不含已删的 current_phase_done / 顶层三轴 / next_phase。
+func TestStepReplanModelOutput_JSONTags(t *testing.T) {
 	out := stepReplanModelOutput{
-		ShouldReplan:    true,
-		ReplanReason:    "test",
-		IncompleteItems: []string{"item-a"},
-		DepthGaps:       []string{"gap-b"},
-		NewSurfaces:     []string{"surface-c"},
+		ShouldReplan: true,
+		ReplanReason: "test",
+		PhaseAssessments: []*builtin_tools.PhaseAssessment{
+			{PhaseID: "phase-a", Status: builtin_tools.PhaseAssessContinue},
+		},
 	}
 	raw, err := json.Marshal(out)
 	if err != nil {
@@ -93,127 +166,39 @@ func TestStepReplanModelOutput_ThreeAxesJSONTags(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	for _, key := range []string{"incomplete_items", "depth_gaps", "new_surfaces"} {
-		if _, ok := back[key]; !ok {
-			t.Fatalf("expected json key %q, got %s", key, string(raw))
-		}
+	if _, ok := back["phase_assessments"]; !ok {
+		t.Fatalf("expected json key phase_assessments, got %s", string(raw))
 	}
-	// 职责反转：step_replan 不再产出 next_phase / phase_shape_issue / next_goal。
-	for _, removed := range []string{"plan", "next_phase", "phase_shape_issue", "next_goal"} {
-		if _, ok := back[removed]; ok {
-			t.Fatalf("removed field %q must not appear in stepReplanModelOutput json: %s", removed, string(raw))
-		}
-	}
-}
-
-// TestSubmitReplanTool_InPhaseDepthGap 校验 in-phase 保底场景的结构：
-// 确认型发现未推深 → current_phase_done=false 且 depth_gaps 非空（planner 据此沿用当前 phase 深推）。
-func TestSubmitReplanTool_InPhaseDepthGap(t *testing.T) {
-	args := map[string]any{
-		"should_replan":      true,
-		"replan_reason":      "SQL 注入已检测坐实，但未按渗透角色职责链推进到利用/影响",
-		"current_phase_done": false,
-		"depth_gaps":         []any{"login.php?id 注入已确认，但未做利用与影响评估（evidence: result_file step-3 §2；确认型发现未按角色职责链推深）"},
-	}
-	tool := newSubmitReplanTool()
-	_, err := tool.Execute(context.Background(), args)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
-	result := tool.getResult()
-	if result == nil {
-		t.Fatalf("result not stored")
-	}
-	if result.CurrentPhaseDone {
-		t.Fatalf("expected current_phase_done=false (confirmed finding not yet deepened)")
-	}
-	if len(result.DepthGaps) != 1 {
-		t.Fatalf("expected 1 depth_gap, got %d", len(result.DepthGaps))
-	}
-}
-
-// TestSubmitReplanTool_PhaseDoneWithQueuedBacklog 校验阶段闭环信号：
-// current_phase_done=true 由 step_replan 报告（不附带选下一个 phase），planner 据信号决定切换。
-func TestSubmitReplanTool_PhaseDoneWithQueuedBacklog(t *testing.T) {
-	args := map[string]any{
-		"should_replan":      true,
-		"replan_reason":      "当前 phase 已从浅到深推到位，账本仍有同类对象排队",
-		"current_phase_done": true,
-		"incomplete_items":   []any{},
-		"depth_gaps":         []any{},
-		"new_surfaces":       []any{},
-	}
-	tool := newSubmitReplanTool()
-	_, err := tool.Execute(context.Background(), args)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
-	result := tool.getResult()
-	if result == nil {
-		t.Fatalf("result not stored")
-	}
-	if !result.CurrentPhaseDone {
-		t.Fatalf("expected current_phase_done=true")
-	}
-	if !result.ShouldReplan {
-		t.Fatalf("expected should_replan=true (backlog remains)")
-	}
-}
-
-// TestStepReplanModelOutput_CurrentPhaseDoneJSONTag 校验 current_phase_done 的 json tag 正确，
-// 且已删字段 next_phase / phase_shape_issue 不出现。
-func TestStepReplanModelOutput_CurrentPhaseDoneJSONTag(t *testing.T) {
-	out := stepReplanModelOutput{
-		ShouldReplan:     true,
-		ReplanReason:     "test",
-		CurrentPhaseDone: true,
-	}
-	raw, err := json.Marshal(out)
-	if err != nil {
-		t.Fatalf("marshal failed: %v", err)
-	}
-	var back map[string]any
-	if err := json.Unmarshal(raw, &back); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-	if _, ok := back["current_phase_done"]; !ok {
-		t.Fatalf("expected json key current_phase_done present, got %s", string(raw))
-	}
-	for _, removed := range []string{"next_phase", "phase_shape_issue"} {
+	for _, removed := range []string{"current_phase_done", "incomplete_items", "depth_gaps", "new_surfaces", "next_phase", "plan"} {
 		if _, ok := back[removed]; ok {
 			t.Fatalf("removed field %q must not appear: %s", removed, string(raw))
 		}
 	}
 }
 
-// TestSubmitReplanTool_ParametersSchema 校验 schema 含三轴 + current_phase_done，
-// 不含 plan / 已删的 next_phase / phase_shape_issue / next_goal，且三轴非必填。
+// TestSubmitReplanTool_ParametersSchema 校验 schema 含 phase_assessments，required 正确，
+// 不含已删字段。
 func TestSubmitReplanTool_ParametersSchema(t *testing.T) {
-	tool := newSubmitReplanTool()
-	params, ok := tool.Parameters().(map[string]any)
-	if !ok {
-		t.Fatalf("Parameters() is not map[string]any: %T", tool.Parameters())
-	}
-	props, ok := params["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("properties is not a map: %T", params["properties"])
-	}
-	for _, field := range []string{"should_replan", "replan_reason", "current_phase_done", "incomplete_items", "depth_gaps", "new_surfaces"} {
+	params := activeReplanTool(t).Parameters().(map[string]any)
+	props := params["properties"].(map[string]any)
+	for _, field := range []string{"should_replan", "replan_reason", "phase_assessments"} {
 		if _, ok := props[field]; !ok {
 			t.Fatalf("field %q missing from properties", field)
 		}
 	}
-	for _, removed := range []string{"plan", "next_phase", "phase_shape_issue", "next_goal"} {
+	for _, removed := range []string{"current_phase_done", "incomplete_items", "depth_gaps", "new_surfaces", "next_phase", "plan"} {
 		if _, ok := props[removed]; ok {
 			t.Fatalf("removed field %q must not appear in submit_replan schema", removed)
 		}
 	}
 	required, _ := params["required"].([]string)
-	for _, axis := range []string{"incomplete_items", "depth_gaps", "new_surfaces"} {
-		for _, r := range required {
-			if r == axis {
-				t.Fatalf("axis field %q must not be required (optional)", axis)
-			}
+	hasPA := false
+	for _, r := range required {
+		if r == "phase_assessments" {
+			hasPA = true
 		}
+	}
+	if !hasPA {
+		t.Fatal("phase_assessments must be required")
 	}
 }

@@ -74,6 +74,34 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 	}
 }
 
+// appendPlannerJournalPhaseRecords 把 step_replan 承接后状态变化的 phase 以 kind=phase
+// 增量落 planner.jsonl（同 id 覆盖），使 phase 状态与 plan 真相源同源、崩溃恢复可重建。
+func (a *Agent) appendPlannerJournalPhaseRecords(phases []*builtin_tools.PlanPhase, planVersion int) {
+	if a.workspaceRuntime == nil || len(phases) == 0 {
+		return
+	}
+	if planVersion <= 0 {
+		planVersion = 1
+	}
+	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(phases))
+	for _, phase := range phases {
+		if phase == nil {
+			continue
+		}
+		records = append(records, &builtin_tools.PlannerJournalRecord{
+			Kind:        builtin_tools.PlannerJournalKindPhase,
+			PlanVersion: planVersion,
+			Phase:       phase,
+		})
+	}
+	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
+		a.emitRuntimeLog("warn", "append planner journal phase records failed", a.state.Snapshot(), map[string]any{
+			"event": "planner_journal_phase_append_failed",
+			"error": err.Error(),
+		})
+	}
+}
+
 func emitTaskItemDiffs(emitter *Emitter, prev []*builtin_tools.PlanItem, next []*builtin_tools.PlanItem, currentStepID string, explanation string) {
 	if emitter == nil {
 		return

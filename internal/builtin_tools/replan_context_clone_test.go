@@ -27,23 +27,24 @@ func TestCloneReplanContext_DepthGaps(t *testing.T) {
 	}
 }
 
-// TestCloneReplanContext_CurrentPhase 校验阶段焦点字段被克隆且 trim。
-func TestCloneReplanContext_CurrentPhase(t *testing.T) {
+// TestCloneReplanContext_PhaseAssessments 校验 phase 评估被深拷贝。
+func TestCloneReplanContext_PhaseAssessments(t *testing.T) {
 	in := &ReplanContext{
 		SourceStepID: "step-3",
-		CurrentPhase: "  分析模块 A 的访问控制  ",
+		PhaseAssessments: []*PhaseAssessment{
+			{PhaseID: "phase-a", Status: PhaseAssessContinue, DepthGaps: []string{"g1"}},
+		},
 	}
 	out := CloneReplanContext(in)
 	if out == nil {
 		t.Fatal("clone returned nil")
 	}
-	if out.CurrentPhase != "分析模块 A 的访问控制" {
-		t.Fatalf("CurrentPhase not trimmed/cloned: %q", out.CurrentPhase)
+	if len(out.PhaseAssessments) != 1 || out.PhaseAssessments[0].PhaseID != "phase-a" {
+		t.Fatalf("phase_assessments not cloned: %+v", out.PhaseAssessments)
 	}
-	// 改动副本不回写
-	out.CurrentPhase = "mutated"
-	if in.CurrentPhase != "  分析模块 A 的访问控制  " {
-		t.Fatalf("mutation leaked: %q", in.CurrentPhase)
+	out.PhaseAssessments[0].DepthGaps[0] = "mutated"
+	if in.PhaseAssessments[0].DepthGaps[0] != "g1" {
+		t.Fatalf("mutation leaked: %+v", in.PhaseAssessments)
 	}
 }
 

@@ -16,21 +16,21 @@ import (
 type EventType string
 
 const (
-	EventTypeThink             EventType = "think"
-	EventTypeToolStart         EventType = "tool_start"
-	EventTypeToolEnd           EventType = "tool_end"
-	EventTypeAgentEnter        EventType = "agent_enter"
-	EventTypeAgentExit         EventType = "agent_exit"
-	EventTypeStateChange       EventType = "state_change"
-	EventTypeHumanRequest      EventType = "human_request"
-	EventTypeTaskPlan          EventType = "task_plan"
-	EventTypeTaskItem          EventType = "task_item"
-	EventTypeIteration         EventType = "iteration"
-	EventTypeResult            EventType = "result"
-	EventTypeToolUpdate        EventType = "tool_update"
-	EventTypeRetry             EventType = "retry"
-	EventTypeLog               EventType = "log"
-	EventTypeStream            EventType = "stream"
+	EventTypeThink        EventType = "think"
+	EventTypeToolStart    EventType = "tool_start"
+	EventTypeToolEnd      EventType = "tool_end"
+	EventTypeAgentEnter   EventType = "agent_enter"
+	EventTypeAgentExit    EventType = "agent_exit"
+	EventTypeStateChange  EventType = "state_change"
+	EventTypeHumanRequest EventType = "human_request"
+	EventTypeTaskPlan     EventType = "task_plan"
+	EventTypeTaskItem     EventType = "task_item"
+	EventTypeIteration    EventType = "iteration"
+	EventTypeResult       EventType = "result"
+	EventTypeToolUpdate   EventType = "tool_update"
+	EventTypeRetry        EventType = "retry"
+	EventTypeLog          EventType = "log"
+	EventTypeStream       EventType = "stream"
 	// EventTypeStreamEnd 是一次模型生成 streaming 结束的显式信号——TUI 端据此 flush
 	// 对应 (agentName, stepID) 桶，不再让结构事件（phase/iteration/tool_start/
 	// step_summary 等）反推「该 flush 哪个 buffer」。emitter 端在 AICallProxyStream
@@ -42,8 +42,8 @@ const (
 	EventTypeStepTriageResult  EventType = "step_triage_result"
 	EventTypeStepReplanResult  EventType = "step_replan_result"
 	EventTypeFinalAnswerResult EventType = "final_answer_result"
-	EventTypeSubAgentBgStart EventType = "subagent_bg_start"
-	EventTypeSubAgentBgEnd   EventType = "subagent_bg_end"
+	EventTypeSubAgentBgStart   EventType = "subagent_bg_start"
+	EventTypeSubAgentBgEnd     EventType = "subagent_bg_end"
 	// EventTypeInlineStepStart/End 是 inline step（commit 7-9 重构后的并发 step）卡片事件。
 	// 与 sub_agent 的 BgStart/BgEnd 同结构但 Kind 不同——drain 路径按 Kind 分流。
 	// 区分点是「是否独立 agent 实例」（sub_agent=out-of-line，inline_step=inline）而非
@@ -536,18 +536,32 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 	if result == nil {
 		return
 	}
+	completed, blocked, cont := 0, 0, 0
+	for _, assess := range result.PhaseAssessments {
+		if assess == nil {
+			continue
+		}
+		switch assess.Status {
+		case builtin_tools.PhaseAssessCompleted:
+			completed++
+		case builtin_tools.PhaseAssessBlocked:
+			blocked++
+		case builtin_tools.PhaseAssessContinue:
+			cont++
+		}
+	}
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeStepReplanResult,
 		NodeID: "step_replan_result",
 		Payload: map[string]any{
-			"step_id":       strings.TrimSpace(stepID),
-			"step_name":     strings.TrimSpace(stepName),
-			"should_replan":         result.ShouldReplan,
-			"replan_reason":         strings.TrimSpace(result.ReplanReason),
-			"current_phase_done":    result.CurrentPhaseDone,
-			"incomplete_items_size": len(result.IncompleteItems),
-			"depth_gaps_size":       len(result.DepthGaps),
-			"new_surfaces_size":     len(result.NewSurfaces),
+			"step_id":                strings.TrimSpace(stepID),
+			"step_name":              strings.TrimSpace(stepName),
+			"should_replan":          result.ShouldReplan,
+			"replan_reason":          strings.TrimSpace(result.ReplanReason),
+			"phase_assessments_size": len(result.PhaseAssessments),
+			"phase_continue_size":    cont,
+			"phase_completed_size":   completed,
+			"phase_blocked_size":     blocked,
 		},
 	})
 }

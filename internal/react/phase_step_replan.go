@@ -19,15 +19,30 @@ import (
 const submitReplanToolName = "submit_replan"
 
 // submitReplanTool 是 step_replan 阶段专属的提交工具，实现 Tool 接口。
-// Execute 完成参数解析与基本校验，成功时存储三轴结果；
+// Execute 完成参数解析与基本校验（含 phase_assessments 一致性守卫），成功时存储结果；
 // 失败时返回 error，由 executeToolCall 写入 tool result，模型自动重试。
 type submitReplanTool struct {
-	mu     sync.Mutex
-	result *stepReplanModelOutput
+	mu           sync.Mutex
+	result       *stepReplanModelOutput
+	activePhases map[string]struct{} // 本轮 frontier 的 active phase id 集，用于 phase_id 合法性校验
+	pendingByID  map[string]bool     // 各 phase 是否仍有 pending step，用于 completed-with-pending 守卫
 }
 
-func newSubmitReplanTool() *submitReplanTool {
-	return &submitReplanTool{}
+func newSubmitReplanTool(activePhases []*builtin_tools.PlanPhase, plan []*builtin_tools.PlanItem) *submitReplanTool {
+	ids := make(map[string]struct{}, len(activePhases))
+	pending := make(map[string]bool, len(activePhases))
+	for _, phase := range activePhases {
+		if phase == nil {
+			continue
+		}
+		id := strings.TrimSpace(phase.ID)
+		if id == "" {
+			continue
+		}
+		ids[id] = struct{}{}
+		pending[id] = builtin_tools.PhaseHasPendingStep(plan, id)
+	}
+	return &submitReplanTool{activePhases: ids, pendingByID: pending}
 }
 
 func (t *submitReplanTool) Name() string { return submitReplanToolName }
@@ -39,34 +54,53 @@ func (t *submitReplanTool) Description() string {
 func (t *submitReplanTool) Parameters() any {
 	return map[string]any{
 		"type":     "object",
-		"required": []string{"should_replan", "replan_reason", "current_phase_done"},
+		"required": []string{"should_replan", "replan_reason", "phase_assessments"},
 		"properties": map[string]any{
 			"should_replan": map[string]any{
 				"type":        "boolean",
-				"description": "账本 ## 未解决 存在可行动缺口（当前 phase 内或阶段外排队）且未被现有 pending 步骤完整覆盖时为 true，否则 false。",
+				"description": "本轮 frontier 内任一 active phase 仍有可行动缺口（continue）且未被现有 pending 步骤完整覆盖时为 true，否则 false。存在任一 status=continue 的 phase 时本字段必须为 true。",
 			},
 			"replan_reason": map[string]any{
 				"type":        "string",
-				"description": "should_replan=true 时填一句人类可读的缺口总括；false 时填空字符串。",
+				"description": "should_replan=true 时填一句人类可读的跨 phase 缺口总括；false 时填空字符串。",
 			},
-			"current_phase_done": map[string]any{
-				"type":        "boolean",
-				"description": "当前 phase 的 in-phase 深度是否已穷尽——仅信号，本阶段不选下一个 phase（保持/切换由 planner 读账本 + 本信号自决）。严格闸门：当且仅当当前 phase 内『可测的都测了、可深入的都深入了』——step card 区间 + 当前 phase（CURRENT_PHASE 范围内）三轴均空，且不存在可测未测、可深未深（所有确认型发现已按 agent role 职责链推进到最深相关决策层）→ true；任一残留 → false。",
-			},
-			"incomplete_items": map[string]any{
+			"phase_assessments": map[string]any{
 				"type":        "array",
-				"description": "轴①存在性（限 CURRENT_PHASE 范围内，当前 phase 投影）：在当前深度优先阶段内、根本没做或仍悬而未决的项，驱动补齐。不含「做了但不扎实」（属 depth_gaps）。阶段外的同级排队面缺口不进此字段，仅留账本「待承接（深度优先排队）」由 planner 后续切换承接。",
-				"items":       map[string]any{"type": "string"},
-			},
-			"depth_gaps": map[string]any{
-				"type":        "array",
-				"description": "轴②深度/质量（限 CURRENT_PHASE 范围内，当前 phase 投影）：当前阶段内做了但不扎实的项（" + builtin_tools.DepthSmellsEnumeration + "），驱动深挖。即使轴①为空也须独立判定。阶段外同级排队面缺口不进此字段。",
-				"items":       map[string]any{"type": "string"},
-			},
-			"new_surfaces": map[string]any{
-				"type":        "array",
-				"description": "轴③泛化扩面（限 CURRENT_PHASE 范围内，当前 phase 投影）：理论全量覆盖集 = {在 scope 内 ∩ CURRENT_PHASE 范围内的对象集} × {role 职责维度集} 与所有已完成工作的差集；阶段外同级新面（含同对象更深层）的发现由 role 全量全半径核验只登账本「待承接（深度优先排队）」不入轴，由 planner 后续切换承接。受 GOAL_UNDERSTANDING 范围边界约束，意图外/明确不做项降级沉回 `## 不可解局限`。",
-				"items":       map[string]any{"type": "string"},
+				"description": "对本轮 frontier 内每个 active phase 独立给出一条评估。逐个判定，不要合并多个 phase。",
+				"items": map[string]any{
+					"type":     "object",
+					"required": []string{"phase_id", "status"},
+					"properties": map[string]any{
+						"phase_id": map[string]any{
+							"type":        "string",
+							"description": "被评估的 active phase id，必须是本轮 frontier 内的有效 active phase。",
+						},
+						"status": map[string]any{
+							"type":        "string",
+							"enum":        []string{"continue", "completed", "blocked"},
+							"description": "continue=该 lane 仍有 in-phase 深度可推进，下一轮 planner 继续释放其 step（要求 should_replan=true）；completed=该 lane 已闭环（其下不得残留 pending step，可测的都测了、可深入的都深入了）；blocked=该 lane 受阻，其下 pending step 将被收敛为 skipped，阻因须记入账本。",
+						},
+						"reason": map[string]any{
+							"type":        "string",
+							"description": "该 phase 判定的一句话依据。",
+						},
+						"incomplete_items": map[string]any{
+							"type":        "array",
+							"description": "轴①存在性（限本 phase 范围内）：该 lane 内根本没做或仍悬而未决的项，驱动补齐。不含「做了但不扎实」（属 depth_gaps）。跨 phase 的新面只登账本「待承接」，不进此字段。",
+							"items":       map[string]any{"type": "string"},
+						},
+						"depth_gaps": map[string]any{
+							"type":        "array",
+							"description": "轴②深度/质量（限本 phase 范围内）：该 lane 内做了但不扎实的项（" + builtin_tools.DepthSmellsEnumeration + "），驱动深挖。即使轴①为空也须独立判定。",
+							"items":       map[string]any{"type": "string"},
+						},
+						"new_surfaces": map[string]any{
+							"type":        "array",
+							"description": "轴③泛化扩面（限本 phase 范围内）：该 lane 理论全量覆盖集与已完成工作的差集；跨 phase 的同级新面由 role 全量核验只登账本「待承接」不入此字段。受 GOAL_UNDERSTANDING 范围边界约束。",
+							"items":       map[string]any{"type": "string"},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -84,6 +118,38 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 	if result.ShouldReplan && strings.TrimSpace(result.ReplanReason) == "" {
 		return "", fmt.Errorf("submit_replan: should_replan=true but replan_reason is empty")
 	}
+
+	hasContinue := false
+	for _, assess := range result.PhaseAssessments {
+		if assess == nil {
+			continue
+		}
+		phaseID := builtin_tools.CanonicalizePlanIDToken(assess.PhaseID)
+		if phaseID == "" {
+			return "", fmt.Errorf("submit_replan: phase_assessments[].phase_id is required")
+		}
+		assess.PhaseID = phaseID
+		if _, ok := t.activePhases[phaseID]; !ok {
+			return "", fmt.Errorf("submit_replan: phase_id %q 不属于本轮 frontier 的 active phase，只能评估当前活跃 lane", phaseID)
+		}
+		switch assess.Status {
+		case builtin_tools.PhaseAssessContinue:
+			hasContinue = true
+		case builtin_tools.PhaseAssessCompleted:
+			// D7a①：completed 的 lane 不容残留 pending step（completed=已闭环语义）。
+			if t.pendingByID[phaseID] {
+				return "", fmt.Errorf("submit_replan: phase %q 判为 completed 但其下仍有 pending step——completed 表示 lane 已闭环，请改判 continue（继续推进）或先让 pending step 落定", phaseID)
+			}
+		case builtin_tools.PhaseAssessBlocked:
+		default:
+			return "", fmt.Errorf("submit_replan: phase %q 的 status 非法（须为 continue|completed|blocked）", phaseID)
+		}
+	}
+	// D7a②：存在 continue 的 phase ⇒ should_replan 必须为 true，否则 continue 语义被静默丢弃。
+	if hasContinue && !result.ShouldReplan {
+		return "", fmt.Errorf("submit_replan: 存在 status=continue 的 phase，should_replan 必须为 true（继续推进该 lane 需回流 planner 释放 step）")
+	}
+
 	r := result
 	t.mu.Lock()
 	t.result = &r
@@ -100,13 +166,10 @@ func (t *submitReplanTool) getResult() *stepReplanModelOutput {
 type stepReplanModelOutput struct {
 	ShouldReplan bool   `json:"should_replan"`
 	ReplanReason string `json:"replan_reason"`
-	// CurrentPhaseDone 是「当前 phase in-phase 深度已穷尽」信号（仅信号，本阶段不选下一个 phase）。
-	// 严格闸门：视角①(step card) + 视角③(role ∩ current_phase) 三轴均空，且无可测未测、无可深未深
-	// （所有确认型发现已按 agent role 职责链推进到最深相关决策层）→ true。保持/切换由 planner 自决。
-	CurrentPhaseDone bool     `json:"current_phase_done"`
-	IncompleteItems  []string `json:"incomplete_items,omitempty"` // 轴①存在性缺口（限 CURRENT_PHASE 范围内）
-	DepthGaps        []string `json:"depth_gaps,omitempty"`       // 轴②深度缺口（限 CURRENT_PHASE 范围内）
-	NewSurfaces      []string `json:"new_surfaces,omitempty"`     // 轴③扩面缺口（限 CURRENT_PHASE 范围内）
+	// PhaseAssessments 是对本轮 frontier 内各 active phase 的逐个评估（continue/completed/blocked
+	// + 该 phase 范围内三轴缺口）。runtime 机械承接：completed/blocked 写回 PlanPhase.Status，
+	// blocked 联动 skip 其下 pending step；continue 汇总三轴回流 planner 继续释放 step。
+	PhaseAssessments []*builtin_tools.PhaseAssessment `json:"phase_assessments,omitempty"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -216,7 +279,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
-	submitTool := newSubmitReplanTool()
+	activePhases := builtin_tools.ActivePhases(snapshot.Phases)
+	submitTool := newSubmitReplanTool(activePhases, snapshot.Plan)
 	if err := a.registerTool(submitTool); err != nil {
 		return fmt.Errorf("register submit_replan tool: %w", err)
 	}
@@ -227,7 +291,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
 		"goal_understanding":     snapshot.GoalUnderstanding,
-		"current_phase":          snapshot.CurrentPhase,
+		"active_phases":          activePhases,
 		"input_timeline":         snapshot.InputTimeline,
 		"review_window":          reviewWin,
 		"plan_overview":          ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
@@ -308,26 +372,42 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 }
 
-// applyReplanDecision 把 step_replan 的复核结论构造成 ReplanContext 路由回 planner；
-// should_replan=false 时无重编排，继续执行下一个可跑 step 或走向 final_answer。
+// applyReplanDecision 把 step_replan 的复核结论承接进 phase 状态并构造 ReplanContext。
+// 机械承接顺序（D7）：先 ApplyPhaseAssessments（completed/blocked 写回 PlanPhase.Status +
+// blocked 联动 skip 其下 pending step + append kind=phase journal），再据 should_replan
+// 决定是否回流 planner。
 //
-// 职责反转：step_replan 只维护账本 + 报告 current_phase_done 信号，不再选下一个 phase。
-// CurrentPhase 原样透传当前阶段（不变），由 planner 读账本 + current_phase_done 自决保持还是切换：
-//   - current_phase_done=false → planner 沿用当前阶段，编排更深 in-phase step；
-//   - current_phase_done=true  → planner 从账本「待承接排队」候选选下一阶段。
+// 职责反转：step_replan 只维护账本 + 逐 phase 报告 assessment，不选下一个 phase；
+// 各 lane 继续释放 step 还是收束由 planner 读 phase_assessments 自决。
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
+	// 先承接 phase 评估：写回 phase 状态、blocked 联动 skip、增量落 journal。
+	if changed, updated := a.state.ApplyPhaseAssessments(decision.PhaseAssessments); len(changed) > 0 {
+		snapshot = updated
+		a.appendPlannerJournalPhaseRecords(changed, snapshot.PlanVersion)
+	}
+
 	if !decision.ShouldReplan {
 		return a.applyReplanResult(stepID, &decision, nil, nil, snapshot, "")
+	}
+
+	// 汇总 continue 型 phase 的三轴缺口回流 planner（sticky ReplanContext 轴 = 各 lane 并集）。
+	var incomplete, depth, surfaces []string
+	for _, assess := range decision.PhaseAssessments {
+		if assess == nil || assess.Status != builtin_tools.PhaseAssessContinue {
+			continue
+		}
+		incomplete = append(incomplete, assess.IncompleteItems...)
+		depth = append(depth, assess.DepthGaps...)
+		surfaces = append(surfaces, assess.NewSurfaces...)
 	}
 	rc := &builtin_tools.ReplanContext{
 		SourceStepID:     stepID,
 		Reason:           decision.ReplanReason,
-		IncompleteItems:  builtin_tools.NewAxisItems(decision.IncompleteItems),
-		DepthGaps:        builtin_tools.NewAxisItems(decision.DepthGaps),
-		NewSurfaces:      builtin_tools.NewAxisItems(decision.NewSurfaces),
+		IncompleteItems:  builtin_tools.NewAxisItems(incomplete),
+		DepthGaps:        builtin_tools.NewAxisItems(depth),
+		NewSurfaces:      builtin_tools.NewAxisItems(surfaces),
 		ReplacePending:   true,
-		CurrentPhase:     strings.TrimSpace(snapshot.CurrentPhase),
-		CurrentPhaseDone: decision.CurrentPhaseDone,
+		PhaseAssessments: builtin_tools.ClonePhaseAssessments(decision.PhaseAssessments),
 	}
 	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
 }

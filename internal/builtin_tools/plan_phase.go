@@ -245,6 +245,42 @@ func NextFrontierPlanStepID(plan []*PlanItem, phases []*PlanPhase) string {
 	return ""
 }
 
+// ActivePhases 返回本轮处于活跃态的 phase：未 terminal 且已解锁（depends_on 全 terminal）。
+// step_replan 对这批 phase 逐个输出 phase_assessments。
+func ActivePhases(phases []*PlanPhase) []*PlanPhase {
+	if len(phases) == 0 {
+		return nil
+	}
+	byID := planPhasesByID(phases)
+	var out []*PlanPhase
+	for _, phase := range phases {
+		if phase == nil || phase.Terminal() {
+			continue
+		}
+		if phaseUnlocked(phase, byID) {
+			out = append(out, phase)
+		}
+	}
+	return out
+}
+
+// PhaseHasPendingStep 判断某 phase 下是否仍有 pending step（供 completed-with-pending 守卫）。
+func PhaseHasPendingStep(plan []*PlanItem, phaseID string) bool {
+	phaseID = strings.TrimSpace(phaseID)
+	if phaseID == "" {
+		return false
+	}
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		if item.Status == PlanStepPending && strings.TrimSpace(item.PhaseID) == phaseID {
+			return true
+		}
+	}
+	return false
+}
+
 // AllPhasesSettled 判断所有 phase 是否已收束（completed/blocked）。
 // 空清单视为已收束（无 phase 上下文时不阻塞收尾）。
 func AllPhasesSettled(phases []*PlanPhase) bool {

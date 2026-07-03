@@ -397,15 +397,6 @@ type ReplanContext struct {
 	ReplacePending  bool        `json:"replace_pending,omitempty"`
 	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
 	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
-	// CurrentPhase 透传给 planner 作为本回合的当前深度优先阶段（原样不变）：
-	// 职责反转后 step_replan 不再选下一个 phase，planner 读账本「待承接排队」候选 + CurrentPhaseDone
-	// 信号自决保持还是切换。submit_plan.current_phase 由 planner 自决回填到 TaskPlannerResult.CurrentPhase。
-	CurrentPhase string `json:"current_phase,omitempty"`
-	// CurrentPhaseDone 是 step_replan 报告的「当前 phase in-phase 深度已穷尽」信号（严格闸门：
-	// 无可测未测、无可深未深）。planner 据此决定沿用当前阶段深推（false）还是切换下一阶段（true）。
-	// 不加 omitempty：false 是「保持当前阶段继续深推」的关键信号，须显式出现在注入 planner 的
-	// REPLAN_CONTEXT JSON 中，不能因零值被省略而让 planner 无法区分 false 与缺省。
-	CurrentPhaseDone bool `json:"current_phase_done"`
 	// PhaseAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
 	// 回流给下一轮 planner 决定各 lane 继续释放 step 还是收束。
 	PhaseAssessments []*PhaseAssessment `json:"phase_assessments,omitempty"`
