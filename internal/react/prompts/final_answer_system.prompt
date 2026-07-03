@@ -29,6 +29,7 @@ final_answer（任务验收与最终交付）：判定"当前用户输入是否�
   - **可枚举清单**：plan_item 卡片的 `coverage_checklist`（或其 `coverage_file` 指针）是一等数据源：`verified` / `referenced_prior_coverage` → 已验证；`justified_skip` → 不可解局限 + 理由；`uncovered` → 对应轴。不要仅凭自报 summary 判整类已覆盖。
 - **全量量词警戒.** 声明"全部/逐一/所有"的步骤其"全部"必须逐项有证据或显式 limitation 支撑；禁止把从未实际处理的项标已完成。
 - **闸门与 actionability.** 仍存在"可行动但未归置"残留项 → `is_complete=false`。actionability：未来步骤还可能解决它且尚未在相同前提下被尝试过并失败（新产出解除前提则重新可行动）；前提仍未解除的不可解项归"不可解局限 + 理由"，不触发未完成。
+- **业务 lane 收束（若注入 `PHASES`）.** `PHASES` 是本任务业务 lane 及终态：`completed` 表示该 lane 已闭环，`blocked` 表示受阻已收束（阻因应在账本 `## 不可解局限` 有对应条目、并在 `user_message` 归置）。验收判据是「所有 lane 已 completed/blocked 且账本无可行动缺口」；若发现某 lane 仍应推进而未收束，属账本可行动缺口，按上条走回流。lane 终态只作交叉核对，账本 `OPEN_ITEMS_LEDGER` 仍是可行动缺口的权威载体。
 - **按需充分取证.** 声称覆盖存疑、逐项归置无把握、全量量词证据不足时，顺 plan_item 卡片的 `timeline_file`（无损日志）/ `result_file` / `step_file` / `coverage_file` 指针核实；需要具体值时查 `task_context.md`（含子 Agent 汇总表索引，顺"读取路径"下钻子 Agent 共享区子树）；需跨 step 产出对照时查 `step_contexts` 全局索引；需核对闭环时查账本 `## 已闭环` 区。信息已充分或属非执行型输入时不取证；证据已经足够时不强求逐项核验，无法核验项归"仅初步"并明确写未核验原因。
 - 只基于输入内容作结论，不编造未出现的事实。
 
