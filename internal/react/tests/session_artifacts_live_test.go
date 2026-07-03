@@ -111,7 +111,7 @@ func TestSessionArtifacts_LiveZenSingleStep(t *testing.T) {
 		WithEmitter(emitter),
 		WithMaxIterations(20),
 		WithTools(listTool, readTool),
-		// 写能力是 agent 的设计前提（共享区维护职责依赖 bash），live 测试同样必须具备。
+		// 写入能力是 agent 的设计前提，live 测试同样必须具备。
 		WithBashTool(&BashToolConfig{
 			PermCtx: &builtin_tools.BashPermissionContext{
 				Mode:        builtin_tools.PermissionModeYOLO,
@@ -229,7 +229,7 @@ func TestSessionArtifacts_LiveZenSingleStep(t *testing.T) {
 	t.Logf("  cat  %s/open_items.md", sharedDir)
 }
 
-// TestSessionArtifacts_LivePlannerInputFacts 验证 plan 阶段具备 bash 写能力时，
+// TestSessionArtifacts_LivePlannerInputFacts 验证 plan 阶段具备写入能力时，
 // planner 在用户输入回合按「共享区终态」契约把输入中的确定事实落进
 // task_context.md 的 `## 输入事实` 节（提交计划前完成）。
 // 模型与 key 读取与 zen_cache 测试一致（ZEN_LIVE_API_KEY / ZEN_LIVE_KEY_FILE）。

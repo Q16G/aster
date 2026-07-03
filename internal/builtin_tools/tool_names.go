@@ -11,6 +11,9 @@ const (
 
 	ListFilesToolName      = "list_files"
 	ReadFileToolName       = "read_file"
+	WriteToolName          = "write"
+	EditToolName           = "edit"
+	NotebookEditToolName   = "notebook_edit"
 	RgToolName             = "rg"
 	BashToolName           = "bash"
 	PowerShellToolName     = "powershell"

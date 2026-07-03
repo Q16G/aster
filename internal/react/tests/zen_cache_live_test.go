@@ -136,7 +136,7 @@ func TestZenLive_PromptSplitCacheProfile(t *testing.T) {
 		WithEmitter(emitter),
 		WithMaxIterations(28),
 		WithTools(listTool, readTool),
-		// 写能力是 agent 的设计前提（共享区维护职责依赖 bash），live 测试同样必须具备。
+		// 写入能力是 agent 的设计前提，live 测试同样必须具备。
 		WithBashTool(&BashToolConfig{
 			PermCtx: &builtin_tools.BashPermissionContext{
 				Mode:        builtin_tools.PermissionModeYOLO,

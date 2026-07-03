@@ -210,6 +210,9 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		WithEmitter(NewDummyEmitter()),
 		WithTool(&orderedTool{name: builtin_tools.ReadFileToolName}),
 		WithTool(&orderedTool{name: builtin_tools.ListFilesToolName}),
+		WithTool(&orderedTool{name: builtin_tools.WriteToolName}),
+		WithTool(&orderedTool{name: builtin_tools.EditToolName}),
+		WithTool(&orderedTool{name: builtin_tools.NotebookEditToolName}),
 		WithTool(&orderedTool{name: builtin_tools.RgToolName}),
 		WithTool(&orderedTool{name: builtin_tools.SkillToolName}),
 		WithTool(&orderedTool{name: builtin_tools.SubAgentToolName}),
@@ -224,10 +227,13 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 	}
 
 	commonAllowed := map[string]struct{}{
-		builtin_tools.ReadFileToolName:  {},
-		builtin_tools.ListFilesToolName: {},
-		builtin_tools.RgToolName:        {},
-		builtin_tools.BashToolName:      {},
+		builtin_tools.ReadFileToolName:     {},
+		builtin_tools.ListFilesToolName:    {},
+		builtin_tools.WriteToolName:        {},
+		builtin_tools.EditToolName:         {},
+		builtin_tools.NotebookEditToolName: {},
+		builtin_tools.RgToolName:           {},
+		builtin_tools.BashToolName:         {},
 	}
 	commonForbidden := []string{
 		builtin_tools.SkillToolName,
@@ -247,6 +253,9 @@ func TestBuildFunctionTools_PlanAndReplanUseAllowlist(t *testing.T) {
 		builtin_tools.AgentPhasePlan: {
 			builtin_tools.ReadFileToolName:       {},
 			builtin_tools.ListFilesToolName:      {},
+			builtin_tools.WriteToolName:          {},
+			builtin_tools.EditToolName:           {},
+			builtin_tools.NotebookEditToolName:   {},
 			builtin_tools.RgToolName:             {},
 			builtin_tools.BashToolName:           {},
 			builtin_tools.HumanConfirmToolName:   {},
@@ -328,6 +337,12 @@ func TestBuildFunctionTools_FollowsRegistrationOrder(t *testing.T) {
 		"z-last",
 		"a-middle",
 		"m-final",
+		builtin_tools.ListFilesToolName,
+		builtin_tools.ReadFileToolName,
+		builtin_tools.WriteToolName,
+		builtin_tools.EditToolName,
+		builtin_tools.NotebookEditToolName,
+		builtin_tools.RgToolName,
 	}
 	if len(names) != len(expected) {
 		t.Fatalf("unexpected tool count: got %v want %v", names, expected)

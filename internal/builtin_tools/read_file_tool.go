@@ -27,9 +27,15 @@ const (
 	readFileBinaryDetectBytes          = 8192
 )
 
-type ReadFileTool struct{}
+type ReadFileTool struct {
+	observations *FileObservationStore
+}
 
 func NewReadFileTool() *ReadFileTool { return &ReadFileTool{} }
+
+func NewReadFileToolWithObservations(store *FileObservationStore) *ReadFileTool {
+	return &ReadFileTool{observations: store}
+}
 
 func (t *ReadFileTool) Name() string { return ReadFileToolName }
 
@@ -127,7 +133,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]any) (string
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", fmt.Errorf("seek file: %w", err)
 	}
-	return readTextPage(ctx, absPath, f, offset, limit)
+	return readTextPage(ctx, absPath, f, info, offset, limit, t.observations)
 }
 
 func readDirectoryPage(absPath string, _ os.FileInfo, offset, limit int64) (string, error) {
@@ -186,7 +192,7 @@ func readDirectoryPage(absPath string, _ os.FileInfo, offset, limit int64) (stri
 	return string(out), nil
 }
 
-func readTextPage(ctx context.Context, absPath string, f *os.File, offset, limit int64) (string, error) {
+func readTextPage(ctx context.Context, absPath string, f *os.File, info os.FileInfo, offset, limit int64, observations *FileObservationStore) (string, error) {
 	reader := bufio.NewReaderSize(f, 32*1024)
 
 	var (
@@ -275,6 +281,16 @@ func readTextPage(ctx context.Context, absPath string, f *os.File, offset, limit
 		payload["message"] = "read_file 当前页首行过长，已在单行内部截断并以 ... 标记；若需要精确定位内容，请优先使用 rg。"
 	} else if hasMore {
 		payload["message"] = ReadFilePageMessage(nextOffset, limit, "行")
+	}
+
+	if observations != nil && offset == 0 && !hasMore && !truncated {
+		observations.Record(FileObservation{
+			Path:           absPath,
+			Content:        normalizeCRLF(sb.String()),
+			ModTime:        info.ModTime(),
+			ModTimeMillis:  info.ModTime().UnixMilli(),
+			ReadCredential: true,
+		})
 	}
 
 	out, _ := json.Marshal(payload)

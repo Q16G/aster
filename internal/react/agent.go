@@ -78,12 +78,13 @@ type Agent struct {
 	// identityEnv* run 内稳定（agent 启动后不变直到下次 run）。多 peer 并发
 	// thinkActPartsForStep 会同时调 identityEnvBlock，旧版无锁导致 race。
 	// identityEnvMu 保护双字段，double-check 模式见 identityEnvBlock。
-	identityEnvMu       sync.RWMutex
-	identityEnvPrompt   string
-	identityEnvBuilt    bool
-	frozenStepCache     *frozenStepPromptCache
-	currentResultSource ResultSource
-	workspaceRuntime    builtin_tools.WorkspaceRuntime
+	identityEnvMu        sync.RWMutex
+	identityEnvPrompt    string
+	identityEnvBuilt     bool
+	frozenStepCache      *frozenStepPromptCache
+	currentResultSource  ResultSource
+	workspaceRuntime     builtin_tools.WorkspaceRuntime
+	fileObservationStore *builtin_tools.FileObservationStore
 	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
 	stepFileGateMu         sync.Mutex
 	stepFileGateRejections map[string]int
@@ -202,14 +203,15 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 	}
 
 	agent := &Agent{
-		agentName:       name,
-		cfg:             cfg,
-		tools:           utils.NewOrderMapx[string, Tool](),
-		promptManager:   cfg.PromptManager,
-		state:           NewStateTracker(),
-		handoff:         &handoffState{},
-		stepHistories:   make(map[string]*stepHistoryBucket),
-		frozenStepCache: newFrozenStepPromptCache(),
+		agentName:            name,
+		cfg:                  cfg,
+		tools:                utils.NewOrderMapx[string, Tool](),
+		promptManager:        cfg.PromptManager,
+		state:                NewStateTracker(),
+		handoff:              &handoffState{},
+		stepHistories:        make(map[string]*stepHistoryBucket),
+		frozenStepCache:      newFrozenStepPromptCache(),
+		fileObservationStore: builtin_tools.NewFileObservationStore(),
 	}
 
 	if cfg.Emitter == nil {
@@ -270,6 +272,22 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 		if tool == nil {
 			continue
 		}
+		if err := agent.registerTool(tool); err != nil {
+			return nil, err
+		}
+	}
+	fileStore := agent.GetFileObservationStore()
+	// Register these after profile/config tools so the builtin implementations
+	// are present for every agent and win over any same-named profile entries.
+	defaultFileTools := []Tool{
+		builtin_tools.NewListFilesTool(),
+		builtin_tools.NewReadFileToolWithObservations(fileStore),
+		builtin_tools.NewWriteTool(fileStore),
+		builtin_tools.NewEditTool(fileStore),
+		builtin_tools.NewNotebookEditTool(fileStore),
+		builtin_tools.NewRgTool(),
+	}
+	for _, tool := range defaultFileTools {
 		if err := agent.registerTool(tool); err != nil {
 			return nil, err
 		}
@@ -866,6 +884,16 @@ func (a *Agent) GetOnHumanInput() builtin_tools.OnHumanInputFunc {
 		return nil
 	}
 	return a.cfg.OnHumanInput
+}
+
+func (a *Agent) GetFileObservationStore() *builtin_tools.FileObservationStore {
+	if a == nil {
+		return nil
+	}
+	if a.fileObservationStore == nil {
+		a.fileObservationStore = builtin_tools.NewFileObservationStore()
+	}
+	return a.fileObservationStore
 }
 
 // maxParallelSteps 返回同层 ready step 最大并发数（含主路径）。

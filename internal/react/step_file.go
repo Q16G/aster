@@ -33,7 +33,7 @@ func legacyStepFileExists(sharedDir, stepID string) bool {
 }
 
 // stepFileExists 判定新布局过程文件是否存在——只看是否能 Stat，不看大小。
-// AI 中途经 bash 把过程文件短暂写为 0 字节（heredoc rewrite / mv 替换 / write 失败重试）
+// 写入工具中途把过程文件短暂写为 0 字节（rewrite / mv 替换 / 写入失败重试）
 // 仍应被认作"存在"，否则 readSharedStepFileForPrompt 会跌回 legacy 路径读到老 session
 // 残留的 shared/<stepID>/step.md。legacyStepFileExists 保留 size>0（旧文件价值在内容）。
 func stepFileExists(sharedDir, stepID string) bool {
