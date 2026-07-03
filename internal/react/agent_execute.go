@@ -1195,6 +1195,9 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 		switch toolName {
 		case builtin_tools.ReadFileToolName,
 			builtin_tools.ListFilesToolName,
+			builtin_tools.WriteToolName,
+			builtin_tools.EditToolName,
+			builtin_tools.NotebookEditToolName,
 			builtin_tools.RgToolName,
 			builtin_tools.BashToolName,
 			// planner 阶段开放子 Agent 委派族，供专业视角差异、独立可并行调研子问题、
@@ -1214,6 +1217,9 @@ func (a *Agent) toolEnabledInPhase(toolName string, phase builtin_tools.AgentPha
 		switch toolName {
 		case builtin_tools.ReadFileToolName,
 			builtin_tools.ListFilesToolName,
+			builtin_tools.WriteToolName,
+			builtin_tools.EditToolName,
+			builtin_tools.NotebookEditToolName,
 			builtin_tools.RgToolName,
 			builtin_tools.BashToolName,
 			submitReplanToolName:

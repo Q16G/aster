@@ -358,7 +358,7 @@ func (t *SubAgentTool) resolveChildToolNames(requested []string) []string {
 	return t.withBaselineDomainTools(result)
 }
 
-// withBaselineDomainTools unions the read-only builtin domain tools into names,
+// withBaselineDomainTools unions the builtin file/search tools into names,
 // guarded by registry.Has and de-duplicated, preserving the original order.
 func (t *SubAgentTool) withBaselineDomainTools(names []string) []string {
 	seen := make(map[string]struct{}, len(names)+len(baselineDomainToolNames))
@@ -378,7 +378,7 @@ func (t *SubAgentTool) withBaselineDomainTools(names []string) []string {
 	return names
 }
 
-// baselineDomainToolNames are the read-only builtin domain tools every agent
+// baselineDomainToolNames are the builtin file/search tools every agent
 // (including sub-agents) must always have. They are registry-resident "common
 // utilities" (see NewDefaultToolRegistry) and plan/replan/final prompts assume
 // their presence, so they are unioned into every child's ToolNames regardless
@@ -386,6 +386,9 @@ func (t *SubAgentTool) withBaselineDomainTools(names []string) []string {
 var baselineDomainToolNames = []string{
 	builtin_tools.ReadFileToolName,
 	builtin_tools.ListFilesToolName,
+	builtin_tools.WriteToolName,
+	builtin_tools.EditToolName,
+	builtin_tools.NotebookEditToolName,
 	builtin_tools.RgToolName,
 }
 

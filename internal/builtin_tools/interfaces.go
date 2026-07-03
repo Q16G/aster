@@ -79,4 +79,5 @@ type ToolContext interface {
 	GetAIClient() ai.ChatClient
 	GetHistory() []*ai.MsgInfo
 	GetOnHumanInput() OnHumanInputFunc
+	GetFileObservationStore() *FileObservationStore
 }

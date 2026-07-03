@@ -18,9 +18,9 @@ type noopEmitter struct{}
 
 func (noopEmitter) EmitThink(iteration int, content string, thinkContent string, reasoningContent string, toolCalls any, finishReason string, stepID string) {
 }
-func (noopEmitter) EmitToolStart(iteration int, call ToolCall, stepID string)        {}
-func (noopEmitter) EmitToolEnd(iteration int, result ToolResult, stepID string)      {}
-func (noopEmitter) EmitStateChange(snapshot StateSnapshot)            {}
+func (noopEmitter) EmitToolStart(iteration int, call ToolCall, stepID string)              {}
+func (noopEmitter) EmitToolEnd(iteration int, result ToolResult, stepID string)            {}
+func (noopEmitter) EmitStateChange(snapshot StateSnapshot)                                 {}
 func (noopEmitter) EmitTaskPlan(plan []*PlanItem, phases []*PlanPhase, explanation string) {}
 func (noopEmitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
 }
@@ -69,17 +69,17 @@ func (f *fakeToolContext) UpdateCurrentStep(update CurrentStepUpdate) StateSnaps
 	target.Status = update.Status
 	f.snapshot.Phase = AgentPhaseStepReplan
 	f.snapshot.StepOutcomes = append(f.snapshot.StepOutcomes, &StepOutcome{
-		StepID:          target.ID,
-		UpdatedAt:       time.Now(),
-		Summary:         update.Summary,
-		DisplayResult:   update.DisplayResult,
-		Result:          update.Result,
-		Error:           update.Error,
-		References:      update.References,
-		StatusSummary:   update.StatusSummary,
-		ShortSummary:    update.ShortSummary,
-		LongSummary:     update.LongSummary,
-		KeyFacts:        update.KeyFacts,
+		StepID:        target.ID,
+		UpdatedAt:     time.Now(),
+		Summary:       update.Summary,
+		DisplayResult: update.DisplayResult,
+		Result:        update.Result,
+		Error:         update.Error,
+		References:    update.References,
+		StatusSummary: update.StatusSummary,
+		ShortSummary:  update.ShortSummary,
+		LongSummary:   update.LongSummary,
+		KeyFacts:      update.KeyFacts,
 	})
 	return f.Snapshot()
 }
@@ -132,6 +132,10 @@ func (f *fakeToolContext) GetHistory() []*ai.MsgInfo {
 }
 
 func (f *fakeToolContext) GetOnHumanInput() OnHumanInputFunc {
+	return nil
+}
+
+func (f *fakeToolContext) GetFileObservationStore() *FileObservationStore {
 	return nil
 }
 
@@ -309,11 +313,11 @@ func TestUpdateCurrentStepBlockedByRunningChildAgent(t *testing.T) {
 	}
 
 	_, err := tool.Execute(context.Background(), map[string]any{
-		"status":          "completed",
-		"status_summary":  "done",
-		"short_summary":   "done",
-		"long_summary":    "done",
-		"key_facts":       []any{},
+		"status":         "completed",
+		"status_summary": "done",
+		"short_summary":  "done",
+		"long_summary":   "done",
+		"key_facts":      []any{},
 	})
 	if err == nil {
 		t.Fatal("expected error when child agents are still running")
@@ -339,11 +343,11 @@ func TestUpdateCurrentStepAllowsCompletedWhenNoRunningChildren(t *testing.T) {
 	}
 
 	_, err := tool.Execute(context.Background(), map[string]any{
-		"status":          "completed",
-		"status_summary":  "done",
-		"short_summary":   "done",
-		"long_summary":    "done",
-		"key_facts":       []any{},
+		"status":         "completed",
+		"status_summary": "done",
+		"short_summary":  "done",
+		"long_summary":   "done",
+		"key_facts":      []any{},
 	})
 	if err != nil {
 		t.Fatalf("expected no error when all children finished, got: %v", err)
@@ -363,12 +367,12 @@ func TestUpdateCurrentStepFailedBypassesChildCheck(t *testing.T) {
 	}
 
 	_, err := tool.Execute(context.Background(), map[string]any{
-		"status":          "failed",
-		"error":           "timeout",
-		"status_summary":  "failed",
-		"short_summary":   "failed",
-		"long_summary":    "failed",
-		"key_facts":       []any{},
+		"status":         "failed",
+		"error":          "timeout",
+		"status_summary": "failed",
+		"short_summary":  "failed",
+		"long_summary":   "failed",
+		"key_facts":      []any{},
 	})
 	if err != nil {
 		t.Fatalf("failed status should bypass child agent check, got: %v", err)
@@ -386,11 +390,11 @@ func TestUpdateCurrentStepNoCheckerAllowsCompleted(t *testing.T) {
 	// ChildAgentChecker is nil — no check
 
 	_, err := tool.Execute(context.Background(), map[string]any{
-		"status":          "completed",
-		"status_summary":  "done",
-		"short_summary":   "done",
-		"long_summary":    "done",
-		"key_facts":       []any{},
+		"status":         "completed",
+		"status_summary": "done",
+		"short_summary":  "done",
+		"long_summary":   "done",
+		"key_facts":      []any{},
 	})
 	if err != nil {
 		t.Fatalf("nil checker should not block, got: %v", err)

@@ -110,6 +110,27 @@ func NewDefaultToolRegistry() *ToolRegistry {
 	r.Register(builtin_tools.ReadFileToolName, func(_ builtin_tools.ToolContext) Tool {
 		return builtin_tools.NewReadFileTool()
 	})
+	r.Register(builtin_tools.WriteToolName, func(ctx builtin_tools.ToolContext) Tool {
+		var store *builtin_tools.FileObservationStore
+		if ctx != nil {
+			store = ctx.GetFileObservationStore()
+		}
+		return builtin_tools.NewWriteTool(store)
+	})
+	r.Register(builtin_tools.EditToolName, func(ctx builtin_tools.ToolContext) Tool {
+		var store *builtin_tools.FileObservationStore
+		if ctx != nil {
+			store = ctx.GetFileObservationStore()
+		}
+		return builtin_tools.NewEditTool(store)
+	})
+	r.Register(builtin_tools.NotebookEditToolName, func(ctx builtin_tools.ToolContext) Tool {
+		var store *builtin_tools.FileObservationStore
+		if ctx != nil {
+			store = ctx.GetFileObservationStore()
+		}
+		return builtin_tools.NewNotebookEditTool(store)
+	})
 	r.Register(builtin_tools.RgToolName, func(_ builtin_tools.ToolContext) Tool {
 		return builtin_tools.NewRgTool()
 	})

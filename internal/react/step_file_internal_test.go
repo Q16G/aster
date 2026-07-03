@@ -88,7 +88,7 @@ func TestEnsureStepFileScaffold_RootEscapeRejected(t *testing.T) {
 }
 
 // TestStepFileExists_ZeroBytedIsExist 锁定 stepFileExists 在文件为 0 字节时仍判存在——
-// 防止 AI bash 中途短暂写空触发 readSharedStepFileForPrompt 回退到 legacy 路径读老内容。
+// 防止写入工具中途短暂写空触发 readSharedStepFileForPrompt 回退到 legacy 路径读老内容。
 func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
 	sharedDir := t.TempDir()
 	abs := stepFileAbs(sharedDir, "s9")
@@ -101,7 +101,7 @@ func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
 		t.Fatalf("write empty file failed: %v", err)
 	}
 	if !stepFileExists(sharedDir, "s9") {
-		t.Fatal("stepFileExists should be true for a 0-byte file (transient AI bash write)")
+		t.Fatal("stepFileExists should be true for a 0-byte file (transient tool write)")
 	}
 
 	if err := os.WriteFile(abs, []byte("# step_s9\n"), 0o644); err != nil {

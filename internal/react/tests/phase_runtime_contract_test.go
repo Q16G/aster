@@ -8,15 +8,15 @@ import (
 	. "aster/internal/react"
 )
 
-func TestNewReActAgent_NoDomainToolsByDefault(t *testing.T) {
+func TestNewReActAgent_DefaultBuiltinFileTools(t *testing.T) {
 	agent, err := NewReActAgent("tool-test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
 
-	for _, name := range []string{"list_files", "read_file", "rg", "grep", "ast_grep"} {
-		if _, ok := agent.GetTool(name); ok {
-			t.Fatalf("expected %s to not be registered by default (domain tools should be opt-in)", name)
+	for _, name := range []string{"list_files", "read_file", "write", "edit", "notebook_edit", "rg"} {
+		if _, ok := agent.GetTool(name); !ok {
+			t.Fatalf("expected builtin tool %s to be registered by default", name)
 		}
 	}
 	// Platform-level tools should always be present.
@@ -65,6 +65,11 @@ func TestToolRegistry_RegisterAndResolve(t *testing.T) {
 	}
 	if !registry.Has("rg") {
 		t.Fatal("expected rg to be registered in default registry")
+	}
+	for _, name := range []string{"write", "edit", "notebook_edit"} {
+		if !registry.Has(name) {
+			t.Fatalf("expected %s to be registered in default registry", name)
+		}
 	}
 
 	tool, err := registry.Resolve("list_files", nil)
@@ -151,9 +156,10 @@ func TestAgentFactory_BuildMinimalAgent(t *testing.T) {
 	if agent.Name() != "minimal-agent" {
 		t.Fatalf("expected name minimal-agent, got %s", agent.Name())
 	}
-	// Should only have platform tools
-	if _, ok := agent.GetTool("list_files"); ok {
-		t.Fatal("minimal agent should not have list_files")
+	for _, toolName := range []string{"list_files", "read_file", "write", "edit", "notebook_edit", "rg"} {
+		if _, ok := agent.GetTool(toolName); !ok {
+			t.Fatalf("minimal agent should have builtin tool %s", toolName)
+		}
 	}
 }
 

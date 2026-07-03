@@ -24,9 +24,9 @@ type localWorkspaceRuntime struct {
 	// 即 runtime 自身的 skeleton 初始化（EnsureSharedScaffold、ensureTaskContextSkeleton）
 	// 和 commit 6 接进 runtime 的 prompt 注入读路径。
 	//
-	// **不覆盖**：LLM 通过 BashTool（`cat > file` / `tee` / `echo >>` 等）写 ledger
-	// 的真实路径——bash 进程直接 open() syscall，绕开 WorkspaceRuntime。当前没有
-	// write_file 工具强制 LLM 走 runtime，所以本锁对最高频写者无效。
+	// **不覆盖**：工具直接写 ledger 的真实路径时会绕开 WorkspaceRuntime 的 per-file 锁。
+	// 当前写入工具面向任意绝对路径，不强制经过 runtime 相对路径 API，所以本锁只保护
+	// runtime 自身读写路径。
 	//
 	// **lost-update 防线**：全部由 prompt 纪律承担（per-step OI 命名空间 + 本 step 只动
 	// 自己来源条目 + 已闭环迁移由 step_replan 串行整合）。参见
