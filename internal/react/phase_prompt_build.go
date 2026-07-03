@@ -72,6 +72,7 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 		InputTimeline:      payload["input_timeline"],
 		GoalUnderstanding:  stringFromPayload(payload, "goal_understanding"),
 		PlanItems:          payload["plan_items"],
+		Phases:             payload["phases"],
 		PlannerJournalPath: stringFromPayload(payload, "planner_journal_path"),
 		OpenItemsLedger:    stringFromPayload(payload, "open_items_ledger"),
 		Warnings:           payload["warnings"],

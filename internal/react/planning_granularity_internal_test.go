@@ -28,12 +28,12 @@ func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 
 	required := []string{
 		// N0: 机械对账硬约束（最强杠杆）——事实板 N 条 → plan 文案逐条字面引用
-		// 现已收窄到 current_phase 范围，断言更新为新措辞。
+		// 现已收窄到本回合 active phase 范围，断言更新为新措辞。
 		"FACTS-to-step 对账（硬约束）",
-		"只对账 `current_phase` 语义范围内的事实条目",
+		"只对账本回合 active phase 语义范围内的事实条目",
 		"必须在至少一条 `plan[].step` 字面引用其稳定标识",
 		"逐项事实覆盖",
-		"`current_phase` 范围内列出 N 项必须 N 项各自被 step 字面引用",
+		"active phase 范围内列出 N 项必须 N 项各自被 step 字面引用",
 		// N1: 拆分维度收紧到 Atomic Step Contract
 		"Atomic Step Contract（硬约束）",
 		"object × action × acceptance",
@@ -51,8 +51,8 @@ func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 		"生成清单可以是一个 atomic step",
 		"消费清单时必须把清单内对象展开为多个 atomic work items",
 		"展开后的 atomic work items 进入账本完整超集",
-		"当前 plan 只释放 `current_phase` 的子集",
-		// Phase shape: current_phase 必须是单一主导切面，不得是矩阵或 skill checklist
+		"当前 plan 只释放本回合 active phase（frontier）范围内的 step",
+		// Phase shape: phase 必须是单一主导切面，不得是矩阵或 skill checklist
 		"主导切面约束",
 		"组件×多维度矩阵",
 		"skill checklist",
@@ -208,26 +208,26 @@ func TestBuildSubmitPlanFunctionTool_StepDescriptionUsesAtomicContract(t *testin
 
 // TestCorePromptPhaseChainContracts 锁定阶段链纪律的关键短语 + negative 断言。
 // 验证以下纪律已落进 prompt 且未回退到旧版本：
-//   - planning_system：phase=最小从浅到深单元 / 单阶段起手 / 同类范围 / 阶段链推进次序 / 阶段焦点承接 + 自决切换 / phase 动态增删改 / current_phase 自决 / 深度优先纪律
-//   - step_replan_system：三视角（A/B/C）/ in-phase 保底 / current_phase_done 严格闸门（无可测未测、无可深未深）/ 视角 A 新对象登账本
+//   - planning_system：phase=最小从浅到深单元 / 初始 frontier 起手 / 同类范围 / lane 推进次序 / lane 承接 + 自决收束 / phase 动态增删改 / 深度优先纪律
+//   - step_replan_system：三视角（A/B/C）/ in-phase 保底 / phase_assessments status 判据（无可测未测、无可深未深）/ 视角 A 新对象登账本
 //   - negative：planner 不再原样回填、step_replan 不再产出 next_phase 选择优先级 / 决策真值表 / Phase Shape Audit / 双视角 / 阶段内待跑深度
 func TestCorePromptPhaseChainContracts(t *testing.T) {
 	planningRequired := []string{
 		"最小从浅到深单元",
-		"初始 plan 单阶段起手",
+		"初始 frontier 起手",
 		"同类范围识别",
 		"递进阶段独立成 phase",
 		"phase / step 边界",
-		"阶段链推进次序",
+		"lane 推进次序",
 		"phase 动态增/改/删",
-		"阶段焦点承接",
+		"lane 承接 + 自决收束",
 		"同类范围只来自事实板",
 		"Skill 索引参与深度层暗示",
 		"主导切面约束",
 		"组件×多维度矩阵",
 		"skill checklist",
 		"深度优先纪律",
-		"current_phase 自决",
+		"lane 依赖表达",
 	}
 	for _, needle := range planningRequired {
 		if !strings.Contains(planningSystemPrompt, needle) {
@@ -262,7 +262,7 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"无可深未深",
 		"视角 A 新对象登账本",
 		"skill 仅作为职责维度候选的弹性参考",
-		"current_phase_done 判据",
+		"phase_assessments 提交契约",
 	}
 	for _, needle := range stepReplanRequired {
 		if !strings.Contains(stepReplanSystemPrompt, needle) {

@@ -20,6 +20,13 @@
 <PLAN_ITEMS>
 {{.PLAN_ITEMS}}
 </PLAN_ITEMS>
+{{- if .HAS_PHASES}}
+
+## 业务 lane 终态（交叉核对；completed=已闭环，blocked=受阻已收束）
+<PHASES>
+{{.PHASES}}
+</PHASES>
+{{- end}}
 {{- if .PLANNER_JOURNAL_PATH}}
 计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PLANNER_JOURNAL_PATH}}`
 {{- end}}

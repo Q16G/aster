@@ -100,7 +100,9 @@ type FinalAnswerPromptInput struct {
 	GoalUnderstanding string
 	// PlanItems 是 plan 真相源投影卡片（内联小字段 + 文件指针），替代旧
 	// PLAN/STEP_OUTCOMES/CARRIED_* 全量注入；OpenItemsLedger 是账本全文（F6 归置对象）。
-	PlanItems       any
+	PlanItems any
+	// Phases 是业务 lane 终态清单（[]*PlanPhase），供验收交叉核对 lane 是否全部收束。
+	Phases          any
 	OpenItemsLedger string
 	Warnings        any
 	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
@@ -455,6 +457,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"PLAN_ITEMS":             prettyJSON(input.PlanItems),
+		"PHASES":                 prettyJSON(input.Phases),
+		"HAS_PHASES":             activePhasesNonEmpty(input.Phases),
 		"PLANNER_JOURNAL_PATH":   strings.TrimSpace(input.PlannerJournalPath),
 		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
 		"WARNINGS":               prettyJSON(input.Warnings),
