@@ -93,3 +93,64 @@ func mustRuntime(t *testing.T, rootDir string) builtin_tools.WorkspaceRuntime {
 	}
 	return rt
 }
+
+// TestSynthesizeResumeSnapshot_LegacyDataGetsSyntheticPhase 校验旧数据（journal 无
+// phase 行、item 无 phase_id）恢复时合成 synthetic phase 并完成挂靠。
+func TestSynthesizeResumeSnapshot_LegacyDataGetsSyntheticPhase(t *testing.T) {
+	rootDir := t.TempDir()
+	runtime, err := newLocalWorkspaceRuntime("s1", rootDir, "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	writer, err := newArtifactWriter(runtime)
+	if err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	seedPlannerJournal(t, rootDir)
+
+	snapshot, planValid := synthesizeResumeSnapshot(writer, nil, nil, nil, 0)
+	if !planValid {
+		t.Fatal("expected plan valid from journal")
+	}
+	if len(snapshot.Phases) != 1 || snapshot.Phases[0].ID != builtin_tools.SyntheticPhaseID {
+		t.Fatalf("expected synthetic phase for legacy data, got %+v", snapshot.Phases)
+	}
+	for _, item := range snapshot.Plan {
+		if item.PhaseID != builtin_tools.SyntheticPhaseID {
+			t.Fatalf("item %s not attached to synthetic phase: %q", item.ID, item.PhaseID)
+		}
+	}
+}
+
+// TestSynthesizeResumeSnapshot_JournalPhasesRestored 校验 journal 含 phase 行时恢复
+// phases 并保持 item 挂靠。
+func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
+	rootDir := t.TempDir()
+	runtime, err := newLocalWorkspaceRuntime("s1", rootDir, "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	writer, err := newArtifactWriter(runtime)
+	if err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	if err := builtin_tools.AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"}},
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "b1", Step: "B", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"}},
+		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-a", Status: builtin_tools.PlanPhaseCompleted}},
+		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-b", Status: builtin_tools.PlanPhasePending, DependsOn: []string{"phase-a"}}},
+	}); err != nil {
+		t.Fatalf("seed journal: %v", err)
+	}
+
+	snapshot, planValid := synthesizeResumeSnapshot(writer, nil, nil, nil, 0)
+	if !planValid {
+		t.Fatal("expected plan valid")
+	}
+	if len(snapshot.Phases) != 2 || snapshot.Phases[0].Status != builtin_tools.PlanPhaseCompleted {
+		t.Fatalf("expected journal phases restored, got %+v", snapshot.Phases)
+	}
+	if snapshot.Plan[1].PhaseID != "phase-b" {
+		t.Fatalf("item attachment lost: %+v", snapshot.Plan[1])
+	}
+}

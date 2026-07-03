@@ -176,3 +176,89 @@ func TestPlannerJournal_RejectsInvalidRecords(t *testing.T) {
 		t.Fatal("expected error for missing plan_version")
 	}
 }
+
+func TestPlannerJournal_PhaseRecordsSurviveRewrite(t *testing.T) {
+	root := t.TempDir()
+
+	// plan 提交：item 行在前、phase 行在后（版本提升批次契约）
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPlan, PlanVersion: 1, Item: &PlanItem{ID: "a1", Step: "A1", Status: PlanStepPending, PhaseID: "phase-a"}},
+		{Kind: PlannerJournalKindPhase, PlanVersion: 1, Phase: &PlanPhase{ID: "phase-a", Name: "lane A", Status: PlanPhasePending}},
+		{Kind: PlannerJournalKindPhase, PlanVersion: 1, Phase: &PlanPhase{ID: "phase-b", Name: "lane B", DependsOn: []string{"phase-a"}, Status: PlanPhasePending}},
+	}); err != nil {
+		t.Fatalf("append plan+phase records failed: %v", err)
+	}
+
+	// step 终态增量落盘触发 snapshot 原子重写——phase 行必须存活
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindStep, PlanVersion: 1, Item: &PlanItem{ID: "a1", Step: "A1", Status: PlanStepCompleted, PhaseID: "phase-a"}},
+	}); err != nil {
+		t.Fatalf("append step record failed: %v", err)
+	}
+
+	items, phases, version, err := LoadPlannerJournalSnapshot(root)
+	if err != nil {
+		t.Fatalf("load snapshot failed: %v", err)
+	}
+	if version != 1 || len(items) != 1 {
+		t.Fatalf("unexpected items/version: %d %+v", version, items)
+	}
+	if len(phases) != 2 || phases[0].ID != "phase-a" || phases[1].ID != "phase-b" {
+		t.Fatalf("phase records lost after rewrite: %+v", phases)
+	}
+	if len(phases[1].DependsOn) != 1 || phases[1].DependsOn[0] != "phase-a" {
+		t.Fatalf("phase depends_on lost: %+v", phases[1])
+	}
+
+	// phase 状态增量覆盖（step_replan 承接路径）
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPhase, PlanVersion: 1, Phase: &PlanPhase{ID: "phase-a", Name: "lane A", Status: PlanPhaseCompleted}},
+	}); err != nil {
+		t.Fatalf("append phase upsert failed: %v", err)
+	}
+	_, phases, _, err = LoadPlannerJournalSnapshot(root)
+	if err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+	if phases[0].Status != PlanPhaseCompleted {
+		t.Fatalf("expected phase-a completed, got %+v", phases[0])
+	}
+
+	// 重规划版本提升：plan 行在前 reset 旧 phases，新 phase 行随后落地
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPlan, PlanVersion: 2, Item: &PlanItem{ID: "c1", Step: "C1", Status: PlanStepPending, PhaseID: "phase-c"}},
+		{Kind: PlannerJournalKindPhase, PlanVersion: 2, Phase: &PlanPhase{ID: "phase-c", Status: PlanPhasePending}},
+	}); err != nil {
+		t.Fatalf("append v2 records failed: %v", err)
+	}
+	items, phases, version, err = LoadPlannerJournalSnapshot(root)
+	if err != nil {
+		t.Fatalf("reload v2 failed: %v", err)
+	}
+	if version != 2 || len(items) != 1 || items[0].ID != "c1" {
+		t.Fatalf("unexpected v2 items: %d %+v", version, items)
+	}
+	if len(phases) != 1 || phases[0].ID != "phase-c" {
+		t.Fatalf("old phases must reset on version bump, got %+v", phases)
+	}
+}
+
+func TestPlannerJournal_LegacyFileNoPhases(t *testing.T) {
+	root := t.TempDir()
+	// 旧格式：只有 item 行（无 phase 概念、item 无 phase_id）
+	if err := AppendPlannerJournalRecords(root, []*PlannerJournalRecord{
+		{Kind: PlannerJournalKindPlan, PlanVersion: 1, Item: &PlanItem{ID: "s1", Step: "legacy", Status: PlanStepPending}},
+	}); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+	items, phases, version, err := LoadPlannerJournalSnapshot(root)
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if version != 1 || len(items) != 1 {
+		t.Fatalf("unexpected items: %d %+v", version, items)
+	}
+	if phases != nil {
+		t.Fatalf("legacy file must yield nil phases (runtime synthesizes), got %+v", phases)
+	}
+}
