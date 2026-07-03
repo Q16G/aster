@@ -40,10 +40,10 @@ type ChatModel struct {
 	// 同一 agentName 下 main（stepID=""）和多个 peer（stepID="p1" 等）各自独立 buffer。
 	// 旧设计单 agentName 单 buffer 导致 peer 的 reasoning content 渗入 root thinking
 	// 流，主屏幕上 InlineStep 卡片下方仍能看到 `| Thinking: ...` 大段内容（截图症状）。
-	thinkingByKey    map[thinkBufKey]*thinkingState
-	thinkingOrder    []thinkBufKey
-	width            int
-	height           int
+	thinkingByKey map[thinkBufKey]*thinkingState
+	thinkingOrder []thinkBufKey
+	width         int
+	height        int
 	// 展开/折叠态已迁到 ExpandableCardPart 接口字段（Part.<X>.IsExpanded）；
 	// 旧的 `m.toolExpanded[idx int]` 全局表已删除——idx 在 part 列表前插
 	// （concurrent peer / sub_agent reflow）时会漂移，导致展开态错位（FR3 根因）。
@@ -1776,6 +1776,13 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 		if r.StepName != "" {
 			summary += ": " + r.StepName
 		}
+		if r.PhaseCompleted > 0 || r.PhaseBlocked > 0 {
+			summary += fmt.Sprintf(" [lane +%d done", r.PhaseCompleted)
+			if r.PhaseBlocked > 0 {
+				summary += fmt.Sprintf(", %d blocked", r.PhaseBlocked)
+			}
+			summary += "]"
+		}
 		summary += " — " + truncateDisplayWidth(summaryText, 60)
 		style := lipgloss.NewStyle().Foreground(color)
 		if selected {
@@ -1807,17 +1814,9 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 	if r.NextGoal != "" {
 		body.WriteString("\n\nNext Goal:\n" + r.NextGoal)
 	}
-	if len(r.IncompleteItems) > 0 {
-		body.WriteString("\n\nIncomplete Items (in-step):")
-		for _, item := range r.IncompleteItems {
-			body.WriteString("\n  • " + item)
-		}
-	}
-	if len(r.NewSurfaces) > 0 {
-		body.WriteString("\n\nNew Surfaces (out-of-step):")
-		for _, item := range r.NewSurfaces {
-			body.WriteString("\n  • " + item)
-		}
+	if r.PhaseAssessments > 0 {
+		body.WriteString(fmt.Sprintf("\n\nPhase assessments: %d (continue %d / completed %d / blocked %d)",
+			r.PhaseAssessments, r.PhaseContinue, r.PhaseCompleted, r.PhaseBlocked))
 	}
 	if len(r.Warnings) > 0 {
 		body.WriteString("\n\nWarnings:")
@@ -1939,6 +1938,60 @@ func shouldAutoExpandPart(partType PartType) bool {
 	}
 }
 
+type planPhaseGroup struct {
+	name   string
+	status string
+	items  []PlanItemView
+}
+
+// groupPlanItemsByPhase 按 phase 把 plan items 分组，保持 phases 声明顺序。
+// 返回 nil 表示不分组渲染（无 phases、或只有一个 synthetic phase——旧观感零变化）。
+// 未挂靠任何已知 phase 的 item 归到末尾「其他」组。
+func groupPlanItemsByPhase(p *PlanPart) []planPhaseGroup {
+	if p == nil || len(p.Phases) == 0 {
+		return nil
+	}
+	// 单个 synthetic phase：不渲染组头，退化为平铺。
+	if len(p.Phases) == 1 && p.Phases[0].ID == builtin_tools.SyntheticPhaseID {
+		return nil
+	}
+	order := make([]string, 0, len(p.Phases))
+	idx := make(map[string]int, len(p.Phases))
+	groups := make([]planPhaseGroup, 0, len(p.Phases)+1)
+	for _, phase := range p.Phases {
+		name := strings.TrimSpace(phase.Name)
+		if name == "" {
+			name = phase.ID
+		}
+		idx[phase.ID] = len(groups)
+		groups = append(groups, planPhaseGroup{name: name, status: phase.Status})
+		order = append(order, phase.ID)
+	}
+	_ = order
+	var orphan []PlanItemView
+	for _, item := range p.Items {
+		if gi, ok := idx[item.PhaseID]; ok {
+			groups[gi].items = append(groups[gi].items, item)
+		} else {
+			orphan = append(orphan, item)
+		}
+	}
+	if len(orphan) > 0 {
+		groups = append(groups, planPhaseGroup{name: "其他", items: orphan})
+	}
+	// 过滤空组（无 step 的 lane 不占行）。
+	out := groups[:0]
+	for _, g := range groups {
+		if len(g.items) > 0 {
+			out = append(out, g)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) string {
 	p := part.Plan
 	if p == nil {
@@ -2008,7 +2061,7 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 		body.WriteString(planExplanationStyle.Render(p.Explanation))
 		body.WriteString("\n")
 	}
-	for _, item := range p.Items {
+	renderPlanItemLine := func(item PlanItemView) {
 		switch item.Status {
 		case "completed":
 			body.WriteString(planCompleteStyle.Render("  ✓ "+item.Step) + "\n")
@@ -2016,8 +2069,27 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 			body.WriteString(planActiveStyle.Render("  ▸ "+item.Step) + "\n")
 		case "failed":
 			body.WriteString(planFailedStyle.Render("  ✗ "+item.Step) + "\n")
+		case "skipped":
+			body.WriteString(planPendingStyle.Render("  ⊘ "+item.Step) + "\n")
 		default:
 			body.WriteString(planPendingStyle.Render("  ○ "+item.Step) + "\n")
+		}
+	}
+	// 多 lane 时按 phase 分组加组头；单 synthetic phase 或无 phase 时平铺（旧观感不变）。
+	if groups := groupPlanItemsByPhase(p); len(groups) > 0 {
+		for _, g := range groups {
+			header := "[" + g.name + "]"
+			if g.status != "" && g.status != "pending" {
+				header += " (" + g.status + ")"
+			}
+			body.WriteString(planExplanationStyle.Render(header) + "\n")
+			for _, item := range g.items {
+				renderPlanItemLine(item)
+			}
+		}
+	} else {
+		for _, item := range p.Items {
+			renderPlanItemLine(item)
 		}
 	}
 

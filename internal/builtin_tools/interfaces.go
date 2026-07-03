@@ -27,7 +27,7 @@ type Emitter interface {
 	EmitToolStart(iteration int, call ToolCall, stepID string)
 	EmitToolEnd(iteration int, result ToolResult, stepID string)
 	EmitStateChange(snapshot StateSnapshot)
-	EmitTaskPlan(plan []*PlanItem, explanation string)
+	EmitTaskPlan(plan []*PlanItem, phases []*PlanPhase, explanation string)
 	EmitHumanRequest(iteration int, requestID string, question string, context map[string]any)
 	EmitIteration(current int, max int, description string)
 	EmitResult(result any, success bool)

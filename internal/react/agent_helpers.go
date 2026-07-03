@@ -29,7 +29,7 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 	}
 	if a.emitter != nil {
 		a.emitter.EmitStateChange(snapshot)
-		a.emitter.EmitTaskPlan(snapshot.Plan, explanation)
+		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Phases, explanation)
 	}
 	return snapshot
 }
