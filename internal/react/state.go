@@ -1191,7 +1191,7 @@ func (t *StateTracker) ensureCurrentStepLocked() {
 		}
 		t.state.CurrentStepID = ""
 	}
-	nextID := builtin_tools.NextRunnablePlanStepID(t.state.Plan)
+	nextID := builtin_tools.NextFrontierPlanStepID(t.state.Plan, t.state.Phases)
 	if nextID != "" {
 		t.state.CurrentStepID = nextID
 	}

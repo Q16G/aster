@@ -206,20 +206,26 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 // 关键边界：guard 比「step-terminal-defense」优先级低——后者守住"全部 terminal 进 FinalAnswer"
 // 不变量；guard 只在 StepReplan 分支生效。
 func currentPhase(snapshot builtin_tools.StateSnapshot, maxParallel int) builtin_tools.AgentPhase {
-	// 防御：卡在 Step 但已无可跑 step 且全部 terminal —— 任何路径走到这都改道收尾，杜绝空转。
+	// 防御：卡在 Step 但已无可跑 frontier step 且全部 terminal —— 双条件路由（D6）：
+	//   - 所有 phase 已收束（completed/blocked）→ 直达 FinalAnswer；
+	//   - 仍有 phase 未收束 → 回 StepReplan 让 phase_assessments 定夺（final_answer 的
+	//     should_replan 回流仍兜底），避免 completed step 但 lane 未判定就提前收尾。
 	if snapshot.Phase == builtin_tools.AgentPhaseStep &&
 		len(snapshot.Plan) > 0 &&
-		builtin_tools.NextRunnablePlanStepID(snapshot.Plan) == "" &&
+		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) == "" &&
 		builtin_tools.AllPlanStepsTerminal(snapshot.Plan) {
-		return builtin_tools.AgentPhaseFinalAnswer
+		if builtin_tools.AllPhasesSettled(snapshot.Phases) {
+			return builtin_tools.AgentPhaseFinalAnswer
+		}
+		return builtin_tools.AgentPhaseStepReplan
 	}
 
-	// X2 滚动 guard：主路径 step 完成时 state.go:440 翻 Phase=StepReplan，但若 plan 上
-	// 仍有 ready（被刚完成的 step 解锁的下一波），先绕回 Step 让主路径滚动派发，
-	// 直到 ready=0 且 in_progress=0 才真正进 step_replan。
+	// X2 滚动 guard：主路径 step 完成时 state.go 翻 Phase=StepReplan，但若 frontier 上
+	// 仍有 ready（被刚完成的 step / 刚解锁的 phase 释放的下一波），先绕回 Step 让主路径
+	// 滚动派发，直到 frontier=0 且 in_progress=0 才真正进 step_replan（frontier barrier）。
 	if maxParallel >= 2 &&
 		snapshot.Phase == builtin_tools.AgentPhaseStepReplan &&
-		builtin_tools.NextRunnablePlanStepID(snapshot.Plan) != "" {
+		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) != "" {
 		return builtin_tools.AgentPhaseStep
 	}
 

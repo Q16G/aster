@@ -513,7 +513,7 @@ func (a *Agent) collectInlineStepIDs(snap builtin_tools.StateSnapshot) []string 
 		maxParallel,
 		a.asyncRegistry.RunningInlineSteps(),
 		currentID,
-		builtin_tools.ReadyRunnablePlanStepIDs(snap.Plan),
+		builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Phases),
 		func(id string) bool { return a.asyncRegistry.Get(id) != nil },
 	)
 	out = append(out, peers...)

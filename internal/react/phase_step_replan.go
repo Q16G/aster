@@ -346,15 +346,15 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	nextRunnableStepID := ""
 	planForNextRunnable := snapshot.Plan
 	if newPlan != nil {
-		// 重编排直达 Step：以新 plan 计算下一个可跑 step；通常就是新增的第一条 pending。
+		// 重编排直达 Step：以新 plan 计算下一个可跑 frontier step；通常就是新增的第一条 pending。
 		planForNextRunnable = newPlan
-		if candidate := strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(planForNextRunnable)); candidate != "" {
+		if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(planForNextRunnable, snapshot.Phases)); candidate != "" {
 			nextRunnableStepID = candidate
 			nextPhase = builtin_tools.AgentPhaseStep
 		}
 	} else if replanContext != nil {
 		nextPhase = builtin_tools.AgentPhasePlan
-	} else if candidate := strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(snapshot.Plan)); candidate != "" {
+	} else if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases)); candidate != "" {
 		nextRunnableStepID = candidate
 		nextPhase = builtin_tools.AgentPhaseStep
 	}
@@ -502,10 +502,10 @@ func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, r
 	if k := stepReplanHeartbeatK(); k >= 0 && a.consecutiveStepsSinceReplan >= k {
 		return true, "heartbeat"
 	}
-	if strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(snapshot.Plan)) == "" {
-		// 防御：plan_exhausted（ready 枯竭）只代表“没有可派发的 pending”，不代表“这批跑完”。
+	if strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases)) == "" {
+		// 防御：frontier 枯竭（无可派发 ready）只代表“这批 frontier 跑完”，不代表“这批全落定”。
 		// 仍有 in_progress inline peer 在跑时不升级——否则会基于不完整状态做 LLM 重规划。
-		// 调度器的 X2 屏障已先 await peer，正常流程下此处 HasRunningInlineSteps 必为 false；
+		// 调度器的 frontier barrier 已先 await peer，正常流程下此处 HasRunningInlineSteps 必为 false；
 		// 此条为纵深防御，屏障被绕过时退化为“跳过本轮、下一轮 peer 落定再升级”。
 		if a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
 			return false, ""
