@@ -95,6 +95,60 @@ const (
 	PlanStepSkipped    PlanStepStatus = "skipped"
 )
 
+// PlanPhaseStatus 业务 lane（phase）的存储状态。
+// active 不落盘、纯派生：phase 未 terminal 且其 depends_on 的 phase 全部 terminal 即 active。
+type PlanPhaseStatus string
+
+const (
+	PlanPhasePending   PlanPhaseStatus = "pending"
+	PlanPhaseCompleted PlanPhaseStatus = "completed"
+	PlanPhaseBlocked   PlanPhaseStatus = "blocked"
+)
+
+// SyntheticPhaseID 是 runtime 兜底 phase 的保留 id：plan item 缺失/悬空 phase_id 时
+// 自动挂靠到该 phase。planner 不得主动使用（NormalizePlanPhases 拒绝）。
+const SyntheticPhaseID = "phase-synthetic"
+
+// PlanPhase 业务 lane / 分组，不拥有自己的 plan / step_replan / final_answer 生命周期。
+// depends_on 引用其他 phase id，参与 step ready 门：phase 未解锁（依赖 phase 未全部
+// terminal）时其下 step 不进入 frontier。completed/blocked 仅由 step_replan 的
+// phase_assessments 或 planner 重提交写入。
+type PlanPhase struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name,omitempty"`
+	DependsOn []string        `json:"depends_on,omitempty"`
+	Status    PlanPhaseStatus `json:"status,omitempty"`
+}
+
+// Terminal 判断 phase 是否终态（completed/blocked 均视同 terminal 参与解锁下游）。
+func (p *PlanPhase) Terminal() bool {
+	if p == nil {
+		return false
+	}
+	return p.Status == PlanPhaseCompleted || p.Status == PlanPhaseBlocked
+}
+
+// PhaseAssessmentStatus 是 step_replan 对单个 active phase 的判定结论。
+// continue 不是存储状态：仅表示下一轮 planner 应继续释放该 phase 的 step。
+type PhaseAssessmentStatus string
+
+const (
+	PhaseAssessContinue  PhaseAssessmentStatus = "continue"
+	PhaseAssessCompleted PhaseAssessmentStatus = "completed"
+	PhaseAssessBlocked   PhaseAssessmentStatus = "blocked"
+)
+
+// PhaseAssessment 是全局 step_replan 在 frontier barrier 后对单个 active phase 的评估。
+// completed/blocked 由 runtime 机械写回 PlanPhase.Status；三轴字段限该 phase 范围内的缺口。
+type PhaseAssessment struct {
+	PhaseID         string                `json:"phase_id"`
+	Status          PhaseAssessmentStatus `json:"status"`
+	Reason          string                `json:"reason,omitempty"`
+	IncompleteItems []string              `json:"incomplete_items,omitempty"`
+	DepthGaps       []string              `json:"depth_gaps,omitempty"`
+	NewSurfaces     []string              `json:"new_surfaces,omitempty"`
+}
+
 // PlanItem 计划项。
 // 规划字段由 task_planner 产出；产出字段在 step 终态时由 runtime 从 StepOutcome 烘焙写回，
 // 并随 planner.jsonl 落地（plan 提交全量 append + step 终态增量 append）。
@@ -102,8 +156,11 @@ type PlanItem struct {
 	ID                string         `json:"id,omitempty"`
 	Step              string         `json:"step"`
 	Status            PlanStepStatus `json:"status,omitempty"`
-	DependsOn         []string       `json:"depends_on,omitempty"`
-	ResolvedDependsOn []*PlanItem    `json:"-"`
+	// PhaseID 指向所属业务 lane（PlanPhase.ID）。planner 提交时必填；
+	// 旧数据缺失时由 SynthesizePhasesIfMissing 挂到 synthetic phase。
+	PhaseID           string      `json:"phase_id,omitempty"`
+	DependsOn         []string    `json:"depends_on,omitempty"`
+	ResolvedDependsOn []*PlanItem `json:"-"`
 
 	// ==================== 产出字段（默认注入 prompt 的内联小字段） ====================
 	ShortSummary      string                  `json:"short_summary,omitempty"`
@@ -349,6 +406,9 @@ type ReplanContext struct {
 	// 不加 omitempty：false 是「保持当前阶段继续深推」的关键信号，须显式出现在注入 planner 的
 	// REPLAN_CONTEXT JSON 中，不能因零值被省略而让 planner 无法区分 false 与缺省。
 	CurrentPhaseDone bool `json:"current_phase_done"`
+	// PhaseAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
+	// 回流给下一轮 planner 决定各 lane 继续释放 step 还是收束。
+	PhaseAssessments []*PhaseAssessment `json:"phase_assessments,omitempty"`
 }
 
 // ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。
@@ -411,7 +471,11 @@ type StateSnapshot struct {
 	// SimpleTask 标记简单单步任务：step 完成后跳过 step_replan 直达 final_answer。
 	SimpleTask bool `json:"simple_task,omitempty"`
 
-	Plan          []*PlanItem    `json:"plan,omitempty"`
+	Plan []*PlanItem `json:"plan,omitempty"`
+	// Phases 是业务 lane 清单（Parallel Frontier 数据面）：plan item 经 phase_id 归属其一。
+	// 与 Plan 同源共版本（随 plan 提交/重规划原子替换），completed/blocked 由
+	// phase_assessments 或 planner 重提交写入。
+	Phases        []*PlanPhase   `json:"phases,omitempty"`
 	PlanVersion   int            `json:"plan_version,omitempty"`
 	StepOutcomes  []*StepOutcome `json:"step_outcomes,omitempty"`
 	FinalAnswer   *FinalAnswer   `json:"final_answer,omitempty"`

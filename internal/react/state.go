@@ -64,6 +64,7 @@ func isolateSnapshot(src *builtin_tools.StateSnapshot) builtin_tools.StateSnapsh
 		}
 		builtin_tools.HydratePlanRelations(out.Plan)
 	}
+	out.Phases = builtin_tools.ClonePlanPhases(src.Phases)
 
 	if len(src.StepOutcomes) > 0 {
 		out.StepOutcomes = make([]*builtin_tools.StepOutcome, len(src.StepOutcomes))
@@ -205,6 +206,7 @@ func (t *StateTracker) Replace(snapshot builtin_tools.StateSnapshot) builtin_too
 
 	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(snapshot.Plan)
+	snapshot.Phases = builtin_tools.SynthesizePhasesIfMissing(snapshot.Plan, snapshot.Phases, snapshot.CurrentGoal)
 	if snapshot.PlanVersion <= 0 && len(snapshot.Plan) > 0 {
 		snapshot.PlanVersion = 1
 	}
@@ -464,6 +466,7 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(plan)
 	t.state.Plan = plan
+	t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(plan, t.state.Phases, t.state.CurrentGoal)
 	t.state.NeedsPlanning = needsPlanning
 	t.state.PlanVersion++
 	t.state.Phase = builtin_tools.AgentPhaseStep
@@ -506,6 +509,70 @@ func (t *StateTracker) SetCurrentPhase(phase string) builtin_tools.StateSnapshot
 	t.state.CurrentPhase = strings.TrimSpace(phase)
 	t.touchLocked()
 	return *t.state
+}
+
+// SetPhases 原子替换业务 lane 清单（planner 提交/重规划合并后的终态）。
+// 调用方负责先经 NormalizePlanPhases 校验；此处仅做克隆与 plan 挂靠闭合兜底。
+func (t *StateTracker) SetPhases(phases []*builtin_tools.PlanPhase) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(t.state.Plan, phases, t.state.CurrentGoal)
+	t.touchLocked()
+	return *t.state
+}
+
+// ApplyPhaseAssessments 机械承接 step_replan 的 phase 评估：completed/blocked 写回
+// 对应 PlanPhase.Status，blocked 联动把该 lane 下 pending step 收敛为 skipped（含跨
+// phase 下游传递）；continue 与未知 phase_id 忽略（合法性由 submit_replan 工具层校验）。
+// 返回状态实际发生变化的 phase 子集（供调用方增量落 journal）。
+func (t *StateTracker) ApplyPhaseAssessments(assessments []*builtin_tools.PhaseAssessment) ([]*builtin_tools.PlanPhase, builtin_tools.StateSnapshot) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(assessments) == 0 || len(t.state.Phases) == 0 {
+		return nil, *t.state
+	}
+
+	prev := t.snapshotPlanStatusesLocked()
+	byID := make(map[string]*builtin_tools.PlanPhase, len(t.state.Phases))
+	for _, phase := range t.state.Phases {
+		if phase != nil {
+			byID[strings.TrimSpace(phase.ID)] = phase
+		}
+	}
+
+	var changed []*builtin_tools.PlanPhase
+	for _, assess := range assessments {
+		if assess == nil {
+			continue
+		}
+		phase, ok := byID[strings.TrimSpace(assess.PhaseID)]
+		if !ok {
+			continue
+		}
+		var next builtin_tools.PlanPhaseStatus
+		switch assess.Status {
+		case builtin_tools.PhaseAssessCompleted:
+			next = builtin_tools.PlanPhaseCompleted
+		case builtin_tools.PhaseAssessBlocked:
+			next = builtin_tools.PlanPhaseBlocked
+		default:
+			continue
+		}
+		if phase.Status == next {
+			continue
+		}
+		phase.Status = next
+		changed = append(changed, phase)
+	}
+	if len(changed) == 0 {
+		return nil, *t.state
+	}
+
+	builtin_tools.SkipStepsOfBlockedPhases(t.state.Plan, t.state.Phases)
+	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
+	t.touchLocked()
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "phase_assessment"))
+	return builtin_tools.ClonePlanPhases(changed), *t.state
 }
 
 func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
@@ -726,6 +793,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	if len(update.NewPlan) > 0 {
 		builtin_tools.HydratePlanRelations(update.NewPlan)
 		t.state.Plan = update.NewPlan
+		t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(update.NewPlan, t.state.Phases, t.state.CurrentGoal)
 		t.state.PlanVersion++
 		t.state.NeedsPlanning = true
 	}
@@ -1091,6 +1159,7 @@ func (t *StateTracker) SoftResetFrom(
 		CurrentGoal:       strings.TrimSpace(st.CurrentGoal),
 		CurrentStepID:     strings.TrimSpace(st.CurrentStepID),
 		Plan:              st.Plan,
+		Phases:            builtin_tools.SynthesizePhasesIfMissing(st.Plan, st.Phases, st.CurrentGoal),
 		PlanVersion:       st.PlanVersion,
 		UnresolvedAxes:    st.UnresolvedAxes,
 		ActiveSkillNames:  st.ActiveSkillNames,

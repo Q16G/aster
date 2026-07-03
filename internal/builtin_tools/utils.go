@@ -80,6 +80,7 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 	out.NewSurfaces = CloneAxisItems(in.NewSurfaces)
 	out.Warnings = CloneStringSlice(in.Warnings)
 	out.CurrentPhase = strings.TrimSpace(in.CurrentPhase)
+	out.PhaseAssessments = ClonePhaseAssessments(in.PhaseAssessments)
 	return &out
 }
 
@@ -191,6 +192,7 @@ func normalizePlanItems(items []*PlanItem, requireStatus bool) ([]*PlanItem, err
 			ID:        id,
 			Step:      step,
 			Status:    status,
+			PhaseID:   canonicalizePlanIDToken(item.PhaseID),
 			DependsOn: CloneStringSlice(item.DependsOn),
 
 			// 产出与指针字段随归一化保留：重规划保留 completed 项、journal 重放
