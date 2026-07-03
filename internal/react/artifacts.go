@@ -303,6 +303,7 @@ func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID 
 		Phase:             snapshot.Phase,
 		PlanVersion:       snapshot.PlanVersion,
 		CurrentStepID:     strings.TrimSpace(snapshot.CurrentStepID),
+		Phases:            builtin_tools.ClonePlanPhases(snapshot.Phases),
 		Status:            snapshot.Status,
 		UpdatedAt:         time.Now(),
 		Explanation:       strings.TrimSpace(explanation),

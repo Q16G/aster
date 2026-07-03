@@ -14,10 +14,14 @@ import (
 // plan 条目本体不再内联于 checkpoint：workspace/planner.jsonl 是 plan 唯一真相源
 // （plan 提交全量 + step 终态增量 append，经 builtin_tools.LoadPlannerJournal 重放）。
 type planCurrentCheckpoint struct {
-	SessionID         string                         `json:"session_id,omitempty"`
-	Phase             builtin_tools.AgentPhase       `json:"phase,omitempty"`
-	PlanVersion       int                            `json:"plan_version,omitempty"`
-	CurrentStepID     string                         `json:"current_step_id,omitempty"`
+	SessionID     string                   `json:"session_id,omitempty"`
+	Phase         builtin_tools.AgentPhase `json:"phase,omitempty"`
+	PlanVersion   int                      `json:"plan_version,omitempty"`
+	CurrentStepID string                   `json:"current_step_id,omitempty"`
+	// Phases 是业务 lane 骨架（Parallel Frontier）。plan 条目本体归 planner.jsonl，
+	// 但 phases 数量小、状态由 replan 评估驱动，随 checkpoint 冗余一份供 journal
+	// 缺 phase 行的旧数据 resume 兜底。
+	Phases            []*builtin_tools.PlanPhase     `json:"phases,omitempty"`
 	Status            builtin_tools.TaskStatus       `json:"status,omitempty"`
 	UpdatedAt         time.Time                      `json:"updated_at,omitempty"`
 	Explanation       string                         `json:"explanation,omitempty"`
@@ -40,6 +44,7 @@ type assessedStatePayload struct {
 	InputTimeline     []*builtin_tools.TimelineInput   `json:"input_timeline,omitempty"`
 	NeedsPlanning     bool                             `json:"needs_planning,omitempty"`
 	Plan              []*builtin_tools.PlanItem        `json:"plan,omitempty"`
+	Phases            []*builtin_tools.PlanPhase       `json:"phases,omitempty"`
 	PlanVersion       int                              `json:"plan_version,omitempty"`
 	StepOutcomes      []*builtin_tools.StepOutcome     `json:"step_outcomes,omitempty"`
 	ExternalInterrupt *builtin_tools.ExternalInterrupt `json:"external_interrupt,omitempty"`

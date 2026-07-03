@@ -153,9 +153,9 @@ type PhaseAssessment struct {
 // 规划字段由 task_planner 产出；产出字段在 step 终态时由 runtime 从 StepOutcome 烘焙写回，
 // 并随 planner.jsonl 落地（plan 提交全量 append + step 终态增量 append）。
 type PlanItem struct {
-	ID                string         `json:"id,omitempty"`
-	Step              string         `json:"step"`
-	Status            PlanStepStatus `json:"status,omitempty"`
+	ID     string         `json:"id,omitempty"`
+	Step   string         `json:"step"`
+	Status PlanStepStatus `json:"status,omitempty"`
 	// PhaseID 指向所属业务 lane（PlanPhase.ID）。planner 提交时必填；
 	// 旧数据缺失时由 SynthesizePhasesIfMissing 挂到 synthetic phase。
 	PhaseID           string      `json:"phase_id,omitempty"`

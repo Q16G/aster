@@ -189,8 +189,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	// 0) workspace/planner.jsonl —— plan 唯一真相源（step 终态即时 append，比任何
 	//    checkpoint 快照都新）。journal 缺失（旧 session）时回退 assessed_state。
 	if writer != nil {
-		if items, version, err := builtin_tools.LoadPlannerJournal(writer.sessionRoot); err == nil && len(items) > 0 {
+		if items, phases, version, err := builtin_tools.LoadPlannerJournalSnapshot(writer.sessionRoot); err == nil && len(items) > 0 {
 			snapshot.Plan = items
+			snapshot.Phases = phases
 			snapshot.PlanVersion = version
 		}
 	}
@@ -208,6 +209,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if len(snapshot.Plan) == 0 {
 			snapshot.Plan = payload.Plan
 			snapshot.PlanVersion = payload.PlanVersion
+		}
+		if len(snapshot.Phases) == 0 {
+			snapshot.Phases = builtin_tools.ClonePlanPhases(payload.Phases)
 		}
 		snapshot.StepOutcomes = payload.StepOutcomes
 		snapshot.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(payload.ExternalInterrupt)
@@ -267,6 +271,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		}
 		if strings.TrimSpace(snapshot.CurrentPhase) == "" && strings.TrimSpace(planCurrent.CurrentPhase) != "" {
 			snapshot.CurrentPhase = strings.TrimSpace(planCurrent.CurrentPhase)
+		}
+		if len(snapshot.Phases) == 0 && len(planCurrent.Phases) > 0 {
+			snapshot.Phases = builtin_tools.ClonePlanPhases(planCurrent.Phases)
 		}
 		if len(snapshot.InputTimeline) == 0 && len(planCurrent.InputTimeline) > 0 {
 			snapshot.InputTimeline = planCurrent.InputTimeline
@@ -345,6 +352,10 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	}
 
 	if planValid {
+		// 旧数据无 phases（journal 无 phase 行、checkpoint 无 phases 字段）时
+		// 合成 synthetic phase 并把缺挂靠的 item 收编，保证 frontier 调度有效。
+		snapshot.Phases = builtin_tools.SynthesizePhasesIfMissing(snapshot.Plan, snapshot.Phases, snapshot.CurrentGoal)
+
 		applyDurableOutcomesToPlan(snapshot.Plan, snapshot.StepOutcomes, workspaceState)
 
 		// Resolve current_step_id for resume:
