@@ -21,7 +21,7 @@ func (noopEmitter) EmitThink(iteration int, content string, thinkContent string,
 func (noopEmitter) EmitToolStart(iteration int, call ToolCall, stepID string)        {}
 func (noopEmitter) EmitToolEnd(iteration int, result ToolResult, stepID string)      {}
 func (noopEmitter) EmitStateChange(snapshot StateSnapshot)            {}
-func (noopEmitter) EmitTaskPlan(plan []*PlanItem, explanation string) {}
+func (noopEmitter) EmitTaskPlan(plan []*PlanItem, phases []*PlanPhase, explanation string) {}
 func (noopEmitter) EmitHumanRequest(iteration int, requestID string, question string, context map[string]any) {
 }
 func (noopEmitter) EmitIteration(current int, max int, description string) {}

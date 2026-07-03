@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"aster/internal/builtin_tools"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -362,4 +363,54 @@ func scrollChatUpUntilNotBottom(t *testing.T, m ChatModel) ChatModel {
 		t.Fatal("expected viewport to leave bottom after scrolling up")
 	}
 	return m
+}
+
+func TestPlanPart_GroupedByPhase(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(120, 40)
+	m.rootAgentName = "agent"
+	plan := &PlanPart{
+		AgentName: "agent",
+		Items: []PlanItemView{
+			{ID: "a1", Step: "枚举模块A接口", Status: "completed", PhaseID: "phase-a"},
+			{ID: "b1", Step: "枚举模块B接口", Status: "in_progress", PhaseID: "phase-b"},
+		},
+		Phases: []PhaseView{
+			{ID: "phase-a", Name: "模块A 的访问控制", Status: "completed"},
+			{ID: "phase-b", Name: "模块B 的访问控制", Status: "pending"},
+		},
+		IsExpanded: true,
+	}
+	m.AddPart(DisplayPart{Type: PartTypePlan, Plan: plan})
+	out := m.renderPlanPart(0, m.store.parts[0], 120)
+	if !strings.Contains(out, "模块A 的访问控制") || !strings.Contains(out, "模块B 的访问控制") {
+		t.Fatalf("expected phase lane headers rendered, got:\n%s", out)
+	}
+	if !strings.Contains(out, "(completed)") {
+		t.Fatalf("expected completed lane status shown, got:\n%s", out)
+	}
+}
+
+func TestPlanPart_SyntheticPhaseNoHeader(t *testing.T) {
+	m := NewChatModel()
+	m.SetSize(120, 40)
+	m.rootAgentName = "agent"
+	plan := &PlanPart{
+		AgentName: "agent",
+		Items: []PlanItemView{
+			{ID: "s1", Step: "唯一步骤", Status: "pending", PhaseID: builtin_tools.SyntheticPhaseID},
+		},
+		Phases: []PhaseView{
+			{ID: builtin_tools.SyntheticPhaseID, Name: "综合任务", Status: "pending"},
+		},
+		IsExpanded: true,
+	}
+	m.AddPart(DisplayPart{Type: PartTypePlan, Plan: plan})
+	out := m.renderPlanPart(0, m.store.parts[0], 120)
+	if strings.Contains(out, "[综合任务]") {
+		t.Fatalf("single synthetic phase must not render lane header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "唯一步骤") {
+		t.Fatalf("expected step rendered flat, got:\n%s", out)
+	}
 }

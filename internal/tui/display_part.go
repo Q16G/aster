@@ -183,8 +183,17 @@ type PlanPart struct {
 	ParentAgent  string         `json:"parent_agent,omitempty"`
 	Explanation  string         `json:"explanation,omitempty"`
 	Items        []PlanItemView `json:"items,omitempty"`
+	// Phases 是业务 lane 清单，展开渲染时按 lane 分组 step；单 synthetic phase 不渲染组头。
+	Phases []PhaseView `json:"phases,omitempty"`
 	// IsExpanded 是 UI 展开/折叠状态——volatile session 态，不持久化。
 	IsExpanded bool `json:"-"`
+}
+
+// PhaseView 是业务 lane 的展示投影。
+type PhaseView struct {
+	ID     string `json:"id,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // PlanPart 实现 ExpandableCardPart。
@@ -200,6 +209,7 @@ type PlanItemView struct {
 	ID        string `json:"id,omitempty"`
 	Step      string `json:"step"`
 	Status    string `json:"status"`
+	PhaseID   string `json:"phase_id,omitempty"`
 	Depth     int    `json:"depth,omitempty"`
 	AgentName string `json:"agent_name,omitempty"`
 }
@@ -274,16 +284,20 @@ func (p *StepSummaryPart) Expanded() bool         { return p.IsExpanded }
 func (p *StepSummaryPart) SetExpanded(v bool)     { p.IsExpanded = v }
 
 type StepReplanPart struct {
-	AgentName       string   `json:"agent_name,omitempty"`
-	StepID          string   `json:"step_id,omitempty"`
-	StepName        string   `json:"step_name,omitempty"`
-	ShouldReplan    bool     `json:"should_replan"`
-	ReplanReason    string   `json:"replan_reason,omitempty"`
-	NextGoal        string   `json:"next_goal,omitempty"`
-	PlanSize        int      `json:"plan_size,omitempty"`
-	IncompleteItems []string `json:"incomplete_items,omitempty"`
-	NewSurfaces     []string `json:"new_surfaces,omitempty"`
-	Warnings        []string `json:"warnings,omitempty"`
+	AgentName    string `json:"agent_name,omitempty"`
+	StepID       string `json:"step_id,omitempty"`
+	StepName     string `json:"step_name,omitempty"`
+	ShouldReplan bool   `json:"should_replan"`
+	ReplanReason string `json:"replan_reason,omitempty"`
+	NextGoal     string `json:"next_goal,omitempty"`
+	PlanSize     int    `json:"plan_size,omitempty"`
+	// Phase 评估计数（Parallel Frontier）：本轮 frontier 内各 active phase 的 continue/
+	// completed/blocked 归置计数，折叠态显示 completed/blocked 收束数。
+	PhaseAssessments int      `json:"phase_assessments,omitempty"`
+	PhaseContinue    int      `json:"phase_continue,omitempty"`
+	PhaseCompleted   int      `json:"phase_completed,omitempty"`
+	PhaseBlocked     int      `json:"phase_blocked,omitempty"`
+	Warnings         []string `json:"warnings,omitempty"`
 
 	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。
 	IsExpanded bool `json:"-"`
@@ -314,13 +328,15 @@ type StepTriagePart struct {
 }
 
 // StepTriagePart 实现 ExpandableCardPart 接口。
-func (p *StepTriagePart) Title() string          { return strings.TrimSpace(p.StepName) }
-func (p *StepTriagePart) StatusLabel() string    { return strings.TrimSpace(p.Suggestion) }
-func (p *StepTriagePart) GetCallID() string      { return strings.TrimSpace(p.StepID) }
-func (p *StepTriagePart) Elapsed() time.Duration { return time.Duration(p.DurationMs) * time.Millisecond }
-func (p *StepTriagePart) CardKind() CardKind     { return CardKindStepTriage }
-func (p *StepTriagePart) Expanded() bool         { return p.IsExpanded }
-func (p *StepTriagePart) SetExpanded(v bool)     { p.IsExpanded = v }
+func (p *StepTriagePart) Title() string       { return strings.TrimSpace(p.StepName) }
+func (p *StepTriagePart) StatusLabel() string { return strings.TrimSpace(p.Suggestion) }
+func (p *StepTriagePart) GetCallID() string   { return strings.TrimSpace(p.StepID) }
+func (p *StepTriagePart) Elapsed() time.Duration {
+	return time.Duration(p.DurationMs) * time.Millisecond
+}
+func (p *StepTriagePart) CardKind() CardKind { return CardKindStepTriage }
+func (p *StepTriagePart) Expanded() bool     { return p.IsExpanded }
+func (p *StepTriagePart) SetExpanded(v bool) { p.IsExpanded = v }
 
 type SubAgentPart struct {
 	AgentName     string        `json:"agent_name"`

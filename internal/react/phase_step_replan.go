@@ -537,7 +537,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		a.emitter.EmitStepReplanResult(stepID, strings.TrimSpace(current.Step), modelOut)
 	}
 	if newPlan != nil && a.emitter != nil && modelOut != nil {
-		a.emitter.EmitTaskPlan(snapshot.Plan, strings.TrimSpace(modelOut.ReplanReason))
+		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Phases, strings.TrimSpace(modelOut.ReplanReason))
 	}
 
 	a.emitRuntimeLog("info", "step replan completed", snapshot, map[string]any{

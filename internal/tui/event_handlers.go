@@ -611,7 +611,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				if status == "" {
 					status = "pending"
 				}
-				items = append(items, PlanItemView{ID: item.ID, Step: item.Step, Status: status})
+				items = append(items, PlanItemView{ID: item.ID, Step: item.Step, Status: status, PhaseID: item.PhaseID})
 			}
 		case []any:
 			for _, item := range v {
@@ -619,18 +619,21 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					id, _ := itemMap["id"].(string)
 					step, _ := itemMap["step"].(string)
 					status, _ := itemMap["status"].(string)
+					phaseID, _ := itemMap["phase_id"].(string)
 					if status == "" {
 						status = "pending"
 					}
-					items = append(items, PlanItemView{ID: id, Step: step, Status: status})
+					items = append(items, PlanItemView{ID: id, Step: step, Status: status, PhaseID: phaseID})
 				}
 			}
 		}
+		phases := parsePhaseViews(event.Payload["phases"])
 		if len(items) > 0 || explanation != "" {
 			planPart := &PlanPart{
 				AgentName:   event.AgentName,
 				Explanation: explanation,
 				Items:       items,
+				Phases:      phases,
 			}
 			if !m.chat.isRootAgentPlan(planPart) {
 				if _, known := m.chat.store.agentParent[event.AgentName]; !known {
@@ -816,20 +819,20 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 		replanReason := payloadString(event.Payload, "replan_reason")
 		nextGoal := payloadString(event.Payload, "next_goal")
 		planSize := payloadInt(event.Payload, "plan_size")
-		incompleteItems := payloadStringSlice(event.Payload, "incomplete_items")
-		newSurfaces := payloadStringSlice(event.Payload, "new_surfaces")
 		warnings := payloadStringSlice(event.Payload, "warnings")
 		part := StepReplanPart{
-			AgentName:       event.AgentName,
-			StepID:          stepID,
-			StepName:        stepName,
-			ShouldReplan:    shouldReplan,
-			ReplanReason:    replanReason,
-			NextGoal:        nextGoal,
-			PlanSize:        planSize,
-			IncompleteItems: incompleteItems,
-			NewSurfaces:     newSurfaces,
-			Warnings:        warnings,
+			AgentName:        event.AgentName,
+			StepID:           stepID,
+			StepName:         stepName,
+			ShouldReplan:     shouldReplan,
+			ReplanReason:     replanReason,
+			NextGoal:         nextGoal,
+			PlanSize:         planSize,
+			PhaseAssessments: payloadInt(event.Payload, "phase_assessments_size"),
+			PhaseContinue:    payloadInt(event.Payload, "phase_continue_size"),
+			PhaseCompleted:   payloadInt(event.Payload, "phase_completed_size"),
+			PhaseBlocked:     payloadInt(event.Payload, "phase_blocked_size"),
+			Warnings:         warnings,
 		}
 		m.chat.AddPart(DisplayPart{
 			Type:       PartTypeStepReplan,
@@ -999,6 +1002,31 @@ func (m *Model) handleBatchedEvents(events []TuiEvent) {
 			}
 		}
 	}
+}
+
+// parsePhaseViews 从 task_plan payload 解析业务 lane 清单，兼容强类型（同进程 emit）
+// 与 map（持久化重放 / 跨进程 JSON）两种形态。
+func parsePhaseViews(raw any) []PhaseView {
+	var out []PhaseView
+	switch v := raw.(type) {
+	case []*builtin_tools.PlanPhase:
+		for _, phase := range v {
+			if phase == nil {
+				continue
+			}
+			out = append(out, PhaseView{ID: phase.ID, Name: phase.Name, Status: string(phase.Status)})
+		}
+	case []any:
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				id, _ := m["id"].(string)
+				name, _ := m["name"].(string)
+				status, _ := m["status"].(string)
+				out = append(out, PhaseView{ID: id, Name: name, Status: status})
+			}
+		}
+	}
+	return out
 }
 
 func payloadString(p map[string]any, key string) string {

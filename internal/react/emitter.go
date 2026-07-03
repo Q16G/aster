@@ -381,14 +381,15 @@ func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question str
 	})
 }
 
-// EmitTaskPlan 发射任务计划事件
-func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, explanation string) {
+// EmitTaskPlan 发射任务计划事件。phases 是业务 lane 清单，供 TUI 按 lane 分组展示 step。
+func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, phases []*builtin_tools.PlanPhase, explanation string) {
 	e.ResetThinkGroupID()
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeTaskPlan,
 		NodeID: "task_plan",
 		Payload: map[string]any{
 			"plan":        plan,
+			"phases":      phases,
 			"explanation": explanation,
 		},
 	})
