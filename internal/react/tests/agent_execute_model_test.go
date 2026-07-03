@@ -1673,10 +1673,15 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				// step_replan 提交三轴缺口，触发 ReplanContext 回流 planner。
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-submit-replan-1", "submit_replan", map[string]any{
-						"should_replan":      true,
-						"replan_reason":      "旧计划未覆盖新增验证缺口",
-						"current_phase_done": false,
-						"incomplete_items":   []any{"legacy-step 覆盖的验证面缺失"},
+						"should_replan": true,
+						"replan_reason": "旧计划未覆盖新增验证缺口",
+						"phase_assessments": []any{
+							map[string]any{
+								"phase_id":         builtin_tools.SyntheticPhaseID,
+								"status":           "continue",
+								"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
+							},
+						},
 					}),
 				},
 			},
@@ -1794,8 +1799,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["replan_reason"])); got != "旧计划未覆盖新增验证缺口" {
 		t.Fatalf("expected replan reason in event, got %#v", stepReplanEvent.Payload)
 	}
-	if got, ok := stepReplanEvent.Payload["current_phase_done"].(bool); !ok || got {
-		t.Fatalf("expected current_phase_done=false in event, got %#v", stepReplanEvent.Payload)
+	if got := builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["phase_continue_size"]); got != "1" {
+		t.Fatalf("expected phase_continue_size=1 in event, got %#v", stepReplanEvent.Payload)
 	}
 }
 

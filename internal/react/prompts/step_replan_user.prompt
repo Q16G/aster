@@ -12,10 +12,11 @@
 {{.GOAL_UNDERSTANDING}}
 </GOAL_UNDERSTANDING>
 {{- end}}
-{{- if .HAS_CURRENT_PHASE}}
-<CURRENT_PHASE>
-{{.CURRENT_PHASE}}
-</CURRENT_PHASE>
+{{- if .HAS_ACTIVE_PHASES}}
+<ACTIVE_PHASES>
+本轮 frontier 内的活跃业务 lane（JSON 数组）。对每个 phase 独立三轴判定，并在 phase_assessments 中逐一给出 continue|completed|blocked：
+{{.ACTIVE_PHASES}}
+</ACTIVE_PHASES>
 {{- end}}
 <INPUT_TIMELINE>
 {{.INPUT_TIMELINE}}

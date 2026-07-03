@@ -57,10 +57,9 @@ type StepReplanPromptInput struct {
 	IsSubAgent        bool
 	CurrentGoal       any
 	GoalUnderstanding string
-	// CurrentPhase 是注入给 step_replan 的「当前深度优先阶段」语义描述。
-	// 视角 B 据此把全局视角从 GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ CurrentPhase。
-	// 空字符串时视角 B 退化为 GoalUnderstanding 全集兜底（兼容历史 session 与 simple 任务）。
-	CurrentPhase  string
+	// ActivePhases 是本轮 frontier 内活跃 lane 清单（[]*PlanPhase）。step_replan 对其中
+	// 每个 phase 独立三轴判定并逐一给出 phase_assessment；空时无活跃 lane（simple/兜底）。
+	ActivePhases  any
 	InputTimeline any
 	// ReviewWindow 是「自上次 LLM replan 边界以来已完成的 step」区间多卡（最右一卡 Latest=true 标识本回合刚跑完）。
 	// 替代旧 CurrentStepCard 单卡：plan-once-execute-many gate 下被跳过的 K-1 个 step 也以同构卡片入 prompt，
@@ -373,8 +372,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"CURRENT_GOAL":             fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
-		"CURRENT_PHASE":            strings.TrimSpace(input.CurrentPhase),
-		"HAS_CURRENT_PHASE":        strings.TrimSpace(input.CurrentPhase) != "",
+		"ACTIVE_PHASES":            prettyJSON(input.ActivePhases),
+		"HAS_ACTIVE_PHASES":        activePhasesNonEmpty(input.ActivePhases),
 		"INPUT_TIMELINE":           prettyJSON(input.InputTimeline),
 		"REVIEW_WINDOW_CARDS":      cardsJSON,
 		"REVIEW_WINDOW_TOTAL":      reviewTotal,

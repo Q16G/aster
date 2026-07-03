@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aster/internal/builtin_tools"
 )
 
 func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, error) {
@@ -24,7 +26,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		IsSubAgent:          a.cfg.IsSubAgent,
 		CurrentGoal:         payload["current_goal"],
 		GoalUnderstanding:   stringFromPayload(payload, "goal_understanding"),
-		CurrentPhase:        stringFromPayload(payload, "current_phase"),
+		ActivePhases:        payload["active_phases"],
 		InputTimeline:       payload["input_timeline"],
 		ReviewWindow:        payload["review_window"],
 		PlanOverview:        payload["plan_overview"],
@@ -79,6 +81,18 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 	}
 	parts.SystemAgent = a.identityEnvBlock()
 	return parts, nil
+}
+
+// activePhasesNonEmpty 判断 ACTIVE_PHASES 注入是否含至少一个 phase（供模板 HAS 分支）。
+func activePhasesNonEmpty(value any) bool {
+	switch v := value.(type) {
+	case []*builtin_tools.PlanPhase:
+		return len(v) > 0
+	case nil:
+		return false
+	default:
+		return false
+	}
 }
 
 func prettyJSON(value any) string {

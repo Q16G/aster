@@ -206,7 +206,8 @@ func TestStepReplanB3c06685Replay_LiveFromENV(t *testing.T) {
 		ai.NewSystemMsgInfo(parts.SystemRules),
 		ai.NewUserMsgInfo(parts.User),
 	}
-	submitToolInst := newSubmitReplanTool()
+	replayPhases := builtin_tools.SynthesizePhasesIfMissing(plan, nil, "b3c06685 replay")
+	submitToolInst := newSubmitReplanTool(builtin_tools.ActivePhases(replayPhases), plan)
 	fnTool := &ai.FunctionTool{
 		Type: "function",
 		Function: &ai.FunctionDetail{
@@ -253,9 +254,14 @@ func TestStepReplanB3c06685Replay_LiveFromENV(t *testing.T) {
 
 	t.Logf("[replay] should_replan=%v", decision.ShouldReplan)
 	t.Logf("[replay] replan_reason=%s", decision.ReplanReason)
-	t.Logf("[replay] current_phase_done=%v", decision.CurrentPhaseDone)
-	t.Logf("[replay] incomplete_items=%d depth_gaps=%d new_surfaces=%d",
-		len(decision.IncompleteItems), len(decision.DepthGaps), len(decision.NewSurfaces))
+	t.Logf("[replay] phase_assessments=%d", len(decision.PhaseAssessments))
+	for _, a := range decision.PhaseAssessments {
+		if a == nil {
+			continue
+		}
+		t.Logf("[replay] phase=%s status=%s incomplete=%d depth=%d surfaces=%d",
+			a.PhaseID, a.Status, len(a.IncompleteItems), len(a.DepthGaps), len(a.NewSurfaces))
+	}
 	if msg.ReasoningOutput != "" {
 		t.Logf("[replay] reasoning=%s", truncate(msg.ReasoningOutput, 2000))
 	}

@@ -9,7 +9,7 @@ import (
 // 原本断言 judgmentExplorationBudget / judgmentGraceRounds / *BudgetNotice 文案
 // 的契约已删除：思考预算上限已被移除，runaway 防线靠 ctx 取消 + MaxIterations 兜底。
 func TestSubmitReplanTool_NoMaintenanceDirectives(t *testing.T) {
-	tool := newSubmitReplanTool()
+	tool := newSubmitReplanTool(nil, nil)
 	params := tool.Parameters().(map[string]any)
 	props := params["properties"].(map[string]any)
 	if _, ok := props["maintenance_directives"]; ok {
