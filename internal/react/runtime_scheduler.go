@@ -322,12 +322,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if !regenGoal {
 		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
 	}
-	// CurrentPhase 注入为本回合的当前阶段（上下文，非强制焦点）；planner 读账本 + REPLAN_CONTEXT
-	// 携带的 current_phase_done 信号自决保持还是切换，submit_plan.current_phase 可覆盖此注入值。
-	plannerInput.CurrentPhase = strings.TrimSpace(snapshot.CurrentPhase)
-	if snapshot.ReplanContext != nil && strings.TrimSpace(snapshot.ReplanContext.CurrentPhase) != "" {
-		plannerInput.CurrentPhase = strings.TrimSpace(snapshot.ReplanContext.CurrentPhase)
-	}
 	a.applyPlannerOverflowHints(&plannerInput)
 
 	// 仅在「全新意图」首次规划、或用户改向（regenGoal）时强制要求 goal_understanding：
@@ -420,15 +414,12 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if res != nil {
 		a.SetGoalUnderstanding(res.GoalUnderstanding)
 		a.state.SetSimpleTask(res.Simple && len(items) == 1)
-		// 阶段贯穿：planner 自决当前阶段后写入 snapshot，step_replan 视角③ 据此收窄到 role ∩ current_phase；
-		// simple 任务空字符串 → 视角③ 退化为 GoalUnderstanding 全集兜底。
-		// 回流回合 fallback：planner 未回填 current_phase 时沿用 ReplanContext.CurrentPhase，
-		// 避免阶段焦点丢失退化为全集兜底。
-		phaseFromPlan := strings.TrimSpace(res.CurrentPhase)
-		if phaseFromPlan == "" && snapshot.ReplanContext != nil {
-			phaseFromPlan = strings.TrimSpace(snapshot.ReplanContext.CurrentPhase)
+		// 业务 lane 贯穿：parse 侧已完成与既有 phases 的按 id 合并（completed/blocked 保留），
+		// 此处原子替换。simple/direct 任务未提交 phases 时保留既有 lane，由 UpdatePlan 的
+		// SynthesizePhasesIfMissing 兜底挂靠新 item。
+		if len(res.Phases) > 0 {
+			a.state.SetPhases(res.Phases)
 		}
-		a.state.SetCurrentPhase(phaseFromPlan)
 	}
 	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
 	if res != nil && len(items) > 0 {
@@ -516,7 +507,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				continue
 			}
 			if tc.Function.Name == submitPlanToolName {
-				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding)
+				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding, a.state.Snapshot().Phases)
 				if parseErr != nil {
 					submitRetries++
 					if submitRetries > maxSubmitRetries {
@@ -720,7 +711,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 						"description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。minItems=1 是 schema 级硬约束，传空数组 [] 会被 function-call 校验直接拒绝。needs_planning=false 时本字段可省略（function-call 协议层允许 required 字段缺省，由 runtime 走 direct_response 分支）。",
 						"items": map[string]any{
 							"type":     "object",
-							"required": []string{"id", "step", "status", "depends_on"},
+							"required": []string{"id", "step", "status", "phase_id", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
 								"step": map[string]any{"type": "string", "description": "一条 step 必须是 atomic work item：object × action × acceptance。object 是一个具体执行对象（文件、接口、参数、页面、账户等对象标识）；action 是唯一动作维度（枚举、观测、验证某项属性、生成报告等）；acceptance 是一个可独立验收的产出或结论。规划时先列 objects，再列 actions，最后生成三元组；任一维度不同就拆成不同 step。清单是数据流：生成清单可作为一个 step，消费清单时必须展开清单内 objects，清单文件名本身不是批量执行对象。机械兜底门：单条 step 文案 ≤120 字符，且不得出现中文分号「；」（多句堆叠强信号）；超限或含分号会被 runtime 拒绝并回写要求拆条重试。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
@@ -729,10 +720,36 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},
 									"description": "步骤状态。新规划步骤填 pending；承接已完成步骤时保留其原状态。",
 								},
+								"phase_id": map[string]any{
+									"type":        "string",
+									"description": "所属业务 lane 的 phase id，必须引用 phases 中的有效条目（或承接既有 completed/blocked phase 的 id）。",
+								},
 								"depends_on": map[string]any{
 									"type":        "array",
 									"items":       map[string]any{"type": "string"},
 									"description": "前置依赖的步骤 id 列表；不得引用无效 id 或形成循环依赖。",
+								},
+							},
+						},
+					},
+					"phases": map[string]any{
+						"type":        "array",
+						"description": "业务 lane 清单。needs_planning=true 且 simple=false 时必填且非空。一个 phase 是一个最小的、可从浅到深推进的可闭环切面（纵向深度层在 phase 内以 step 推进，不拆成多个 phase）；互不依赖的 phase 会被并发调度，仅当一个 phase 的启动确实需要另一个 phase 的产出时才写 depends_on——深度递进链应留在同一 phase 内，不要拆成串行 phase 链。重规划回合按 id 承接既有 phases：completed/blocked 项由 runtime 保留，取消一个 lane 只能显式提交其 status=blocked，不得静默省略。",
+						"items": map[string]any{
+							"type":     "object",
+							"required": []string{"id", "name", "depends_on"},
+							"properties": map[string]any{
+								"id":   map[string]any{"type": "string", "description": "phase 稳定标识，不得为空或重复，不得使用 runtime 保留 id「phase-synthetic」。"},
+								"name": map[string]any{"type": "string", "description": "lane 语义描述，格式「<对象> 的 <深度推进目标>」，内联具体对象/工件名，禁泛化范畴词。"},
+								"depends_on": map[string]any{
+									"type":        "array",
+									"items":       map[string]any{"type": "string"},
+									"description": "前置依赖的 phase id 列表；被依赖 phase 全部收束（completed/blocked）前本 lane 的 step 不会释放。不得引用无效 id 或成环。",
+								},
+								"status": map[string]any{
+									"type":        "string",
+									"enum":        []string{"pending", "completed", "blocked"},
+									"description": "lane 状态。新建 lane 填 pending 或省略；承接既有 lane 保留其状态；取消 lane 显式填 blocked。",
 								},
 							},
 						},
@@ -744,10 +761,6 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 					"goal_understanding": map[string]any{
 						"type":        "string",
 						"description": "对用户输入的结构化复述；按七要素小标题覆盖：核心目标 / 范围边界 / 约束 / 交付物与验收标准 / 显式聚焦 / 隐含需求与假设 / 未决歧义。needs_planning=true 时必填。",
-					},
-					"current_phase": map[string]any{
-						"type":        "string",
-						"description": "本回合 plan 释放的当前阶段描述，格式「<对象> 的 <深度推进目标>」——一个最小的、可从浅到深推进的执行单元（纵向深度层在 phase 内推进，不拆成多个 phase）。内联具体对象/工件名，禁泛化范畴词。必须是单一可闭环主导切面，不得写成组件×多维度矩阵、泛化组件层或 skill checklist。多同类对象任务仅描述其中一个阶段；needs_planning=true 且 simple=false 时必填；simple=true 或 needs_planning=false 时留空。由 planner 读账本（待承接排队候选）+ task_context.md + 注入的 current_phase_done 信号自决：current_phase_done=false 时沿用当前阶段继续深推，=true 时从账本候选切换到下一阶段。",
 					},
 					"simple": map[string]any{
 						"type":        "boolean",
@@ -874,7 +887,7 @@ func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
 	return errors.New(b.String())
 }
 
-func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
+func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []*builtin_tools.PlanPhase) (*builtin_tools.TaskPlannerResult, error) {
 	var data []byte
 	switch v := args.(type) {
 	case string:
@@ -905,10 +918,6 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 			"请先按七要素结构化复述输入（核心目标 / 范围边界 / 约束 / 交付物与验收标准 / 显式聚焦 / 隐含需求与假设 / 未决歧义），" +
 			"填入 goal_understanding 字段后重新调用")
 	}
-	if result.NeedsPlanning && !result.Simple && strings.TrimSpace(result.CurrentPhase) == "" {
-		return nil, fmt.Errorf("submit_plan: needs_planning=true 且非 simple 任务时 current_phase 必填。" +
-			"请用一句话描述当前深度优先阶段（格式「<对象> 的 <深度推进目标>」，内联具体对象/工件名）后重新调用")
-	}
 	if !result.NeedsPlanning && strings.TrimSpace(result.DirectResponse) == "" {
 		return nil, fmt.Errorf(
 			"submit_plan: needs_planning=false 但 direct_response 为空。\n%s\n"+
@@ -917,7 +926,91 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool) (*builtin_tool
 				"走「需要规划」分支\n%s",
 			submitPlanShapeReminder, submitPlanItemSample)
 	}
+
+	// Phases（业务 lane）校验与合并：
+	//  1. needs_planning 且非 simple 时 phases 必填；
+	//  2. 归一化（id 唯一 / 引用闭包 / 无环 / 禁 synthetic 保留 id）；
+	//  3. 与既有 phases 按 id 合并——completed/blocked 项被省略时保留（取消 lane 只能
+	//     显式提交 blocked，见 D7b）；
+	//  4. plan item 的 phase_id 必须在合并后的 phase 集内（防悬空引用被错挂 synthetic）。
+	if result.NeedsPlanning {
+		normalized, err := builtin_tools.NormalizePlanPhases(result.Phases, true)
+		if err != nil {
+			return nil, fmt.Errorf("submit_plan: phases 校验失败：%w。请修正 phases 结构（id 唯一、depends_on 引用有效且无环）后重新调用", err)
+		}
+		if !result.Simple && len(normalized) == 0 {
+			return nil, fmt.Errorf("submit_plan: needs_planning=true 且非 simple 任务时 phases 必填。" +
+				"请提交业务 lane 清单（每项 {id, name, depends_on}，name 格式「<对象> 的 <深度推进目标>」），" +
+				"并给每个 plan item 填 phase_id 后重新调用")
+		}
+		merged := mergePlanPhases(priorPhases, normalized)
+		if len(merged) > 0 {
+			known := make(map[string]struct{}, len(merged))
+			for _, phase := range merged {
+				known[phase.ID] = struct{}{}
+			}
+			var dangling []string
+			for _, item := range result.Plan {
+				if item == nil {
+					continue
+				}
+				phaseID := canonicalizePlanPhaseRef(item.PhaseID)
+				if phaseID == "" {
+					dangling = append(dangling, fmt.Sprintf("step %q 缺 phase_id", strings.TrimSpace(item.ID)))
+					continue
+				}
+				if _, ok := known[phaseID]; !ok {
+					dangling = append(dangling, fmt.Sprintf("step %q 引用未知 phase %q", strings.TrimSpace(item.ID), phaseID))
+				}
+			}
+			if len(dangling) > 0 {
+				return nil, fmt.Errorf("submit_plan: plan 与 phases 引用不闭合：%s。"+
+					"每个 plan item 的 phase_id 必须引用 phases 中的有效条目（或承接既有 completed/blocked phase 的 id）；"+
+					"取消 lane 请显式提交该 phase 为 blocked，不要静默省略", strings.Join(dangling, "；"))
+			}
+		}
+		result.Phases = merged
+	}
 	return &result, nil
+}
+
+// canonicalizePlanPhaseRef 与 NormalizePlanPhases 的 id 规整同源，供 phase_id 引用对齐。
+func canonicalizePlanPhaseRef(raw string) string {
+	return builtin_tools.CanonicalizePlanIDToken(raw)
+}
+
+// mergePlanPhases 把 planner 本轮提交的 phases 与既有 phases 按 id 合并：
+// 提交项以 planner 为准（承接/重开/显式 blocked 均由其表达）；被省略的既有
+// completed/blocked 项保留为依赖锚点与展示痕迹（与 mergeReplannedPlan 保留
+// non-pending step 同型）；被省略的既有 pending 项不保留——其下 step 若仍存在
+// 会因引用不闭合被 parse 拒绝，倒逼 planner 显式表达。
+func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.PlanPhase) []*builtin_tools.PlanPhase {
+	if len(prev) == 0 {
+		return next
+	}
+	if len(next) == 0 {
+		return builtin_tools.ClonePlanPhases(prev)
+	}
+	submitted := make(map[string]struct{}, len(next))
+	for _, phase := range next {
+		if phase != nil {
+			submitted[strings.TrimSpace(phase.ID)] = struct{}{}
+		}
+	}
+	merged := make([]*builtin_tools.PlanPhase, 0, len(prev)+len(next))
+	for _, phase := range prev {
+		if phase == nil || !phase.Terminal() {
+			continue
+		}
+		if _, ok := submitted[strings.TrimSpace(phase.ID)]; ok {
+			continue
+		}
+		clone := *phase
+		clone.DependsOn = builtin_tools.CloneStringSlice(phase.DependsOn)
+		merged = append(merged, &clone)
+	}
+	merged = append(merged, next...)
+	return merged
 }
 
 // submitPlanShapeReminder 列出 submit_plan 的两种合法形态。
@@ -1018,6 +1111,11 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	// 取代旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入（copy→pointer）。
 	if len(snapshot.Plan) > 0 {
 		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, opts.WorkspaceRootDir))
+	}
+
+	// PHASES：既有业务 lane 清单（含状态），重规划回合供 planner 承接。
+	if len(snapshot.Phases) > 0 {
+		data.PhasesJSON = prettyJSON(snapshot.Phases)
 	}
 
 	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入；helper 内置 stat 与 size>0 判定）。

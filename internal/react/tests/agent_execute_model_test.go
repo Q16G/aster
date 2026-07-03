@@ -1937,11 +1937,13 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
+							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "phase_id": "phase-main", "depends_on": []any{}},
+						},
+						"phases": []any{
+							map[string]any{"id": "phase-main", "name": "用户请求 的 执行", "depends_on": []any{}},
 						},
 						"explanation":        "需要规划",
 						"goal_understanding": "核心目标：执行用户请求",
-						"current_phase":      "执行用户请求",
 					}),
 				},
 			},
@@ -2618,12 +2620,14 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-bad", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
-							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"S-01"}},
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "phase_id": "phase-fix"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "phase_id": "phase-fix", "depends_on": []string{"S-01"}},
+						},
+						"phases": []any{
+							map[string]any{"id": "phase-fix", "name": "代码漏洞 的 分析与修复", "depends_on": []any{}},
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
-						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2633,12 +2637,14 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-ok", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending"},
-							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "depends_on": []string{"step-0"}},
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "phase_id": "phase-fix"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "phase_id": "phase-fix", "depends_on": []string{"step-0"}},
+						},
+						"phases": []any{
+							map[string]any{"id": "phase-fix", "name": "代码漏洞 的 分析与修复", "depends_on": []any{}},
 						},
 						"explanation":        "planned",
 						"goal_understanding": "核心目标：分析并修复漏洞",
-						"current_phase":      "分析与修复代码漏洞",
 					}),
 				},
 			},
@@ -2809,11 +2815,13 @@ func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
 				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
 					"needs_planning": true,
 					"plan": []any{
-						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "depends_on": []any{}},
+						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "phase_id": "phase-main", "depends_on": []any{}},
+					},
+					"phases": []any{
+						map[string]any{"id": "phase-main", "name": "用户请求 的 执行", "depends_on": []any{}},
 					},
 					"explanation":        "需要规划",
 					"goal_understanding": "核心目标：执行用户请求",
-					"current_phase":      "执行用户请求",
 				}),
 			},
 		}
@@ -2892,11 +2900,13 @@ func TestPlanPhaseWithTools_GranularityGateRetriesThenDegrades(t *testing.T) {
 				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
 					"needs_planning": true,
 					"plan": []any{
-						map[string]any{"id": "p14-ssi-testfile", "step": overlongStep, "status": "pending", "depends_on": []any{}},
+						map[string]any{"id": "p14-ssi-testfile", "step": overlongStep, "status": "pending", "phase_id": "phase-probe", "depends_on": []any{}},
+					},
+					"phases": []any{
+						map[string]any{"id": "phase-probe", "name": "对象 的 深度探测", "depends_on": []any{}},
 					},
 					"explanation":        "需要规划",
 					"goal_understanding": "核心目标：执行用户请求",
-					"current_phase":      "对象 的 深度探测",
 				}),
 			},
 		}

@@ -54,11 +54,11 @@ type TaskPlannerResult struct {
 	// 交付物与验收/显式聚焦/隐含假设/未决歧义）。它随 plan 一起落盘，并注入 step_replan，
 	// 作为多轮重规划时锚定原始意图的准绳。
 	GoalUnderstanding string `json:"goal_understanding,omitempty"`
-	// CurrentPhase 是 planner 自决的「当前深度优先聚焦阶段/面」一句话语义描述，与
-	// §覆盖面深度优先 的「面」概念对齐。step_replan 视角 B 据此把全局视角从
-	// GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ CurrentPhase，承载阶段闭环判定。
-	// needs_planning=true && !Simple 时必填；simple/direct_response 任务豁免。
-	CurrentPhase string `json:"current_phase,omitempty"`
+	// Phases 是 planner 提交的业务 lane 清单（Parallel Frontier）：plan item 经 phase_id
+	// 归属其一。needs_planning=true && !Simple 时必填；simple/direct_response 任务豁免
+	// （runtime 以 synthetic phase 兜底）。重规划回合经 parse 侧按 id 与既有 phases 合并
+	// （completed/blocked 保留），取消 lane 只能显式提交该 phase 为 blocked。
+	Phases []*PlanPhase `json:"phases,omitempty"`
 	// Plan 阶段调查上下文，持久化后传递给后续 Step
 	Summary         string   `json:"summary,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`
