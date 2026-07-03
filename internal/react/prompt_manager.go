@@ -142,11 +142,7 @@ type TaskPlannerPromptInput struct {
 	AgentBackground   string
 	Input             string
 	GoalUnderstanding string
-	// CurrentPhase 注入为上一轮的当前深度优先阶段（上下文，非强制焦点）；planner 读账本
-	// 「待承接排队」候选 + REPLAN_CONTEXT.current_phase_done 信号自决保持还是切换，
-	// submit_plan.current_phase 可覆盖此注入值（职责反转后 step_replan 不再选下一个 phase）。
-	CurrentPhase  string
-	UserInputTurn bool
+	UserInputTurn     bool
 	// IsSubAgent 标记本 planner 回合发生在子 Agent 内部；用于让模板对子 Agent
 	// 关闭"顶层 planner 维护事实板终态"的契约段（子 Agent 工作区不承担顶层
 	// 事实板维护责任，避免被强制注入）。
@@ -224,8 +220,8 @@ type PromptManager interface {
 }
 
 type defaultPromptManager struct {
-	thinkActSystemTmpl *template.Template
-	thinkActUserTmpl   *template.Template
+	thinkActSystemTmpl             *template.Template
+	thinkActUserTmpl               *template.Template
 	planningSystemTmpl             *template.Template
 	stepReplanSystemTmpl           *template.Template
 	stepReplanUserTmpl             *template.Template
@@ -491,8 +487,6 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"INPUT":                  strings.TrimSpace(input.Input),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
-		"CURRENT_PHASE":          strings.TrimSpace(input.CurrentPhase),
-		"HAS_CURRENT_PHASE":      strings.TrimSpace(input.CurrentPhase) != "",
 		"TASK_CONTEXT_BOARD":     strings.TrimSpace(input.TaskContextBoard),
 		"HAS_TASK_CONTEXT_BOARD": strings.TrimSpace(input.TaskContextBoard) != "",
 		"SKILLS_CONTEXT":         input.SkillsContext,

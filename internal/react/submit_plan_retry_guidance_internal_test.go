@@ -29,9 +29,8 @@ func TestParseSubmitPlanArgs_PlanEmpty_GuidesBothBranches(t *testing.T) {
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
-		"current_phase":      "模块 A 的接口枚举",
 		"plan":               []map[string]any{},
-	}, true)
+	}, true, nil)
 	if err == nil {
 		t.Fatal("expected error when needs_planning=true but plan is empty")
 	}
@@ -57,7 +56,7 @@ func TestParseSubmitPlanArgs_DirectResponseEmpty_GuidesBothBranches(t *testing.T
 		"needs_planning":  false,
 		"explanation":     "无需规划",
 		"direct_response": "",
-	}, true)
+	}, true, nil)
 	if err == nil {
 		t.Fatal("expected error when needs_planning=false but direct_response is empty")
 	}
@@ -83,12 +82,11 @@ func TestParseSubmitPlanArgs_GoalUnderstandingMissing_NoShapeReminder(t *testing
 	_, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning": true,
 		"explanation":    "需要规划",
-		"current_phase":  "模块 A 的接口枚举",
 		"plan": []map[string]any{
 			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "depends_on": []string{}},
 		},
 		// goal_understanding 缺失
-	}, true)
+	}, true, nil)
 	if err == nil {
 		t.Fatal("expected error when goal_understanding missing")
 	}
@@ -106,26 +104,26 @@ func TestParseSubmitPlanArgs_GoalUnderstandingMissing_NoShapeReminder(t *testing
 	}
 }
 
-// TestParseSubmitPlanArgs_CurrentPhaseMissing_NoShapeReminder 校验同理:
-// current_phase 缺失也是同分支补字段,不应带形态段。
-func TestParseSubmitPlanArgs_CurrentPhaseMissing_NoShapeReminder(t *testing.T) {
+// TestParseSubmitPlanArgs_PhasesMissing_NoShapeReminder 校验同理:
+// phases 缺失也是同分支补字段,不应带形态段。
+func TestParseSubmitPlanArgs_PhasesMissing_NoShapeReminder(t *testing.T) {
 	_, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-a", "depends_on": []string{}},
 		},
-		// current_phase 缺失
-	}, true)
+		// phases 缺失
+	}, true, nil)
 	if err == nil {
-		t.Fatal("expected error when current_phase missing")
+		t.Fatal("expected error when phases missing")
 	}
 	text := err.Error()
 	if strings.Contains(text, "submit_plan 的两种合法形态") {
-		t.Errorf("current_phase error must NOT carry shape reminder (it's a same-branch fix):\n%s", text)
+		t.Errorf("phases error must NOT carry shape reminder (it's a same-branch fix):\n%s", text)
 	}
-	if !strings.Contains(text, "current_phase 必填") {
-		t.Errorf("missing specific guidance marker %q in error:\n%s", "current_phase 必填", text)
+	if !strings.Contains(text, "phases 必填") {
+		t.Errorf("missing specific guidance marker %q in error:\n%s", "phases 必填", text)
 	}
 }

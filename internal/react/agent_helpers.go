@@ -44,7 +44,7 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 	if planVersion <= 0 {
 		planVersion = 1
 	}
-	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(snapshot.Plan))
+	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(snapshot.Plan)+len(snapshot.Phases))
 	for _, item := range snapshot.Plan {
 		if item == nil {
 			continue
@@ -53,6 +53,17 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 			Kind:        builtin_tools.PlannerJournalKindPlan,
 			PlanVersion: planVersion,
 			Item:        item,
+		})
+	}
+	// phase 行必须排在 kind=plan 行之后（版本提升批次契约：plan 行触发全量 reset）。
+	for _, phase := range snapshot.Phases {
+		if phase == nil {
+			continue
+		}
+		records = append(records, &builtin_tools.PlannerJournalRecord{
+			Kind:        builtin_tools.PlannerJournalKindPhase,
+			PlanVersion: planVersion,
+			Phase:       phase,
 		})
 	}
 	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {

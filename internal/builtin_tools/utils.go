@@ -283,6 +283,12 @@ func canonicalPlanItemID(raw string, index int, used map[string]int) string {
 	return candidate
 }
 
+// CanonicalizePlanIDToken 是 canonicalizePlanIDToken 的导出别名，供 react 包对
+// phase_id / depends_on 等引用做同源规整。
+func CanonicalizePlanIDToken(raw string) string {
+	return canonicalizePlanIDToken(raw)
+}
+
 // canonicalizePlanIDToken applies the same lower-case + sanitize rules used to
 // mint plan IDs. It is shared by canonicalPlanItemID and the depends_on lookup
 // so user-supplied references like "P1-XSS-DEEP" resolve to the canonical
