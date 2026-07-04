@@ -154,3 +154,24 @@ func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
 		t.Fatalf("item attachment lost: %+v", snapshot.Plan[1])
 	}
 }
+
+// TestResolveResumeCurrentStepID_RespectsPhaseGate 校验 review #2：resume 选步用 frontier
+// 判定（带 phase 门），不选被 blocked / 依赖未解锁 lane 下的 step。
+func TestResolveResumeCurrentStepID_RespectsPhaseGate(t *testing.T) {
+	phases := []*builtin_tools.PlanPhase{
+		{ID: "phase-a", Status: builtin_tools.PlanPhaseBlocked},
+		{ID: "phase-b", Status: builtin_tools.PlanPhasePending, DependsOn: []string{"phase-a"}},
+	}
+	plan := []*builtin_tools.PlanItem{
+		// phase-a 被 blocked，其下 a1 应被 SkipStepsOfBlockedPhases 收敛，不应被选中
+		{ID: "a1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
+		// phase-b 依赖 phase-a（blocked=terminal 解锁）→ b1 可选
+		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+	}
+	builtin_tools.SkipStepsOfBlockedPhases(plan, phases)
+	builtin_tools.HydratePlanRelations(plan)
+	got := resolveResumeCurrentStepID(plan, phases, "a1")
+	if got != "b1" {
+		t.Fatalf("resume must skip blocked lane step and pick frontier b1, got %q", got)
+	}
+}
