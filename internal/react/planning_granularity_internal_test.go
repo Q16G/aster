@@ -216,9 +216,9 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"最小从浅到深单元",
 		"初始 frontier 起手",
 		"同类范围识别",
-		"递进阶段独立成 phase",
-		"phase / step 边界",
-		"lane 推进次序",
+		"递进 lane 独立成 lane",
+		"lane / step 边界",
+		"lane 依赖形态",
 		"phase 动态增/改/删",
 		"lane 承接 + 自决收束",
 		"同类范围只来自事实板",
@@ -228,6 +228,7 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"skill checklist",
 		"深度优先纪律",
 		"lane 依赖表达",
+		"能力 vs 默认",
 	}
 	for _, needle := range planningRequired {
 		if !strings.Contains(planningSystemPrompt, needle) {
