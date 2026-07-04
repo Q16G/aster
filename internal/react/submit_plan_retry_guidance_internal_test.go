@@ -30,7 +30,7 @@ func TestParseSubmitPlanArgs_PlanEmpty_GuidesBothBranches(t *testing.T) {
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
 		"plan":               []map[string]any{},
-	}, true, nil)
+	}, true, nil, nil)
 	if err == nil {
 		t.Fatal("expected error when needs_planning=true but plan is empty")
 	}
@@ -56,7 +56,7 @@ func TestParseSubmitPlanArgs_DirectResponseEmpty_GuidesBothBranches(t *testing.T
 		"needs_planning":  false,
 		"explanation":     "无需规划",
 		"direct_response": "",
-	}, true, nil)
+	}, true, nil, nil)
 	if err == nil {
 		t.Fatal("expected error when needs_planning=false but direct_response is empty")
 	}
@@ -86,7 +86,7 @@ func TestParseSubmitPlanArgs_GoalUnderstandingMissing_NoShapeReminder(t *testing
 			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "depends_on": []string{}},
 		},
 		// goal_understanding 缺失
-	}, true, nil)
+	}, true, nil, nil)
 	if err == nil {
 		t.Fatal("expected error when goal_understanding missing")
 	}
@@ -115,7 +115,7 @@ func TestParseSubmitPlanArgs_PhasesMissing_NoShapeReminder(t *testing.T) {
 			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-a", "depends_on": []string{}},
 		},
 		// phases 缺失
-	}, true, nil)
+	}, true, nil, nil)
 	if err == nil {
 		t.Fatal("expected error when phases missing")
 	}

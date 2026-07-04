@@ -175,7 +175,9 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 
 # phase_assessments 提交契约
 
-对 `<ACTIVE_PHASES>` 中**每个 phase 各产出一条** assessment。每条含 `phase_id` + `status`（continue|completed|blocked）+ 该 phase 范围内三轴（incomplete_items / depth_gaps / new_surfaces）。三轴字段是账本 `## 未解决` 中**位于该 phase 范围内**的本轮可行动条目按维度归类的字符串投影，不是另一份独立数据。每条 item 一行字符串，内联 evidence 锚点（`（evidence: ...）` 后缀，或 `OI-xxx` 前缀均可），并带具体对象/工件名。
+对 `<ACTIVE_PHASES>` 中**每个 phase 各产出一条** assessment，**逐一覆盖不得遗漏**（漏评的 lane 状态不推进，会被静默跳过——runtime 会拒绝不完整提交并要求补齐）。每条含 `phase_id` + `status`（continue|completed|blocked）+ 该 phase 范围内三轴（incomplete_items / depth_gaps / new_surfaces）。三轴字段是账本 `## 未解决` 中**位于该 phase 范围内**的本轮可行动条目按维度归类的字符串投影，不是另一份独立数据。每条 item 一行字符串，内联 evidence 锚点（`（evidence: ...）` 后缀，或 `OI-xxx` 前缀均可），并带具体对象/工件名。
+
+`<ACTIVE_PHASES>` 为空时（simple 任务 / 历史 session 无 lane）提交**空 phase_assessments 数组**，仅凭 should_replan 表达是否仍有视角 B 捞回的全半径阶段外缺口。
 
 - **incomplete_items（轴①）**：归到维度①（存在性/完成度）且位于该 phase 范围内的可行动条目，与 `## 未解决` 中标维度①且属该 phase 的条目对齐。
 - **depth_gaps（轴②）**：归到维度②（深度/质量）且位于该 phase 范围内的可行动条目，与 `## 未解决` 中标维度②且属该 phase 的条目对齐。

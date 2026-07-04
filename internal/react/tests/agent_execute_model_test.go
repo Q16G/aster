@@ -1701,6 +1701,9 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"should_replan": false,
 						"replan_reason": "",
 						"next_goal":     "",
+						"phase_assessments": []any{
+							map[string]any{"phase_id": builtin_tools.SyntheticPhaseID, "status": "completed"},
+						},
 					}),
 				},
 			},

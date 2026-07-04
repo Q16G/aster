@@ -513,7 +513,8 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				continue
 			}
 			if tc.Function.Name == submitPlanToolName {
-				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding, a.state.Snapshot().Phases)
+				priorSnap := a.state.Snapshot()
+				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding, priorSnap.Phases, priorSnap.Plan)
 				if parseErr != nil {
 					submitRetries++
 					if submitRetries > maxSubmitRetries {
@@ -893,7 +894,7 @@ func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
 	return errors.New(b.String())
 }
 
-func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []*builtin_tools.PlanPhase) (*builtin_tools.TaskPlannerResult, error) {
+func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []*builtin_tools.PlanPhase, priorPlan []*builtin_tools.PlanItem) (*builtin_tools.TaskPlannerResult, error) {
 	var data []byte
 	switch v := args.(type) {
 	case string:
@@ -949,7 +950,7 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 				"请提交业务 lane 清单（每项 {id, name, depends_on}，name 格式「<对象> 的 <深度推进目标>」），" +
 				"并给每个 plan item 填 phase_id 后重新调用")
 		}
-		merged := mergePlanPhases(priorPhases, normalized)
+		merged := mergePlanPhases(priorPhases, normalized, priorPlan)
 		if len(merged) > 0 {
 			known := make(map[string]struct{}, len(merged))
 			for _, phase := range merged {
@@ -986,11 +987,16 @@ func canonicalizePlanPhaseRef(raw string) string {
 }
 
 // mergePlanPhases 把 planner 本轮提交的 phases 与既有 phases 按 id 合并：
-// 提交项以 planner 为准（承接/重开/显式 blocked 均由其表达）；被省略的既有
-// completed/blocked 项保留为依赖锚点与展示痕迹（与 mergeReplannedPlan 保留
-// non-pending step 同型）；被省略的既有 pending 项不保留——其下 step 若仍存在
+// 提交项以 planner 为准（承接/重开/显式 blocked 均由其表达）；被省略的既有 phase
+// 在两种情况下保留（与 mergeReplannedPlan 保留 non-pending step 同型，避免保留 step 的
+// phase_id 悬空被错挂 synthetic）：
+//   - completed/blocked 的 lane（依赖锚点与展示痕迹）；
+//   - 被 priorPlan 中任一 non-pending（terminal）step 引用的 lane（该 step 会被
+//     mergeReplannedPlan 保留，其 phase 归属必须一并保留）。
+//
+// 被省略且无 terminal step 引用的既有 pending lane 不保留——其下 pending step 若仍存在
 // 会因引用不闭合被 parse 拒绝，倒逼 planner 显式表达。
-func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.PlanPhase) []*builtin_tools.PlanPhase {
+func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.PlanPhase, priorPlan []*builtin_tools.PlanItem) []*builtin_tools.PlanPhase {
 	if len(prev) == 0 {
 		return next
 	}
@@ -1003,12 +1009,27 @@ func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.Plan
 			submitted[strings.TrimSpace(phase.ID)] = struct{}{}
 		}
 	}
-	merged := make([]*builtin_tools.PlanPhase, 0, len(prev)+len(next))
-	for _, phase := range prev {
-		if phase == nil || !phase.Terminal() {
+	// 收集被 terminal step 引用的 phase id——这些 step 会被 mergeReplannedPlan 保留。
+	referencedByTerminal := make(map[string]struct{})
+	for _, item := range priorPlan {
+		if item == nil || item.Status == builtin_tools.PlanStepPending {
 			continue
 		}
-		if _, ok := submitted[strings.TrimSpace(phase.ID)]; ok {
+		if id := strings.TrimSpace(item.PhaseID); id != "" {
+			referencedByTerminal[id] = struct{}{}
+		}
+	}
+	merged := make([]*builtin_tools.PlanPhase, 0, len(prev)+len(next))
+	for _, phase := range prev {
+		if phase == nil {
+			continue
+		}
+		id := strings.TrimSpace(phase.ID)
+		if _, ok := submitted[id]; ok {
+			continue
+		}
+		_, refd := referencedByTerminal[id]
+		if !phase.Terminal() && !refd {
 			continue
 		}
 		clone := *phase

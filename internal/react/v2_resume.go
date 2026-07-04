@@ -93,6 +93,10 @@ func (a *Agent) alignPlanWithJournal(st *builtin_tools.StateSnapshot) {
 	if len(phases) > 0 {
 		st.Phases = phases
 	}
+	// 旧数据兜底 + blocked-skip 自愈：合成缺失 phase 挂靠、并重放 SkipStepsOfBlockedPhases，
+	// 使 journal 里 blocked lane 下 stale pending step 恢复为 skipped，避免复活执行。
+	st.Phases = builtin_tools.SynthesizePhasesIfMissing(st.Plan, st.Phases, st.CurrentGoal)
+	builtin_tools.SkipStepsOfBlockedPhases(st.Plan, st.Phases)
 	builtin_tools.HydratePlanRelations(st.Plan)
 }
 

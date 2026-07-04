@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,6 +121,7 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 	}
 
 	hasContinue := false
+	assessed := make(map[string]struct{}, len(result.PhaseAssessments))
 	for _, assess := range result.PhaseAssessments {
 		if assess == nil {
 			continue
@@ -132,6 +134,10 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 		if _, ok := t.activePhases[phaseID]; !ok {
 			return "", fmt.Errorf("submit_replan: phase_id %q 不属于本轮 frontier 的 active phase，只能评估当前活跃 lane", phaseID)
 		}
+		if _, dup := assessed[phaseID]; dup {
+			return "", fmt.Errorf("submit_replan: phase %q 被重复评估，每个 active phase 只提交一条 assessment", phaseID)
+		}
+		assessed[phaseID] = struct{}{}
 		switch assess.Status {
 		case builtin_tools.PhaseAssessContinue:
 			hasContinue = true
@@ -144,6 +150,19 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 		default:
 			return "", fmt.Errorf("submit_replan: phase %q 的 status 非法（须为 continue|completed|blocked）", phaseID)
 		}
+	}
+	// 完整性校验（review 补充）：本轮每个 active phase 都必须恰有一条 assessment，
+	// 否则漏评的 lane 状态不推进——下游依赖它的 lane 会被永久锁住、或全 step terminal
+	// 时被静默跳过至 final_answer。ACTIVE_PHASES 为空（simple/历史 session）时豁免。
+	if len(t.activePhases) > 0 && len(assessed) < len(t.activePhases) {
+		var missing []string
+		for id := range t.activePhases {
+			if _, ok := assessed[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+		sort.Strings(missing)
+		return "", fmt.Errorf("submit_replan: 本轮 active phase 未全部评估，缺失 %v——每个 active lane 必须逐一给出 continue|completed|blocked，不得遗漏", missing)
 	}
 	// D7a②：存在 continue 的 phase ⇒ should_replan 必须为 true，否则 continue 语义被静默丢弃。
 	if hasContinue && !result.ShouldReplan {

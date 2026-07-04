@@ -352,13 +352,18 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		// 旧数据无 phases（journal 无 phase 行、checkpoint 无 phases 字段）时
 		// 合成 synthetic phase 并把缺挂靠的 item 收编，保证 frontier 调度有效。
 		snapshot.Phases = builtin_tools.SynthesizePhasesIfMissing(snapshot.Plan, snapshot.Phases, snapshot.CurrentGoal)
+		// blocked phase 的 step-skip 只落内存不落 journal——恢复时重放一次，让被 blocked
+		// 收束的 lane 下 pending step 自愈为 skipped（含跨 phase 下游传递），
+		// 防止 journal 里残留的 stale pending step 在 resume 后复活执行。
+		builtin_tools.SkipStepsOfBlockedPhases(snapshot.Plan, snapshot.Phases)
 
 		applyDurableOutcomesToPlan(snapshot.Plan, snapshot.StepOutcomes, workspaceState)
 
 		// Resolve current_step_id for resume:
 		// - never point to terminal steps
-		// - prefer in_progress, otherwise the next runnable pending step
-		snapshot.CurrentStepID = resolveResumeCurrentStepID(snapshot.Plan, snapshot.CurrentStepID)
+		// - prefer in_progress, otherwise the next runnable frontier step（带 phase 门，
+		//   不选被 blocked/未解锁 lane 下的 step）
+		snapshot.CurrentStepID = resolveResumeCurrentStepID(snapshot.Plan, snapshot.Phases, snapshot.CurrentStepID)
 
 		// Phase/progress hints: the resume decision gate will finalize, but keep a sane default.
 		snapshot.Progress = builtin_tools.PlanProgress(snapshot.Plan)
@@ -384,7 +389,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	return snapshot, planValid
 }
 
-func resolveResumeCurrentStepID(plan []*builtin_tools.PlanItem, preferred string) string {
+func resolveResumeCurrentStepID(plan []*builtin_tools.PlanItem, phases []*builtin_tools.PlanPhase, preferred string) string {
 	preferred = strings.TrimSpace(preferred)
 	if len(plan) == 0 {
 		return ""
@@ -400,8 +405,8 @@ func resolveResumeCurrentStepID(plan []*builtin_tools.PlanItem, preferred string
 		}
 	}
 
-	// 2) If the preferred step is already the next runnable pending step, keep it.
-	next := strings.TrimSpace(builtin_tools.NextRunnablePlanStepID(plan))
+	// 2) 选下一个 frontier step（带 phase 解锁门），不选被 blocked / 依赖未解锁 lane 下的 step。
+	next := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(plan, phases))
 	if preferred != "" && preferred == next {
 		return preferred
 	}

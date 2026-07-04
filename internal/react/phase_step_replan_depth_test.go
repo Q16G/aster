@@ -8,15 +8,27 @@ import (
 	"aster/internal/builtin_tools"
 )
 
+// activeReplanTool：单 active phase-a（其下 step 全 completed，无 pending），
+// 供单条 assessment 的用例——完整性校验只要求评估 phase-a。
 func activeReplanTool(t *testing.T) *submitReplanTool {
 	t.Helper()
 	phases := []*builtin_tools.PlanPhase{
 		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
 	}
 	plan := []*builtin_tools.PlanItem{
 		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
-		// phase-b 仍有 pending step，用于 completed-with-pending 守卫测试
+	}
+	return newSubmitReplanTool(phases, plan)
+}
+
+// pendingPhaseReplanTool：单 active phase-b，其下仍有 pending step，
+// 供 completed-with-pending 守卫测试。
+func pendingPhaseReplanTool(t *testing.T) *submitReplanTool {
+	t.Helper()
+	phases := []*builtin_tools.PlanPhase{
+		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	}
+	plan := []*builtin_tools.PlanItem{
 		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
 	}
 	return newSubmitReplanTool(phases, plan)
@@ -111,7 +123,7 @@ func TestSubmitReplanTool_CompletedWithPendingRejected(t *testing.T) {
 			map[string]any{"phase_id": "phase-b", "status": "completed"},
 		},
 	}
-	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
+	if _, err := pendingPhaseReplanTool(t).Execute(context.Background(), args); err == nil {
 		t.Fatal("expected error: completed phase must not have pending steps")
 	}
 }
@@ -139,12 +151,61 @@ func TestSubmitReplanTool_BlockedAccepted(t *testing.T) {
 			map[string]any{"phase_id": "phase-b", "status": "blocked", "reason": "外部依赖不可用"},
 		},
 	}
-	tool := activeReplanTool(t)
+	tool := pendingPhaseReplanTool(t)
 	if _, err := tool.Execute(context.Background(), args); err != nil {
 		t.Fatalf("blocked assessment should be accepted: %v", err)
 	}
 	if tool.getResult().PhaseAssessments[0].Status != builtin_tools.PhaseAssessBlocked {
 		t.Fatal("expected blocked status stored")
+	}
+}
+
+// TestSubmitReplanTool_IncompleteCoverageRejected 校验完整性守卫：本轮多个 active phase
+// 但只评估其一 → 拒绝（漏评的 lane 会被静默跳过）。ACTIVE_PHASES 为空时豁免。
+func TestSubmitReplanTool_IncompleteCoverageRejected(t *testing.T) {
+	phases := []*builtin_tools.PlanPhase{
+		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
+		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	}
+	plan := []*builtin_tools.PlanItem{
+		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+	}
+	tool := newSubmitReplanTool(phases, plan)
+	// 只评估 phase-a，漏 phase-b
+	args := map[string]any{
+		"should_replan": false,
+		"replan_reason": "",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		},
+	}
+	if _, err := tool.Execute(context.Background(), args); err == nil {
+		t.Fatal("expected error: not all active phases assessed")
+	}
+
+	// 空 active phase（simple/历史 session）→ 空 assessments 豁免
+	emptyTool := newSubmitReplanTool(nil, nil)
+	if _, err := emptyTool.Execute(context.Background(), map[string]any{
+		"should_replan": false, "replan_reason": "", "phase_assessments": []any{},
+	}); err != nil {
+		t.Fatalf("empty active phases should exempt completeness: %v", err)
+	}
+}
+
+// TestSubmitReplanTool_DuplicateAssessmentRejected 校验同一 phase 重复评估被拒。
+func TestSubmitReplanTool_DuplicateAssessmentRejected(t *testing.T) {
+	tool := activeReplanTool(t)
+	args := map[string]any{
+		"should_replan": true,
+		"replan_reason": "x",
+		"phase_assessments": []any{
+			map[string]any{"phase_id": "phase-a", "status": "continue"},
+			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		},
+	}
+	if _, err := tool.Execute(context.Background(), args); err == nil {
+		t.Fatal("expected error for duplicate phase assessment")
 	}
 }
 
