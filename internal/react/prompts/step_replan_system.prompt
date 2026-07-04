@@ -112,7 +112,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
   反例（已覆盖，不计缺口）：(接口 A, 鉴权逻辑) 已有步骤覆盖且 digest 有工具调用证据 → 差集中不出现 → 不计缺口。
 
 视角 B（role 全量、全半径）——全半径差集（→ 只登账本，保底）：
-- **全半径差集（保底，独立推导）.** 理论全量覆盖集 = **{在 scope 内（不收窄到任何单个 phase）的对象集} × {role 职责维度集（含深度链层）}**，与所有已完成 + pending 工作做差集。差集中**属某 active phase 范围**的并入上文该 phase 视角 C 三轴；**属阶段外**的（横向同类对象 / 递进 / 汇总 / 同对象另立的更深 lane）逐条登账本「待承接（深度优先排队，<分组标注>）」，**不入轴**。
+- **全半径差集（保底，独立推导）.** 理论全量覆盖集 = **{在 scope 内（不收窄到任何单个 phase）的对象集} × {role 职责维度集（含深度链层）}**，与所有已完成 + pending 工作做差集。**视角 B 只负责阶段外差集**：差集中**属阶段外**的（横向同类对象 / 递进 / 汇总 / 同对象另立的更深 lane）逐条登账本「待承接（深度优先排队，<分组标注>）」，不入轴。差集中**属某 active phase 范围内**的部分归视角 C 独立推导（§上文视角 C），**视角 B 不重复并入轴**——in-phase 扩面的唯一权威是视角 C，避免双算。
   正例（对象太窄，登账本）：任务「审查模块 X 的访问控制」，事实板确认模块 X 下有接口 A、B、C，active phase = 接口 A；(接口 B, 访问控制)、(接口 C, 访问控制) 属阶段外 → 登账本「待承接（同类: 模块X接口集）」，不入轴。
 - **保底语义.** 视角 B 每轮都做，确保账本是真正的完整超集——任何半径内、角色该做却被逐轮 frontier 收窄遮蔽的对象/面都在此被捞回账本，使 should_replan 不因当前 frontier 空而过早终态；终态只在视角 B 全半径差集亦为空时成立。
 - **角色维度比对.** 已完成/pending 步骤与 Agent 身份职责维度比对，缺漏维度按 §意图边界 计为缺口；报告/汇总类 pending 步骤不影响判定。
@@ -184,9 +184,11 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 - **new_surfaces（轴③）**：归到维度③（泛化扩面）且位于该 phase 范围内的可行动条目，按 §意图边界 约束，与 `## 未解决` 中标维度③且属该 phase 的条目对齐。
 
 **status 判据（每个 active phase 逐一裁定）**：
-- **continue**：该 phase 三轴任一非空（仍有 in-phase 可测未测 / 可深未深 / 未覆盖面）→ 该 lane 还有深度可推进，planner 下一轮继续释放其 step。存在 continue ⇒ should_replan 必须为 true。
-- **completed**：该 phase 三轴均空且满足严格闸门——**无可测未测**（视角 A step card + 视角 C 该 phase 维度①均空）+ **无可深未深**（视角 C 该 phase 维度②空，主导切面所有确认型发现已按 agent role 职责链推进到最深相关决策层，§深度气味 任一项均未命中）。**completed 的 phase 其下不得残留 pending step**（否则应判 continue）。
+- **continue**：该 phase 三轴任一非空（仍有 in-phase 可测未测 / 可深未深 / 未覆盖面），**或其下仍有未经 §(C) 裁定闭环的 pending step** → 该 lane 还有工作可推进，planner 下一轮继续释放其 step。存在 continue ⇒ should_replan 必须为 true。（「三轴空但其下有 pending step」应先走 §(C)「pending 项实际已闭环裁定」把冗余 pending 收掉；收不掉的即真实待跑工作，判 continue。）
+- **completed**：该 phase 三轴均空、其下无残留 pending step，且满足严格闸门——**无可测未测**（**属该 phase 的 step card**〔按 step.phase_id 收窄，不含其他 lane 的卡片〕+ 视角 C 该 phase 维度①均空）+ **无可深未深**（视角 C 该 phase 维度②空，主导切面所有确认型发现已按 agent role 职责链推进到最深相关决策层，§深度气味 任一项均未命中）。
 - **blocked**：该 phase 受阻且无可行动手段（缺凭据 / 前置不可达且已登 `## 不可解局限`），本 lane 不再推进；其下 pending step 由 runtime 收敛为 skipped，阻因须已记入账本。
+
+**单一投影（多 active phase 下）**：每条 `## 未解决` 项按其归属 lane 只投进**唯一一个** active phase 的三轴（按语义归属最贴合的 lane，不重复投进多个 assessment）；不属任何 active phase 的项留账本、不入轴。
 
 **阶段外排队对象（深度优先排队）的条目（无论轴①②③）只留账本「待承接（深度优先排队）」标注，不入任何 phase 三轴**——由 planner 后续新增 lane 承接、下轮 step_replan 在新 active phase 下重新投影。
 
