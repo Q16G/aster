@@ -228,7 +228,7 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"skill checklist",
 		"深度优先纪律",
 		"lane 依赖表达",
-		"能力 vs 默认",
+		"默认并发释放",
 	}
 	for _, needle := range planningRequired {
 		if !strings.Contains(planningSystemPrompt, needle) {
@@ -247,6 +247,12 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"原样回填",
 		"next_phase",
 		"phase_shape_issue",
+		// frontier 默认对齐飞书文档「释放所有 ready、多 lane 并发」：禁「默认1条/逐面最少释放」回流，
+		// 且 planner prompt 不泄漏运行时旋钮 max_parallel_steps。
+		"逐面最少释放",
+		"默认单条",
+		"只起手同类中的 1 条",
+		"max_parallel_steps",
 	}
 	for _, banned := range planningForbidden {
 		if strings.Contains(planningSystemPrompt, banned) {
