@@ -34,16 +34,23 @@ func relaxSchemaNode(raw any, topLevel bool) any {
 			// 保留属性类型信息，否则模型很容易把 array/integer 当成 string 传入。
 			out["type"] = typ
 		}
-		if properties, ok := typed["properties"].(map[string]any); ok && len(properties) > 0 {
-			next := make(map[string]any, len(properties))
-			for key, value := range properties {
-				if child, ok := relaxSchemaNode(value, false).(map[string]any); ok && child != nil {
-					next[key] = child
-				} else {
-					next[key] = map[string]any{}
+		if properties, ok := typed["properties"].(map[string]any); ok {
+			// Preserve empty properties for strict internal LLMs that require
+			// type="object" to always have a properties field (even if empty)
+			if len(properties) > 0 {
+				next := make(map[string]any, len(properties))
+				for key, value := range properties {
+					if child, ok := relaxSchemaNode(value, false).(map[string]any); ok && child != nil {
+						next[key] = child
+					} else {
+						next[key] = map[string]any{}
+					}
 				}
+				out["properties"] = next
+			} else {
+				// Empty properties: preserve the empty object
+				out["properties"] = map[string]any{}
 			}
-			out["properties"] = next
 			out["additionalProperties"] = true
 		}
 		if items, ok := typed["items"]; ok {

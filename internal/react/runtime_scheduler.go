@@ -456,7 +456,12 @@ const submitPlanToolName = "submit_plan"
 
 func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient ai.ChatClient, input TaskPlannerPromptInput, promptBuilder PlannerPromptBuilder, requireGoalUnderstanding bool) (*builtin_tools.TaskPlannerResult, error) {
 	fnTools, allowedTools := a.BuildFunctionTools(nil, builtin_tools.AgentPhasePlan)
-	fnTools = append(fnTools, buildSubmitPlanFunctionTool())
+	submitPlanTool := buildSubmitPlanFunctionTool()
+	// Apply schema relaxation to submit_plan tool for compatibility with strict internal LLMs
+	if submitPlanTool != nil && submitPlanTool.Function != nil {
+		submitPlanTool.Function.Parameters = relaxToolParametersSchema(submitPlanTool.Function.Parameters)
+	}
+	fnTools = append(fnTools, submitPlanTool)
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
 	input.HasAvailableTools = len(input.AvailableTools) > 0
