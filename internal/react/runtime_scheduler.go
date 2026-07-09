@@ -530,7 +530,16 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					continue
 				}
 				if parsed.NeedsPlanning && len(parsed.Plan) > 0 {
-					if _, normErr := builtin_tools.NormalizePlanItems(parsed.Plan, true); normErr != nil {
+					// 校验对象须与调度侧（本文件 runPlanPhase 内 mergeReplannedPlan + NormalizePlanItems）
+					// 保持一致：replan 回流须先按 ReplacePending 合并旧 plan 再校验，否则
+					// mergeReplannedPlan 丢弃旧 pending 项现造的悬空 depends_on 只会在调度侧终态崩、
+					// 绕过本重试通道（参见 step-35 unknown dependency 事故）。非 replan 时
+					// validateTarget == parsed.Plan，行为与合并前一致。
+					validateTarget := parsed.Plan
+					if priorSnap.ReplanContext != nil && priorSnap.ReplanContext.ReplacePending {
+						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan)
+					}
+					if _, normErr := builtin_tools.NormalizePlanItems(validateTarget, true); normErr != nil {
 						submitRetries++
 						if submitRetries > maxSubmitRetries {
 							return nil, fmt.Errorf("submit_plan plan validation failed after %d retries: %w", maxSubmitRetries, normErr)
@@ -1167,7 +1176,10 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 	}
 	merged := make([]*builtin_tools.PlanItem, 0, len(prev)+len(next))
 	preserved := make(map[string]struct{}, len(prev))
-	preservedText := make(map[string]struct{}, len(prev))
+	// preservedText: 保留项 normalizeStepText → 保留项 id。用于把「因文案撞车被去重
+	// 丢弃的 next 项」的依赖重指到这个同文案保留项（见下方 dropped/remap），从源头
+	// 消灭 merge 现造的悬空依赖。首个占位者胜出（与原「存在即去重」语义一致）。
+	preservedText := make(map[string]string, len(prev))
 	for _, item := range prev {
 		// 所有 non-pending 项（completed / in_progress / failed / skipped）保留为依赖锚点
 		// 与烘焙载体；pending 由 next 完整替换。失败 / 跳过项一并保留可避免：
@@ -1196,25 +1208,55 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 			preserved[clone.ID] = struct{}{}
 		}
 		if norm := normalizeStepText(clone.Step); norm != "" {
-			preservedText[norm] = struct{}{}
+			if _, ok := preservedText[norm]; !ok {
+				preservedText[norm] = clone.ID
+			}
 		}
 	}
+	// dropped: 被文案去重丢弃的 next 项 canonical id → 保留的同文案项 id。
+	// 用于把 depends_on 里指向「被丢弃 next 项」的引用重指到语义等价的保留项，
+	// 避免 mergeReplannedPlan 现造悬空依赖（NormalizePlanItems 随后仍兜底校验残余悬空）。
+	var dropped map[string]string
 	for _, item := range next {
 		if item == nil {
 			continue
 		}
 		id := strings.TrimSpace(item.ID)
 		if id != "" {
+			// id 撞保留项：同 id 保留项已在 merged，指向它的依赖仍能解析，无需重指。
 			if _, exists := preserved[id]; exists {
 				continue
 			}
 		}
 		if norm := normalizeStepText(item.Step); norm != "" {
-			if _, exists := preservedText[norm]; exists {
+			if keepID, exists := preservedText[norm]; exists {
+				// 文案撞保留项被丢弃：记录 next.id → 保留项 id 的依赖重指。
+				if canon := builtin_tools.CanonicalizePlanIDToken(id); canon != "" && keepID != "" {
+					if dropped == nil {
+						dropped = make(map[string]string)
+					}
+					dropped[canon] = keepID
+				}
 				continue
 			}
 		}
-		merged = append(merged, item)
+		// next 项浅拷贝 + DependsOn 克隆后入板，保持 mergeReplannedPlan 纯函数语义
+		// （下方 remap 会改写 DependsOn，不能 mutate 调用方传入的 next 项）。
+		clone := *item
+		clone.ID = id
+		clone.DependsOn = builtin_tools.CloneStringSlice(item.DependsOn)
+		merged = append(merged, &clone)
+	}
+	// 依赖重指：把 merged 全体指向「被去重丢弃 id」的 depends_on 改指到保留的同文案项。
+	for _, item := range merged {
+		if item == nil || len(item.DependsOn) == 0 || len(dropped) == 0 {
+			continue
+		}
+		for i, dep := range item.DependsOn {
+			if keepID, ok := dropped[builtin_tools.CanonicalizePlanIDToken(strings.TrimSpace(dep))]; ok {
+				item.DependsOn[i] = keepID
+			}
+		}
 	}
 	if len(merged) == 0 {
 		return next
