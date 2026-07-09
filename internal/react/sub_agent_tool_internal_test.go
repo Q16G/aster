@@ -210,6 +210,54 @@ func TestBuildChild_NoCollisionOnSharedCallIDPrefix(t *testing.T) {
 	}
 }
 
+// TestBuildChild_InheritsParentSessionID locks the invariant that a sub-agent
+// runs under the SAME workspace session id as its parent (== Task.TaskID). Risk
+// reporting (report_web_risk / report_code_risk) resolves the owning task by this
+// session id (rt.WorkspaceSessionID), so a child that inherited a different or
+// empty session would silently drop every risk it reports. The parent's RunID is
+// deliberately NOT propagated to children (a child gets a fresh turn-id) — that is
+// exactly why the stable session id, not the RunID, must be the resolution key.
+func TestBuildChild_InheritsParentSessionID(t *testing.T) {
+	const parentSession = "tsk_parent12"
+
+	parent, err := NewReActAgent("parent", &stubClient{}, WithEmitter(NewDummyEmitter()))
+	if err != nil {
+		t.Fatalf("new parent: %v", err)
+	}
+	parent.workspaceRootDir = t.TempDir()
+	parent.workspaceSessionID = parentSession
+
+	factory := NewAgentFactory(
+		WithFactoryDefaultAIClient(&stubClient{}),
+		WithFactoryEmitter(NewDummyEmitter()),
+	)
+	tool := NewSubAgentTool(parent, factory)
+
+	setup, err := tool.buildChild(context.Background(),
+		map[string]any{"instruction": "do work"},
+		builtin_tools.ToolRuntimeInfo{CallID: "call_00_aaaa"})
+	if err != nil {
+		t.Fatalf("buildChild: %v", err)
+	}
+
+	// Apply the child's exec options and read the workspace runtime it will run
+	// under. Its SessionID becomes the child agent's workspaceSessionID
+	// (agent_execute.go: a.workspaceSessionID = workspaceRuntime.SessionID()),
+	// which is what the child's tool runtime exposes as WorkspaceSessionID.
+	cfg := &ExecuteConfig{}
+	for _, opt := range setup.execOpts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+	if cfg.workspaceRuntime == nil {
+		t.Fatal("child exec options must set a workspace runtime")
+	}
+	if got := cfg.workspaceRuntime.SessionID(); got != parentSession {
+		t.Fatalf("child session id = %q, want parent's %q (risk ingest would fail to resolve the task)", got, parentSession)
+	}
+}
+
 type stubClient struct{}
 
 func (s *stubClient) Chat(_ context.Context, _ *ai.MsgInfo, _ ...*ai.FunctionTool) (string, error) {

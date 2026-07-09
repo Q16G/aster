@@ -118,6 +118,82 @@ func TestMergeReplannedPlan_DanglingDepsCaughtByNormalize(t *testing.T) {
 	t.Logf("confirmed: NormalizePlanItems catches dangling dep after merge — error: %s", err)
 }
 
+// TestMergeReplannedPlan_RemapsDedupDroppedDep 复现并验证「文案撞车」事故子类的治本修复：
+//
+//   - prev 保留一个 completed 锚点 recon-old（文案「基础侦察」）；
+//   - next（模型本次提交的 parsed.Plan）里 step-35 用了与 recon-old 完全相同的 step 文案，
+//     故 parsed 自身闭包完整（step-35 在其中）→ NormalizePlanItems(parsed) 放行；
+//   - mergeReplannedPlan 按 normalizeStepText 把撞文案的 next.step-35 去重丢弃（保留 recon-old）。
+//
+// 旧行为（无 remap）：report 的 depends_on:[step-35] 合并后悬空 → NormalizePlanItems 报错 →
+// 调度侧终态崩，且模型看不到旧 plan / 去重、几乎无法自修。
+// 新行为（依赖重指）：merge 把「被去重丢弃的 step-35」的依赖重指到语义等价的保留项 recon-old，
+// 合并结果合法，从源头消灭悬空，无需模型重试。
+func TestMergeReplannedPlan_RemapsDedupDroppedDep(t *testing.T) {
+	prev := []*builtin_tools.PlanItem{
+		{ID: "recon-old", Step: "基础侦察", Status: builtin_tools.PlanStepCompleted},
+	}
+	// parsed.Plan：模型本次提交的新 plan，自身闭包完整（step-35 在其中）。
+	parsed := []*builtin_tools.PlanItem{
+		{ID: "step-35", Step: "基础侦察", Status: builtin_tools.PlanStepPending},
+		{ID: "report", Step: "生成结构化渗透测试报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-35"}},
+	}
+
+	// parsed.Plan 自身闭包完整——这正是过去 submit 侧只校验它、放行漏网的原因。
+	if _, err := builtin_tools.NormalizePlanItems(parsed, true); err != nil {
+		t.Fatalf("parsed.Plan 自身应闭包完整并放行，got: %v", err)
+	}
+
+	merged := mergeReplannedPlan(prev, parsed)
+
+	// 撞文案的 next.step-35 被去重丢弃。
+	var report *builtin_tools.PlanItem
+	for _, item := range merged {
+		if item.ID == "step-35" {
+			t.Fatalf("撞文案的 next.step-35 应被 mergeReplannedPlan 去重丢弃，实际保留了")
+		}
+		if item.ID == "report" {
+			report = item
+		}
+	}
+	if report == nil {
+		t.Fatal("merged 中应保留 report 项")
+	}
+
+	// 治本断言：report 对 step-35 的依赖被重指到保留的同文案项 recon-old。
+	if len(report.DependsOn) != 1 || report.DependsOn[0] != "recon-old" {
+		t.Fatalf("report.DependsOn 应被重指为 [recon-old]，got: %v", report.DependsOn)
+	}
+
+	// 纯函数：重指不得 mutate 调用方传入的 parsed 项。
+	if got := parsed[1].DependsOn; len(got) != 1 || got[0] != "step-35" {
+		t.Fatalf("mergeReplannedPlan 不应 mutate 入参 parsed，parsed[1].DependsOn=%v", got)
+	}
+
+	// 合并结果不再悬空，NormalizePlanItems 放行。
+	if _, err := builtin_tools.NormalizePlanItems(merged, true); err != nil {
+		t.Fatalf("依赖重指后合并结果应合法，NormalizePlanItems 却报错: %v", err)
+	}
+	t.Log("confirmed: mergeReplannedPlan 依赖重指从源头消灭了撞文案悬空")
+}
+
+// TestMergeReplannedPlan_NonReplanUnaffected 确认非 replan 场景（这里以 prev 为空表征
+// 「无既有 plan 可合并」）下 mergeReplannedPlan 直接返回 next、不做任何重指或克隆改写，
+// 与调度侧「仅 ReplacePending 才 merge」的前置判定共同保证全新规划路径零回归。
+func TestMergeReplannedPlan_NonReplanUnaffected(t *testing.T) {
+	next := []*builtin_tools.PlanItem{
+		{ID: "step-1", Step: "枚举接口", Status: builtin_tools.PlanStepPending},
+		{ID: "step-2", Step: "分析响应", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
+	}
+	merged := mergeReplannedPlan(nil, next)
+	if len(merged) != 2 || merged[0].ID != "step-1" || merged[1].ID != "step-2" {
+		t.Fatalf("prev 为空时应原样返回 next，got: %v", merged)
+	}
+	if got := merged[1].DependsOn; len(got) != 1 || got[0] != "step-1" {
+		t.Fatalf("非 replan 路径不应改写 depends_on，got: %v", got)
+	}
+}
+
 // TestMergeReplannedPlan_NoDepsStepsAlwaysRunnable verifies that pending
 // steps without depends_on are always picked up by NextRunnablePlanStepID.
 // If the pentest session ended with such steps still pending, the cause is
