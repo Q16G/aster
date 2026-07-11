@@ -431,3 +431,35 @@ func SkipStepsOfBlockedPhases(plan []*PlanItem, phases []*PlanPhase) (changed bo
 	}
 	return changed
 }
+
+// SkipStepsOfBlockedPhaseInTopic 是 SkipStepsOfBlockedPhases 的 per-topic 局部 review 裁剪版：
+// 只把「属 topicID 且该 phase 为 blocked」的 pending step 收敛为 skipped，且【不做】跨 phase
+// 下游传播（不调 PropagateSkippedPlanSteps）。跨 topic 下游 skip 的正确时机是全局 reducer
+// （barrier 已 await 全部 peer、全盘状态定型），此处延后不丢失、只避免局部 review 越权替
+// 正在写活盘的他 topic 决策（M2）。返回是否有 step 状态被改变。
+func SkipStepsOfBlockedPhaseInTopic(plan []*PlanItem, phases []*PlanPhase, topicID string) (changed bool) {
+	topicID = strings.TrimSpace(topicID)
+	if len(plan) == 0 || topicID == "" {
+		return false
+	}
+	blocked := false
+	for _, phase := range phases {
+		if phase != nil && phase.Status == PlanPhaseBlocked && strings.TrimSpace(phase.ID) == topicID {
+			blocked = true
+			break
+		}
+	}
+	if !blocked {
+		return false
+	}
+	for _, item := range plan {
+		if item == nil || item.Status != PlanStepPending {
+			continue
+		}
+		if strings.TrimSpace(item.PhaseID) == topicID {
+			item.Status = PlanStepSkipped
+			changed = true
+		}
+	}
+	return changed
+}

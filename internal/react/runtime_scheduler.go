@@ -409,16 +409,20 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		explanation = firstNonEmpty(snapshot.ReplanContext.Reason, plannerExplanation)
 	}
 
+	replacePending := snapshot.ReplanContext != nil && snapshot.ReplanContext.ReplacePending
 	if res != nil && len(res.Plan) > 0 {
-		planItems := res.Plan
-		if snapshot.ReplanContext != nil && snapshot.ReplanContext.ReplacePending {
-			planItems = mergeReplannedPlan(snapshot.Plan, planItems, snapshot.ReplanContext.ReplaceTopicID)
+		if replacePending {
+			// C1: merge 延到写回点 MergeReplanIntoPlan，在持锁内以【活盘】为 prev 原子完成，
+			// 不再用陈旧 snapshot.Plan 锁外 merge。ReplacePending 蕴含 res.Plan 非空 → 合并结果
+			// 必非空，不会落入下方 len(items)==0 直答分支；此处 items 仅占位（后续按 replacePending 分流）。
+			items = res.Plan
+		} else {
+			normalized, err := builtin_tools.NormalizePlanItems(res.Plan, true)
+			if err != nil {
+				return fmt.Errorf("planner returned invalid plan: %w", err)
+			}
+			items = normalized
 		}
-		normalized, err := builtin_tools.NormalizePlanItems(planItems, true)
-		if err != nil {
-			return fmt.Errorf("planner returned invalid plan: %w", err)
-		}
-		items = normalized
 	}
 
 	if len(items) == 0 {
@@ -459,15 +463,28 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	if res != nil {
 		a.SetGoalUnderstanding(res.GoalUnderstanding)
-		a.state.SetSimpleTask(res.Simple && len(items) == 1)
 		// 业务 lane 贯穿：parse 侧已完成与既有 phases 的按 id 合并（completed/blocked 保留），
-		// 此处原子替换。simple/direct 任务未提交 phases 时保留既有 lane，由 UpdatePlan 的
-		// SynthesizePhasesIfMissing 兜底挂靠新 item。
+		// 此处原子替换。simple/direct 任务未提交 phases 时保留既有 lane，由写回段的
+		// SynthesizePhasesIfMissing 兜底挂靠新 item（须在 plan 写回前设好，供 merge 挂靠）。
 		if len(res.Phases) > 0 {
 			a.state.SetPhases(res.Phases)
 		}
 	}
-	snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
+	if replacePending {
+		// C1: 持锁原子 merge（活盘为 prev）+ 归一校验 + 写回；成功后补跑与 ApplyPlanAndEmit 一致的副作用。
+		merged, err := a.state.MergeReplanIntoPlan(res.Plan, snapshot.ReplanContext.ReplaceTopicID, explanation, needsPlanning)
+		if err != nil {
+			return fmt.Errorf("planner returned invalid plan: %w", err)
+		}
+		snapshot = merged
+		a.state.SetSimpleTask(res.Simple && len(snapshot.Plan) == 1)
+		a.emitPlanApplied(ctx, snapshot, explanation)
+	} else {
+		if res != nil {
+			a.state.SetSimpleTask(res.Simple && len(items) == 1)
+		}
+		snapshot = a.ApplyPlanAndEmit(ctx, items, explanation, needsPlanning)
+	}
 	if res != nil && len(items) > 0 {
 		a.appendPlanContextRecord(res, snapshot)
 	}
@@ -574,11 +591,13 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					continue
 				}
 				if parsed.NeedsPlanning && len(parsed.Plan) > 0 {
-					// 校验对象须与调度侧（本文件 runPlanPhase 内 mergeReplannedPlan + NormalizePlanItems）
+					// 校验对象须与调度侧（runPlanPhase 的 MergeReplanIntoPlan 锁内 merge + NormalizePlanItems）
 					// 保持一致：replan 回流须先按 ReplacePending 合并旧 plan 再校验，否则
 					// mergeReplannedPlan 丢弃旧 pending 项现造的悬空 depends_on 只会在调度侧终态崩、
 					// 绕过本重试通道（参见 step-35 unknown dependency 事故）。非 replan 时
 					// validateTarget == parsed.Plan，行为与合并前一致。
+					// 注意：此处用 priorSnap.Plan 仅做【乐观合法性校验】，非权威合并——权威 merge
+					// 以活盘为 prev 在 MergeReplanIntoPlan 锁内重做（C1），故此处 priorSnap 精度足够。
 					validateTarget := parsed.Plan
 					if priorSnap.ReplanContext != nil && priorSnap.ReplanContext.ReplacePending {
 						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan, priorSnap.ReplanContext.ReplaceTopicID)
@@ -1305,9 +1324,14 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		if clone.ID != "" {
 			preserved[clone.ID] = struct{}{}
 		}
-		if norm := normalizeStepText(clone.Step); norm != "" {
-			if _, ok := preservedText[norm]; !ok {
-				preservedText[norm] = clone.ID
+		// M3: per-topic 收窄模式（replaceTopicID != ""）只登记属 reviewTopic 的保留项文案。
+		// 他 topic 的 pending / non-pending 不入文案去重表，避免 planner 为 reviewTopic 产的新
+		// step 与他 topic pending 归一文案撞车被误去重丢弃、依赖被 remap 到他 topic（跨 topic 错连）。
+		if replaceTopicID == "" || strings.TrimSpace(clone.PhaseID) == replaceTopicID {
+			if norm := normalizeStepText(clone.Step); norm != "" {
+				if _, ok := preservedText[norm]; !ok {
+					preservedText[norm] = clone.ID
+				}
 			}
 		}
 	}

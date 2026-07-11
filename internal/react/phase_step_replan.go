@@ -440,7 +440,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 // 各 lane 继续释放 step 还是收束由 planner 读 phase_assessments 自决。
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	// 先承接 phase 评估：写回 phase 状态、blocked 联动 skip、增量落 journal。
-	if changed, updated := a.state.ApplyPhaseAssessments(decision.PhaseAssessments); len(changed) > 0 {
+	// M2: 局部 review（reviewTopicID!=""）的 blocked 只 skip 本 topic，跨 topic 传播延到全局 reducer。
+	if changed, updated := a.state.ApplyPhaseAssessmentsScoped(decision.PhaseAssessments, strings.TrimSpace(a.reviewTopicID)); len(changed) > 0 {
 		snapshot = updated
 		a.appendPlannerJournalPhaseRecords(changed, snapshot.PlanVersion)
 	}
