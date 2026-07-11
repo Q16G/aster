@@ -57,11 +57,20 @@ func newLocalWorkspaceRuntime(sessionID string, rootDir string, namespace string
 // sharedFileLockKeys 列出需要 per-file RWMutex 保护的共享 ledger 路径
 // （相对 workspace root 的 slash 形式）。命中 → 取/建对应锁；不命中 → 返回 nil 不上锁。
 //
-// 当前仅保护 task_context.md / open_items.md（inline_step 并发写者；其他 shared 文件如
-// planner_skills_index 由 planner 单写、step_p*-s*.md 由 step 自己一写一读，无并发）。
+// 保护 task_context.md / open_items.md（inline_step 并发写者）与 prompt_context/ 下的
+// 内存字段 spill 文件（多 inline peer step 并发组装 prompt 时覆盖写同名文件，见方案 §4.6）；
+// 其他 shared 文件如 planner_skills_index 由 planner 单写、step_p*-s*.md 由 step 自己
+// 一写一读，无并发。
 var sharedFileLockKeys = map[string]struct{}{
-	"shared/task_context.md": {},
-	"shared/open_items.md":   {},
+	"shared/task_context.md":                      {},
+	"shared/open_items.md":                        {},
+	"shared/prompt_context/input_timeline.md":     {},
+	"shared/prompt_context/goal_understanding.md": {},
+	"shared/prompt_context/phases.md":             {},
+	"shared/prompt_context/warnings.md":           {},
+	"shared/prompt_context/replan_context.md":     {},
+	"shared/prompt_context/recovery_context.md":   {},
+	"shared/prompt_context/pending_steps.md":      {},
 }
 
 // sharedFileLockFor 返回 relPath 对应的 per-file 锁；非保护路径返回 nil。
