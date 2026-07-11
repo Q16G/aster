@@ -614,7 +614,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				// `## 输入事实` 须已落盘（planning_system「共享区终态」契约的机械兜底）。
 				// 超限降级为接受 + warning——闸门用于逼模型补写，事实板缺失不应使整个任务失败。
 				if parsed.NeedsPlanning && input.UserInputTurn && a.workspaceRuntime != nil {
-					raw := readSharedFileOptional(a.workspaceRuntime, a.wsLayout(), taskContextFileName)
+					raw := readSharedFileOptional(a.workspaceRuntime, taskContextFileName)
 					if !taskContextInputFactsPresent(raw) {
 						submitRetries++
 						if submitRetries <= maxSubmitRetries {

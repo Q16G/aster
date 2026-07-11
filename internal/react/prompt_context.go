@@ -158,7 +158,7 @@ func (a *Agent) buildPromptContext(snapshot builtin_tools.StateSnapshot, stepID 
 	pc.OpenItemsLedger = a.previewSharedFileForPrompt(openItemsFileName, limit)
 	pc.PlannerJournal = previewPlannerJournalForPrompt(a.workspaceRootDir, limit)
 	if a.workspaceRuntime != nil {
-		pc.StepFileContent = readSharedStepFileForPrompt(a.wsLayout(), stepID, limit)
+		pc.StepFileContent = readSharedStepFileForPrompt(a.workspaceRuntime, stepID, limit)
 	}
 	return pc
 }
@@ -210,7 +210,7 @@ func (a *Agent) previewSharedFileForPrompt(name string, limitTokens int) string 
 	if l.SharedDir() == "" {
 		return ""
 	}
-	raw := readSharedFileOptional(a.workspaceRuntime, l, name)
+	raw := readSharedFileOptional(a.workspaceRuntime, name)
 	return previewNonEmptyForPrompt(raw, filepath.Join(l.SharedDir(), name), limitTokens)
 }
 
