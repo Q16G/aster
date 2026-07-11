@@ -205,6 +205,23 @@ func WithOnHandoffFunc(fn OnHandoffFunc) Option {
 	}
 }
 
+// WithToolMiddleware 注册工具调用洋葱链的用户中间件（注册序 = 由外向内，
+// 在默认截断/耗时中间件之外）。链构造期装配、运行期不可变；中间件契约见
+// tool_middleware.go 的 toolExecHandler 注释（并发执行，不得写宿主可变状态）。
+func WithToolMiddleware(mws ...toolMiddleware) Option {
+	return func(c *AgentConfig) {
+		if c == nil {
+			return
+		}
+		for _, mw := range mws {
+			if mw == nil {
+				continue
+			}
+			c.toolMiddlewares = append(c.toolMiddlewares, mw)
+		}
+	}
+}
+
 // WithInitialHistory 设置初始历史
 func WithInitialHistory(history []*ai.MsgInfo) Option {
 	return func(c *AgentConfig) {
