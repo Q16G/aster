@@ -85,7 +85,7 @@ func TestAlignPlanWithJournal_OverridesBlobPlan(t *testing.T) {
 	}
 }
 
-func mustRuntime(t *testing.T, rootDir string) builtin_tools.WorkspaceRuntime {
+func mustRuntime(t *testing.T, rootDir string) WorkspaceRuntime {
 	t.Helper()
 	rt, err := newLocalWorkspaceRuntime("s", rootDir, "root")
 	if err != nil {

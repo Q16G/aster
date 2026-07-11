@@ -83,7 +83,7 @@ type Agent struct {
 	identityEnvBuilt     bool
 	frozenStepCache      *frozenStepPromptCache
 	currentResultSource  ResultSource
-	workspaceRuntime     builtin_tools.WorkspaceRuntime
+	workspaceRuntime     WorkspaceRuntime
 	fileObservationStore *builtin_tools.FileObservationStore
 	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
 	stepFileGateMu         sync.Mutex

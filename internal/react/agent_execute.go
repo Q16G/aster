@@ -26,7 +26,7 @@ type ExecuteConfig struct {
 	taskContext                *TaskContextData
 	structuredOutputRetryCount *int
 	runID                      string
-	workspaceRuntime           builtin_tools.WorkspaceRuntime
+	workspaceRuntime           WorkspaceRuntime
 	initialState               *builtin_tools.StateSnapshot
 	resumeExecutionIntent      bool
 	forceColdStart             bool
@@ -94,7 +94,7 @@ func WithExecuteStructuredOutputRetryCount(n int) ExecuteOption {
 	}
 }
 
-func WithWorkspaceRuntime(runtime builtin_tools.WorkspaceRuntime) ExecuteOption {
+func WithWorkspaceRuntime(runtime WorkspaceRuntime) ExecuteOption {
 	return func(cfg *ExecuteConfig) {
 		if cfg == nil || runtime == nil {
 			return

@@ -40,9 +40,9 @@ type localWorkspaceRuntime struct {
 	sharedFileLocks   map[string]*sync.RWMutex
 }
 
-var _ builtin_tools.WorkspaceRuntime = (*localWorkspaceRuntime)(nil)
+var _ WorkspaceRuntime = (*localWorkspaceRuntime)(nil)
 
-func newLocalWorkspaceRuntime(sessionID string, rootDir string, namespace string) (builtin_tools.WorkspaceRuntime, error) {
+func newLocalWorkspaceRuntime(sessionID string, rootDir string, namespace string) (WorkspaceRuntime, error) {
 	rootDir = normalizeWorkspaceRootDir(rootDir)
 	if strings.TrimSpace(rootDir) == "" {
 		return nil, fmt.Errorf("workspace root dir is empty")

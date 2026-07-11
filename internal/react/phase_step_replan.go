@@ -1099,7 +1099,7 @@ func (a *Agent) ensureTaskContextSkeleton() {
 //
 // 短路顺序保持与旧版语义一致：name 或 sharedDir 任一为空 → 不发起任何 IO，直接返回 ""。
 // （review P1-5：避免 runtime != nil + sharedDir == "" 时悄悄走 runtime IO 产生额外失败调用。）
-func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, l workspacefs.Layout, name string) string {
+func readSharedFileOptional(runtime WorkspaceRuntime, l workspacefs.Layout, name string) string {
 	if l.SharedDir() == "" || strings.TrimSpace(name) == "" {
 		return ""
 	}

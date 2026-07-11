@@ -1,4 +1,8 @@
-package builtin_tools
+package react
+
+import (
+	"aster/internal/builtin_tools"
+)
 
 // WorkspaceRuntime is the stable workspace contract consumed by runtime code.
 //
@@ -19,14 +23,14 @@ type WorkspaceRuntime interface {
 	ReadFileRel(relPath string) ([]byte, error)
 	WriteFileRel(relPath string, content []byte) error
 
-	LoadWorkspaceState() (*WorkspaceState, error)
-	SaveWorkspaceState(state *WorkspaceState) error
+	LoadWorkspaceState() (*builtin_tools.WorkspaceState, error)
+	SaveWorkspaceState(state *builtin_tools.WorkspaceState) error
 
-	LoadWorkspaceReferences() ([]*WorkspaceReferenceRecord, error)
-	AppendWorkspaceReferences(refs []*WorkspaceReferenceRecord) error
+	LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error)
+	AppendWorkspaceReferences(refs []*builtin_tools.WorkspaceReferenceRecord) error
 
-	LoadStepContextRecords(limit int) ([]*StepContextRecord, error)
-	AppendStepContextRecords(records []*StepContextRecord) error
+	LoadStepContextRecords(limit int) ([]*builtin_tools.StepContextRecord, error)
+	AppendStepContextRecords(records []*builtin_tools.StepContextRecord) error
 
 	ArtifactWritePath(relPath string) (artifactPath string, absPath string, err error)
 }

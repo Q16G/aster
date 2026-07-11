@@ -7,11 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"aster/internal/builtin_tools"
 	"aster/internal/workspacefs"
 )
 
-func newTestStepFileRuntime(t *testing.T) (builtin_tools.WorkspaceRuntime, string) {
+func newTestStepFileRuntime(t *testing.T) (WorkspaceRuntime, string) {
 	t.Helper()
 	root := t.TempDir()
 	r, err := newLocalWorkspaceRuntime("sess-test", root, "")

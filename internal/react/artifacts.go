@@ -14,7 +14,7 @@ import (
 )
 
 type artifactWriter struct {
-	runtime     builtin_tools.WorkspaceRuntime
+	runtime     WorkspaceRuntime
 	sessionRoot string
 	namespace   string
 	// layout 是路径唯一来源（namespace 已归一：顶层 = artifacts/）。
@@ -52,7 +52,7 @@ func NewArtifactWriter(sessionRoot string, opts ...artifactWriterOption) (*artif
 	return newArtifactWriter(runtime)
 }
 
-func newArtifactWriter(runtime builtin_tools.WorkspaceRuntime) (*artifactWriter, error) {
+func newArtifactWriter(runtime WorkspaceRuntime) (*artifactWriter, error) {
 	if runtime == nil {
 		return nil, fmt.Errorf("workspace runtime is nil")
 	}
