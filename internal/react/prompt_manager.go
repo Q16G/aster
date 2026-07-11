@@ -173,6 +173,9 @@ type TaskPlannerPromptInput struct {
 	HasAvailableTools  bool
 }
 
+// IntentClassificationPromptInput 的 RecentOutcomes / PendingSteps / InputTimeline
+// 为 Go 侧预渲染文本（buildIntentClassificationInput 产出），由调用方经统一 preview
+// 上限投影后注入（高频阶段，无上限注入曾是上下文爆炸缺口，见方案审查#4）。
 type IntentClassificationPromptInput struct {
 	AgentRole         string
 	AgentBackground   string
@@ -183,29 +186,10 @@ type IntentClassificationPromptInput struct {
 	Interrupted       bool
 	CompletedCount    int
 	TotalCount        int
-	RecentOutcomes    []IntentOutcomeSummary
-	PendingSteps      []IntentPendingStep
-	InputTimeline     []IntentTimelineEntry
+	RecentOutcomes    string
+	PendingSteps      string
+	InputTimeline     string
 	LatestInput       string
-}
-
-type IntentPendingStep struct {
-	ID   string
-	Step string
-}
-
-type IntentOutcomeSummary struct {
-	StepID        string
-	Status        string
-	ShortSummary  string
-	LongSummary   string
-	KeyFacts      []string
-	OpenQuestions []string
-}
-
-type IntentTimelineEntry struct {
-	Time    string
-	Content string
 }
 
 type PromptManager interface {
@@ -523,11 +507,11 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 		"INTERRUPTED":            input.Interrupted,
 		"COMPLETED_COUNT":        input.CompletedCount,
 		"TOTAL_COUNT":            input.TotalCount,
-		"HAS_RECENT_OUTCOMES":    len(input.RecentOutcomes) > 0,
-		"RECENT_OUTCOMES":        input.RecentOutcomes,
-		"HAS_PENDING_STEPS":      len(input.PendingSteps) > 0,
-		"PENDING_STEPS":          input.PendingSteps,
-		"INPUT_TIMELINE":         input.InputTimeline,
+		"HAS_RECENT_OUTCOMES":    strings.TrimSpace(input.RecentOutcomes) != "",
+		"RECENT_OUTCOMES":        strings.TrimSpace(input.RecentOutcomes),
+		"HAS_PENDING_STEPS":      strings.TrimSpace(input.PendingSteps) != "",
+		"PENDING_STEPS":          strings.TrimSpace(input.PendingSteps),
+		"INPUT_TIMELINE":         strings.TrimSpace(input.InputTimeline),
 		"LATEST_INPUT":           strings.TrimSpace(input.LatestInput),
 	}
 	return renderPromptParts("intent_classification", m.intentClassificationSystemTmpl, m.intentClassificationUserTmpl, systemData, userData)
