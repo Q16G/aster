@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -251,11 +249,13 @@ func (r *AsyncAgentRegistry) HasRunningInlineSteps() bool {
 const maxAsyncNotificationRunes = 1024
 
 // writeAsyncResultFile writes the full async agent result to a workspace file.
+// 仅持有裸 workspace root（通知携带的 WorkspaceDir，无 runtime 可用），
+// 故以 NewLocalStore(workspaceDir) 直构 Store；任何失败静默返回 ""（通知内联兜底）。
 func writeAsyncResultFile(workspaceDir string, notif *AsyncAgentNotification) string {
 	if workspaceDir == "" || notif == nil {
 		return ""
 	}
-	resultFile := workspacefs.New(workspaceDir, "").AsyncResult()
+	l := workspacefs.New(workspaceDir, "")
 	data := map[string]any{
 		"agent_id": notif.AgentID,
 		"status":   notif.Status,
@@ -269,13 +269,14 @@ func writeAsyncResultFile(workspaceDir string, notif *AsyncAgentNotification) st
 	if err != nil {
 		return ""
 	}
-	if err := os.MkdirAll(filepath.Dir(resultFile), 0o755); err != nil {
+	store, err := workspacefs.NewLocalStore(workspaceDir)
+	if err != nil {
 		return ""
 	}
-	if err := os.WriteFile(resultFile, raw, 0o644); err != nil {
+	if err := store.Write(l.AsyncResultRel(), raw); err != nil {
 		return ""
 	}
-	return resultFile
+	return l.AsyncResult()
 }
 
 // PurgeDelivered removes entries that are completed/failed AND whose notification
