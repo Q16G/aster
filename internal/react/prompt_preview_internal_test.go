@@ -1,6 +1,8 @@
 package react
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -16,8 +18,8 @@ func TestPromptPreviewTokens(t *testing.T) {
 	}{
 		{"大预算线性放大", 1_000_000, int(1_000_000 * promptPreviewRatio)},
 		{"小预算线性收窄", 10_000, int(10_000 * promptPreviewRatio)},
-		{"零值退默认窗口", 0, int(float64(defaultContextWindowTokens) * promptPreviewRatio)},
-		{"负值退默认窗口", -1, int(float64(defaultContextWindowTokens) * promptPreviewRatio)},
+		{"零值退默认可用预算", 0, int(float64(defaultContextWindowTokens-DefaultOutputReserveTokens) * promptPreviewRatio)},
+		{"负值退默认可用预算", -1, int(float64(defaultContextWindowTokens-DefaultOutputReserveTokens) * promptPreviewRatio)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,6 +99,57 @@ func TestPointerOnlyForPrompt(t *testing.T) {
 	}
 	if !strings.Contains(got, absPath) || !strings.Contains(got, "read_file") {
 		t.Errorf("纯指针文案应含绝对路径与 read_file 实名，got %q", got)
+	}
+}
+
+// TestPreviewForPromptPointerOnlyWhenLimitTiny 验证 limit 连指针文案都放不下时全指针化：
+// 不再输出任何正文（显式判据 limit < 指针 token 成本）。
+func TestPreviewForPromptPointerOnlyWhenLimitTiny(t *testing.T) {
+	const absPath = "/ws/shared/open_items.md"
+	long := strings.Repeat("账本条目内容。\n", 200)
+	pointerCost := countTokens(pointerOnlyForPrompt(absPath))
+	got := previewForPrompt(long, absPath, pointerCost-1)
+	if got != pointerOnlyForPrompt(absPath) {
+		t.Errorf("limit=%d（< 指针成本 %d）应全指针化，got %q", pointerCost-1, pointerCost, got)
+	}
+}
+
+// TestTruncateToTokenBudgetSingleLongLine 覆盖无换行单长行：换行对齐分支失效，
+// 走纯比例估算 + 10%% 收缩路径，结果仍须 token ≤ limit 且 UTF-8 合法。
+func TestTruncateToTokenBudgetSingleLongLine(t *testing.T) {
+	long := strings.Repeat("无换行的超长中文单行内容持续堆积", 200)
+	for _, limit := range []int{5, 50, 500} {
+		got := truncateToTokenBudget(long, limit)
+		if n := countTokens(got); n > limit {
+			t.Errorf("limit=%d: 结果 token 数 %d 超限", limit, n)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("limit=%d: 结果非合法 UTF-8", limit)
+		}
+		if got == "" {
+			t.Errorf("limit=%d: 不应截成空串", limit)
+		}
+	}
+}
+
+// TestReadFileForPromptWithLimitRealFile 迁移自被删的 shared_file_limit 测试：
+// 真实文件 + limit 截断、limit=0 不截断、文件缺失占位。
+func TestReadFileForPromptWithLimitRealFile(t *testing.T) {
+	dir := t.TempDir()
+	absPath := filepath.Join(dir, "open_items.md")
+	long := strings.Repeat("OI-001 真实文件截断用例内容行。\n", 300)
+	if err := os.WriteFile(absPath, []byte(long), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := readFileForPromptWithLimit(absPath, 60)
+	if !isTruncatedForPrompt(got) || !strings.Contains(got, absPath) {
+		t.Errorf("超限真实文件应截断并含路径指针，got 前 80 字符 %q", got[:min(80, len(got))])
+	}
+	if full := readFileForPromptWithLimit(absPath, 0); full != strings.TrimSpace(long) {
+		t.Errorf("limit=0 应返回全文不截断")
+	}
+	if missing := readFileForPromptWithLimit(filepath.Join(dir, "nope.md"), 60); missing != "(文件尚不存在)" {
+		t.Errorf("缺失文件应返回占位，got %q", missing)
 	}
 }
 

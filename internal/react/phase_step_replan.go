@@ -1064,11 +1064,11 @@ const promptPreviewRatio = 0.02
 
 // promptPreviewTokens 返回单个注入块的 preview token 上限 = usableInputTokens × ratio。
 // 基准用 usableInputTokens（= 窗口 − 输出预留）而非整窗口——preview 属 input。
-// usableInputTokens <= 0 时退回 defaultContextWindowTokens 兜底。
+// usableInputTokens <= 0 时兜底同口径：默认窗口减默认输出预留（而非整窗口）。
 func promptPreviewTokens(usableInputTokens int) int {
 	uit := usableInputTokens
 	if uit <= 0 {
-		uit = defaultContextWindowTokens
+		uit = defaultContextWindowTokens - DefaultOutputReserveTokens
 	}
 	return int(float64(uit) * promptPreviewRatio)
 }
@@ -1110,7 +1110,8 @@ const promptTruncatedMarker = "（内容超长"
 
 // previewForPrompt 是统一的 prompt 注入块 preview helper：content 的 token 数 ≤ limitTokens
 // 时返回原文；超限时在 token/UTF-8 边界截断并追加指针文案（工具名用 builtin 实名 read_file）。
-// limitTokens <= 0 不截断。limit 小到放不下正文时全指针化（指针文案是不可压缩的固定开销）。
+// limitTokens <= 0 不截断。limit 连指针文案本身都放不下时全指针化——指针是不可压缩的
+// 固定开销，此时再塞正文只会更超；判据显式比较 limit 与指针 token 成本（见 docs 决策④）。
 // 截断维度按 token（复用 countTokens）而非字节，消除中文「字节≠token」偏差。
 func previewForPrompt(raw string, absPath string, limitTokens int) string {
 	content := strings.TrimSpace(raw)
@@ -1120,9 +1121,13 @@ func previewForPrompt(raw string, absPath string, limitTokens int) string {
 	if limitTokens <= 0 || countTokens(content) <= limitTokens {
 		return content
 	}
+	pointer := pointerOnlyForPrompt(absPath)
+	if limitTokens < countTokens(pointer) {
+		return pointer
+	}
 	truncated := truncateToTokenBudget(content, limitTokens)
 	if strings.TrimSpace(truncated) == "" {
-		return pointerOnlyForPrompt(absPath)
+		return pointer
 	}
 	return truncated + "\n\n" + promptTruncatedMarker + "，仅显示前 " +
 		fmt.Sprintf("%d", countTokens(truncated)) + " tokens；完整内容见文件：" +
