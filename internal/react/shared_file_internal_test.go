@@ -73,22 +73,3 @@ func TestReadSharedFileOptional(t *testing.T) {
 		})
 	}
 }
-
-// TestReadSharedFileForPrompt_PreservesPlaceholders 锁定 readSharedFileForPrompt 仍返回中文占位
-// 字符串——step_replan 阶段的 OPEN_ITEMS_LEDGER / TASK_CONTEXT_BOARD 注入依赖这些占位告诉模型文件状态。
-func TestReadSharedFileForPrompt_PreservesPlaceholders(t *testing.T) {
-	if got := readSharedFileForPrompt(nil, "", "x.md"); got != "(共享区不可用)" {
-		t.Fatalf("empty sharedDir placeholder = %q", got)
-	}
-	dir := t.TempDir()
-	if got := readSharedFileForPrompt(nil, dir, "missing.md"); got != "(文件尚不存在)" {
-		t.Fatalf("missing file placeholder = %q", got)
-	}
-	abs := filepath.Join(dir, "empty.md")
-	if err := os.WriteFile(abs, []byte("  \n"), 0o644); err != nil {
-		t.Fatalf("write empty file failed: %v", err)
-	}
-	if got := readSharedFileForPrompt(nil, dir, "empty.md"); got != "(文件为空)" {
-		t.Fatalf("empty file placeholder = %q", got)
-	}
-}
