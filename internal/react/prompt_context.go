@@ -2,12 +2,12 @@ package react
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 // promptPreviewRatio 单个 prompt 注入块的 preview 上限占「可用输入预算」的比例。
@@ -216,12 +216,17 @@ func (a *Agent) previewSharedFileForPrompt(name string, limitTokens int) string 
 
 // previewPlannerJournalForPrompt 读 workspace/planner.jsonl 并做 preview；
 // 文件缺失/空返回空串（模板 HAS_PLANNER_JOURNAL gate 判缺失）。
+// 调用侧仅持裸 root string，经 NewLocalStore 读取（防穿越 + per-key 锁）。
 func previewPlannerJournalForPrompt(workspaceRootDir string, limitTokens int) string {
 	absPath := resolvePlannerJournalPointer(workspaceRootDir)
 	if absPath == "" {
 		return ""
 	}
-	data, err := os.ReadFile(absPath)
+	store, err := workspacefs.NewLocalStore(workspaceRootDir)
+	if err != nil {
+		return ""
+	}
+	data, err := store.Read(workspacefs.New(workspaceRootDir, "").PlannerJournalRel())
 	if err != nil {
 		return ""
 	}
