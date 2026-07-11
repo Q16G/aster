@@ -103,3 +103,12 @@ func prettyJSON(value any) string {
 	}
 	return string(raw)
 }
+
+// stringOrJSON 注入值已是 preview 字符串（PromptContext 产出）时原样注入；
+// 兼容旧调用方传结构化值时按 prettyJSON 序列化。
+func stringOrJSON(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return prettyJSON(value)
+}

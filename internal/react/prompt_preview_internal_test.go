@@ -132,24 +132,27 @@ func TestTruncateToTokenBudgetSingleLongLine(t *testing.T) {
 	}
 }
 
-// TestReadFileForPromptWithLimitRealFile 迁移自被删的 shared_file_limit 测试：
-// 真实文件 + limit 截断、limit=0 不截断、文件缺失占位。
-func TestReadFileForPromptWithLimitRealFile(t *testing.T) {
+// TestPreviewPlannerJournalRealFile 真实文件组合用例：limit 截断 + 路径指针、
+// limit=0 不截断、文件缺失返回空串（HAS_PLANNER_JOURNAL gate 语义）。
+func TestPreviewPlannerJournalRealFile(t *testing.T) {
 	dir := t.TempDir()
-	absPath := filepath.Join(dir, "open_items.md")
-	long := strings.Repeat("OI-001 真实文件截断用例内容行。\n", 300)
+	absPath := filepath.Join(dir, "workspace", "planner.jsonl")
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat(`{"kind":"step","item":{"id":"s1","step":"真实文件截断用例内容行"}}`+"\n", 300)
 	if err := os.WriteFile(absPath, []byte(long), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := readFileForPromptWithLimit(absPath, 60)
+	got := previewPlannerJournalForPrompt(dir, 60)
 	if !isTruncatedForPrompt(got) || !strings.Contains(got, absPath) {
 		t.Errorf("超限真实文件应截断并含路径指针，got 前 80 字符 %q", got[:min(80, len(got))])
 	}
-	if full := readFileForPromptWithLimit(absPath, 0); full != strings.TrimSpace(long) {
+	if full := previewPlannerJournalForPrompt(dir, 0); full != strings.TrimSpace(long) {
 		t.Errorf("limit=0 应返回全文不截断")
 	}
-	if missing := readFileForPromptWithLimit(filepath.Join(dir, "nope.md"), 60); missing != "(文件尚不存在)" {
-		t.Errorf("缺失文件应返回占位，got %q", missing)
+	if missing := previewPlannerJournalForPrompt(t.TempDir(), 60); missing != "" {
+		t.Errorf("缺失 journal 应返回空串（gate 语义），got %q", missing)
 	}
 }
 

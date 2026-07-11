@@ -252,13 +252,26 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 
 	snapshot = a.state.Snapshot()
-	// 恢复回合：判定是否需要注入中断点子 agent 现场（gate 见 buildRecoveryChildContextJSON），用后即清标记。
-	recoveryContextJSON := a.maybeBuildRecoveryChildContextJSON(snapshot)
+	// 顶层 planner 冷启时若共享区事实板尚未落盘，预创建仅含两节空标题的骨架——
+	// 须在 PromptContext 组装前完成，让 pc.TaskContextBoard 读到现成结构；存在则不覆盖。
+	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
+		a.ensureTaskContextSkeleton()
+	}
+	// 统一 PromptContext：内存字段与共享区文件字段全部经动态 preview 上限投影（M2 接线）。
+	pc := a.buildPromptContext(snapshot, "")
+	// 恢复回合：判定是否需要注入中断点子 agent 现场（gate 见 buildRecoveryChildContextJSON），
+	// 用后即清标记——含副作用故不在 buildPromptContext 内，单独经 previewMemoryField 投影。
+	pc.RecoveryContext = a.previewMemoryField("recovery_context",
+		a.maybeBuildRecoveryChildContextJSON(snapshot), promptPreviewTokens(a.usableInputTokens))
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		HandoffContext:      strings.TrimSpace(extraText),
 		WorkspaceRootDir:    strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace:  strings.TrimSpace(a.workspaceNamespace),
-		RecoveryContextJSON: recoveryContextJSON,
+		RecoveryContextJSON: pc.RecoveryContext,
+		InputTimeline:       pc.InputTimeline,
+		TaskItemsJSON:       pc.Plan,
+		PhasesJSON:          pc.Phases,
+		ReplanContextJSON:   pc.ReplanContext,
 	})
 	if inputStr == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -302,23 +315,14 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 子 Agent 内 sub_agent 工具本身被运行时关闭，prompt 同步关闭委派条款，避免无意义引导。
 	plannerInput.IsSubAgent = a.cfg.IsSubAgent
 	plannerInput.CanSpawnSubAgent = !a.cfg.IsSubAgent
-	// 顶层 planner 冷启时若共享区事实板尚未落盘，预创建仅含两节空标题的骨架，
-	// 让 LLM 收到现成结构作为入板锚点；存在则不覆盖。骨架本身视作零内容快照。
 	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
-		a.ensureTaskContextSkeleton()
-	}
-	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
-		// TaskContextBoard 按动态上限截断：task_context.md 是精简事实板，正常不会过大，
-		// 但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
-		raw := readSharedFileOptional(a.workspaceRuntime, a.workspaceRuntime.SharedDir(), taskContextFileName)
-		if raw != "" {
-			absPath := filepath.Join(a.workspaceRuntime.SharedDir(), taskContextFileName)
-			raw = previewForPrompt(raw, absPath, promptPreviewTokens(a.usableInputTokens))
-		}
-		plannerInput.TaskContextBoard = raw
+		// TaskContextBoard 走 PromptContext 统一 preview：task_context.md 是精简事实板，
+		// 正常不会过大，但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
+		// 骨架预创建已提前到 buildPromptContext 之前（骨架本身视作零内容快照）。
+		plannerInput.TaskContextBoard = pc.TaskContextBoard
 	}
 	if !regenGoal {
-		plannerInput.GoalUnderstanding = strings.TrimSpace(snapshot.GoalUnderstanding)
+		plannerInput.GoalUnderstanding = pc.GoalUnderstanding
 	}
 	a.applyPlannerOverflowHints(&plannerInput)
 
@@ -1071,6 +1075,12 @@ type PlannerInputOptions struct {
 	WorkspaceNamespace string
 	// RecoveryContextJSON 仅在恢复回合且命中 gate 时非空，渲染为 planner prompt 的独立 RECOVERY 段。
 	RecoveryContextJSON string
+	// 以下为 PromptContext preview 注入（M2 接线）：非空时直接采用（已经动态上限
+	// 截断 + 指针），空时按 snapshot 原地构建（兼容未接线调用方与既有测试）。
+	InputTimeline     string
+	TaskItemsJSON     string
+	PhasesJSON        string
+	ReplanContextJSON string
 }
 
 type plannerStepOutcomeView struct {
@@ -1118,36 +1128,30 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 		RecoveryContextJSON: strings.TrimSpace(opts.RecoveryContextJSON),
 	}
 
-	// Build INPUT_TIMELINE
-	lines := make([]string, 0, len(snapshot.InputTimeline))
-	for _, item := range snapshot.InputTimeline {
-		if item == nil {
-			continue
-		}
-		content := strings.TrimSpace(item.Content)
-		if content == "" {
-			continue
-		}
-		if item.CreatedAt.IsZero() {
-			lines = append(lines, "- "+content)
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("- [%s] %s", item.CreatedAt.Format(time.RFC3339), content))
+	// Build INPUT_TIMELINE：优先采用 PromptContext preview（已动态上限截断 + 指针），
+	// 未接线调用方回退按 snapshot 原地拼接（行格式同 formatInputTimelineLines）。
+	if opts.InputTimeline != "" {
+		data.InputTimeline = opts.InputTimeline
+	} else {
+		data.InputTimeline = formatInputTimelineLines(snapshot.InputTimeline)
 	}
-	if len(lines) == 0 {
+	if data.InputTimeline == "" {
 		return ""
 	}
-	data.InputTimeline = strings.Join(lines, "\n")
 
 	// TASK_ITEMS：plan 真相源投影（烘焙产出小字段 + 指针，指针转绝对路径；slim 投影
 	// 去 digest——planner 按需顺 timeline_file / journal 回读）。
 	// 取代旧的 EXECUTION_LINE / WORKSPACE_STEP_CONTEXTS 全量注入（copy→pointer）。
-	if len(snapshot.Plan) > 0 {
+	if opts.TaskItemsJSON != "" {
+		data.TaskItemsJSON = opts.TaskItemsJSON
+	} else if len(snapshot.Plan) > 0 {
 		data.TaskItemsJSON = prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, opts.WorkspaceRootDir))
 	}
 
 	// PHASES：既有业务 lane 清单（含状态），重规划回合供 planner 承接。
-	if len(snapshot.Phases) > 0 {
+	if opts.PhasesJSON != "" {
+		data.PhasesJSON = opts.PhasesJSON
+	} else if len(snapshot.Phases) > 0 {
 		data.PhasesJSON = prettyJSON(snapshot.Phases)
 	}
 
@@ -1155,7 +1159,9 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	data.PlannerJournalPath = resolvePlannerJournalPointer(opts.WorkspaceRootDir)
 
 	// REPLAN_CONTEXT
-	if snapshot.ReplanContext != nil {
+	if opts.ReplanContextJSON != "" {
+		data.ReplanContextJSON = opts.ReplanContextJSON
+	} else if snapshot.ReplanContext != nil {
 		data.ReplanContextJSON = prettyJSON(snapshot.ReplanContext)
 	}
 

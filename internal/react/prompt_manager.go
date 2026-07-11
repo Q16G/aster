@@ -376,12 +376,12 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
 		"ACTIVE_PHASES":            prettyJSON(input.ActivePhases),
 		"HAS_ACTIVE_PHASES":        activePhasesNonEmpty(input.ActivePhases),
-		"INPUT_TIMELINE":           prettyJSON(input.InputTimeline),
+		"INPUT_TIMELINE":           stringOrJSON(input.InputTimeline),
 		"REVIEW_WINDOW_CARDS":      cardsJSON,
 		"REVIEW_WINDOW_TOTAL":      reviewTotal,
 		"REVIEW_WINDOW_SHOWN":      reviewShown,
 		"REVIEW_WINDOW_TRUNCATED":  reviewTruncated,
-		"PLAN_OVERVIEW":            prettyJSON(input.PlanOverview),
+		"PLAN_OVERVIEW":            stringOrJSON(input.PlanOverview),
 		"OPEN_ITEMS_LEDGER":        strings.TrimSpace(input.OpenItemsLedger),
 		"TASK_CONTEXT_BOARD":       strings.TrimSpace(input.TaskContextBoard),
 		"STEP_FILE_CONTENT":        strings.TrimSpace(input.StepFileContent),
@@ -453,15 +453,15 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	userData := map[string]any{
 		"STATUS":                 fmt.Sprint(input.Status),
 		"STATE_ERROR":            fmt.Sprint(input.StateError),
-		"INPUT_TIMELINE":         prettyJSON(input.InputTimeline),
+		"INPUT_TIMELINE":         stringOrJSON(input.InputTimeline),
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
-		"PLAN_ITEMS":             prettyJSON(input.PlanItems),
+		"PLAN_ITEMS":             stringOrJSON(input.PlanItems),
 		"PHASES":                 prettyJSON(input.Phases),
 		"HAS_PHASES":             activePhasesNonEmpty(input.Phases),
 		"PLANNER_JOURNAL_PATH":   strings.TrimSpace(input.PlannerJournalPath),
 		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
-		"WARNINGS":               prettyJSON(input.Warnings),
+		"WARNINGS":               stringOrJSON(input.Warnings),
 	}
 	return renderPromptParts("final_answer", m.finalAnswerSystemTmpl, m.finalAnswerUserTmpl, systemData, userData)
 }

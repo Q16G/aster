@@ -283,10 +283,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		openItemsPath = filepath.Join(workspaceSharedDir, openItemsFileName)
 		taskContextPath = filepath.Join(workspaceSharedDir, taskContextFileName)
 	}
-	plannerJournal := readPlannerJournalForPrompt(a.workspaceRootDir, promptPreviewTokens(a.usableInputTokens))
+	// 统一 PromptContext：内存字段与共享区文件字段全部经动态 preview 上限投影（M2 接线）。
+	pc := a.buildPromptContext(snapshot, stepID)
 	// 仅在内联 journal 触发截断时注入路径指针——未截断时模型已看到全文，路径行属冗余 token。
 	plannerJournalPath := ""
-	if isTruncatedForPrompt(plannerJournal) {
+	if isTruncatedForPrompt(pc.PlannerJournal) {
 		plannerJournalPath = resolvePlannerJournalPointer(a.workspaceRootDir)
 	}
 	// 当前 step 的 transcript blob 路径属于"最后一卡"的辅助维度，整体指针下沉到 reviewWin 不便表达，
@@ -309,16 +310,16 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
-		"goal_understanding":     snapshot.GoalUnderstanding,
+		"goal_understanding":     pc.GoalUnderstanding,
 		"active_phases":          activePhases,
-		"input_timeline":         snapshot.InputTimeline,
+		"input_timeline":         pc.InputTimeline,
 		"review_window":          reviewWin,
-		"plan_overview":          ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
+		"plan_overview":          pc.Plan,
 		"planner_journal_path":   plannerJournalPath,
-		"planner_journal":        plannerJournal,
-		"open_items_ledger":      readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, promptPreviewTokens(a.usableInputTokens)),
-		"task_context_board":     readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, taskContextFileName, promptPreviewTokens(a.usableInputTokens)),
-		"step_file_content":      readSharedStepFileForPrompt(workspaceSharedDir, stepID, promptPreviewTokens(a.usableInputTokens)),
+		"planner_journal":        pc.PlannerJournal,
+		"open_items_ledger":      pc.OpenItemsLedger,
+		"task_context_board":     pc.TaskContextBoard,
+		"step_file_content":      pc.StepFileContent,
 		"step_contexts_path":     stepContextsPath,
 		"step_transcript_path":   stepTranscriptPath,
 		"open_items_path":        openItemsPath,
@@ -1055,63 +1056,6 @@ func (a *Agent) absolutizeCoverageRel(rel string) string {
 		return rel
 	}
 	return filepath.Join(a.workspaceRootDir, rel)
-}
-
-// readSharedFileForPrompt 读取共享区文件全文用于注入；缺失时返回占位说明（不报错）。
-// 占位字符串供 step_replan_user.prompt 的 OPEN_ITEMS_LEDGER / TASK_CONTEXT_BOARD 显式注入，
-// 告知模型文件状态——这是 step_replan 阶段的设计意图。需要"缺失即留空"语义的调用方（如
-// task_planner 的 TaskContextBoard，HAS_TASK_CONTEXT_BOARD gate 仅判空串）改用
-// readSharedFileOptional，避免占位字符串被当事实板内容渲染。
-func readSharedFileForPrompt(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string) string {
-	return readSharedFileForPromptWithLimit(runtime, sharedDir, name, 0)
-}
-
-// readSharedFileForPromptWithLimit 与 readSharedFileForPrompt 相同，但超过 limitTokens 时在
-// 尾部追加截断提示（含绝对文件路径），让模型自主决策是否用文件工具读取完整内容。
-// limitTokens <= 0 时不截断（同 readSharedFileForPrompt）。
-//
-// runtime != nil 时通过 runtime.ReadFileRel("shared/"+name) 读取——这样共享 ledger
-// 文件（task_context.md / open_items.md）经过 sharedFileLocks 的 RLock 保护，
-// 与 inline_step 并发 WriteFile 路径串行化。runtime == nil 时退化为直接 os.ReadFile
-// （保留兼容路径，供未来非 runtime 上下文调用）。
-func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string, limitTokens int) string {
-	if sharedDir == "" {
-		return "(共享区不可用)"
-	}
-	absPath := filepath.Join(sharedDir, name)
-	if runtime != nil {
-		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join("shared", name)))
-		if err != nil {
-			return "(文件尚不存在)"
-		}
-		return previewForPrompt(string(data), absPath, limitTokens)
-	}
-	return readFileForPromptWithLimit(absPath, limitTokens)
-}
-
-// readFileForPromptWithLimit 是接受绝对路径的读取入口，供非共享区文件（例如
-// workspace/planner.jsonl）复用同一套读取 + preview + 占位策略。
-func readFileForPromptWithLimit(absPath string, limitTokens int) string {
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return "(文件尚不存在)"
-	}
-	return previewForPrompt(string(data), absPath, limitTokens)
-}
-
-// readPlannerJournalForPrompt 读取 workspace/planner.jsonl 全文用于注入。
-// 与 readSharedFileForPromptWithLimit 共用 preview 与占位策略；workspaceRootDir 空或
-// planner.jsonl 不存在时返回占位提示，让模型识别状态。
-func readPlannerJournalForPrompt(workspaceRootDir string, limitTokens int) string {
-	root := strings.TrimSpace(workspaceRootDir)
-	if root == "" {
-		return "(workspace 不可用)"
-	}
-	absPath := builtin_tools.WorkspacePlannerJournalFileAbs(root)
-	if absPath == "" {
-		return "(workspace 不可用)"
-	}
-	return readFileForPromptWithLimit(absPath, limitTokens)
 }
 
 // taskContextSkeleton 是 planner 冷启时 task_context.md 的初始骨架——仅含两节空标题

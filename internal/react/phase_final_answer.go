@@ -84,13 +84,25 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		"step_outcomes":        stepOutcomeViews,
 		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),
 		"planner_journal_path": plannerJournalPath,
-		"open_items_ledger":    readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, promptPreviewTokens(a.usableInputTokens)),
 		"external_interrupt":   externalInterrupt,
 		"replan_context":       snapshot.ReplanContext,
 		"active_skill_names":   snapshot.ActiveSkillNames,
 		"warnings":             snapshot.Warnings,
 		"workspace_shared_dir": workspaceSharedDir,
 	}
+	// prompt 注入走统一 PromptContext preview（M2 接线）；payload 本体是 assessed_state
+	// 持久化载体（resume 按 assessedStatePayload 类型回读 input_timeline/warnings 等），
+	// 故 preview 值只进浅拷贝的 promptPayload，不污染持久化 schema。
+	pc := a.buildPromptContext(snapshot, "")
+	promptPayload := make(map[string]any, len(payload)+2)
+	for k, v := range payload {
+		promptPayload[k] = v
+	}
+	promptPayload["input_timeline"] = pc.InputTimeline
+	promptPayload["goal_understanding"] = pc.GoalUnderstanding
+	promptPayload["plan_items"] = pc.Plan
+	promptPayload["warnings"] = pc.Warnings
+	promptPayload["open_items_ledger"] = pc.OpenItemsLedger
 
 	var modelOut FinalAnswerModelOutput
 	rawResponse := ""
@@ -106,7 +118,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		})
 		modelOut = buildExternalInterruptModelOutput(snapshot, externalInterrupt)
 	} else {
-		prompt, err := a.BuildFinalAnswerPrompt(payload)
+		prompt, err := a.BuildFinalAnswerPrompt(promptPayload)
 		if err != nil {
 			return snapshot, err
 		}
