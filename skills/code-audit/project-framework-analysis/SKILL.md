@@ -1,10 +1,11 @@
 ---
 name: project-framework-analysis
 description: >-
-  项目框架与攻击面侦察——识别技术栈与分层、枚举入口点与路由、盘点中间件信任边界、梳理认证
-  会话架构与数据归属字段、识别框架对 source/sink/分发/过滤的自有封装、标注闭源依赖位置，产出
-  项目框架图。本能力不做漏洞判定。
-when-to-use: 当开始一次全量代码安全审计、需要先识别项目结构与攻击面、为后续分析建立共享侦察上下文时
+  白盒建模——一次深度建模产出五张共享模型：项目架构（技术栈/分层/框架自有封装/闭源依赖位置）、
+  入口点（路由/中间件信任边界）、认证与权限（会话/角色/多租户/归属字段）、业务（实体/流程状态机/
+  业务不变量/高价值资产）、全局威胁（攻击面×漏洞类别的适用性映射，供下游逐一全测）。本能力不做漏洞判定，为后续
+  漏洞维度分析建立共享底图。
+when-to-use: 当开始一次全量代码安全审计、需要先建立项目架构/入口点/认证权限/业务/全局威胁五张共享模型、为后续分析建立入口时
 allowed-tools: bash,read_file,list_files,rg
 user-invocable: true
 argument-hint: "[target_path]"
@@ -12,9 +13,9 @@ arguments:
   - target_path
 ---
 
-# 项目框架与攻击面侦察
+# 白盒建模（五张模型）
 
-> 本能力在审计早期产出"项目框架图"作为共享侦察底图——把后续多维度审计都会重复盘点的"技术栈 / 入口点 / 中间件 / 认证 / 归属字段 / 框架自有封装 / 闭源依赖位置"一次性沉淀下来。**不做漏洞判定**——侦察阶段产生的可疑点交对应审计能力消费。
+> 本能力在审计早期做**一次深度建模**，产出五张共享模型作为后续多维度审计的入口——项目架构 / 入口点 / 认证与权限 / 业务 / 全局威胁。白盒源码全可见，整张攻击面图一次性静态建起并复用，仅项目结构重大变更时重建。**不做漏洞判定**——建模阶段产生的可疑点交对应审计能力消费。
 
 ## 1. 触发线索 / 适用信号
 
@@ -25,7 +26,7 @@ arguments:
 - 至少存在 controller 层目录（`controllers/` / `handlers/` / 含 `@RequestMapping` 注解的 Java 文件 / `routes/` / `views/`），项目体量大于单文件
 
 **已有产物维度**：
-- `shared/project-framework.md` 或 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` **尚不存在**
+- `shared/models/` 五张模型 markdown 或 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` **尚不存在**
 - 已有产物但目标项目栈 / 入口点近期发生重大变更（新增模块 / 新增框架 / 切换 ORM）
 
 **信息完备度维度**：
@@ -138,7 +139,7 @@ arguments:
 | PHP | Blade / Twig | 模板文件 `.blade.php` / `.twig` | `resources/views/` |
 | C / C++ | 通用 | `Makefile` / `CMakeLists.txt` | 命令执行点（`system` / `popen`）、内存安全点、链接的第三方库 |
 
-> 详细的侦察维度展开（每维度的识别细则、grep pattern、易漏点）见 [references/recon-dimensions.md](references/recon-dimensions.md)。
+> 详细的侦察维度展开（每维度的识别细则、grep pattern、易漏点）见 [references/architecture-model.md](references/architecture-model.md)。
 
 ---
 
@@ -155,13 +156,25 @@ arguments:
 
 ---
 
-## 8. 检测方法论 / 数据流追踪
+## 8. 建模方法论
 
-> 本能力**只到侦察产物**——跨函数追踪 / sink 可达性证明走 [dataflow-analysis](../dataflow-analysis/SKILL.md) 与对应单漏洞维度 skill。本节描述本能力如何把"项目框架图"建立起来。
+> 本能力**只到建模产物**——跨函数追踪 / sink 可达性证明走 [dataflow-analysis](../dataflow-analysis/SKILL.md) 与对应单漏洞维度 skill。本节是五张模型的建模骨架；每张模型的判据、易漏点、产物字段见对应 reference。
 
-### 侦察维度（非编号——按"待回答问题"组织，结合代码事实展开顺序）
+### 五张模型总览
 
-每维度按"识别信号 → 为什么这维度重要 → 须产出什么"组织。
+一次深度建模，按下列顺序建五张模型（前四张是事实盘点，第五张综合前四张）：
+
+| 模型 | 承载维度 | 细则 |
+|------|---------|------|
+| 项目架构模型 | 技术栈 / 分层 / 框架自有封装 / 闭源依赖 | [architecture-model.md](references/architecture-model.md) |
+| 入口点模型 | 路由枚举 / 中间件信任边界 / 业务语义标注 | [entry-point-model.md](references/entry-point-model.md) |
+| 认证与权限模型 | 会话 / 角色分级 / 多租户 / 归属字段 | [auth-model.md](references/auth-model.md) |
+| 业务模型 | 实体关系 / 流程状态机 / 业务不变量 / 高价值资产 | [business-model.md](references/business-model.md) |
+| 全局威胁模型 | 攻击面 × 漏洞类别的全量适用性映射（供下游逐一全测） | [threat-model.md](references/threat-model.md) |
+
+### 建模维度（非编号——按"待回答问题"组织，结合代码事实展开顺序）
+
+每维度按"识别信号 → 为什么这维度重要 → 须产出什么"组织；下列维度按上表归入五张模型。
 
 **技术栈与框架识别**
 
@@ -202,18 +215,30 @@ arguments:
 **框架封装的 source / sink / 自定义工具类**
 
 - 识别信号：自定义 Controller 基类的取参方法、`StringBuffer` 拼接后 `prepareStatement` 的伪安全预编译、包装 `Runtime` / `ProcessBuilder` 的工具类、自研 `ObjectInputStream` 子类、自研模板渲染封装、自研登录 Filter 与恒真校验、自研输入过滤器/编解码器
-- why：通用 SAST 规则只认标准 API——自研封装把标准 source / sink 包了一层，按标准类型匹配会整段看不见；这是系统性盲区。详细分类（① Source 封装 / ② Sink 封装（SQL / 命令 / 文件 / 反序列化 / 模板）/ ③ 分发 / RPC 边界封装 / ④ 认证 / 会话封装 / ⑤ 过滤 / 校验封装）见 [references/recon-dimensions.md](references/recon-dimensions.md)
+- why：通用 SAST 规则只认标准 API——自研封装把标准 source / sink 包了一层，按标准类型匹配会整段看不见；这是系统性盲区。详细分类（① Source 封装 / ② Sink 封装（SQL / 命令 / 文件 / 反序列化 / 模板）/ ③ 分发 / RPC 边界封装 / ④ 认证 / 会话封装 / ⑤ 过滤 / 校验封装）见 [references/architecture-model.md](references/architecture-model.md)
 - 须产出：框架封装映射表（封装类别 / 功能 / 类#方法位置）
 
 **依赖结构与闭源 / 混淆识别**
 
 - 识别信号：依赖清单（`pom.xml` / `go.mod` / `package.json` / `requirements.txt` / `composer.json`）+ 命名空间（公共 vs 私有）+ MANIFEST/Vendor/groupId/LICENSE 归属信号 + 类名混淆特征（`a.a.a` / `o0Oo`）
-- why：闭源依赖如果承载鉴权 / 过滤 / sink 逻辑，标"未审"会让结论失真——需要标注其在攻击面的位置以决定是否反编译。详细分类判据（公共库 / 无源码可反编译 / 混淆 / unknown）与归属（同厂商自有 / 第三方异厂商商业 / unknown）规则见 [references/recon-dimensions.md](references/recon-dimensions.md)
+- why：闭源依赖如果承载鉴权 / 过滤 / sink 逻辑，标"未审"会让结论失真——需要标注其在攻击面的位置以决定是否反编译。详细分类判据（公共库 / 无源码可反编译 / 混淆 / unknown）与归属（同厂商自有 / 第三方异厂商商业 / unknown）规则见 [references/architecture-model.md](references/architecture-model.md)
 - 须产出：依赖图谱表（坐标 / 分类 / 归属 / 有无可读源码 / 相对入口/边界位置 / 是否关键路径 / 处置建议）
+
+**业务建模（业务模型）**
+
+- 识别信号：领域实体类 / 表 schema、跨多方法的业务流程、实体 status 字段与流转代码、数值 / 配额 / 归属约束的校验位置
+- why：语义型漏洞（越权 / 逻辑 / 状态机 / RBAC / 影响放大）的判据基准——没有业务不变量，逻辑漏洞只能靠临场直觉
+- 须产出：核心实体与关系 + 关键流程与状态机合法迁移 + 业务不变量清单（含"在哪校验 / 是否校验"）+ 高价值资产与影响放大链路。细则见 [business-model.md](references/business-model.md)
+
+**威胁建模（全局威胁模型 = 攻击面映射）**
+
+- 识别信号：前四张模型的汇聚——入口点 × 业务语义 × sink 位置 × 可达身份
+- why：把前四张模型的事实汇总为统一的攻击面映射，供下游各维度**按接口逐一取用、逐一全测**；本模型只供信息，不排优先级、不做维度取舍、不指挥先测后测
+- 须产出：攻击面清单 + 攻击面 × 漏洞类别的**全量适用性映射**（每个接口的每个结构上可能成立的维度都登记，`rationale` 陈述该维度在此接口成立的事实依据）。某维度在某接口结构上不可能成立可作事实记录，但不表述为 out-of-scope、不作为下游省略其他维度的依据。细则见 [threat-model.md](references/threat-model.md)
 
 **产物落库**
 
-- 详见下方"产物结构"段——侦察的最终产物形式
+- 详见下方"产物结构"段——建模的最终产物形式
 
 ### 基线检查项
 
@@ -241,8 +266,10 @@ arguments:
 
 **产物形态**：
 
-- 主文件（人读）：`shared/project-framework.md`，按"技术栈 / 架构分层 / 入口点 / 中间件信任边界 / 认证会话 / 数据归属 / 框架封装 / 闭源依赖 / 扫描缺口"分节
-- 结构化清单（机器读）：`shared/coverage-ledger/inventory/project-framework-analysis.jsonl`，append-only
+- 人读（**五张模型各一个 markdown**，不再全塞单文件）：`shared/models/architecture-model.md` / `entry-point-model.md` / `auth-model.md` / `business-model.md` / `threat-model.md`。（`shared/project-framework.md` 可保留为可选索引，或直接由五张分文件取代。）
+- 结构化清单（机器读，单文件）：`shared/coverage-ledger/inventory/project-framework-analysis.jsonl`，append-only
+
+> 注意：`shared/models/*.md` 是**本次审计的运行时产物**；skill 目录下 `references/*.md` 是**静态方法论细则**，二者同名不同物。
 
 **JSONL 字段示例**（每行一个对象，按 `kind` 区分）：
 
@@ -254,6 +281,9 @@ arguments:
 {"kind": "dependency", "coordinate": "com.example:closed-auth-sdk:1.2.0", "classification": "no_source_decompilable", "ownership": "third_party_commercial", "decision_point": "in_dependency", "critical_path": true, "file_location": "pom.xml:88", "recommendation": "decompile_candidate_with_legal_review"}
 {"kind": "entity_field", "entity": "Order", "field": "userId", "role": "owner", "file_location": "Order.java:12"}
 {"kind": "entity_field", "entity": "Order", "field": "orderId", "role": "resource", "file_location": "Order.java:8"}
+{"kind": "business", "subkind": "invariant", "name": "提现金额<=余额且>0", "detail": "WithdrawService.apply 仅校验>0，未校验上界", "file_location": "WithdrawService.java:55"}
+{"kind": "business", "subkind": "state_machine", "name": "Order.status", "detail": "created→paid→shipped→done；不允许 created→shipped", "file_location": "OrderService.java:120"}
+{"kind": "threat", "attack_surface": "GET /api/user/{id}/profile", "vuln_class": "IDOR-水平越权", "rationale": "id 用户可控，未见 owner 归属校验（entity_field owner=userId）——供下游按此接口逐一测试该维度"}
 {"kind": "coverage_gap", "reason": "动态注册路由：app.dispatch 通过反射按 action 名分发，未能静态枚举", "file_location": "Dispatcher.java:55"}
 ```
 
@@ -261,7 +291,7 @@ arguments:
 
 - `id`：route 类带 `ep-` 前缀全局唯一，便于下游能力引用
 - `scan_status`：route 类初始统一写 `pending`
-- `kind ∈ route | middleware | framework_wrap | dependency | entity_field | coverage_gap`
+- `kind ∈ route | middleware | framework_wrap | dependency | entity_field | business | threat | coverage_gap`（`business` 带 `subkind ∈ entity | flow | state_machine | invariant`；`threat` 只含 `attack_surface / vuln_class / rationale`，**不含** `priority` / `in_scope`——本能力不排优先级、不做取舍）
 - 每条记录独占一行——**禁止**用"等" / "..." / "（其余 N 条略）"省略
 - 入口点穷举不省略——why：下游各漏洞维度按入口点对账，省略一个入口点会让该入口点对应的整类漏洞维度失去 source 锚点
 
@@ -275,14 +305,16 @@ arguments:
 
 > why：写"已完整盘点框架"前必须有反向覆盖证据——缺失会让下游误信"该范围内攻击面已穷举"。
 
-写"框架侦察已完成"结论前，产物必须包含：
+写"建模已完成"结论前，五张模型的产物必须包含：
 
 - 所有路由声明文件已 grep 覆盖的证据（grep 命令 + 命中数）
-- 所有中间件注册位置已识别（middleware 数 + 拦截范围）
+- 所有中间件注册位置已识别（middleware 数 + 拦截范围 + 注入字段信任边界）
 - 所有依赖已分类（公共库 / 无源码 / 混淆 / `unknown` 数量分布）
+- 业务模型：核心流程 / 状态机 / 业务不变量已枚举，每条不变量标注"在哪校验 / 是否校验"
+- 威胁模型：攻击面 × 漏洞类别的全量适用性映射已产出，每个接口 × 每个可能维度都登记，不省略、不排除、不排优先级
 - 任一未覆盖的范围（动态注册路由 / 反射加载 / 闭源依赖内部）在 `coverage_gap` 记录中显式列出原因
 
-清单不完整 → 结论降级为 `partial-coverage`，且必须在主文件"扫描缺口"段显式列出未覆盖范围。
+清单不完整 → 结论降级为 `partial-coverage`，且必须在对应模型的 `shared/models/<model>.md` "缺口"段显式列出未覆盖范围。
 
 ---
 
