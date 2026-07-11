@@ -1,6 +1,7 @@
 package persistv2
 
 import (
+	"aster/internal/workspacefs"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -62,7 +63,7 @@ func (s *Store) stepAttemptDir(stepID, attemptID string) (string, error) {
 	if attemptID == "" {
 		return "", fmt.Errorf("attempt_id is empty")
 	}
-	return filepath.Join(s.sessionDir, "steps", stepID, "attempts", attemptID), nil
+	return workspacefs.New(s.workspaceRoot, "").StepAttemptDir(s.sessionID, stepID, attemptID), nil
 }
 
 func (s *Store) StepAttemptResultPath(stepID, attemptID string) (string, error) {
