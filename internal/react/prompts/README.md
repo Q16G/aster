@@ -83,7 +83,7 @@ env / repo / task_context 是**运行时上下文**，不属于 agent profile，
 
 | Prompt 文件 | 阶段词 |
 |---|---|
-| `task_planner_system.prompt` | `planner` |
+| `planning_system.prompt` | `planner` |
 | `think_act_system.prompt` | `step` |
 | `step_replan_system.prompt` | `step_replan` |
 | `final_answer_system.prompt` | `final_answer` |

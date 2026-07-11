@@ -11,10 +11,10 @@ import (
 )
 
 type ThinkActPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
+	AgentProfile
+	CapabilityIndex // Skills + MCP（AvailableTools 本 phase 不用）
+	RunFlags        // SupportsVision + CanSpawnSubAgent
 	GoalUnderstanding string
-	SkillsContext     *SkillsPromptContext
 	CurrentStep       any
 	// DependencyPlanItems 是前置依赖步骤的 plan_item 产出卡片（内联小字段 + 文件指针），
 	// 替代旧的 DEPENDENCY_STEP_SUMMARIES / EXECUTION_CONTEXTS 全量注入。
@@ -27,17 +27,13 @@ type ThinkActPromptInput struct {
 	// 维护契约即时维护账本、按"解决即归档"持续不变量在 step 执行中把闭环项就地迁入 `## 已闭环`、
 	// 并把高利用价值具体值按入板闸门补入事实板 `## 执行中补充`，与 step_replan 的账本/事实板
 	// 维护构成"边执行边归档 + 收尾复核"双写双校。
-	OpenItemsLedgerPath    string
-	TaskContextPath        string
+	OpenItemsLedgerPath string
+	TaskContextPath     string
+	// HasCurrentStep / HasDependencyPlanItems 是 any 字段的内容存在标记，由调用方显式置位
+	//（非可安全派生的 != nil），保留为字段。
 	HasCurrentStep         bool
 	HasDependencyPlanItems bool
-	HasSkillsTable         bool
-	HasInjectedSkills      bool
-	MCPContext             *MCPPromptContext
-	HasMCPTable            bool
 	ExtraContext           string
-	SupportsVision         bool
-	CanSpawnSubAgent       bool
 }
 
 // AvailableToolInfo is a render-friendly view of a tool that is actually
@@ -50,11 +46,11 @@ type AvailableToolInfo struct {
 }
 
 type StepReplanPromptInput struct {
-	AgentRole       string
-	AgentBackground string
-	// IsSubAgent 与 task_planner 同语义：标记本回合发生在子 Agent 内部，
-	// 用于让共享 planning_system.prompt 的子 Agent 守卫一致渲染。
-	IsSubAgent        bool
+	AgentProfile
+	CapabilityIndex // Skills + AvailableTools（MCP 本 phase 不用）
+	// RunFlags 本 phase 仅用 IsSubAgent（与 task_planner 同语义：标记本回合发生在子 Agent
+	// 内部，用于让共享 planning_system.prompt 的子 Agent 守卫一致渲染）。
+	RunFlags
 	CurrentGoal       any
 	GoalUnderstanding string
 	// ActivePhases 是本轮 frontier 内活跃 lane 清单（[]*PlanPhase）。step_replan 对其中
@@ -84,16 +80,11 @@ type StepReplanPromptInput struct {
 	// PlannerJournal 是 workspace/planner.jsonl 全文快照（plan 唯一真相源），
 	// 与 OpenItemsLedger / TaskContextBoard 同为判定 SoT；超限走 readSharedFileForPromptWithLimit
 	// 同款截断策略并在尾部追加路径提示，PlannerJournalPath 兜底回读。
-	PlannerJournal    string
-	SkillsContext     *SkillsPromptContext
-	HasSkillsTable    bool
-	AvailableTools    []AvailableToolInfo
-	HasAvailableTools bool
+	PlannerJournal string
 }
 
 type FinalAnswerPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
+	AgentProfile
 	Status            any
 	StateError        any
 	InputTimeline     any
@@ -139,18 +130,15 @@ type StepOutcomesReducerPromptInput struct {
 }
 
 type TaskPlannerPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
+	AgentProfile
+	// CapabilityIndex：Skills + MCP + AvailableTools + 两个 OverflowPath。
+	CapabilityIndex
+	// RunFlags 本 phase 用 IsSubAgent（标记子 Agent 内部，关闭"顶层 planner 维护事实板终态"
+	// 契约段）+ CanSpawnSubAgent（控制 sub_agent 委派条款渲染，子 Agent/未开放时为 false）。
+	RunFlags
 	Input             string
 	GoalUnderstanding string
 	UserInputTurn     bool
-	// IsSubAgent 标记本 planner 回合发生在子 Agent 内部；用于让模板对子 Agent
-	// 关闭"顶层 planner 维护事实板终态"的契约段（子 Agent 工作区不承担顶层
-	// 事实板维护责任，避免被强制注入）。
-	IsSubAgent bool
-	// CanSpawnSubAgent 控制 planner 阶段 sub_agent 委派条款的渲染——顶层
-	// planner 允许委派调研深化子 Agent，子 Agent 与平台未开放委派时为 false。
-	CanSpawnSubAgent bool
 	// TaskContextBoard 为共享区事实板（task_context.md）当前快照，
 	// 仅 UserInputTurn=true 时注入，供 planner 对照当前输入做校正。
 	TaskContextBoard string
@@ -160,25 +148,16 @@ type TaskPlannerPromptInput struct {
 	// 落盘、维护账本至终态时直接寻址，不再靠 WORKSPACE_SHARED_DIR + 文件名拼装。
 	TaskContextPath     string
 	OpenItemsLedgerPath string
-	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），
-	// 模板据此渲染重规划编排段。
-	HasReplanContext   bool
-	SkillsContext      *SkillsPromptContext
-	MCPContext         *MCPPromptContext
-	HasSkillsTable     bool
-	HasMCPTable        bool
-	SkillsOverflowPath string
-	MCPOverflowPath    string
-	AvailableTools     []AvailableToolInfo
-	HasAvailableTools  bool
+	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），模板据此渲染重规划
+	// 编排段；由调用方按 snapshot.ReplanContext != nil 显式置位，保留为字段。
+	HasReplanContext bool
 }
 
 // IntentClassificationPromptInput 的 RecentOutcomes / PendingSteps / InputTimeline
 // 为 Go 侧预渲染文本（buildIntentClassificationInput 产出），由调用方经统一 preview
 // 上限投影后注入（高频阶段，无上限注入曾是上下文爆炸缺口，见方案审查#4）。
 type IntentClassificationPromptInput struct {
-	AgentRole         string
-	AgentBackground   string
+	AgentProfile
 	GoalUnderstanding string
 	PreviousGoal      string
 	Status            string
@@ -311,8 +290,8 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 	systemData := map[string]any{
 		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 		"SUPPORTS_VISION":      input.SupportsVision,
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 	}
@@ -326,10 +305,10 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
 		"HAS_CURRENT_STEP":          input.HasCurrentStep,
 		"HAS_DEPENDENCY_PLAN_ITEMS": input.HasDependencyPlanItems,
-		"HAS_SKILLS_TABLE":          input.HasSkillsTable,
-		"HAS_INJECTED_SKILLS":       input.HasInjectedSkills,
+		"HAS_SKILLS_TABLE":          input.HasSkillsTable(),
+		"HAS_INJECTED_SKILLS":       input.HasInjectedSkills(),
 		"MCP_CONTEXT":               input.MCPContext,
-		"HAS_MCP_TABLE":             input.HasMCPTable,
+		"HAS_MCP_TABLE":             input.HasMCPTable(),
 		"EXTRA_CONTEXT":             strings.TrimSpace(input.ExtraContext),
 	}
 	return renderPromptParts("think_act", m.thinkActSystemTmpl, m.thinkActUserTmpl, systemData, userData)
@@ -342,8 +321,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 	systemData := map[string]any{
 		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 		"IS_SUB_AGENT":         input.IsSubAgent,
 		"CAN_SPAWN_SUBAGENT":   false,
 		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
@@ -378,9 +357,9 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"PLANNER_JOURNAL":          strings.TrimSpace(input.PlannerJournal),
 		"HAS_PLANNER_JOURNAL":      strings.TrimSpace(input.PlannerJournal) != "",
 		"SKILLS_CONTEXT":           input.SkillsContext,
-		"HAS_SKILLS_TABLE":         input.HasSkillsTable,
+		"HAS_SKILLS_TABLE":         input.HasSkillsTable(),
 		"AVAILABLE_TOOLS":          input.AvailableTools,
-		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools,
+		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools(),
 	}
 	return renderPromptParts("step_replan", m.stepReplanSystemTmpl, m.stepReplanUserTmpl, systemData, userData)
 }
@@ -431,8 +410,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 	systemData := map[string]any{
 		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 	}
 	userData := map[string]any{
 		"STATUS":                 fmt.Sprint(input.Status),
@@ -457,8 +436,8 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 	systemData := map[string]any{
 		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 		"IS_SUB_AGENT":         input.IsSubAgent,
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 		"USER_INPUT_TURN":      input.UserInputTurn,
@@ -478,12 +457,12 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"HAS_TASK_CONTEXT_BOARD": strings.TrimSpace(input.TaskContextBoard) != "",
 		"SKILLS_CONTEXT":         input.SkillsContext,
 		"MCP_CONTEXT":            input.MCPContext,
-		"HAS_SKILLS_TABLE":       input.HasSkillsTable,
-		"HAS_MCP_TABLE":          input.HasMCPTable,
+		"HAS_SKILLS_TABLE":       input.HasSkillsTable(),
+		"HAS_MCP_TABLE":          input.HasMCPTable(),
 		"SKILLS_OVERFLOW_PATH":   strings.TrimSpace(input.SkillsOverflowPath),
 		"MCP_OVERFLOW_PATH":      strings.TrimSpace(input.MCPOverflowPath),
 		"AVAILABLE_TOOLS":        input.AvailableTools,
-		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools,
+		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools(),
 	}
 	return renderPromptParts("task_planner", m.planningSystemTmpl, m.taskPlannerUserTmpl, systemData, userData)
 }
@@ -495,8 +474,8 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 	systemData := map[string]any{
 		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
 		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       strings.TrimSpace(input.AgentRole) != "",
-		"HAS_AGENT_BACKGROUND": strings.TrimSpace(input.AgentBackground) != "",
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 	}
 	userData := map[string]any{
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),

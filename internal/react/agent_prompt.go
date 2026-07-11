@@ -54,10 +54,10 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot 
 	}
 
 	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentRole:              strings.TrimSpace(a.cfg.Role),
-		AgentBackground:        strings.TrimSpace(a.cfg.Background),
+		AgentProfile:           AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		CapabilityIndex:        CapabilityIndex{SkillsContext: skillsContext, MCPContext: mcpContext},
+		RunFlags:               RunFlags{SupportsVision: supportsVision, CanSpawnSubAgent: canSpawnSubAgent},
 		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
-		SkillsContext:          skillsContext,
 		CurrentStep:            currentStep,
 		CurrentStepFilePath:    stepFilePath,
 		OpenItemsLedgerPath:    openItemsLedgerPath,
@@ -65,13 +65,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot 
 		DependencyPlanItems:    dependencyItems,
 		HasCurrentStep:         currentStep != nil,
 		HasDependencyPlanItems: len(dependencyItems) > 0,
-		HasSkillsTable:         skillsContext != nil && skillsContext.HasTable(),
-		HasInjectedSkills:      skillsContext != nil && skillsContext.HasInjected(),
-		MCPContext:             mcpContext,
-		HasMCPTable:            mcpContext != nil && mcpContext.HasTable(),
 		ExtraContext:           extra,
-		SupportsVision:         supportsVision,
-		CanSpawnSubAgent:       canSpawnSubAgent,
 	})
 	if err == nil {
 		parts.SystemAgent = a.identityEnvBlock()

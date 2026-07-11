@@ -146,7 +146,7 @@ func TestThinkActPromptContainsAtomicExecutionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newDefaultPromptManager failed: %v", err)
 	}
-	parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{CanSpawnSubAgent: true})
+	parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{RunFlags: RunFlags{CanSpawnSubAgent: true}})
 	if err != nil {
 		t.Fatalf("BuildThinkActPrompt failed: %v", err)
 	}
