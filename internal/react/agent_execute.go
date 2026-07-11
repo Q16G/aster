@@ -273,7 +273,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 	a.sourceWorkingDir = sourceWorkingDir
 	a.runtimeRepoContext = detectRuntimeRepoContext(ctx, sourceWorkingDir)
 	if sharedDir := workspaceRuntime.SharedDir(); sharedDir != "" {
-		_ = os.MkdirAll(sharedDir, 0o755)
+		_ = workspaceRuntime.Store().EnsureDir(workspaceRuntime.Layout().SharedDirRel())
 		if seeder, ok := workspaceRuntime.(interface{ EnsureSharedScaffold() error }); ok {
 			_ = seeder.EnsureSharedScaffold()
 		}
