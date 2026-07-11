@@ -85,6 +85,10 @@ type Agent struct {
 	currentResultSource  ResultSource
 	workspaceRuntime     WorkspaceRuntime
 	fileObservationStore *builtin_tools.FileObservationStore
+	// toolExecChain 是工具调用洋葱链（见 tool_middleware.go）：构造期经
+	// buildToolExecChain 一次性装配，运行期不可变——顺序/并发两条派发路径
+	// 的 Execute 窗口统一穿此链。
+	toolExecChain toolExecHandler
 	// stepFileGateRejections 记录 step 过程文件闸门对各 step 的已拒绝次数（有界拒绝后降级放行）。
 	stepFileGateMu         sync.Mutex
 	stepFileGateRejections map[string]int
@@ -218,6 +222,8 @@ func NewReActAgent(name string, aiClient ai.ChatClient, opts ...Option) (*Agent,
 		frozenStepCache:      newFrozenStepPromptCache(),
 		fileObservationStore: builtin_tools.NewFileObservationStore(),
 	}
+	// 工具洋葱链在全部 Option 应用后一次性装配（运行期不可变，见 tool_middleware.go）。
+	agent.toolExecChain = agent.buildToolExecChain()
 
 	if cfg.Emitter == nil {
 		return nil, fmt.Errorf("emitter is required")
