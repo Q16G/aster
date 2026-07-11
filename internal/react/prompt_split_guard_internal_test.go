@@ -18,10 +18,10 @@ func TestPromptSplit_SystemStableAcrossSteps(t *testing.T) {
 
 	build := func(stepID, stepText string) PromptParts {
 		parts, err := manager.BuildThinkActPrompt(ThinkActPromptInput{
+			RunFlags:          RunFlags{CanSpawnSubAgent: true},
 			GoalUnderstanding: "核心目标：测试",
 			CurrentStep:       map[string]any{"id": stepID, "step": stepText},
 			HasCurrentStep:    true,
-			CanSpawnSubAgent:  true,
 		})
 		if err != nil {
 			t.Fatalf("build think_act (%s) failed: %v", stepID, err)

@@ -291,13 +291,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	mcpCtx := a.buildMCPPromptContext()
 
 	plannerInput := TaskPlannerPromptInput{
-		AgentRole:       strings.TrimSpace(a.cfg.Role),
-		AgentBackground: strings.TrimSpace(a.cfg.Background),
+		AgentProfile:    AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		CapabilityIndex: CapabilityIndex{SkillsContext: skillsCtx, MCPContext: mcpCtx},
 		Input:           inputStr,
-		SkillsContext:   skillsCtx,
-		MCPContext:      mcpCtx,
-		HasSkillsTable:  skillsCtx != nil && skillsCtx.HasTable(),
-		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
 	}
 	if a.workspaceRuntime != nil {
 		if l := a.wsLayout(); l.SharedDir() != "" {
@@ -462,7 +458,6 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 	fnTools = append(fnTools, submitPlanTool)
 
 	input.AvailableTools = functionToolsToAvailableInfo(fnTools)
-	input.HasAvailableTools = len(input.AvailableTools) > 0
 
 	prompt, err := promptBuilder.BuildPrompt(input)
 	if err != nil {
@@ -1919,13 +1914,13 @@ func stepIDOf(step *builtin_tools.PlanItem) string {
 const plannerInlineLimit = 15
 
 func (a *Agent) applyPlannerOverflowHints(input *TaskPlannerPromptInput) {
-	if input.HasSkillsTable && countMarkdownTableRows(input.SkillsContext.Table) > plannerInlineLimit {
+	if input.HasSkillsTable() && countMarkdownTableRows(input.SkillsContext.Table) > plannerInlineLimit {
 		path := a.writePlannerTempFile("planner_skills_index.md", input.SkillsContext.Table)
 		if path != "" {
 			input.SkillsOverflowPath = path
 		}
 	}
-	if input.HasMCPTable && countMarkdownTableRows(input.MCPContext.Table) > plannerInlineLimit {
+	if input.HasMCPTable() && countMarkdownTableRows(input.MCPContext.Table) > plannerInlineLimit {
 		path := a.writePlannerTempFile("planner_mcp_index.md", input.MCPContext.Table)
 		if path != "" {
 			input.MCPOverflowPath = path

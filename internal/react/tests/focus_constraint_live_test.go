@@ -71,9 +71,8 @@ func TestFocusConstraint_PlannerLive(t *testing.T) {
 
 	planner := NewDefaultTaskPlanner(client)
 	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
-		Input:          planInput,
-		SkillsContext:  skillsCtx,
-		HasSkillsTable: true,
+		Input:           planInput,
+		CapabilityIndex: CapabilityIndex{SkillsContext: skillsCtx},
 	})
 	if err != nil {
 		t.Fatalf("BuildPrompt failed: %v", err)
