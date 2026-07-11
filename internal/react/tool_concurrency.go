@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
@@ -145,15 +144,9 @@ type concurrentToolSlot struct {
 
 	validationErr string
 
-	rawOut string
-	rawErr string
-
-	out         string
-	errText     string
-	outTrunc    bool
-	errTrunc    bool
-	outFullPath string
-	duration    time.Duration
+	// res 是 Execute 窗口经工具洋葱链的产物（goroutine 内写、wg.Wait 后读）；
+	// 截断已在链内完成（默认中间件），回填段直接消费。
+	res *toolExecResult
 }
 
 // executeToolCallsConcurrently runs multiple concurrent-safe tools in parallel.
@@ -237,12 +230,12 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			defer func() { <-sem }()
 			defer func() {
 				if r := recover(); r != nil {
-					s.rawErr = fmt.Sprintf("tool panicked: %v", r)
+					s.res = &toolExecResult{ErrText: fmt.Sprintf("tool panicked: %v", r)}
 				}
 			}()
 
 			if ctx.Err() != nil {
-				s.rawErr = fmt.Sprintf("context cancelled: %v", ctx.Err())
+				s.res = &toolExecResult{ErrText: fmt.Sprintf("context cancelled: %v", ctx.Err())}
 				return
 			}
 
@@ -271,20 +264,29 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 				CurrentStepID:      effectiveStepID(runCtx, prevSnapshot),
 			})
 
-			toolTimeout := a.cfg.resolveToolTimeout(s.argsMap)
-			execCtx, cancelTimeout := context.WithTimeout(callCtx, toolTimeout)
-			defer cancelTimeout()
-
-			toolStart := time.Now()
-			out, err := s.tool.Execute(execCtx, s.argsMap)
-			s.duration = time.Since(toolStart)
-			if err != nil && execCtx.Err() == context.DeadlineExceeded {
-				err = fmt.Errorf("tool %q timed out after %s: %w", s.toolName, toolTimeout, err)
+			// Execute 窗口统一穿工具洋葱链（与顺序路径同一条 a.toolExecChain）：
+			// 超时/Execute/超时包装在 base，截断+截断日志与耗时为默认中间件——
+			// 截断因此从 wg.Wait 后串行段移入 goroutine 内并行（落盘 IO 并行化，
+			// tool_output_truncated 日志无顺序承诺，良性行为变化）。
+			res, chainErr := a.toolExecChain(callCtx, &toolExecCall{
+				CallID:       s.callID,
+				ToolName:     s.toolName,
+				Tool:         s.tool,
+				Args:         s.argsMap,
+				IsAgent:      s.isAgent,
+				StackDepth:   s.stackDepth,
+				Iter:         iter,
+				StepID:       effectiveStepID(runCtx, prevSnapshot),
+				Phase:        prevSnapshot.Phase,
+				PrevSnapshot: prevSnapshot,
+			})
+			if chainErr != nil {
+				// 链自身故障：并发批次无法像顺序路径那样中止回合，按 error
+				// tool_result 回填给 LLM（工具业务错误同通道）。
+				s.res = &toolExecResult{ErrText: fmt.Sprintf("tool exec chain failed: %v", chainErr)}
+				return
 			}
-			if err != nil {
-				s.rawErr = err.Error()
-			}
-			s.rawOut = out
+			s.res = res
 		}(slot)
 	}
 
@@ -312,28 +314,23 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			continue
 		}
 
-		slot.out, slot.outTrunc, slot.outFullPath = TruncateToolOutput(slot.toolName, slot.rawOut, a.workspaceRootDir)
-		slot.errText, slot.errTrunc, _ = TruncateToolOutput(slot.toolName+"-error", slot.rawErr, a.workspaceRootDir)
-
-		if slot.outTrunc || slot.errTrunc {
-			a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{
-				"event":         "tool_output_truncated",
-				"tool":          slot.toolName,
-				"out_truncated": slot.outTrunc,
-				"err_truncated": slot.errTrunc,
-			})
+		if slot.res == nil {
+			// 防御：goroutine 被跳过（不应发生）。按空结果回填，避免悬空 tool_call_id。
+			slot.res = &toolExecResult{}
 		}
+		out := slot.res.Out
+		errText := slot.res.ErrText
 
-		displayOut := slot.out
-		if strings.TrimSpace(displayOut) == "" && strings.TrimSpace(slot.errText) != "" {
-			displayOut = fmt.Sprintf("Error: %s", slot.errText)
+		displayOut := out
+		if strings.TrimSpace(displayOut) == "" && strings.TrimSpace(errText) != "" {
+			displayOut = fmt.Sprintf("Error: %s", errText)
 		}
-		render := buildToolResultRender(slot.toolName, slot.out)
-		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText, runCtx)
-		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
+		render := buildToolResultRender(slot.toolName, out)
+		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, out, errText, runCtx)
+		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, errText, slot.isAgent)
 
 		if stepID := effectiveStepID(runCtx, prevSnapshot); wsl.SharedDir() != "" && stepID != "" {
-			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)
+			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, out, errText, slot.res.OutFullPath, slot.res.Duration)
 			if len(render.Media) > 0 {
 				event.Payload = map[string]any{"media": render.Media}
 			}
@@ -346,7 +343,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			IsAgent:    slot.isAgent,
 			StackDepth: slot.stackDepth,
 			Result:     displayOut,
-			Error:      slot.errText,
+			Error:      errText,
 			Media:      render.Media,
 		}, effectiveStepID(runCtx, prevSnapshot))
 
