@@ -53,9 +53,9 @@ type StepReplanPromptInput struct {
 	RunFlags
 	CurrentGoal       any
 	GoalUnderstanding string
-	// ActivePhases 是本轮 frontier 内活跃 lane 清单（[]*PlanPhase）。step_replan 对其中
+	// ActiveTopics 是本轮 frontier 内活跃 lane 清单（[]*AnalysisTopic）。step_replan 对其中
 	// 每个 phase 独立三轴判定并逐一给出 phase_assessment；空时无活跃 lane（simple/兜底）。
-	ActivePhases  any
+	ActiveTopics  any
 	InputTimeline any
 	// ReviewWindow 是「自上次 LLM replan 边界以来已完成的 step」区间多卡（最右一卡 Latest=true 标识本回合刚跑完）。
 	// 替代旧 CurrentStepCard 单卡：plan-once-execute-many gate 下被跳过的 K-1 个 step 也以同构卡片入 prompt，
@@ -92,8 +92,8 @@ type FinalAnswerPromptInput struct {
 	// PlanItems 是 plan 真相源投影卡片（内联小字段 + 文件指针），替代旧
 	// PLAN/STEP_OUTCOMES/CARRIED_* 全量注入；OpenItemsLedger 是账本全文（F6 归置对象）。
 	PlanItems any
-	// Phases 是业务 lane 终态清单（[]*PlanPhase），供验收交叉核对 lane 是否全部收束。
-	Phases          any
+	// Topics 是业务 lane 终态清单（[]*AnalysisTopic），供验收交叉核对 lane 是否全部收束。
+	Topics          any
 	OpenItemsLedger string
 	Warnings        any
 	// PlannerJournalPath 是 workspace/planner.jsonl（plan 唯一真相源）绝对路径，
@@ -337,8 +337,8 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"CURRENT_GOAL":             fmt.Sprint(input.CurrentGoal),
 		"GOAL_UNDERSTANDING":       strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING":   strings.TrimSpace(input.GoalUnderstanding) != "",
-		"ACTIVE_PHASES":            prettyJSON(input.ActivePhases),
-		"HAS_ACTIVE_PHASES":        activePhasesNonEmpty(input.ActivePhases),
+		"ACTIVE_PHASES":            prettyJSON(input.ActiveTopics),
+		"HAS_ACTIVE_PHASES":        activeTopicsNonEmpty(input.ActiveTopics),
 		"INPUT_TIMELINE":           stringOrJSON(input.InputTimeline),
 		"REVIEW_WINDOW_CARDS":      cardsJSON,
 		"REVIEW_WINDOW_TOTAL":      reviewTotal,
@@ -420,8 +420,8 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"PLAN_ITEMS":             stringOrJSON(input.PlanItems),
-		"PHASES":                 prettyJSON(input.Phases),
-		"HAS_PHASES":             activePhasesNonEmpty(input.Phases),
+		"PHASES":                 prettyJSON(input.Topics),
+		"HAS_PHASES":             activeTopicsNonEmpty(input.Topics),
 		"PLANNER_JOURNAL_PATH":   strings.TrimSpace(input.PlannerJournalPath),
 		"OPEN_ITEMS_LEDGER":      strings.TrimSpace(input.OpenItemsLedger),
 		"WARNINGS":               stringOrJSON(input.Warnings),

@@ -17,15 +17,15 @@ import (
 // 而旧式 mergeReplannedPlan(陈旧快照, ...) 会把 b1 退回 InProgress（丢失完成态）。
 func TestMergeReplanIntoPlan_PreservesConcurrentPeerCompletion(t *testing.T) {
 	tracker := NewStateTracker()
-	tracker.SetPhases([]*builtin_tools.PlanPhase{
-		{ID: "topic-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "topic-b", Status: builtin_tools.PlanPhasePending},
+	tracker.SetTopics([]*builtin_tools.AnalysisTopic{
+		{ID: "topic-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "topic-b", Status: builtin_tools.AnalysisTopicPending},
 	})
 	tracker.UpdatePlan([]*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a", Status: builtin_tools.PlanStepCompleted, Step: "topic-a 侦察"},
-		{ID: "a2", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 旧 pending"}, // 将被 replan 替换
-		{ID: "b1", PhaseID: "topic-b", Status: builtin_tools.PlanStepInProgress, Step: "topic-b 在跑"},
-		{ID: "b2", PhaseID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "topic-b 未来"},
+		{ID: "a1", TopicID: "topic-a", Status: builtin_tools.PlanStepCompleted, Step: "topic-a 侦察"},
+		{ID: "a2", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 旧 pending"}, // 将被 replan 替换
+		{ID: "b1", TopicID: "topic-b", Status: builtin_tools.PlanStepInProgress, Step: "topic-b 在跑"},
+		{ID: "b2", TopicID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "topic-b 未来"},
 	}, "seed", true)
 
 	// 模拟 runPlanPhase 在 planner LLM 调用【之前】捕获的陈旧快照（此刻 b1 仍 InProgress）。
@@ -39,7 +39,7 @@ func TestMergeReplanIntoPlan_PreservesConcurrentPeerCompletion(t *testing.T) {
 
 	// planner 局部 review 回流：只产 topic-a 的新深 step。
 	next := []*builtin_tools.PlanItem{
-		{ID: "a3", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 深化"},
+		{ID: "a3", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 深化"},
 	}
 
 	// 新路径（C1 修复）：以活盘为 prev、持锁原子 merge + 归一 + 写回。
@@ -75,13 +75,13 @@ func TestMergeReplanIntoPlan_PreservesConcurrentPeerCompletion(t *testing.T) {
 // remap 到他 topic】。
 func TestMergeReplannedPlan_CrossTopicTextCollisionKeepsNewStep(t *testing.T) {
 	prev := []*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a", Status: builtin_tools.PlanStepCompleted, Step: "topic-a 侦察"},
-		{ID: "a2", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 旧 pending"},
-		{ID: "b1", PhaseID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "输出报告"}, // 他 topic pending，文案将撞车
+		{ID: "a1", TopicID: "topic-a", Status: builtin_tools.PlanStepCompleted, Step: "topic-a 侦察"},
+		{ID: "a2", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 旧 pending"},
+		{ID: "b1", TopicID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "输出报告"}, // 他 topic pending，文案将撞车
 	}
 	next := []*builtin_tools.PlanItem{
-		{ID: "a3", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "输出报告"},                                     // 与 b1 归一文案撞车
-		{ID: "a4", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "复核", DependsOn: []string{"a3"}}, // 依赖 a3
+		{ID: "a3", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "输出报告"},                                     // 与 b1 归一文案撞车
+		{ID: "a4", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "复核", DependsOn: []string{"a3"}}, // 依赖 a3
 	}
 
 	merged := mergeReplannedPlan(prev, next, "topic-a")
@@ -97,14 +97,14 @@ func TestMergeReplannedPlan_CrossTopicTextCollisionKeepsNewStep(t *testing.T) {
 	}
 }
 
-// TestApplyPhaseAssessmentsScoped_LocalBlockedStaysInTopic 钉住 M2：
+// TestApplyTopicAssessmentsScoped_LocalBlockedStaysInTopic 钉住 M2：
 // 局部 review（scope=topic-a）判 topic-a blocked，只 skip 属 topic-a 的 pending；
 // 依赖 topic-a 的他 topic（topic-b）pending【不被跨 topic 传播 skip】。
-func TestApplyPhaseAssessmentsScoped_LocalBlockedStaysInTopic(t *testing.T) {
+func TestApplyTopicAssessmentsScoped_LocalBlockedStaysInTopic(t *testing.T) {
 	tracker := newBlockedPropagationTracker(t)
 
-	changed, snap := tracker.ApplyPhaseAssessmentsScoped(
-		[]*builtin_tools.PhaseAssessment{{PhaseID: "topic-a", Status: builtin_tools.PhaseAssessBlocked}},
+	changed, snap := tracker.ApplyTopicAssessmentsScoped(
+		[]*builtin_tools.TopicAssessment{{TopicID: "topic-a", Status: builtin_tools.TopicAssessBlocked}},
 		"topic-a",
 	)
 	if len(changed) != 1 {
@@ -118,13 +118,13 @@ func TestApplyPhaseAssessmentsScoped_LocalBlockedStaysInTopic(t *testing.T) {
 	}
 }
 
-// TestApplyPhaseAssessments_GlobalBlockedPropagatesCrossTopic 是 M2 的对照：
+// TestApplyTopicAssessments_GlobalBlockedPropagatesCrossTopic 是 M2 的对照：
 // 全局 reducer（scope=""）判 blocked 时，跨 topic 下游 skip 仍完整传播——证明「延后」不丢失传播。
-func TestApplyPhaseAssessments_GlobalBlockedPropagatesCrossTopic(t *testing.T) {
+func TestApplyTopicAssessments_GlobalBlockedPropagatesCrossTopic(t *testing.T) {
 	tracker := newBlockedPropagationTracker(t)
 
-	changed, snap := tracker.ApplyPhaseAssessmentsScoped(
-		[]*builtin_tools.PhaseAssessment{{PhaseID: "topic-a", Status: builtin_tools.PhaseAssessBlocked}},
+	changed, snap := tracker.ApplyTopicAssessmentsScoped(
+		[]*builtin_tools.TopicAssessment{{TopicID: "topic-a", Status: builtin_tools.TopicAssessBlocked}},
 		"",
 	)
 	if len(changed) != 1 {
@@ -143,13 +143,13 @@ func TestApplyPhaseAssessments_GlobalBlockedPropagatesCrossTopic(t *testing.T) {
 func newBlockedPropagationTracker(t *testing.T) *StateTracker {
 	t.Helper()
 	tracker := NewStateTracker()
-	tracker.SetPhases([]*builtin_tools.PlanPhase{
-		{ID: "topic-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "topic-b", Status: builtin_tools.PlanPhasePending},
+	tracker.SetTopics([]*builtin_tools.AnalysisTopic{
+		{ID: "topic-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "topic-b", Status: builtin_tools.AnalysisTopicPending},
 	})
 	tracker.UpdatePlan([]*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 步骤"},
-		{ID: "b1", PhaseID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "topic-b 步骤", DependsOn: []string{"a1"}},
+		{ID: "a1", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 步骤"},
+		{ID: "b1", TopicID: "topic-b", Status: builtin_tools.PlanStepPending, Step: "topic-b 步骤", DependsOn: []string{"a1"}},
 	}, "seed", true)
 	return tracker
 }

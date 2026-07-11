@@ -9,9 +9,9 @@ const (
 	PlannerJournalKindPlan = "plan"
 	// PlannerJournalKindStep 表示 step 终态时的增量条目落地（同 id 覆盖）。
 	PlannerJournalKindStep = "step"
-	// PlannerJournalKindPhase 表示业务 lane（PlanPhase）条目：plan 提交时随全量落地，
+	// PlannerJournalKindTopic 表示业务 lane（AnalysisTopic）条目：plan 提交时随全量落地，
 	// step_replan 的 phase_assessments 承接时按 phase.id 增量覆盖。
-	PlannerJournalKindPhase = "phase"
+	PlannerJournalKindTopic = "phase"
 )
 
 // PlannerJournalRecord 是 planner.jsonl 的单行记录。
@@ -24,6 +24,6 @@ type PlannerJournalRecord struct {
 	Kind        string     `json:"kind"`
 	PlanVersion int        `json:"plan_version"`
 	Item        *PlanItem  `json:"item,omitempty"`
-	Phase       *PlanPhase `json:"phase,omitempty"`
+	Phase       *AnalysisTopic `json:"phase,omitempty"`
 	CreatedAt   time.Time  `json:"created_at,omitempty"`
 }

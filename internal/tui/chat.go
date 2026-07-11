@@ -1776,10 +1776,10 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 		if r.StepName != "" {
 			summary += ": " + r.StepName
 		}
-		if r.PhaseCompleted > 0 || r.PhaseBlocked > 0 {
-			summary += fmt.Sprintf(" [lane +%d done", r.PhaseCompleted)
-			if r.PhaseBlocked > 0 {
-				summary += fmt.Sprintf(", %d blocked", r.PhaseBlocked)
+		if r.TopicCompleted > 0 || r.TopicBlocked > 0 {
+			summary += fmt.Sprintf(" [lane +%d done", r.TopicCompleted)
+			if r.TopicBlocked > 0 {
+				summary += fmt.Sprintf(", %d blocked", r.TopicBlocked)
 			}
 			summary += "]"
 		}
@@ -1814,9 +1814,9 @@ func (m *ChatModel) renderStepReplanPart(idx int, part DisplayPart, maxWidth int
 	if r.NextGoal != "" {
 		body.WriteString("\n\nNext Goal:\n" + r.NextGoal)
 	}
-	if r.PhaseAssessments > 0 {
+	if r.TopicAssessments > 0 {
 		body.WriteString(fmt.Sprintf("\n\nPhase assessments: %d (continue %d / completed %d / blocked %d)",
-			r.PhaseAssessments, r.PhaseContinue, r.PhaseCompleted, r.PhaseBlocked))
+			r.TopicAssessments, r.TopicContinue, r.TopicCompleted, r.TopicBlocked))
 	}
 	if len(r.Warnings) > 0 {
 		body.WriteString("\n\nWarnings:")
@@ -1938,46 +1938,46 @@ func shouldAutoExpandPart(partType PartType) bool {
 	}
 }
 
-type planPhaseGroup struct {
+type planTopicGroup struct {
 	name   string
 	status string
 	items  []PlanItemView
 }
 
-// groupPlanItemsByPhase 按 phase 把 plan items 分组，保持 phases 声明顺序。
+// groupPlanItemsByTopic 按 phase 把 plan items 分组，保持 phases 声明顺序。
 // 返回 nil 表示不分组渲染（无 phases、或只有一个 synthetic phase——旧观感零变化）。
 // 未挂靠任何已知 phase 的 item 归到末尾「其他」组。
-func groupPlanItemsByPhase(p *PlanPart) []planPhaseGroup {
-	if p == nil || len(p.Phases) == 0 {
+func groupPlanItemsByTopic(p *PlanPart) []planTopicGroup {
+	if p == nil || len(p.Topics) == 0 {
 		return nil
 	}
 	// 单个 synthetic phase：不渲染组头，退化为平铺。
-	if len(p.Phases) == 1 && p.Phases[0].ID == builtin_tools.SyntheticPhaseID {
+	if len(p.Topics) == 1 && p.Topics[0].ID == builtin_tools.SyntheticTopicID {
 		return nil
 	}
-	order := make([]string, 0, len(p.Phases))
-	idx := make(map[string]int, len(p.Phases))
-	groups := make([]planPhaseGroup, 0, len(p.Phases)+1)
-	for _, phase := range p.Phases {
+	order := make([]string, 0, len(p.Topics))
+	idx := make(map[string]int, len(p.Topics))
+	groups := make([]planTopicGroup, 0, len(p.Topics)+1)
+	for _, phase := range p.Topics {
 		name := strings.TrimSpace(phase.Name)
 		if name == "" {
 			name = phase.ID
 		}
 		idx[phase.ID] = len(groups)
-		groups = append(groups, planPhaseGroup{name: name, status: phase.Status})
+		groups = append(groups, planTopicGroup{name: name, status: phase.Status})
 		order = append(order, phase.ID)
 	}
 	_ = order
 	var orphan []PlanItemView
 	for _, item := range p.Items {
-		if gi, ok := idx[item.PhaseID]; ok {
+		if gi, ok := idx[item.TopicID]; ok {
 			groups[gi].items = append(groups[gi].items, item)
 		} else {
 			orphan = append(orphan, item)
 		}
 	}
 	if len(orphan) > 0 {
-		groups = append(groups, planPhaseGroup{name: "其他", items: orphan})
+		groups = append(groups, planTopicGroup{name: "其他", items: orphan})
 	}
 	// 过滤空组（无 step 的 lane 不占行）。
 	out := groups[:0]
@@ -2076,7 +2076,7 @@ func (m *ChatModel) renderPlanPart(idx int, part DisplayPart, maxWidth int) stri
 		}
 	}
 	// 多 lane 时按 phase 分组加组头；单 synthetic phase 或无 phase 时平铺（旧观感不变）。
-	if groups := groupPlanItemsByPhase(p); len(groups) > 0 {
+	if groups := groupPlanItemsByTopic(p); len(groups) > 0 {
 		for _, g := range groups {
 			header := "[" + g.name + "]"
 			if g.status != "" && g.status != "pending" {

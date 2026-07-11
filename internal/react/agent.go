@@ -149,7 +149,7 @@ type Agent struct {
 	// reviewTopicID 是本次 step_replan 收窄复核的目标 topic（局部 review 模式）；空串 = 全局
 	// 模式（现有全局 barrier / active=∅ reducer）。由调度路由（nextSchedulerPhase）在决定进
 	// StepReplan 时置位，runStepReplanPhase 据此收窄 stepID 锚（该 topic 最新 step）、review 窗口、
-	// ActivePhases 与 mutation；仅调度 goroutine 读写。
+	// ActiveTopics 与 mutation；仅调度 goroutine 读写。
 	reviewTopicID string
 
 	// journaledStepIDs 记录已固化（烘焙 + 写 planner.jsonl 的 kind=step 记录）的 step，

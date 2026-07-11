@@ -27,24 +27,24 @@ func TestCloneReplanContext_DepthGaps(t *testing.T) {
 	}
 }
 
-// TestCloneReplanContext_PhaseAssessments 校验 phase 评估被深拷贝。
-func TestCloneReplanContext_PhaseAssessments(t *testing.T) {
+// TestCloneReplanContext_TopicAssessments 校验 phase 评估被深拷贝。
+func TestCloneReplanContext_TopicAssessments(t *testing.T) {
 	in := &ReplanContext{
 		SourceStepID: "step-3",
-		PhaseAssessments: []*PhaseAssessment{
-			{PhaseID: "phase-a", Status: PhaseAssessContinue, DepthGaps: []string{"g1"}},
+		TopicAssessments: []*TopicAssessment{
+			{TopicID: "phase-a", Status: TopicAssessContinue, DepthGaps: []string{"g1"}},
 		},
 	}
 	out := CloneReplanContext(in)
 	if out == nil {
 		t.Fatal("clone returned nil")
 	}
-	if len(out.PhaseAssessments) != 1 || out.PhaseAssessments[0].PhaseID != "phase-a" {
-		t.Fatalf("phase_assessments not cloned: %+v", out.PhaseAssessments)
+	if len(out.TopicAssessments) != 1 || out.TopicAssessments[0].TopicID != "phase-a" {
+		t.Fatalf("phase_assessments not cloned: %+v", out.TopicAssessments)
 	}
-	out.PhaseAssessments[0].DepthGaps[0] = "mutated"
-	if in.PhaseAssessments[0].DepthGaps[0] != "g1" {
-		t.Fatalf("mutation leaked: %+v", in.PhaseAssessments)
+	out.TopicAssessments[0].DepthGaps[0] = "mutated"
+	if in.TopicAssessments[0].DepthGaps[0] != "g1" {
+		t.Fatalf("mutation leaked: %+v", in.TopicAssessments)
 	}
 }
 

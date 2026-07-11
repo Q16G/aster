@@ -95,54 +95,54 @@ const (
 	PlanStepSkipped    PlanStepStatus = "skipped"
 )
 
-// PlanPhaseStatus 业务 lane（phase）的存储状态。
+// AnalysisTopicStatus 业务 lane（phase）的存储状态。
 // active 不落盘、纯派生：phase 未 terminal 且其 depends_on 的 phase 全部 terminal 即 active。
-type PlanPhaseStatus string
+type AnalysisTopicStatus string
 
 const (
-	PlanPhasePending   PlanPhaseStatus = "pending"
-	PlanPhaseCompleted PlanPhaseStatus = "completed"
-	PlanPhaseBlocked   PlanPhaseStatus = "blocked"
+	AnalysisTopicPending   AnalysisTopicStatus = "pending"
+	AnalysisTopicCompleted AnalysisTopicStatus = "completed"
+	AnalysisTopicBlocked   AnalysisTopicStatus = "blocked"
 )
 
-// SyntheticPhaseID 是 runtime 兜底 phase 的保留 id：plan item 缺失/悬空 phase_id 时
-// 自动挂靠到该 phase。planner 不得主动使用（NormalizePlanPhases 拒绝）。
-const SyntheticPhaseID = "phase-synthetic"
+// SyntheticTopicID 是 runtime 兜底 phase 的保留 id：plan item 缺失/悬空 phase_id 时
+// 自动挂靠到该 phase。planner 不得主动使用（NormalizeAnalysisTopics 拒绝）。
+const SyntheticTopicID = "phase-synthetic"
 
-// PlanPhase 业务 lane / 分组，不拥有自己的 plan / step_replan / final_answer 生命周期。
+// AnalysisTopic 业务 lane / 分组，不拥有自己的 plan / step_replan / final_answer 生命周期。
 // depends_on 引用其他 phase id，参与 step ready 门：phase 未解锁（依赖 phase 未全部
 // terminal）时其下 step 不进入 frontier。completed/blocked 仅由 step_replan 的
 // phase_assessments 或 planner 重提交写入。
-type PlanPhase struct {
+type AnalysisTopic struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name,omitempty"`
 	DependsOn []string        `json:"depends_on,omitempty"`
-	Status    PlanPhaseStatus `json:"status,omitempty"`
+	Status    AnalysisTopicStatus `json:"status,omitempty"`
 }
 
 // Terminal 判断 phase 是否终态（completed/blocked 均视同 terminal 参与解锁下游）。
-func (p *PlanPhase) Terminal() bool {
+func (p *AnalysisTopic) Terminal() bool {
 	if p == nil {
 		return false
 	}
-	return p.Status == PlanPhaseCompleted || p.Status == PlanPhaseBlocked
+	return p.Status == AnalysisTopicCompleted || p.Status == AnalysisTopicBlocked
 }
 
-// PhaseAssessmentStatus 是 step_replan 对单个 active phase 的判定结论。
+// TopicAssessmentStatus 是 step_replan 对单个 active phase 的判定结论。
 // continue 不是存储状态：仅表示下一轮 planner 应继续释放该 phase 的 step。
-type PhaseAssessmentStatus string
+type TopicAssessmentStatus string
 
 const (
-	PhaseAssessContinue  PhaseAssessmentStatus = "continue"
-	PhaseAssessCompleted PhaseAssessmentStatus = "completed"
-	PhaseAssessBlocked   PhaseAssessmentStatus = "blocked"
+	TopicAssessContinue  TopicAssessmentStatus = "continue"
+	TopicAssessCompleted TopicAssessmentStatus = "completed"
+	TopicAssessBlocked   TopicAssessmentStatus = "blocked"
 )
 
-// PhaseAssessment 是全局 step_replan 在 frontier barrier 后对单个 active phase 的评估。
-// completed/blocked 由 runtime 机械写回 PlanPhase.Status；三轴字段限该 phase 范围内的缺口。
-type PhaseAssessment struct {
-	PhaseID         string                `json:"phase_id"`
-	Status          PhaseAssessmentStatus `json:"status"`
+// TopicAssessment 是全局 step_replan 在 frontier barrier 后对单个 active phase 的评估。
+// completed/blocked 由 runtime 机械写回 AnalysisTopic.Status；三轴字段限该 phase 范围内的缺口。
+type TopicAssessment struct {
+	TopicID         string                `json:"phase_id"`
+	Status          TopicAssessmentStatus `json:"status"`
 	Reason          string                `json:"reason,omitempty"`
 	IncompleteItems []string              `json:"incomplete_items,omitempty"`
 	DepthGaps       []string              `json:"depth_gaps,omitempty"`
@@ -156,9 +156,9 @@ type PlanItem struct {
 	ID     string         `json:"id,omitempty"`
 	Step   string         `json:"step"`
 	Status PlanStepStatus `json:"status,omitempty"`
-	// PhaseID 指向所属业务 lane（PlanPhase.ID）。planner 提交时必填；
-	// 旧数据缺失时由 SynthesizePhasesIfMissing 挂到 synthetic phase。
-	PhaseID           string      `json:"phase_id,omitempty"`
+	// TopicID 指向所属业务 lane（AnalysisTopic.ID）。planner 提交时必填；
+	// 旧数据缺失时由 SynthesizeTopicsIfMissing 挂到 synthetic phase。
+	TopicID           string      `json:"phase_id,omitempty"`
 	DependsOn         []string    `json:"depends_on,omitempty"`
 	ResolvedDependsOn []*PlanItem `json:"-"`
 
@@ -401,9 +401,9 @@ type ReplanContext struct {
 	ReplaceTopicID  string      `json:"replace_topic_id,omitempty"`
 	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
 	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
-	// PhaseAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
+	// TopicAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
 	// 回流给下一轮 planner 决定各 lane 继续释放 step 还是收束。
-	PhaseAssessments []*PhaseAssessment `json:"phase_assessments,omitempty"`
+	TopicAssessments []*TopicAssessment `json:"phase_assessments,omitempty"`
 }
 
 // ReplanAxes 是跨步骤滚动复核的三轴未决盘点（sticky 状态）。
@@ -459,18 +459,18 @@ type StateSnapshot struct {
 	InputTimeline []*TimelineInput `json:"input_timeline,omitempty"`
 	// GoalUnderstanding 是 planner 对原始输入的结构化理解，贯穿下游用于锚定原始意图。
 	GoalUnderstanding string `json:"goal_understanding,omitempty"`
-	// CurrentPhase 是当前深度优先聚焦阶段的语义描述，跨阶段贯穿（planner 写、step_replan 读）；
-	// step_replan 视角 B 据此把全局视角从 GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ CurrentPhase。
+	// TopicFocus 是当前深度优先聚焦阶段的语义描述，跨阶段贯穿（planner 写、step_replan 读）；
+	// step_replan 视角 B 据此把全局视角从 GoalUnderstanding 全集收窄为 GoalUnderstanding ∩ TopicFocus。
 	// 切换面/纠偏重塑由 step_replan 在 ReplanContext 中携带 NextPhase 触发，回流 planner 写回此处。
-	CurrentPhase string `json:"current_phase,omitempty"`
+	TopicFocus string `json:"current_phase,omitempty"`
 	// SimpleTask 标记简单单步任务：step 完成后跳过 step_replan 直达 final_answer。
 	SimpleTask bool `json:"simple_task,omitempty"`
 
 	Plan []*PlanItem `json:"plan,omitempty"`
-	// Phases 是业务 lane 清单（Parallel Frontier 数据面）：plan item 经 phase_id 归属其一。
+	// Topics 是业务 lane 清单（Parallel Frontier 数据面）：plan item 经 phase_id 归属其一。
 	// 与 Plan 同源共版本（随 plan 提交/重规划原子替换），completed/blocked 由
 	// phase_assessments 或 planner 重提交写入。
-	Phases        []*PlanPhase   `json:"phases,omitempty"`
+	Topics        []*AnalysisTopic   `json:"phases,omitempty"`
 	PlanVersion   int            `json:"plan_version,omitempty"`
 	StepOutcomes  []*StepOutcome `json:"step_outcomes,omitempty"`
 	FinalAnswer   *FinalAnswer   `json:"final_answer,omitempty"`

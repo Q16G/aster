@@ -189,7 +189,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	if writer != nil {
 		if items, phases, version, err := LoadPlannerJournalSnapshot(writer.sessionRoot); err == nil && len(items) > 0 {
 			snapshot.Plan = items
-			snapshot.Phases = phases
+			snapshot.Topics = phases
 			snapshot.PlanVersion = version
 		}
 	}
@@ -208,8 +208,8 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 			snapshot.Plan = payload.Plan
 			snapshot.PlanVersion = payload.PlanVersion
 		}
-		if len(snapshot.Phases) == 0 {
-			snapshot.Phases = builtin_tools.ClonePlanPhases(payload.Phases)
+		if len(snapshot.Topics) == 0 {
+			snapshot.Topics = builtin_tools.CloneAnalysisTopics(payload.Topics)
 		}
 		snapshot.StepOutcomes = payload.StepOutcomes
 		snapshot.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(payload.ExternalInterrupt)
@@ -267,8 +267,8 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if strings.TrimSpace(snapshot.GoalUnderstanding) == "" && strings.TrimSpace(planCurrent.GoalUnderstanding) != "" {
 			snapshot.GoalUnderstanding = strings.TrimSpace(planCurrent.GoalUnderstanding)
 		}
-		if len(snapshot.Phases) == 0 && len(planCurrent.Phases) > 0 {
-			snapshot.Phases = builtin_tools.ClonePlanPhases(planCurrent.Phases)
+		if len(snapshot.Topics) == 0 && len(planCurrent.Topics) > 0 {
+			snapshot.Topics = builtin_tools.CloneAnalysisTopics(planCurrent.Topics)
 		}
 		if len(snapshot.InputTimeline) == 0 && len(planCurrent.InputTimeline) > 0 {
 			snapshot.InputTimeline = planCurrent.InputTimeline
@@ -349,11 +349,11 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	if planValid {
 		// 旧数据无 phases（journal 无 phase 行、checkpoint 无 phases 字段）时
 		// 合成 synthetic phase 并把缺挂靠的 item 收编，保证 frontier 调度有效。
-		snapshot.Phases = builtin_tools.SynthesizePhasesIfMissing(snapshot.Plan, snapshot.Phases, snapshot.CurrentGoal)
+		snapshot.Topics = builtin_tools.SynthesizeTopicsIfMissing(snapshot.Plan, snapshot.Topics, snapshot.CurrentGoal)
 		// blocked phase 的 step-skip 只落内存不落 journal——恢复时重放一次，让被 blocked
 		// 收束的 lane 下 pending step 自愈为 skipped（含跨 phase 下游传递），
 		// 防止 journal 里残留的 stale pending step 在 resume 后复活执行。
-		builtin_tools.SkipStepsOfBlockedPhases(snapshot.Plan, snapshot.Phases)
+		builtin_tools.SkipStepsOfBlockedTopics(snapshot.Plan, snapshot.Topics)
 
 		applyDurableOutcomesToPlan(snapshot.Plan, snapshot.StepOutcomes, workspaceState)
 
@@ -361,7 +361,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		// - never point to terminal steps
 		// - prefer in_progress, otherwise the next runnable frontier step（带 phase 门，
 		//   不选被 blocked/未解锁 lane 下的 step）
-		snapshot.CurrentStepID = resolveResumeCurrentStepID(snapshot.Plan, snapshot.Phases, snapshot.CurrentStepID)
+		snapshot.CurrentStepID = resolveResumeCurrentStepID(snapshot.Plan, snapshot.Topics, snapshot.CurrentStepID)
 
 		// Phase/progress hints: the resume decision gate will finalize, but keep a sane default.
 		snapshot.Progress = builtin_tools.PlanProgress(snapshot.Plan)
@@ -387,7 +387,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	return snapshot, planValid
 }
 
-func resolveResumeCurrentStepID(plan []*builtin_tools.PlanItem, phases []*builtin_tools.PlanPhase, preferred string) string {
+func resolveResumeCurrentStepID(plan []*builtin_tools.PlanItem, phases []*builtin_tools.AnalysisTopic, preferred string) string {
 	preferred = strings.TrimSpace(preferred)
 	if len(plan) == 0 {
 		return ""

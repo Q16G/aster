@@ -104,9 +104,9 @@ func TestParseSubmitPlanArgs_GoalUnderstandingMissing_NoShapeReminder(t *testing
 	}
 }
 
-// TestParseSubmitPlanArgs_PhasesMissing_NoShapeReminder 校验同理:
+// TestParseSubmitPlanArgs_TopicsMissing_NoShapeReminder 校验同理:
 // phases 缺失也是同分支补字段,不应带形态段。
-func TestParseSubmitPlanArgs_PhasesMissing_NoShapeReminder(t *testing.T) {
+func TestParseSubmitPlanArgs_TopicsMissing_NoShapeReminder(t *testing.T) {
 	_, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"explanation":        "复杂任务",

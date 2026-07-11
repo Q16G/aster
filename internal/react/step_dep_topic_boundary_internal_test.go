@@ -12,9 +12,9 @@ import (
 func TestValidateStepDepsSameTopic(t *testing.T) {
 	// 同 topic 依赖 + 无依赖 → 通过。
 	okPlan := []*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a"},
-		{ID: "a2", PhaseID: "topic-a", DependsOn: []string{"a1"}},
-		{ID: "b1", PhaseID: "topic-b"},
+		{ID: "a1", TopicID: "topic-a"},
+		{ID: "a2", TopicID: "topic-a", DependsOn: []string{"a1"}},
+		{ID: "b1", TopicID: "topic-b"},
 	}
 	if err := validateStepDepsSameTopic(okPlan); err != nil {
 		t.Fatalf("同 topic 依赖不应报错，got %v", err)
@@ -22,8 +22,8 @@ func TestValidateStepDepsSameTopic(t *testing.T) {
 
 	// 跨 topic 依赖 → 拒绝，反馈含两端 step id。
 	crossPlan := []*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a"},
-		{ID: "b1", PhaseID: "topic-b", DependsOn: []string{"a1"}},
+		{ID: "a1", TopicID: "topic-a"},
+		{ID: "b1", TopicID: "topic-b", DependsOn: []string{"a1"}},
 	}
 	err := validateStepDepsSameTopic(crossPlan)
 	if err == nil {
@@ -38,9 +38,9 @@ func TestValidateStepDepsSameTopic(t *testing.T) {
 
 	// 缺 phase_id / 未知依赖 → 本条不误报（交上游校验处理）。
 	lenientPlan := []*builtin_tools.PlanItem{
-		{ID: "x1", PhaseID: ""},                                  // 缺 phase_id
-		{ID: "x2", PhaseID: "topic-a", DependsOn: []string{"x1"}}, // 依赖缺 phase_id 的 step
-		{ID: "x3", PhaseID: "topic-a", DependsOn: []string{"ghost"}}, // 未知依赖
+		{ID: "x1", TopicID: ""},                                  // 缺 phase_id
+		{ID: "x2", TopicID: "topic-a", DependsOn: []string{"x1"}}, // 依赖缺 phase_id 的 step
+		{ID: "x3", TopicID: "topic-a", DependsOn: []string{"ghost"}}, // 未知依赖
 	}
 	if err := validateStepDepsSameTopic(lenientPlan); err != nil {
 		t.Fatalf("缺 phase_id / 未知依赖不应由 V4 报错（偏放行），got %v", err)

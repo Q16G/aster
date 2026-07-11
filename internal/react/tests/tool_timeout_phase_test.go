@@ -230,13 +230,13 @@ func TestToolTimeout_AgentDoesNotJumpToFinalAnswer(t *testing.T) {
 	// Allow partial success: even if final_answer LLM call fails due to overall timeout,
 	// the important thing is whether the agent continued past the tool timeout.
 	mu.Lock()
-	capturedPhases := append([]string{}, phases...)
+	capturedTopics := append([]string{}, phases...)
 	capturedToolCalls := append([]string{}, toolCalls...)
 	capturedToolErrors := append([]string{}, toolErrors...)
 	mu.Unlock()
 
 	t.Logf("=== RESULTS ===")
-	t.Logf("phases:      %v", capturedPhases)
+	t.Logf("phases:      %v", capturedTopics)
 	t.Logf("tool_calls:  %v", capturedToolCalls)
 	t.Logf("tool_errors: %v", capturedToolErrors)
 	t.Logf("slow_analysis: called=%d canceled=%d", slow.CallCount(), slow.CancelCount())
@@ -288,7 +288,7 @@ func TestToolTimeout_AgentDoesNotJumpToFinalAnswer(t *testing.T) {
 	// Also check for phase transitions after the timeout
 	phasesAfterStep1 := 0
 	sawStepPhase := false
-	for _, p := range capturedPhases {
+	for _, p := range capturedTopics {
 		if p == "step" {
 			sawStepPhase = true
 			continue

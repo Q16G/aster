@@ -99,13 +99,13 @@ func fieldPtrs(fields []injectionField) map[*PreviewField]bool {
 func TestPlanInjectionBudgetFields_OnlyInjectedFields(t *testing.T) {
 	pc := &PromptContext{}
 
-	// 常规回合：全字段纳入，顺序低→高（Phases、TaskContextBoard、GU、InputTimeline、Plan）。
+	// 常规回合：全字段纳入，顺序低→高（Topics、TaskContextBoard、GU、InputTimeline、Plan）。
 	full := planInjectionBudgetFields(pc, false, true)
 	if len(full) != 5 {
 		t.Fatalf("常规回合应纳入 5 字段，got %d", len(full))
 	}
-	if full[0].field != &pc.Phases || full[len(full)-1].field != &pc.Plan {
-		t.Fatalf("优先级序应 Phases 先降级、Plan 最后降级")
+	if full[0].field != &pc.Topics || full[len(full)-1].field != &pc.Plan {
+		t.Fatalf("优先级序应 Topics 先降级、Plan 最后降级")
 	}
 
 	// regenGoal：GoalUnderstanding 本回合不注入 → 不计入预算。

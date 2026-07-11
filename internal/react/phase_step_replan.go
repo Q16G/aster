@@ -26,14 +26,14 @@ const submitReplanToolName = "submit_replan"
 type submitReplanTool struct {
 	mu           sync.Mutex
 	result       *stepReplanModelOutput
-	activePhases map[string]struct{} // 本轮 frontier 的 active phase id 集，用于 phase_id 合法性校验
+	activeTopics map[string]struct{} // 本轮 frontier 的 active phase id 集，用于 phase_id 合法性校验
 	pendingByID  map[string]bool     // 各 phase 是否仍有 pending step，用于 completed-with-pending 守卫
 }
 
-func newSubmitReplanTool(activePhases []*builtin_tools.PlanPhase, plan []*builtin_tools.PlanItem) *submitReplanTool {
-	ids := make(map[string]struct{}, len(activePhases))
-	pending := make(map[string]bool, len(activePhases))
-	for _, phase := range activePhases {
+func newSubmitReplanTool(activeTopics []*builtin_tools.AnalysisTopic, plan []*builtin_tools.PlanItem) *submitReplanTool {
+	ids := make(map[string]struct{}, len(activeTopics))
+	pending := make(map[string]bool, len(activeTopics))
+	for _, phase := range activeTopics {
 		if phase == nil {
 			continue
 		}
@@ -42,9 +42,9 @@ func newSubmitReplanTool(activePhases []*builtin_tools.PlanPhase, plan []*builti
 			continue
 		}
 		ids[id] = struct{}{}
-		pending[id] = builtin_tools.PhaseHasPendingStep(plan, id)
+		pending[id] = builtin_tools.TopicHasPendingStep(plan, id)
 	}
-	return &submitReplanTool{activePhases: ids, pendingByID: pending}
+	return &submitReplanTool{activeTopics: ids, pendingByID: pending}
 }
 
 func (t *submitReplanTool) Name() string { return submitReplanToolName }
@@ -122,42 +122,42 @@ func (t *submitReplanTool) Execute(_ context.Context, args map[string]any) (stri
 	}
 
 	hasContinue := false
-	assessed := make(map[string]struct{}, len(result.PhaseAssessments))
-	for _, assess := range result.PhaseAssessments {
+	assessed := make(map[string]struct{}, len(result.TopicAssessments))
+	for _, assess := range result.TopicAssessments {
 		if assess == nil {
 			continue
 		}
-		phaseID := builtin_tools.CanonicalizePlanIDToken(assess.PhaseID)
-		if phaseID == "" {
+		topicID := builtin_tools.CanonicalizePlanIDToken(assess.TopicID)
+		if topicID == "" {
 			return "", fmt.Errorf("submit_replan: phase_assessments[].phase_id is required")
 		}
-		assess.PhaseID = phaseID
-		if _, ok := t.activePhases[phaseID]; !ok {
-			return "", fmt.Errorf("submit_replan: phase_id %q 不属于本轮 frontier 的 active phase，只能评估当前活跃 lane", phaseID)
+		assess.TopicID = topicID
+		if _, ok := t.activeTopics[topicID]; !ok {
+			return "", fmt.Errorf("submit_replan: phase_id %q 不属于本轮 frontier 的 active phase，只能评估当前活跃 lane", topicID)
 		}
-		if _, dup := assessed[phaseID]; dup {
-			return "", fmt.Errorf("submit_replan: phase %q 被重复评估，每个 active phase 只提交一条 assessment", phaseID)
+		if _, dup := assessed[topicID]; dup {
+			return "", fmt.Errorf("submit_replan: phase %q 被重复评估，每个 active phase 只提交一条 assessment", topicID)
 		}
-		assessed[phaseID] = struct{}{}
+		assessed[topicID] = struct{}{}
 		switch assess.Status {
-		case builtin_tools.PhaseAssessContinue:
+		case builtin_tools.TopicAssessContinue:
 			hasContinue = true
-		case builtin_tools.PhaseAssessCompleted:
+		case builtin_tools.TopicAssessCompleted:
 			// D7a①：completed 的 lane 不容残留 pending step（completed=已闭环语义）。
-			if t.pendingByID[phaseID] {
-				return "", fmt.Errorf("submit_replan: phase %q 判为 completed 但其下仍有 pending step——completed 表示 lane 已闭环，请改判 continue（继续推进）或先让 pending step 落定", phaseID)
+			if t.pendingByID[topicID] {
+				return "", fmt.Errorf("submit_replan: phase %q 判为 completed 但其下仍有 pending step——completed 表示 lane 已闭环，请改判 continue（继续推进）或先让 pending step 落定", topicID)
 			}
-		case builtin_tools.PhaseAssessBlocked:
+		case builtin_tools.TopicAssessBlocked:
 		default:
-			return "", fmt.Errorf("submit_replan: phase %q 的 status 非法（须为 continue|completed|blocked）", phaseID)
+			return "", fmt.Errorf("submit_replan: phase %q 的 status 非法（须为 continue|completed|blocked）", topicID)
 		}
 	}
 	// 完整性校验（review 补充）：本轮每个 active phase 都必须恰有一条 assessment，
 	// 否则漏评的 lane 状态不推进——下游依赖它的 lane 会被永久锁住、或全 step terminal
 	// 时被静默跳过至 final_answer。ACTIVE_PHASES 为空（simple/历史 session）时豁免。
-	if len(t.activePhases) > 0 && len(assessed) < len(t.activePhases) {
+	if len(t.activeTopics) > 0 && len(assessed) < len(t.activeTopics) {
 		var missing []string
-		for id := range t.activePhases {
+		for id := range t.activeTopics {
 			if _, ok := assessed[id]; !ok {
 				missing = append(missing, id)
 			}
@@ -186,10 +186,10 @@ func (t *submitReplanTool) getResult() *stepReplanModelOutput {
 type stepReplanModelOutput struct {
 	ShouldReplan bool   `json:"should_replan"`
 	ReplanReason string `json:"replan_reason"`
-	// PhaseAssessments 是对本轮 frontier 内各 active phase 的逐个评估（continue/completed/blocked
-	// + 该 phase 范围内三轴缺口）。runtime 机械承接：completed/blocked 写回 PlanPhase.Status，
+	// TopicAssessments 是对本轮 frontier 内各 active phase 的逐个评估（continue/completed/blocked
+	// + 该 phase 范围内三轴缺口）。runtime 机械承接：completed/blocked 写回 AnalysisTopic.Status，
 	// blocked 联动 skip 其下 pending step；continue 汇总三轴回流 planner 继续释放 step。
-	PhaseAssessments []*builtin_tools.PhaseAssessment `json:"phase_assessments,omitempty"`
+	TopicAssessments []*builtin_tools.TopicAssessment `json:"phase_assessments,omitempty"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -335,11 +335,11 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	// per-topic 局部 review：active 收窄为 {reviewTopic}（视角 A+C 只判该 topic）；全局/reducer
 	// 用全部 active（reviewTopic="" 时视角 B 全半径不受影响，active=∅ 兜底走 reducer 态）。
-	activePhases := builtin_tools.ActivePhases(snapshot.Phases)
+	activeTopics := builtin_tools.ActiveTopics(snapshot.Topics)
 	if reviewTopic != "" {
-		activePhases = scopeActivePhasesToTopic(activePhases, reviewTopic)
+		activeTopics = scopeActiveTopicsToTopic(activeTopics, reviewTopic)
 	}
-	submitTool := newSubmitReplanTool(activePhases, snapshot.Plan)
+	submitTool := newSubmitReplanTool(activeTopics, snapshot.Plan)
 	if err := a.registerTool(submitTool); err != nil {
 		return fmt.Errorf("register submit_replan tool: %w", err)
 	}
@@ -350,7 +350,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
 		"goal_understanding":     pc.GoalUnderstanding.Text,
-		"active_phases":          activePhases,
+		"active_phases":          activeTopics,
 		"input_timeline":         pc.InputTimeline.Text,
 		"review_window":          reviewWin,
 		"plan_overview":          pc.Plan.Text,
@@ -432,7 +432,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 }
 
 // applyReplanDecision 把 step_replan 的复核结论承接进 phase 状态并构造 ReplanContext。
-// 机械承接顺序（D7）：先 ApplyPhaseAssessments（completed/blocked 写回 PlanPhase.Status +
+// 机械承接顺序（D7）：先 ApplyTopicAssessments（completed/blocked 写回 AnalysisTopic.Status +
 // blocked 联动 skip 其下 pending step + append kind=phase journal），再据 should_replan
 // 决定是否回流 planner。
 //
@@ -441,9 +441,9 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutput, snapshot builtin_tools.StateSnapshot) error {
 	// 先承接 phase 评估：写回 phase 状态、blocked 联动 skip、增量落 journal。
 	// M2: 局部 review（reviewTopicID!=""）的 blocked 只 skip 本 topic，跨 topic 传播延到全局 reducer。
-	if changed, updated := a.state.ApplyPhaseAssessmentsScoped(decision.PhaseAssessments, strings.TrimSpace(a.reviewTopicID)); len(changed) > 0 {
+	if changed, updated := a.state.ApplyTopicAssessmentsScoped(decision.TopicAssessments, strings.TrimSpace(a.reviewTopicID)); len(changed) > 0 {
 		snapshot = updated
-		a.appendPlannerJournalPhaseRecords(changed, snapshot.PlanVersion)
+		a.appendPlannerJournalTopicRecords(changed, snapshot.PlanVersion)
 	}
 
 	if !decision.ShouldReplan {
@@ -452,8 +452,8 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 
 	// 汇总 continue 型 phase 的三轴缺口回流 planner（sticky ReplanContext 轴 = 各 lane 并集）。
 	var incomplete, depth, surfaces []string
-	for _, assess := range decision.PhaseAssessments {
-		if assess == nil || assess.Status != builtin_tools.PhaseAssessContinue {
+	for _, assess := range decision.TopicAssessments {
+		if assess == nil || assess.Status != builtin_tools.TopicAssessContinue {
 			continue
 		}
 		incomplete = append(incomplete, assess.IncompleteItems...)
@@ -470,7 +470,7 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 		// per-topic 局部 review：把 ReplacePending 收窄到该 topic（只替换它的 pending，不 clobber 他 topic）。
 		// 全局 reducer（reviewTopicID=""）时为空 = 现有整盘替换语义。
 		ReplaceTopicID:   strings.TrimSpace(a.reviewTopicID),
-		PhaseAssessments: builtin_tools.ClonePhaseAssessments(decision.PhaseAssessments),
+		TopicAssessments: builtin_tools.CloneTopicAssessments(decision.TopicAssessments),
 	}
 	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
 }
@@ -491,13 +491,13 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	if newPlan != nil {
 		// 重编排直达 Step：以新 plan 计算下一个可跑 frontier step；通常就是新增的第一条 pending。
 		planForNextRunnable = newPlan
-		if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(planForNextRunnable, snapshot.Phases)); candidate != "" {
+		if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(planForNextRunnable, snapshot.Topics)); candidate != "" {
 			nextRunnableStepID = candidate
 			nextPhase = builtin_tools.AgentPhaseStep
 		}
 	} else if replanContext != nil {
 		nextPhase = builtin_tools.AgentPhasePlan
-	} else if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases)); candidate != "" {
+	} else if candidate := strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics)); candidate != "" {
 		nextRunnableStepID = candidate
 		nextPhase = builtin_tools.AgentPhaseStep
 	}
@@ -598,7 +598,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		a.emitter.EmitStepReplanResult(stepID, strings.TrimSpace(current.Step), modelOut)
 	}
 	if newPlan != nil && a.emitter != nil && modelOut != nil {
-		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Phases, strings.TrimSpace(modelOut.ReplanReason))
+		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Topics, strings.TrimSpace(modelOut.ReplanReason))
 	}
 
 	a.emitRuntimeLog("info", "step replan completed", snapshot, map[string]any{
@@ -643,7 +643,7 @@ func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, r
 	if k := stepReplanHeartbeatK(); k >= 0 && a.consecutiveStepsSinceReplan >= k {
 		return true, "heartbeat"
 	}
-	if strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases)) == "" {
+	if strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics)) == "" {
 		// 防御：frontier 枯竭（无可派发 ready）只代表“这批 frontier 跑完”，不代表“这批全落定”。
 		// 仍有 in_progress inline peer 在跑时不升级——否则会基于不完整状态做 LLM 重规划。
 		// 调度器的 frontier barrier 已先 await peer，正常流程下此处 HasRunningInlineSteps 必为 false；
@@ -997,7 +997,7 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 //
 // 超过 reviewWindowMaxCards 时截断保最新 N 张并写入 OmittedCount，模板提示更早 step
 // 走 PLANNER_JOURNAL / PLAN_OVERVIEW 回读，避免 plan_exhausted 跨越全 plan 时 token 爆炸。
-// topicFilter 非空时只收该 topic（PhaseID）的 step 卡——第四阶段 per-topic 收窄 review 用；
+// topicFilter 非空时只收该 topic（TopicID）的 step 卡——第四阶段 per-topic 收窄 review 用；
 // 空则收全部 topic（现有全局行为，Inc3/Inc4 接线前的默认）。
 func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID, topicFilter string, rt WorkspaceRuntime) *reviewWindow {
 	plan := snapshot.Plan
@@ -1020,7 +1020,7 @@ func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundary
 		if it == nil {
 			continue
 		}
-		if topicFilter != "" && strings.TrimSpace(it.PhaseID) != topicFilter {
+		if topicFilter != "" && strings.TrimSpace(it.TopicID) != topicFilter {
 			continue
 		}
 		switch it.Status {

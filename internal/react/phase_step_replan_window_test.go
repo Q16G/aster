@@ -63,9 +63,9 @@ func TestBuildReviewWindow_TopicFilter(t *testing.T) {
 	a := &Agent{}
 	snapshot := builtin_tools.StateSnapshot{
 		Plan: []*builtin_tools.PlanItem{
-			{ID: "a1", PhaseID: "topic-a", Step: "a1", Status: builtin_tools.PlanStepCompleted},
-			{ID: "b1", PhaseID: "topic-b", Step: "b1", Status: builtin_tools.PlanStepCompleted},
-			{ID: "a2", PhaseID: "topic-a", Step: "a2", Status: builtin_tools.PlanStepCompleted},
+			{ID: "a1", TopicID: "topic-a", Step: "a1", Status: builtin_tools.PlanStepCompleted},
+			{ID: "b1", TopicID: "topic-b", Step: "b1", Status: builtin_tools.PlanStepCompleted},
+			{ID: "a2", TopicID: "topic-a", Step: "a2", Status: builtin_tools.PlanStepCompleted},
 		},
 		StepOutcomes: []*builtin_tools.StepOutcome{
 			makeOutcome("a1", "done-a1", builtin_tools.StepOutcomeCompleted),

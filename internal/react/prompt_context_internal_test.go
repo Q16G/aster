@@ -144,7 +144,7 @@ func TestBuildPromptContextEmptyGates(t *testing.T) {
 		"InputTimeline":     pc.InputTimeline.Text,
 		"GoalUnderstanding": pc.GoalUnderstanding.Text,
 		"Plan":              pc.Plan.Text,
-		"Phases":            pc.Phases.Text,
+		"Topics":            pc.Topics.Text,
 		"StepOutcomes":      pc.StepOutcomes.Text,
 		"Warnings":          pc.Warnings.Text,
 		"TaskContextBoard":  pc.TaskContextBoard.Text,

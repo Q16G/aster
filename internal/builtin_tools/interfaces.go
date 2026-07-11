@@ -27,7 +27,7 @@ type Emitter interface {
 	EmitToolStart(iteration int, call ToolCall, stepID string)
 	EmitToolEnd(iteration int, result ToolResult, stepID string)
 	EmitStateChange(snapshot StateSnapshot)
-	EmitTaskPlan(plan []*PlanItem, phases []*PlanPhase, explanation string)
+	EmitTaskPlan(plan []*PlanItem, phases []*AnalysisTopic, explanation string)
 	EmitHumanRequest(iteration int, requestID string, question string, context map[string]any)
 	EmitIteration(current int, max int, description string)
 	EmitResult(result any, success bool)
@@ -54,11 +54,11 @@ type TaskPlannerResult struct {
 	// 交付物与验收/显式聚焦/隐含假设/未决歧义）。它随 plan 一起落盘，并注入 step_replan，
 	// 作为多轮重规划时锚定原始意图的准绳。
 	GoalUnderstanding string `json:"goal_understanding,omitempty"`
-	// Phases 是 planner 提交的业务 lane 清单（Parallel Frontier）：plan item 经 phase_id
+	// Topics 是 planner 提交的业务 lane 清单（Parallel Frontier）：plan item 经 phase_id
 	// 归属其一。needs_planning=true && !Simple 时必填；simple/direct_response 任务豁免
 	// （runtime 以 synthetic phase 兜底）。重规划回合经 parse 侧按 id 与既有 phases 合并
 	// （completed/blocked 保留），取消 lane 只能显式提交该 phase 为 blocked。
-	Phases []*PlanPhase `json:"phases,omitempty"`
+	Topics []*AnalysisTopic `json:"phases,omitempty"`
 	// Plan 阶段调查上下文，持久化后传递给后续 Step
 	Summary         string   `json:"summary,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`

@@ -40,7 +40,7 @@ func (a *Agent) emitPlanApplied(ctx context.Context, snapshot builtin_tools.Stat
 	}
 	if a.emitter != nil {
 		a.emitter.EmitStateChange(snapshot)
-		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Phases, explanation)
+		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Topics, explanation)
 	}
 }
 
@@ -54,7 +54,7 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 	if planVersion <= 0 {
 		planVersion = 1
 	}
-	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(snapshot.Plan)+len(snapshot.Phases))
+	records := make([]*builtin_tools.PlannerJournalRecord, 0, len(snapshot.Plan)+len(snapshot.Topics))
 	for _, item := range snapshot.Plan {
 		if item == nil {
 			continue
@@ -66,12 +66,12 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 		})
 	}
 	// phase 行必须排在 kind=plan 行之后（版本提升批次契约：plan 行触发全量 reset）。
-	for _, phase := range snapshot.Phases {
+	for _, phase := range snapshot.Topics {
 		if phase == nil {
 			continue
 		}
 		records = append(records, &builtin_tools.PlannerJournalRecord{
-			Kind:        builtin_tools.PlannerJournalKindPhase,
+			Kind:        builtin_tools.PlannerJournalKindTopic,
 			PlanVersion: planVersion,
 			Phase:       phase,
 		})
@@ -84,9 +84,9 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 	}
 }
 
-// appendPlannerJournalPhaseRecords 把 step_replan 承接后状态变化的 phase 以 kind=phase
+// appendPlannerJournalTopicRecords 把 step_replan 承接后状态变化的 phase 以 kind=phase
 // 增量落 planner.jsonl（同 id 覆盖），使 phase 状态与 plan 真相源同源、崩溃恢复可重建。
-func (a *Agent) appendPlannerJournalPhaseRecords(phases []*builtin_tools.PlanPhase, planVersion int) {
+func (a *Agent) appendPlannerJournalTopicRecords(phases []*builtin_tools.AnalysisTopic, planVersion int) {
 	if a.workspaceRuntime == nil || len(phases) == 0 {
 		return
 	}
@@ -99,7 +99,7 @@ func (a *Agent) appendPlannerJournalPhaseRecords(phases []*builtin_tools.PlanPha
 			continue
 		}
 		records = append(records, &builtin_tools.PlannerJournalRecord{
-			Kind:        builtin_tools.PlannerJournalKindPhase,
+			Kind:        builtin_tools.PlannerJournalKindTopic,
 			PlanVersion: planVersion,
 			Phase:       phase,
 		})
