@@ -145,14 +145,17 @@ func TestPreviewPlannerJournalRealFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := previewPlannerJournalForPrompt(dir, 60)
-	if !isTruncatedForPrompt(got) || !strings.Contains(got, absPath) {
-		t.Errorf("超限真实文件应截断并含路径指针，got 前 80 字符 %q", got[:min(80, len(got))])
+	if !got.Truncated || !strings.Contains(got.Text, absPath) {
+		t.Errorf("超限真实文件应截断并含路径指针，got 前 80 字符 %q", got.Text[:min(80, len(got.Text))])
 	}
-	if full := previewPlannerJournalForPrompt(dir, 0); full != strings.TrimSpace(long) {
+	if got.PointerPath() != absPath {
+		t.Errorf("截断字段 PointerPath 应为真相源 %s，got %q", absPath, got.PointerPath())
+	}
+	if full := previewPlannerJournalForPrompt(dir, 0); full.Text != strings.TrimSpace(long) {
 		t.Errorf("limit=0 应返回全文不截断")
 	}
-	if missing := previewPlannerJournalForPrompt(t.TempDir(), 60); missing != "" {
-		t.Errorf("缺失 journal 应返回空串（gate 语义），got %q", missing)
+	if missing := previewPlannerJournalForPrompt(t.TempDir(), 60); missing.Has() {
+		t.Errorf("缺失 journal 应返回空 PreviewField（gate 语义），got %q", missing.Text)
 	}
 }
 
@@ -176,11 +179,11 @@ func TestTruncateToTokenBudget(t *testing.T) {
 // TestPreviewStepFileForPrompt 验证 step 文件 preview 保持空串 gate 语义：
 // 空内容返回空串（而非「(文件为空)」占位），非空走统一 preview。
 func TestPreviewStepFileForPrompt(t *testing.T) {
-	if got := previewStepFileForPrompt("  \n", "/ws/shared/steps/s1.md", 100); got != "" {
-		t.Errorf("空内容应保持空串 gate，got %q", got)
+	if got := previewStepFileForPrompt("  \n", "/ws/shared/steps/s1.md", 100); got.Has() {
+		t.Errorf("空内容应保持空 gate，got %q", got.Text)
 	}
-	if got := previewStepFileForPrompt("step 结论", "/ws/shared/steps/s1.md", 100); got != "step 结论" {
-		t.Errorf("limit 内应原样返回，got %q", got)
+	if got := previewStepFileForPrompt("step 结论", "/ws/shared/steps/s1.md", 100); got.Text != "step 结论" {
+		t.Errorf("limit 内应原样返回，got %q", got.Text)
 	}
 }
 

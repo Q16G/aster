@@ -286,9 +286,20 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	}
 	// 统一 PromptContext：内存字段与共享区文件字段全部经动态 preview 上限投影（M2 接线）。
 	pc := a.buildPromptContext(snapshot, stepID)
+	// Layer A 聚合封顶：注入主导阶段字段多，Σ 超预算时按判定必需度低→高降级为指针。
+	// 高优（账本正文/plan）最后降级；journal/事实板/step 文件可回读，先降级。
+	a.applyInjectionBudget([]injectionField{
+		{field: &pc.PlannerJournal},
+		{field: &pc.TaskContextBoard},
+		{field: &pc.StepFile},
+		{field: &pc.GoalUnderstanding, spillName: "goal_understanding"},
+		{field: &pc.InputTimeline, spillName: "input_timeline"},
+		{field: &pc.Plan},
+		{field: &pc.OpenItemsLedger},
+	}, promptInjectionBudget(a.usableInputTokens))
 	// 仅在内联 journal 触发截断时注入路径指针——未截断时模型已看到全文，路径行属冗余 token。
 	plannerJournalPath := ""
-	if isTruncatedForPrompt(pc.PlannerJournal) {
+	if pc.PlannerJournal.NeedsPointer() {
 		plannerJournalPath = resolvePlannerJournalPointer(a.workspaceRootDir)
 	}
 	// 当前 step 的 transcript blob 路径属于"最后一卡"的辅助维度，整体指针下沉到 reviewWin 不便表达，
@@ -311,16 +322,16 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
-		"goal_understanding":     pc.GoalUnderstanding,
+		"goal_understanding":     pc.GoalUnderstanding.Text,
 		"active_phases":          activePhases,
-		"input_timeline":         pc.InputTimeline,
+		"input_timeline":         pc.InputTimeline.Text,
 		"review_window":          reviewWin,
-		"plan_overview":          pc.Plan,
+		"plan_overview":          pc.Plan.Text,
 		"planner_journal_path":   plannerJournalPath,
-		"planner_journal":        pc.PlannerJournal,
-		"open_items_ledger":      pc.OpenItemsLedger,
-		"task_context_board":     pc.TaskContextBoard,
-		"step_file_content":      pc.StepFileContent,
+		"planner_journal":        pc.PlannerJournal.Text,
+		"open_items_ledger":      pc.OpenItemsLedger.Text,
+		"task_context_board":     pc.TaskContextBoard.Text,
+		"step_file_content":      pc.StepFile.Text,
 		"step_contexts_path":     stepContextsPath,
 		"step_transcript_path":   stepTranscriptPath,
 		"open_items_path":        openItemsPath,
@@ -1104,35 +1115,31 @@ func readSharedFileOptional(rt WorkspaceRuntime, name string) string {
 	return strings.TrimSpace(string(data))
 }
 
-func readSharedStepFileForPrompt(rt WorkspaceRuntime, stepID string, limitTokens int) string {
+func readSharedStepFileForPrompt(rt WorkspaceRuntime, stepID string, limitTokens int) PreviewField {
 	if rt == nil {
-		return ""
+		return PreviewField{}
 	}
 	l := rt.Layout()
 	if stepFileExists(rt, stepID) {
 		data, err := rt.Store().Read(l.StepFileRel(stepID))
 		if err != nil {
-			return ""
+			return PreviewField{}
 		}
 		return previewStepFileForPrompt(string(data), l.StepFile(stepID), limitTokens)
 	}
 	// 旧布局 shared/<stepID>/step.md fallback（老 session resume）。
 	if !legacyStepFileExists(rt, stepID) {
-		return ""
+		return PreviewField{}
 	}
 	data, err := rt.Store().Read(l.LegacyStepFileRel(stepID))
 	if err != nil {
-		return ""
+		return PreviewField{}
 	}
 	return previewStepFileForPrompt(string(data), l.LegacyStepFile(stepID), limitTokens)
 }
 
-// previewStepFileForPrompt 对 step 文件内容应用统一 preview；空内容保持返回空串
-// （调用方以空串作缺失 gate，不能替换成「(文件为空)」占位）。
-func previewStepFileForPrompt(raw, absPath string, limitTokens int) string {
-	content := strings.TrimSpace(raw)
-	if content == "" {
-		return ""
-	}
-	return previewForPrompt(content, absPath, limitTokens)
+// previewStepFileForPrompt 对 step 文件内容应用统一 preview；空内容返回空 PreviewField
+// （调用方以 Has() 作缺失 gate，不能替换成「(文件为空)」占位）。
+func previewStepFileForPrompt(raw, absPath string, limitTokens int) PreviewField {
+	return previewNonEmptyForPrompt(raw, absPath, limitTokens)
 }

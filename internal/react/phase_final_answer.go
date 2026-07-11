@@ -93,15 +93,23 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	// 持久化载体（resume 按 assessedStatePayload 类型回读 input_timeline/warnings 等），
 	// 故 preview 值只进浅拷贝的 promptPayload，不污染持久化 schema。
 	pc := a.buildPromptContext(snapshot, "")
+	// Layer A 聚合封顶：warnings/意图理解可先降级；账本正文与 plan 是验收必需，最后降级。
+	a.applyInjectionBudget([]injectionField{
+		{field: &pc.Warnings, spillName: "warnings"},
+		{field: &pc.GoalUnderstanding, spillName: "goal_understanding"},
+		{field: &pc.InputTimeline, spillName: "input_timeline"},
+		{field: &pc.Plan},
+		{field: &pc.OpenItemsLedger},
+	}, promptInjectionBudget(a.usableInputTokens))
 	promptPayload := make(map[string]any, len(payload)+2)
 	for k, v := range payload {
 		promptPayload[k] = v
 	}
-	promptPayload["input_timeline"] = pc.InputTimeline
-	promptPayload["goal_understanding"] = pc.GoalUnderstanding
-	promptPayload["plan_items"] = pc.Plan
-	promptPayload["warnings"] = pc.Warnings
-	promptPayload["open_items_ledger"] = pc.OpenItemsLedger
+	promptPayload["input_timeline"] = pc.InputTimeline.Text
+	promptPayload["goal_understanding"] = pc.GoalUnderstanding.Text
+	promptPayload["plan_items"] = pc.Plan.Text
+	promptPayload["warnings"] = pc.Warnings.Text
+	promptPayload["open_items_ledger"] = pc.OpenItemsLedger.Text
 
 	var modelOut FinalAnswerModelOutput
 	rawResponse := ""

@@ -258,19 +258,26 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	// 统一 PromptContext：内存字段与共享区文件字段全部经动态 preview 上限投影（M2 接线）。
 	pc := a.buildPromptContext(snapshot, "")
-	// 恢复回合：判定是否需要注入中断点子 agent 现场（gate 见 buildRecoveryChildContextJSON），
-	// 用后即清标记——含副作用故不在 buildPromptContext 内，单独经 previewMemoryField 投影。
-	pc.RecoveryContext = a.previewMemoryField("recovery_context",
-		a.maybeBuildRecoveryChildContextJSON(snapshot), promptPreviewTokens(a.usableInputTokens))
+	// regenGoal：用户改向（intent=replan）回流时强制重产意图半径——不注入旧 GU，让 planner
+	// 基于当前输入重新生成；其余回流（step_replan 内部重规划、intent=carry）沿用旧 GU。
+	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
+	// TaskContextBoard 仅顶层且有 workspace 时注入（与下方 plannerInput.TaskContextBoard 守卫一致）。
+	injectsTaskBoard := !a.cfg.IsSubAgent && a.workspaceRuntime != nil
+	// Layer A 聚合封顶：只对本回合确实会注入的字段记账，避免高估总量过度降级必需字段。
+	a.applyInjectionBudget(planInjectionBudgetFields(pc, regenGoal, injectsTaskBoard), promptInjectionBudget(a.usableInputTokens))
+	// 恢复回合现场（含 maybeBuildRecoveryChildContextJSON「用后即清」副作用）与 replan 上下文
+	// 均为 plan 阶段瞬态，剥离为显式构建，保 buildPromptContext 纯函数化。
+	recoveryCtx := a.buildRecoveryContext(snapshot)
+	replanCtx := a.buildReplanContext(snapshot)
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		HandoffContext:      strings.TrimSpace(extraText),
 		WorkspaceRootDir:    strings.TrimSpace(a.workspaceRootDir),
 		WorkspaceNamespace:  strings.TrimSpace(a.workspaceNamespace),
-		RecoveryContextJSON: pc.RecoveryContext,
-		InputTimeline:       pc.InputTimeline,
-		TaskItemsJSON:       pc.Plan,
-		PhasesJSON:          pc.Phases,
-		ReplanContextJSON:   pc.ReplanContext,
+		RecoveryContextJSON: recoveryCtx.Text,
+		InputTimeline:       pc.InputTimeline.Text,
+		TaskItemsJSON:       pc.Plan.Text,
+		PhasesJSON:          pc.Phases.Text,
+		ReplanContextJSON:   replanCtx.Text,
 	})
 	if inputStr == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -282,10 +289,6 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 	mcpCtx := a.buildMCPPromptContext()
-
-	// regenGoal：用户改向（intent=replan）回流时强制重产意图半径——不注入旧 GU，
-	// 让 planner 基于当前输入重新生成；其余回流（step_replan 内部重规划、intent=carry）沿用旧 GU。
-	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
 
 	plannerInput := TaskPlannerPromptInput{
 		AgentRole:       strings.TrimSpace(a.cfg.Role),
@@ -314,14 +317,14 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 子 Agent 内 sub_agent 工具本身被运行时关闭，prompt 同步关闭委派条款，避免无意义引导。
 	plannerInput.IsSubAgent = a.cfg.IsSubAgent
 	plannerInput.CanSpawnSubAgent = !a.cfg.IsSubAgent
-	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
+	if injectsTaskBoard {
 		// TaskContextBoard 走 PromptContext 统一 preview：task_context.md 是精简事实板，
 		// 正常不会过大，但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
 		// 骨架预创建已提前到 buildPromptContext 之前（骨架本身视作零内容快照）。
-		plannerInput.TaskContextBoard = pc.TaskContextBoard
+		plannerInput.TaskContextBoard = pc.TaskContextBoard.Text
 	}
 	if !regenGoal {
-		plannerInput.GoalUnderstanding = pc.GoalUnderstanding
+		plannerInput.GoalUnderstanding = pc.GoalUnderstanding.Text
 	}
 	a.applyPlannerOverflowHints(&plannerInput)
 

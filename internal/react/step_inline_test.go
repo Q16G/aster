@@ -500,6 +500,7 @@ func TestCompaction_PeerBucketNoBlob(t *testing.T) {
 	a := &Agent{
 		v2Store:                  store,
 		stepHistory:              []*ai.MsgInfo{ai.NewUserMsgInfo("main-msg")},
+		stepHistoryStepID:        "s1", // step transcript blob 归属某个 step；无 step 归属的转录不落 blob
 		stepHistories:            make(map[string]*stepHistoryBucket),
 		lastStepTranscriptBlobRef: "",
 	}

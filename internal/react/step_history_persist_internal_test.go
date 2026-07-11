@@ -45,6 +45,7 @@ func TestPersistStepTranscriptBlob_WritesBlob(t *testing.T) {
 		t.Fatalf("NewReActAgent: %v", err)
 	}
 	agent.v2Store = store
+	agent.stepHistoryStepID = "s1" // step transcript blob 归属某个 step；无 step 归属的转录不落 blob
 	agent.stepHistory = []*ai.MsgInfo{
 		ai.NewUserMsgInfo("tool output 1"),
 		ai.NewAIMsgInfo("response"),
