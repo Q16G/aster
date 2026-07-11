@@ -492,13 +492,10 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	}
 	// step 过程文件（think_act 按三节契约维护）：存在才填指针；旧布局 fallback 兼容老 session。
 	var stepFile string
-	if a.workspaceRuntime != nil {
-		l := a.wsLayout()
-		if stepFileExists(l, stepID) {
-			stepFile = stepFileRelPath(stepID)
-		} else if legacyStepFileExists(l, stepID) {
-			stepFile = l.LegacyStepFileRel(stepID)
-		}
+	if stepFileExists(a.workspaceRuntime, stepID) {
+		stepFile = stepFileRelPath(stepID)
+	} else if legacyStepFileExists(a.workspaceRuntime, stepID) {
+		stepFile = a.wsLayout().LegacyStepFileRel(stepID)
 	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
 
@@ -1112,7 +1109,7 @@ func readSharedStepFileForPrompt(rt WorkspaceRuntime, stepID string, limitTokens
 		return ""
 	}
 	l := rt.Layout()
-	if stepFileExists(l, stepID) {
+	if stepFileExists(rt, stepID) {
 		data, err := rt.Store().Read(l.StepFileRel(stepID))
 		if err != nil {
 			return ""
@@ -1120,7 +1117,7 @@ func readSharedStepFileForPrompt(rt WorkspaceRuntime, stepID string, limitTokens
 		return previewStepFileForPrompt(string(data), l.StepFile(stepID), limitTokens)
 	}
 	// 旧布局 shared/<stepID>/step.md fallback（老 session resume）。
-	if !legacyStepFileExists(l, stepID) {
+	if !legacyStepFileExists(rt, stepID) {
 		return ""
 	}
 	data, err := rt.Store().Read(l.LegacyStepFileRel(stepID))

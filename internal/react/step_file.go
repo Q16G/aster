@@ -2,7 +2,6 @@ package react
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"aster/internal/workspacefs"
@@ -16,30 +15,33 @@ func stepFileRelPath(stepID string) string {
 	return workspacefs.Layout{}.StepFileRel(stepID)
 }
 
-// statNonEmpty 判定路径存在且非空（size>0）；空路径直接判否。
-func statNonEmpty(path string) bool {
-	if path == "" {
+// legacyStepFileExists 检查旧布局 shared/<stepID>/step.md 存在且非空（size>0，
+// 旧文件价值在内容）；老 session resume 兼容。
+func legacyStepFileExists(rt WorkspaceRuntime, stepID string) bool {
+	if rt == nil {
 		return false
 	}
-	info, err := os.Stat(path)
+	rel := rt.Layout().LegacyStepFileRel(stepID)
+	if rel == "" {
+		return false
+	}
+	info, err := rt.Store().Stat(rel)
 	return err == nil && info.Size() > 0
-}
-
-// legacyStepFileExists 检查旧布局 shared/<stepID>/step.md（老 session resume 兼容）。
-func legacyStepFileExists(l workspacefs.Layout, stepID string) bool {
-	return statNonEmpty(l.LegacyStepFile(stepID))
 }
 
 // stepFileExists 判定新布局过程文件是否存在——只看是否能 Stat，不看大小。
 // 写入工具中途把过程文件短暂写为 0 字节（rewrite / mv 替换 / 写入失败重试）
 // 仍应被认作"存在"，否则 readSharedStepFileForPrompt 会跌回 legacy 路径读到老 session
-// 残留的 shared/<stepID>/step.md。legacyStepFileExists 保留 size>0（旧文件价值在内容）。
-func stepFileExists(l workspacefs.Layout, stepID string) bool {
-	abs := l.StepFile(stepID)
-	if abs == "" {
+// 残留的 shared/<stepID>/step.md。legacyStepFileExists 保留 size>0。
+func stepFileExists(rt WorkspaceRuntime, stepID string) bool {
+	if rt == nil {
 		return false
 	}
-	_, err := os.Stat(abs)
+	rel := rt.Layout().StepFileRel(stepID)
+	if rel == "" {
+		return false
+	}
+	_, err := rt.Store().Stat(rel)
 	return err == nil
 }
 
@@ -124,7 +126,7 @@ func (a *Agent) checkStepFileProgress(stepID string) error {
 	if abs == "" {
 		return nil
 	}
-	data, err := os.ReadFile(abs)
+	data, err := a.workspaceRuntime.Store().Read(l.StepFileRel(stepID))
 	if err != nil {
 		return nil
 	}
@@ -159,11 +161,10 @@ func ensureStepFileScaffold(rt WorkspaceRuntime, stepID, stepTitle string) error
 	if rt == nil {
 		return nil
 	}
-	l := workspacefs.New(rt.RootDir(), rt.Namespace())
-	if l.StepFile(stepID) == "" {
+	if rt.Layout().StepFile(stepID) == "" {
 		return nil
 	}
-	if stepFileExists(l, stepID) {
+	if stepFileExists(rt, stepID) {
 		return nil
 	}
 	return rt.WriteFileRel(stepFileRelPath(stepID), []byte(stepFileScaffold(stepID, stepTitle)))
