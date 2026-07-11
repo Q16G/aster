@@ -135,11 +135,8 @@ func LoadLatestFinalAssessment(writer *artifactWriter, workspaceState *builtin_t
 	})
 
 	for _, seq := range candidates {
-		raw, err := writer.ReadFileRel(writer.finalAssessmentFileRel(seq))
+		raw, err := readFinalArtifactWithLegacy(writer, writer.finalAssessmentFileRel(seq), writer.layout.LegacyFinalAssessmentRel(seq))
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
 			// Non-fatal: resume can still work without final assessment.
 			continue
 		}
@@ -152,12 +149,34 @@ func LoadLatestFinalAssessment(writer *artifactWriter, workspaceState *builtin_t
 	return nil, 0, nil
 }
 
+// readFinalArtifactWithLegacy 先读新布局 rel，缺失时回退旧 artifacts/root/ 布局
+//（legacyRel 为空表示无回退，例如子 namespace）。
+func readFinalArtifactWithLegacy(writer *artifactWriter, rel, legacyRel string) ([]byte, error) {
+	raw, err := writer.ReadFileRel(rel)
+	if err == nil {
+		return raw, nil
+	}
+	if !os.IsNotExist(err) || legacyRel == "" {
+		return nil, err
+	}
+	return writer.ReadFileRel(legacyRel)
+}
+
 func maxFinalSeqInNamespace(writer *artifactWriter) int {
 	if writer == nil {
 		return 0
 	}
-	rel := filepath.ToSlash(filepath.Join(writer.artifactsRootRel(), "final"))
-	absDir := filepath.Join(writer.sessionRoot, filepath.FromSlash(rel))
+	maxSeq := maxFinalSeqInDir(filepath.Join(writer.sessionRoot, filepath.FromSlash(writer.layout.FinalRootRel())))
+	// 旧布局 artifacts/root/final 一并纳入（存量 session resume 序号不回退）。
+	if legacyRel := writer.layout.LegacyFinalRootRel(); legacyRel != "" {
+		if legacyMax := maxFinalSeqInDir(filepath.Join(writer.sessionRoot, filepath.FromSlash(legacyRel))); legacyMax > maxSeq {
+			maxSeq = legacyMax
+		}
+	}
+	return maxSeq
+}
+
+func maxFinalSeqInDir(absDir string) int {
 	entries, err := os.ReadDir(absDir)
 	if err != nil {
 		return 0
@@ -313,7 +332,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if decision.isTerminal {
 			finalText := strings.TrimSpace(decision.model.UserMessage)
 			if writer != nil {
-				if raw, err := writer.ReadFileRel(writer.finalAnswerFileRel(finalSeq)); err == nil {
+				if raw, err := readFinalArtifactWithLegacy(writer, writer.finalAnswerFileRel(finalSeq), writer.layout.LegacyFinalAnswerRel(finalSeq)); err == nil {
 					if text := strings.TrimSpace(string(raw)); text != "" {
 						finalText = text
 					}

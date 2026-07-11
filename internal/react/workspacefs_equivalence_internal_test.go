@@ -71,8 +71,9 @@ func TestLayoutMatchesLegacyHelpers(t *testing.T) {
 	eqPath(t, "aw.sub.final_dir_guard", w.finalDirRel(0), lsub.FinalDirRel(0))
 }
 
-// L09：顶层 namespace 归一的有意差异——旧 artifactWriter（ns="root"）写
-// artifacts/root/…，新 Layout 顶层写 artifacts/…；Legacy 回退恰好指向旧写点。
+// L09：顶层 namespace 归一的有意差异（M2 已实施）——历史上顶层 runtime
+// Namespace()=="root"，旧 artifactWriter 写 artifacts/root/…；M2 起统一归一为
+// artifacts/…，旧写点仅存于 Legacy 只读回退。此差异是设计变更，勿"修复"。
 func TestLayoutIntentionalNamespaceDivergence(t *testing.T) {
 	rt, err := newLocalWorkspaceRuntime("eq-sess", t.TempDir(), "root")
 	if err != nil {
@@ -84,16 +85,21 @@ func TestLayoutIntentionalNamespaceDivergence(t *testing.T) {
 	}
 	ltop := workspacefs.New(rt.RootDir(), "root")
 
-	// 旧侧（不归一）：ns="root" 落 artifacts/root/ 子树
-	if got := w.planCurrentFileRel(); got != "artifacts/root/plan/current.json" {
-		t.Fatalf("旧 planCurrentFileRel = %q（旧语义锚点漂移）", got)
+	// 新语义：顶层（含历史 "root" namespace）写点归一到 artifacts/
+	if got := w.planCurrentFileRel(); got != "artifacts/plan/current.json" {
+		t.Fatalf("planCurrentFileRel = %q，归一语义漂移", got)
 	}
-	// 新侧（归一）：顶层落 artifacts/
-	if got := ltop.PlanCurrentRel(); got != "artifacts/plan/current.json" {
-		t.Fatalf("新 PlanCurrentRel = %q（归一语义漂移）", got)
+	// 旧写点字面锚点只存在于 Legacy 回退（与 M0 testdata/legacy_helper_paths.json 记录一致）
+	if got := ltop.LegacyPlanCurrentRel(); got != "artifacts/root/plan/current.json" {
+		t.Fatalf("LegacyPlanCurrentRel = %q，旧写点锚点漂移", got)
 	}
-	// Legacy 回退 == 旧写点，保证存量 session 读回退可命中
-	eqPath(t, "legacy_plan_current", w.planCurrentFileRel(), ltop.LegacyPlanCurrentRel())
-	eqPath(t, "legacy_plan_history", w.planHistoryFileRel(1), ltop.LegacyPlanHistoryRel(1))
-	eqPath(t, "legacy_final_dir", w.finalDirRel(1), ltop.LegacyFinalDirRel(1))
+	if got := ltop.LegacyPlanHistoryRel(1); got != "artifacts/root/plan/history/1.json" {
+		t.Fatalf("LegacyPlanHistoryRel = %q", got)
+	}
+	if got := ltop.LegacyFinalDirRel(1); got != "artifacts/root/final/1" {
+		t.Fatalf("LegacyFinalDirRel = %q", got)
+	}
+	if got := ltop.LegacyFinalAssessmentRel(1); got != "artifacts/root/final/1/final_assessment.json" {
+		t.Fatalf("LegacyFinalAssessmentRel = %q", got)
+	}
 }

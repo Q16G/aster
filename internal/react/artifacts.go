@@ -10,12 +10,16 @@ import (
 	"time"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 type artifactWriter struct {
 	runtime     builtin_tools.WorkspaceRuntime
 	sessionRoot string
 	namespace   string
+	// layout 是路径唯一来源（namespace 已归一：顶层 = artifacts/）。
+	// 旧 artifacts/root/ 子树经 layout.Legacy* 只读回退兼容存量 session。
+	layout workspacefs.Layout
 }
 
 type artifactWriterOption func(*artifactWriterConfig)
@@ -60,6 +64,7 @@ func newArtifactWriter(runtime builtin_tools.WorkspaceRuntime) (*artifactWriter,
 		runtime:     runtime,
 		sessionRoot: sessionRoot,
 		namespace:   sanitizeArtifactNamespace(runtime.Namespace()),
+		layout:      workspacefs.New(sessionRoot, runtime.Namespace()),
 	}
 	if writer.namespace != "" && (strings.HasPrefix(writer.namespace, "/") || strings.Contains(writer.namespace, "..")) {
 		return nil, fmt.Errorf("invalid workspace namespace: %q", writer.namespace)
@@ -91,44 +96,42 @@ func (w *artifactWriter) artifactsRootRel() string {
 	if w == nil {
 		return ""
 	}
-	if strings.TrimSpace(w.namespace) == "" {
-		return "artifacts"
-	}
-	return filepath.ToSlash(filepath.Join("artifacts", w.namespace))
+	return w.layout.ArtifactsRootRel()
 }
 
 func (w *artifactWriter) planCurrentFileRel() string {
-	return filepath.ToSlash(filepath.Join(w.artifactsRootRel(), "plan", "current.json"))
+	if w == nil {
+		return ""
+	}
+	return w.layout.PlanCurrentRel()
 }
 
 func (w *artifactWriter) planHistoryFileRel(planVersion int) string {
-	if planVersion <= 0 {
-		planVersion = 1
+	if w == nil {
+		return ""
 	}
-	return filepath.ToSlash(filepath.Join(w.artifactsRootRel(), "plan", "history", strconv.Itoa(planVersion)+".json"))
+	return w.layout.PlanHistoryRel(planVersion)
 }
 
 func (w *artifactWriter) finalDirRel(finalSeq int) string {
-	if finalSeq <= 0 {
+	if w == nil {
 		return ""
 	}
-	return filepath.ToSlash(filepath.Join(w.artifactsRootRel(), "final", strconv.Itoa(finalSeq)))
+	return w.layout.FinalDirRel(finalSeq)
 }
 
 func (w *artifactWriter) finalAnswerFileRel(finalSeq int) string {
-	dir := w.finalDirRel(finalSeq)
-	if dir == "" {
+	if w == nil {
 		return ""
 	}
-	return filepath.ToSlash(filepath.Join(dir, "final_answer.md"))
+	return w.layout.FinalAnswerRel(finalSeq)
 }
 
 func (w *artifactWriter) finalAssessmentFileRel(finalSeq int) string {
-	dir := w.finalDirRel(finalSeq)
-	if dir == "" {
+	if w == nil {
 		return ""
 	}
-	return filepath.ToSlash(filepath.Join(dir, "final_assessment.json"))
+	return w.layout.FinalAssessmentRel(finalSeq)
 }
 
 func (w *artifactWriter) LoadWorkspaceState() (*builtin_tools.WorkspaceState, error) {
@@ -158,10 +161,21 @@ func (w *artifactWriter) LoadPlanCurrentCheckpoint() (*planCurrentCheckpoint, er
 	}
 	data, err := w.ReadFileRel(w.planCurrentFileRel())
 	if err != nil {
-		if os.IsNotExist(err) {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		// 新路径缺失时回退旧布局 artifacts/root/…（存量 session resume 兼容，只读）。
+		legacyRel := w.layout.LegacyPlanCurrentRel()
+		if legacyRel == "" {
 			return nil, nil
 		}
-		return nil, err
+		data, err = w.ReadFileRel(legacyRel)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
 	}
 	var checkpoint planCurrentCheckpoint
 	if err := json.Unmarshal(data, &checkpoint); err != nil {
@@ -177,19 +191,20 @@ func (w *artifactWriter) appendWorkspaceReferences(records []*builtin_tools.Work
 	return w.runtime.AppendWorkspaceReferences(records)
 }
 
-func (w *artifactWriter) nextSequenceFromRelDir(relDir string) (int, error) {
+// maxSeqInRelDir 扫描 relDir 下的数字目录名取最大序号；目录不存在返回 0。
+func (w *artifactWriter) maxSeqInRelDir(relDir string) (int, error) {
 	if w == nil {
 		return 0, fmt.Errorf("artifact writer is nil")
 	}
 	relDir = filepath.ToSlash(strings.TrimSpace(relDir))
 	if relDir == "" {
-		return 0, fmt.Errorf("artifact sequence dir is empty")
+		return 0, nil
 	}
 	absDir := filepath.Join(w.sessionRoot, filepath.FromSlash(relDir))
 	entries, err := os.ReadDir(absDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 1, nil
+			return 0, nil
 		}
 		return 0, err
 	}
@@ -204,6 +219,28 @@ func (w *artifactWriter) nextSequenceFromRelDir(relDir string) (int, error) {
 		}
 		if seq > maxSeq {
 			maxSeq = seq
+		}
+	}
+	return maxSeq, nil
+}
+
+// nextFinalSequence 推导下一个 final 序号：新布局与旧 artifacts/root/ 布局两目录取 max
+//（存量 session 在归一切换后继续追加序号，不回退不重号）。
+func (w *artifactWriter) nextFinalSequence() (int, error) {
+	if w == nil {
+		return 0, fmt.Errorf("artifact writer is nil")
+	}
+	maxSeq, err := w.maxSeqInRelDir(w.layout.FinalRootRel())
+	if err != nil {
+		return 0, err
+	}
+	if legacyRel := w.layout.LegacyFinalRootRel(); legacyRel != "" {
+		legacyMax, err := w.maxSeqInRelDir(legacyRel)
+		if err != nil {
+			return 0, err
+		}
+		if legacyMax > maxSeq {
+			maxSeq = legacyMax
 		}
 	}
 	return maxSeq + 1, nil
@@ -360,7 +397,7 @@ func (w *artifactWriter) PersistFinalArtifacts(snapshot builtin_tools.StateSnaps
 	if w == nil {
 		return nil, fmt.Errorf("artifact writer is nil")
 	}
-	finalSeq, err := w.nextSequenceFromRelDir(filepath.ToSlash(filepath.Join(w.artifactsRootRel(), "final")))
+	finalSeq, err := w.nextFinalSequence()
 	if err != nil {
 		return nil, fmt.Errorf("resolve final seq failed: %w", err)
 	}

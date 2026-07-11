@@ -43,3 +43,17 @@ func (l Layout) LegacyFinalDirRel(finalSeq int) string {
 	return fmt.Sprintf("artifacts/root/final/%d", finalSeq)
 }
 func (l Layout) LegacyFinalDir(finalSeq int) string { return l.abs(l.LegacyFinalDirRel(finalSeq)) }
+
+func (l Layout) LegacyFinalAnswerRel(finalSeq int) string {
+	return joinRel(l.LegacyFinalDirRel(finalSeq), "final_answer.md")
+}
+func (l Layout) LegacyFinalAnswer(finalSeq int) string {
+	return l.abs(l.LegacyFinalAnswerRel(finalSeq))
+}
+
+func (l Layout) LegacyFinalAssessmentRel(finalSeq int) string {
+	return joinRel(l.LegacyFinalDirRel(finalSeq), "final_assessment.json")
+}
+func (l Layout) LegacyFinalAssessment(finalSeq int) string {
+	return l.abs(l.LegacyFinalAssessmentRel(finalSeq))
+}
