@@ -982,10 +982,52 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 					"每个 plan item 的 phase_id 必须引用 phases 中的有效条目（或承接既有 completed/blocked phase 的 id）；"+
 					"取消 lane 请显式提交该 phase 为 blocked，不要静默省略", strings.Join(dangling, "；"))
 			}
+			// V4（二层硬边界）：step 依赖限同 topic；跨 topic 先后须走 phases[].depends_on。
+			if err := validateStepDepsSameTopic(result.Plan); err != nil {
+				return nil, err
+			}
 		}
 		result.Phases = merged
 	}
 	return &result, nil
+}
+
+// validateStepDepsSameTopic 强制 v1 二层硬边界：plan[].depends_on 只允许引用同一 topic
+//（phase_id）内的 step；跨 topic 的先后关系必须走 phases[].depends_on。仅在两端 phase_id
+// 均已知且不同时判违例（缺 phase_id / 未知依赖由上游校验处理，本条不重复报）。违例合并为
+// 单条反馈，供 submit_plan 单次 retry 一次性整改。
+func validateStepDepsSameTopic(plan []*builtin_tools.PlanItem) error {
+	topicOf := make(map[string]string, len(plan))
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		topicOf[builtin_tools.CanonicalizePlanIDToken(item.ID)] = canonicalizePlanPhaseRef(item.PhaseID)
+	}
+	var cross []string
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		self := canonicalizePlanPhaseRef(item.PhaseID)
+		if self == "" {
+			continue
+		}
+		for _, dep := range item.DependsOn {
+			depTopic, ok := topicOf[builtin_tools.CanonicalizePlanIDToken(dep)]
+			if !ok || depTopic == "" || depTopic == self {
+				continue
+			}
+			cross = append(cross, fmt.Sprintf("step %q（topic %q）跨 topic 依赖 step %q（topic %q）",
+				strings.TrimSpace(item.ID), self, strings.TrimSpace(dep), depTopic))
+		}
+	}
+	if len(cross) > 0 {
+		return fmt.Errorf("submit_plan: step 依赖必须限于同一 topic：%s。"+
+			"跨 topic 的先后关系请用 phases[].depends_on 表达，不要在 plan[].depends_on 跨 topic 引用",
+			strings.Join(cross, "；"))
+	}
+	return nil
 }
 
 // canonicalizePlanPhaseRef 与 NormalizePlanPhases 的 id 规整同源，供 phase_id 引用对齐。
