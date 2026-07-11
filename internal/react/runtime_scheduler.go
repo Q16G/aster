@@ -1800,41 +1800,28 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		CurrentStepID:      effectiveStepID(runCtx, prevSnapshot),
 	})
 
-	var execCtx context.Context
-	var cancelTimeout context.CancelFunc
-	var toolTimeout time.Duration
-
-	if isAgent {
-		execCtx = callCtx
-		cancelTimeout = func() {}
-	} else {
-		toolTimeout = a.cfg.resolveToolTimeout(argsMap)
-		execCtx, cancelTimeout = context.WithTimeout(callCtx, toolTimeout)
+	// Execute 窗口统一穿工具洋葱链（tool_middleware.go）：超时装配 / Execute /
+	// 超时包装在 base，截断 + 截断日志与耗时为默认中间件。链自身故障（非工具
+	// 业务错误——那类进 res.ErrText 回填）直接上抛。
+	res, chainErr := a.toolExecChain(callCtx, &toolExecCall{
+		CallID:       callID,
+		ToolName:     toolName,
+		Tool:         tool,
+		Args:         argsMap,
+		IsAgent:      isAgent,
+		StackDepth:   stackDepth,
+		Iter:         iter,
+		StepID:       effectiveStepID(runCtx, prevSnapshot),
+		Phase:        prevSnapshot.Phase,
+		PrevSnapshot: prevSnapshot,
+	})
+	if chainErr != nil {
+		return fmt.Errorf("tool exec chain failed for %q: %w", toolName, chainErr)
 	}
-	defer cancelTimeout()
-
-	toolStart := time.Now()
-	out, err := tool.Execute(execCtx, argsMap)
-	toolDuration := time.Since(toolStart)
-	if err != nil && !isAgent && execCtx.Err() == context.DeadlineExceeded {
-		err = fmt.Errorf("tool %q timed out after %s: %w", toolName, toolTimeout, err)
-	}
-	errText := ""
-	if err != nil {
-		errText = err.Error()
-	}
-	var outTruncated, errTruncated bool
-	var outFullPath string
-	out, outTruncated, outFullPath = TruncateToolOutput(toolName, out, a.workspaceRootDir)
-	errText, errTruncated, _ = TruncateToolOutput(toolName+"-error", errText, a.workspaceRootDir)
-	if outTruncated || errTruncated {
-		a.emitRuntimeLog("info", "tool output truncated", prevSnapshot, map[string]any{
-			"event":         "tool_output_truncated",
-			"tool":          toolName,
-			"out_truncated": outTruncated,
-			"err_truncated": errTruncated,
-		})
-	}
+	out := res.Out
+	errText := res.ErrText
+	toolDuration := res.Duration
+	outFullPath := res.OutFullPath
 
 	// 一些前端仅展示 result 字段而忽略 error 字段；为了避免"失败但无输出"，把错误信息也放进展示结果里。
 	displayOut := out
