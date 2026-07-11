@@ -463,6 +463,28 @@ func (t *StateTracker) SetExternalInterrupt(info *builtin_tools.ExternalInterrup
 func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation string, needsPlanning bool) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.applyPlanLocked(plan, explanation, needsPlanning)
+}
+
+// MergeReplanIntoPlan 在持写锁内以【当前活 plan】为 prev 做 per-topic merge 后写回，消灭
+// runPlanPhase 的 planner LLM 窗口内他 topic peer 写入被整盘覆盖的 lost-update（C1）：
+// 读活盘→merge→归一校验→写回同锁完成，中间不给他 topic peer 的 UpdateInlineStep 留窗口。
+// merge 产物在锁内 NormalizePlanItems 校验（联合图去重/悬空/环检测），出错不写状态、返回 err。
+// replaceTopicID=="" 时 mergeReplannedPlan 走整盘替换语义（全局路径已 await、无并发）。
+func (t *StateTracker) MergeReplanIntoPlan(next []*builtin_tools.PlanItem, replaceTopicID, explanation string, needsPlanning bool) (builtin_tools.StateSnapshot, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	merged := mergeReplannedPlan(t.state.Plan, next, replaceTopicID)
+	normalized, err := builtin_tools.NormalizePlanItems(merged, true)
+	if err != nil {
+		return *t.state, err
+	}
+	return t.applyPlanLocked(normalized, explanation, needsPlanning), nil
+}
+
+// applyPlanLocked 是 UpdatePlan / MergeReplanIntoPlan 共用的持锁写回段：原子替换 plan、
+// 重挂 phase、版本自增、重算 current step、fanout diff。调用方须已持 t.mu。
+func (t *StateTracker) applyPlanLocked(plan []*builtin_tools.PlanItem, explanation string, needsPlanning bool) builtin_tools.StateSnapshot {
 	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(plan)
 	t.state.Plan = plan
@@ -474,16 +496,21 @@ func (t *StateTracker) UpdatePlan(plan []*builtin_tools.PlanItem, explanation st
 	t.state.Progress = builtin_tools.PlanProgress(plan)
 	t.state.ReplanContext = nil
 	t.state.ExternalInterrupt = nil
-	t.state.CurrentStepID = strings.TrimSpace(t.state.CurrentStepID)
-	if current := (builtin_tools.StateSnapshot{Plan: plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep(); current != nil {
-		t.state.CurrentStepID = strings.TrimSpace(current.ID)
-	} else {
-		t.state.CurrentStepID = ""
-	}
+	t.recomputeCurrentStepLocked()
 	t.syncGoalToCurrentStepLocked()
 	t.touchLocked()
 	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, explanation))
 	return *t.state
+}
+
+// recomputeCurrentStepLocked 依据当前 plan 与 CurrentStepID 重算：命中则规整化其 id，未命中清空。
+func (t *StateTracker) recomputeCurrentStepLocked() {
+	t.state.CurrentStepID = strings.TrimSpace(t.state.CurrentStepID)
+	if current := (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep(); current != nil {
+		t.state.CurrentStepID = strings.TrimSpace(current.ID)
+	} else {
+		t.state.CurrentStepID = ""
+	}
 }
 
 // SetGoalUnderstanding 记录 planner 对原始输入的结构化理解，供下游 step_replan 锚定原始意图。
@@ -513,8 +540,17 @@ func (t *StateTracker) SetPhases(phases []*builtin_tools.PlanPhase) builtin_tool
 // phase 下游传递）；continue 与未知 phase_id 忽略（合法性由 submit_replan 工具层校验）。
 // 返回状态实际发生变化的 phase 子集（供调用方增量落 journal）。
 func (t *StateTracker) ApplyPhaseAssessments(assessments []*builtin_tools.PhaseAssessment) ([]*builtin_tools.PlanPhase, builtin_tools.StateSnapshot) {
+	return t.ApplyPhaseAssessmentsScoped(assessments, "")
+}
+
+// ApplyPhaseAssessmentsScoped 在 ApplyPhaseAssessments 基础上按 reviewTopicID 收窄 blocked 联动：
+// reviewTopicID=="" 为全局 reducer 路径，走整盘 SkipStepsOfBlockedPhases（含跨 topic 下游传播）；
+// reviewTopicID!="" 为 per-topic 局部 review，只 skip 属该 topic 的 blocked-phase pending，
+// 不做跨 topic 传播（延到全局 reducer 状态定型后统一收敛，M2）。
+func (t *StateTracker) ApplyPhaseAssessmentsScoped(assessments []*builtin_tools.PhaseAssessment, reviewTopicID string) ([]*builtin_tools.PlanPhase, builtin_tools.StateSnapshot) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	reviewTopicID = strings.TrimSpace(reviewTopicID)
 	if len(assessments) == 0 || len(t.state.Phases) == 0 {
 		return nil, *t.state
 	}
@@ -555,7 +591,11 @@ func (t *StateTracker) ApplyPhaseAssessments(assessments []*builtin_tools.PhaseA
 		return nil, *t.state
 	}
 
-	builtin_tools.SkipStepsOfBlockedPhases(t.state.Plan, t.state.Phases)
+	if reviewTopicID == "" {
+		builtin_tools.SkipStepsOfBlockedPhases(t.state.Plan, t.state.Phases)
+	} else {
+		builtin_tools.SkipStepsOfBlockedPhaseInTopic(t.state.Plan, t.state.Phases, reviewTopicID)
+	}
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.touchLocked()
 	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "phase_assessment"))

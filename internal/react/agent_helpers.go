@@ -12,6 +12,17 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 	}
 	// UpdatePlan 内部 diff → observer 自动 emit task_item，旧 emitTaskItemDiffs 调用已删。
 	snapshot := a.state.UpdatePlan(plan, explanation, needsPlanning)
+	a.emitPlanApplied(ctx, snapshot, explanation)
+	return snapshot
+}
+
+// emitPlanApplied 落 plan 写回后的副作用：journal 全量 append + artifact 持久化 + UI emit，
+// 全用返回快照、锁外执行。UpdatePlan（ApplyPlanAndEmit）与 MergeReplanIntoPlan（C1 原子
+// merge）两条写回路径共用，保证 journal / emit 语义完全一致。
+func (a *Agent) emitPlanApplied(ctx context.Context, snapshot builtin_tools.StateSnapshot, explanation string) {
+	if a == nil {
+		return
+	}
 	a.appendPlannerJournalFullPlan(snapshot)
 	if writer, err := newArtifactWriter(a.workspaceRuntime); err == nil {
 		if persistErr := writer.PersistPlanArtifacts(snapshot, a.workspaceSessionID, explanation); persistErr != nil {
@@ -31,7 +42,6 @@ func (a *Agent) ApplyPlanAndEmit(ctx context.Context, plan []*builtin_tools.Plan
 		a.emitter.EmitStateChange(snapshot)
 		a.emitter.EmitTaskPlan(snapshot.Plan, snapshot.Phases, explanation)
 	}
-	return snapshot
 }
 
 // appendPlannerJournalFullPlan 在 plan 提交（首次规划 / 重规划）时把全部条目（含 pending）
