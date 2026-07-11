@@ -116,6 +116,11 @@ type Agent struct {
 	// 由 Execute 写入，调度循环内只读，无并发问题。用于共享区大文件的动态截断阈值计算。
 	contextWindowTokens int
 
+	// usableInputTokens 是本轮可用输入预算（= 窗口 − 输出预留，见 resolveContextBudget）。
+	// 与 contextWindowTokens 同址由 Execute 写入、调度循环内只读。preview 属 input，
+	// prompt 注入块的动态上限 promptPreviewTokens 以它为基准（而非整窗口）。
+	usableInputTokens int
+
 	// consecutiveStepsSinceReplan 是 step_replan 心跳计数器：每跳过一次完整 LLM replan +1，
 	// 真正进入 LLM replan 后归 0。配合 STEP_REPLAN_HEARTBEAT_K 兜底，防止"plan 跑很久无 replan"
 	// 导致的累积漂移。仅在调度 goroutine 上读写，无并发问题。

@@ -283,7 +283,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		openItemsPath = filepath.Join(workspaceSharedDir, openItemsFileName)
 		taskContextPath = filepath.Join(workspaceSharedDir, taskContextFileName)
 	}
-	plannerJournal := readPlannerJournalForPrompt(a.workspaceRootDir, sharedFileLimitBytes(a.contextWindowTokens))
+	plannerJournal := readPlannerJournalForPrompt(a.workspaceRootDir, promptPreviewTokens(a.usableInputTokens))
 	// 仅在内联 journal 触发截断时注入路径指针——未截断时模型已看到全文，路径行属冗余 token。
 	plannerJournalPath := ""
 	if isTruncatedForPrompt(plannerJournal) {
@@ -316,9 +316,9 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"plan_overview":          ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir),
 		"planner_journal_path":   plannerJournalPath,
 		"planner_journal":        plannerJournal,
-		"open_items_ledger":      readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"task_context_board":     readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, taskContextFileName, sharedFileLimitBytes(a.contextWindowTokens)),
-		"step_file_content":      readSharedStepFileForPrompt(workspaceSharedDir, stepID),
+		"open_items_ledger":      readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, openItemsFileName, promptPreviewTokens(a.usableInputTokens)),
+		"task_context_board":     readSharedFileForPromptWithLimit(a.workspaceRuntime, workspaceSharedDir, taskContextFileName, promptPreviewTokens(a.usableInputTokens)),
+		"step_file_content":      readSharedStepFileForPrompt(workspaceSharedDir, stepID, promptPreviewTokens(a.usableInputTokens)),
 		"step_contexts_path":     stepContextsPath,
 		"step_transcript_path":   stepTranscriptPath,
 		"open_items_path":        openItemsPath,
@@ -1057,24 +1057,20 @@ func (a *Agent) absolutizeCoverageRel(rel string) string {
 	return filepath.Join(a.workspaceRootDir, rel)
 }
 
-// sharedFileLimitBytes 根据 contextWindowTokens 计算共享区大文件的注入字节上限：
-//
-//	有效上限 = min(20KB, contextWindow * 0.40 * charsPerToken)
-//
-// contextWindowTokens <= 0 时用默认上限 defaultContextWindowTokens。
-func sharedFileLimitBytes(contextWindowTokens int) int {
-	const hardLimitBytes = 20 * 1024           // 20 KB
-	const dynamicRatio = 0.40                  // 40% 上下文
-	const bytesPerToken = defaultCharsPerToken // 4 bytes/token（保守估算）
-	cw := contextWindowTokens
-	if cw <= 0 {
-		cw = defaultContextWindowTokens
+// promptPreviewRatio 单个 prompt 注入块的 preview 上限占「可用输入预算」的比例。
+// 纯百分比、无 floor/ceil：大窗口下账本类字段 preview 自然更大、缓解截断；小窗口下
+// 自动收窄，使 parts 从源头有界（这本身即溢出兜底）。取 2% 的定标见 docs 决策 ④。
+const promptPreviewRatio = 0.02
+
+// promptPreviewTokens 返回单个注入块的 preview token 上限 = usableInputTokens × ratio。
+// 基准用 usableInputTokens（= 窗口 − 输出预留）而非整窗口——preview 属 input。
+// usableInputTokens <= 0 时退回 defaultContextWindowTokens 兜底。
+func promptPreviewTokens(usableInputTokens int) int {
+	uit := usableInputTokens
+	if uit <= 0 {
+		uit = defaultContextWindowTokens
 	}
-	dynamic := int(float64(cw) * dynamicRatio * bytesPerToken)
-	if dynamic < hardLimitBytes {
-		return dynamic
-	}
-	return hardLimitBytes
+	return int(float64(uit) * promptPreviewRatio)
 }
 
 // readSharedFileForPrompt 读取共享区文件全文用于注入；缺失时返回占位说明（不报错）。
@@ -1086,15 +1082,15 @@ func readSharedFileForPrompt(runtime builtin_tools.WorkspaceRuntime, sharedDir, 
 	return readSharedFileForPromptWithLimit(runtime, sharedDir, name, 0)
 }
 
-// readSharedFileForPromptWithLimit 与 readSharedFileForPrompt 相同，但超过 limitBytes 时在
+// readSharedFileForPromptWithLimit 与 readSharedFileForPrompt 相同，但超过 limitTokens 时在
 // 尾部追加截断提示（含绝对文件路径），让模型自主决策是否用文件工具读取完整内容。
-// limitBytes <= 0 时不截断（同 readSharedFileForPrompt）。
+// limitTokens <= 0 时不截断（同 readSharedFileForPrompt）。
 //
 // runtime != nil 时通过 runtime.ReadFileRel("shared/"+name) 读取——这样共享 ledger
 // 文件（task_context.md / open_items.md）经过 sharedFileLocks 的 RLock 保护，
 // 与 inline_step 并发 WriteFile 路径串行化。runtime == nil 时退化为直接 os.ReadFile
 // （保留兼容路径，供未来非 runtime 上下文调用）。
-func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string, limitBytes int) string {
+func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string, limitTokens int) string {
 	if sharedDir == "" {
 		return "(共享区不可用)"
 	}
@@ -1104,73 +1100,93 @@ func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sh
 		if err != nil {
 			return "(文件尚不存在)"
 		}
-		return truncateForPrompt(string(data), absPath, limitBytes)
+		return previewForPrompt(string(data), absPath, limitTokens)
 	}
-	return readFileForPromptWithLimit(absPath, limitBytes)
+	return readFileForPromptWithLimit(absPath, limitTokens)
 }
 
-// truncateForPrompt 应用 readFileForPromptWithLimit 同款截断/占位策略到已读出的内容。
-// 抽出独立函数以便共享给 runtime-routed 读取路径（其 IO 已由 runtime.ReadFileRel 完成）。
-func truncateForPrompt(raw string, absPath string, limitBytes int) string {
+// promptTruncatedMarker 是 preview 截断/外置标记串前缀；isTruncatedForPrompt 据此判定。
+const promptTruncatedMarker = "（内容超长"
+
+// previewForPrompt 是统一的 prompt 注入块 preview helper：content 的 token 数 ≤ limitTokens
+// 时返回原文；超限时在 token/UTF-8 边界截断并追加指针文案（工具名用 builtin 实名 read_file）。
+// limitTokens <= 0 不截断。limit 小到放不下正文时全指针化（指针文案是不可压缩的固定开销）。
+// 截断维度按 token（复用 countTokens）而非字节，消除中文「字节≠token」偏差。
+func previewForPrompt(raw string, absPath string, limitTokens int) string {
 	content := strings.TrimSpace(raw)
 	if content == "" {
 		return "(文件为空)"
 	}
-	if limitBytes > 0 && len(content) > limitBytes {
-		cutByte := limitBytes
-		if i := strings.LastIndexByte(content[:limitBytes], '\n'); i >= limitBytes/2 {
-			cutByte = i
-		}
+	if limitTokens <= 0 || countTokens(content) <= limitTokens {
+		return content
+	}
+	truncated := truncateToTokenBudget(content, limitTokens)
+	if strings.TrimSpace(truncated) == "" {
+		return pointerOnlyForPrompt(absPath)
+	}
+	return truncated + "\n\n" + promptTruncatedMarker + "，仅显示前 " +
+		fmt.Sprintf("%d", countTokens(truncated)) + " tokens；完整内容见文件：" +
+		absPath + "，维护/验收前请先用 read_file 读取全量。）"
+}
+
+// pointerOnlyForPrompt 生成纯指针文案（limit 放不下任何正文时用）。
+func pointerOnlyForPrompt(absPath string) string {
+	return promptTruncatedMarker + "，完整内容见文件：" + absPath + "，请用 read_file 读取全量。）"
+}
+
+// truncateToTokenBudget 把 content 截到 token 数 ≤ limitTokens，尽量落在换行/UTF-8 边界。
+// 先按「字节 × limit/total」比例估初始截点，再按 token 实测收缩兜底（tokenizer 非线性）。
+func truncateToTokenBudget(content string, limitTokens int) string {
+	total := countTokens(content)
+	if total <= limitTokens {
+		return content
+	}
+	cutByte := len(content) * limitTokens / total
+	if cutByte >= len(content) {
+		cutByte = len(content) - 1
+	}
+	if cutByte < 1 {
+		return ""
+	}
+	// 尽量在换行边界截断（搜索范围 [cutByte/2, cutByte)，防截点太靠前损失过多）。
+	if i := strings.LastIndexByte(content[:cutByte], '\n'); i >= cutByte/2 {
+		cutByte = i
+	}
+	// 落到 UTF-8 字符边界。
+	for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
+		cutByte--
+	}
+	// token 实测收缩兜底：估算偏高时按 10% 逐步缩，直到达标。
+	for cutByte > 0 && countTokens(content[:cutByte]) > limitTokens {
+		cutByte = cutByte * 9 / 10
 		for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
 			cutByte--
 		}
-		truncated := content[:cutByte]
-		return truncated + "\n\n（[截断] 仅显示前 " +
-			formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
 	}
-	return content
+	return content[:cutByte]
 }
 
-// readFileForPromptWithLimit 是 readSharedFileForPromptWithLimit 的核心实现，接受绝对路径，
-// 供非共享区文件（例如 workspace/planner.jsonl）复用同一套读取+截断+占位策略。
-func readFileForPromptWithLimit(absPath string, limitBytes int) string {
+// readFileForPromptWithLimit 是接受绝对路径的读取入口，供非共享区文件（例如
+// workspace/planner.jsonl）复用同一套读取 + preview + 占位策略。
+func readFileForPromptWithLimit(absPath string, limitTokens int) string {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return "(文件尚不存在)"
 	}
-	content := strings.TrimSpace(string(data))
-	if content == "" {
-		return "(文件为空)"
-	}
-	if limitBytes > 0 && len(content) > limitBytes {
-		// 先找换行符：尽量在完整记录边界截断。
-		// 搜索范围限制在 [limitBytes/2, limitBytes)，防止截点太靠前导致内容损失过多。
-		cutByte := limitBytes
-		if i := strings.LastIndexByte(content[:limitBytes], '\n'); i >= limitBytes/2 {
-			cutByte = i
-		}
-		// 确保截断点落在 UTF-8 字符边界（从 cutByte 向前找合法起始字节）。
-		for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
-			cutByte--
-		}
-		truncated := content[:cutByte]
-		return truncated + "\n\n（[截断] 仅显示前 " +
-			formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
-	}
-	return content
+	return previewForPrompt(string(data), absPath, limitTokens)
 }
 
-// isTruncatedForPrompt 判定 readFileForPromptWithLimit 产出的文本是否被超限截断。
-// 截断尾部含固定标记串「（[截断]」（见 readFileForPromptWithLimit 实现），未截断或
-// 文件不存在的占位说明（如「(文件尚不存在)」/「(文件为空)」）一律返回 false。
+// isTruncatedForPrompt 判定 previewForPrompt 产出的文本是否被超限截断/外置。
+// 截断尾部含固定标记串 promptTruncatedMarker；未截断或文件不存在的占位说明
+// （如「(文件尚不存在)」/「(文件为空)」）一律返回 false。
 func isTruncatedForPrompt(content string) bool {
-	return strings.Contains(content, "（[截断]")
+	return strings.Contains(content, promptTruncatedMarker)
 }
 
 // readPlannerJournalForPrompt 读取 workspace/planner.jsonl 全文用于注入。
-// 与 readSharedFileForPromptWithLimit 共用截断与占位策略；workspaceRootDir 空或
+// 与 readSharedFileForPromptWithLimit 共用 preview 与占位策略；workspaceRootDir 空或
 // planner.jsonl 不存在时返回占位提示，让模型识别状态。
-func readPlannerJournalForPrompt(workspaceRootDir string, limitBytes int) string {
+func readPlannerJournalForPrompt(workspaceRootDir string, limitTokens int) string {
 	root := strings.TrimSpace(workspaceRootDir)
 	if root == "" {
 		return "(workspace 不可用)"
@@ -1179,18 +1195,7 @@ func readPlannerJournalForPrompt(workspaceRootDir string, limitBytes int) string
 	if absPath == "" {
 		return "(workspace 不可用)"
 	}
-	return readFileForPromptWithLimit(absPath, limitBytes)
-}
-
-// formatBytes 把字节数格式化为人类可读字符串（仅用于截断提示）。
-func formatBytes(n int) string {
-	if n >= 1024*1024 {
-		return fmt.Sprintf("%.1f MB", float64(n)/1024/1024)
-	}
-	if n >= 1024 {
-		return fmt.Sprintf("%.1f KB", float64(n)/1024)
-	}
-	return fmt.Sprintf("%d B", n)
+	return readFileForPromptWithLimit(absPath, limitTokens)
 }
 
 // taskContextSkeleton 是 planner 冷启时 task_context.md 的初始骨架——仅含两节空标题
@@ -1251,21 +1256,32 @@ func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, sharedDir, n
 	return strings.TrimSpace(string(data))
 }
 
-func readSharedStepFileForPrompt(sharedDir, stepID string) string {
+func readSharedStepFileForPrompt(sharedDir, stepID string, limitTokens int) string {
 	if stepFileExists(sharedDir, stepID) {
 		data, err := os.ReadFile(stepFileAbs(sharedDir, stepID))
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSpace(string(data))
+		return previewStepFileForPrompt(string(data), stepFileAbs(sharedDir, stepID), limitTokens)
 	}
 	// 旧布局 shared/<stepID>/step.md fallback（老 session resume）。
 	if !legacyStepFileExists(sharedDir, stepID) {
 		return ""
 	}
-	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "step.md"))
+	legacyPath := filepath.Join(sharedDir, stepID, "step.md")
+	data, err := os.ReadFile(legacyPath)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(data))
+	return previewStepFileForPrompt(string(data), legacyPath, limitTokens)
+}
+
+// previewStepFileForPrompt 对 step 文件内容应用统一 preview；空内容保持返回空串
+// （调用方以空串作缺失 gate，不能替换成「(文件为空)」占位）。
+func previewStepFileForPrompt(raw, absPath string, limitTokens int) string {
+	content := strings.TrimSpace(raw)
+	if content == "" {
+		return ""
+	}
+	return previewForPrompt(content, absPath, limitTokens)
 }
