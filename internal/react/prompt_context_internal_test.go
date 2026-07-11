@@ -61,13 +61,13 @@ func TestBuildPromptContextFieldsWithinLimit(t *testing.T) {
 
 	pc := a.buildPromptContext(snapshot, "")
 	fields := map[string]string{
-		"InputTimeline":     pc.InputTimeline,
-		"GoalUnderstanding": pc.GoalUnderstanding,
-		"Plan":              pc.Plan,
-		"StepOutcomes":      pc.StepOutcomes,
-		"Warnings":          pc.Warnings,
-		"TaskContextBoard":  pc.TaskContextBoard,
-		"OpenItemsLedger":   pc.OpenItemsLedger,
+		"InputTimeline":     pc.InputTimeline.Text,
+		"GoalUnderstanding": pc.GoalUnderstanding.Text,
+		"Plan":              pc.Plan.Text,
+		"StepOutcomes":      pc.StepOutcomes.Text,
+		"Warnings":          pc.Warnings.Text,
+		"TaskContextBoard":  pc.TaskContextBoard.Text,
+		"OpenItemsLedger":   pc.OpenItemsLedger.Text,
 	}
 	for name, v := range fields {
 		if v == "" {
@@ -106,7 +106,7 @@ func TestBuildPromptContextPointerTargets(t *testing.T) {
 
 	// 文件字段指针 → 原文件绝对路径，且不产生 spill 文件。
 	boardPath := filepath.Join(dir, "shared", taskContextFileName)
-	if !strings.Contains(pc.TaskContextBoard, boardPath) {
+	if !strings.Contains(pc.TaskContextBoard.Text, boardPath) {
 		t.Errorf("TaskContextBoard 指针应指原文件 %s", boardPath)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "shared", promptContextDirName, "task_context.md")); err == nil {
@@ -114,10 +114,10 @@ func TestBuildPromptContextPointerTargets(t *testing.T) {
 	}
 
 	// Plan / StepOutcomes 指针 → 既有真相源。
-	if p := workspacefs.New(dir, "").PlannerJournal(); !strings.Contains(pc.Plan, p) {
-		t.Errorf("Plan 指针应指 %s，got 尾部 %q", p, tail(pc.Plan, 120))
+	if p := workspacefs.New(dir, "").PlannerJournal(); !strings.Contains(pc.Plan.Text, p) {
+		t.Errorf("Plan 指针应指 %s，got 尾部 %q", p, tail(pc.Plan.Text, 120))
 	}
-	if p := workspacefs.New(dir, "").StepContexts(); !strings.Contains(pc.StepOutcomes, p) {
+	if p := workspacefs.New(dir, "").StepContexts(); !strings.Contains(pc.StepOutcomes.Text, p) {
 		t.Errorf("StepOutcomes 指针应指 %s", p)
 	}
 
@@ -130,7 +130,7 @@ func TestBuildPromptContextPointerTargets(t *testing.T) {
 	if string(data) != formatInputTimelineLines(timeline) {
 		t.Errorf("spill 内容应为全量无损原文")
 	}
-	if !strings.Contains(pc.InputTimeline, spillPath) {
+	if !strings.Contains(pc.InputTimeline.Text, spillPath) {
 		t.Errorf("InputTimeline 指针应指 spill 文件 %s", spillPath)
 	}
 }
@@ -141,23 +141,25 @@ func TestBuildPromptContextEmptyGates(t *testing.T) {
 	a, _ := newPromptContextTestAgent(t, 5000)
 	pc := a.buildPromptContext(builtin_tools.StateSnapshot{}, "")
 	fields := map[string]string{
-		"InputTimeline":     pc.InputTimeline,
-		"GoalUnderstanding": pc.GoalUnderstanding,
-		"Plan":              pc.Plan,
-		"Phases":            pc.Phases,
-		"StepOutcomes":      pc.StepOutcomes,
-		"Warnings":          pc.Warnings,
-		"ReplanContext":     pc.ReplanContext,
-		"RecoveryContext":   pc.RecoveryContext,
-		"TaskContextBoard":  pc.TaskContextBoard,
-		"OpenItemsLedger":   pc.OpenItemsLedger,
-		"PlannerJournal":    pc.PlannerJournal,
-		"StepFileContent":   pc.StepFileContent,
+		"InputTimeline":     pc.InputTimeline.Text,
+		"GoalUnderstanding": pc.GoalUnderstanding.Text,
+		"Plan":              pc.Plan.Text,
+		"Phases":            pc.Phases.Text,
+		"StepOutcomes":      pc.StepOutcomes.Text,
+		"Warnings":          pc.Warnings.Text,
+		"TaskContextBoard":  pc.TaskContextBoard.Text,
+		"OpenItemsLedger":   pc.OpenItemsLedger.Text,
+		"PlannerJournal":    pc.PlannerJournal.Text,
+		"StepFile":          pc.StepFile.Text,
 	}
 	for name, v := range fields {
 		if v != "" {
 			t.Errorf("%s 缺失来源应为空串，got %q", name, tail(v, 60))
 		}
+	}
+	// 瞬态字段已剥离出 PromptContext，经显式构建；空 snapshot 下同样为空 gate。
+	if got := a.buildReplanContext(builtin_tools.StateSnapshot{}); got.Has() {
+		t.Errorf("buildReplanContext 空 snapshot 应为空，got %q", tail(got.Text, 60))
 	}
 }
 
@@ -166,7 +168,7 @@ func TestPreviewMemoryFieldSpillFallback(t *testing.T) {
 	a := &Agent{usableInputTokens: 3000} // 无 workspaceRuntime → spill 必然失败
 	long := strings.Repeat("超长内容行需要截断处理\n", 200)
 	got := a.previewMemoryField("warnings", long, 10)
-	if got != strings.TrimSpace(long) {
+	if got.Text != strings.TrimSpace(long) {
 		t.Errorf("spill 失败应注全文兜底（不截断不给指针）")
 	}
 }
@@ -175,8 +177,8 @@ func TestPreviewMemoryFieldSpillFallback(t *testing.T) {
 func TestPreviewMemoryFieldWithinLimit(t *testing.T) {
 	a, dir := newPromptContextTestAgent(t, 5000)
 	got := a.previewMemoryField("warnings", "短告警内容", 100)
-	if got != "短告警内容" {
-		t.Errorf("limit 内应原样返回，got %q", got)
+	if got.Text != "短告警内容" {
+		t.Errorf("limit 内应原样返回，got %q", got.Text)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "shared", promptContextDirName, "warnings.md")); err == nil {
 		t.Errorf("limit 内不应落 spill 文件")

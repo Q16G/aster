@@ -417,6 +417,12 @@ func (a *Agent) persistStepTranscriptBlob() {
 	if a == nil || a.v2Store == nil || len(a.stepHistory) == 0 {
 		return
 	}
+	// step transcript blob 语义上归属某个 think_act step；plan/step_replan/final_answer
+	// 无 step 归属（stepHistoryStepID 空），其工具循环转录只在内存做 B1/B2 压缩，不落 blob
+	// 碎片——评估证据的真相源是被读的 result_file/timeline 本身（已有指针）。
+	if strings.TrimSpace(a.stepHistoryStepID) == "" {
+		return
+	}
 	// If step history was compacted mid-step, we keep the first full transcript snapshot
 	// for step_replan/backtracking. Do not overwrite it with a later compacted view.
 	if strings.TrimSpace(a.lastStepTranscriptBlobRef) != "" {

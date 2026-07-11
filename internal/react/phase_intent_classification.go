@@ -32,11 +32,13 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	// 高频阶段（每次用户新输入都跑）注入块经统一动态 preview 上限投影（方案审查#4）：
 	// RECENT_OUTCOMES / PENDING_STEPS 指针指既有真相源（step_contexts.jsonl / planner.jsonl）
 	// 不 spill；INPUT_TIMELINE 无单义真相源，超限 spill 到 shared/prompt_context/。
+	// 有意不接 Layer A 聚合封顶：intent 仅注入 3 个 preview 字段（各 ≤2%，Σ≤6%），
+	// 远低于 20% 注入预算，封顶恒不触发，接入无收益。
 	previewLimit := promptPreviewTokens(a.usableInputTokens)
-	input.RecentOutcomes = previewNonEmptyForPrompt(input.RecentOutcomes, a.resolveStepContextsPath(), previewLimit)
+	input.RecentOutcomes = previewNonEmptyForPrompt(input.RecentOutcomes, a.resolveStepContextsPath(), previewLimit).Text
 	input.PendingSteps = previewNonEmptyForPrompt(input.PendingSteps,
-		a.wsLayout().PlannerJournal(), previewLimit)
-	input.InputTimeline = a.previewMemoryField("input_timeline", input.InputTimeline, previewLimit)
+		a.wsLayout().PlannerJournal(), previewLimit).Text
+	input.InputTimeline = a.previewMemoryField("input_timeline", input.InputTimeline, previewLimit).Text
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		a.emitRuntimeLog("warn", "build intent classification prompt failed, fallback to carry", snapshot, map[string]any{
