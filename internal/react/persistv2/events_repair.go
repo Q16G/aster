@@ -1,3 +1,9 @@
+// Package persistv2 的尾损修复路径是 M7（IO 收口到 workspacefs.Store）的唯一 os 直连豁免：
+// 修复需要把 events.jsonl 截断（os.Truncate）到最后一个完好行边界，而 Store 无 Truncate
+// 原语——接口按调用点证据推导时，截断只此一处，属文件系统专属的崩溃恢复机械，
+// 不值得为其扩接口面。本文件对 events.jsonl 的 Stat/Open/Truncate/fsyncDir 保持 os 直连
+// （abs 路径与 Store 同源自 Layout，不破坏路径收口）；scripts/check_workspace_io.sh
+// 的 persistv2 白名单据此收窄为仅本文件。
 package persistv2
 
 import (
@@ -9,6 +15,17 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+// fsyncDir 落盘目录项（截断后 best-effort 持久化）。唯一调用方是本文件的修复路径，
+// 随 M7 从 atomic_write.go 收编至此（writeFileAtomic 已由 Store.WriteAtomic 取代并删除）。
+func fsyncDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
+}
 
 // repairEventsTailLocked ensures events.jsonl contains only valid JSON objects per line.
 //
