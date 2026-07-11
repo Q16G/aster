@@ -139,6 +139,13 @@ type Agent struct {
 	// 仅在调度 goroutine 上读写，无并发问题。
 	lastReplanBoundaryStepID string
 
+	// lastReplanBoundaryByTopic 是 per-topic review 边界（topicID→上次 review 该 topic 时的右边界
+	// stepID）。第四阶段把全局单边界升级为每 topic 边界：每个 topic 到局部静默点触发的收窄 review
+	// 只复核该 topic 自其边界以来的 step。同 lastReplanBoundaryStepID 为运行时态、不持久，resume 后
+	// 重建（空/缺 → 首次含该 topic 全部历史 completed/failed，偏保守可接受）。仅调度 goroutine 读写。
+	// Inc2：与全局边界并存、仅落字段 + review 窗口按 topic 过滤能力；接线在 Inc3/Inc4。
+	lastReplanBoundaryByTopic map[string]string
+
 	// journaledStepIDs 记录已固化（烘焙 + 写 planner.jsonl 的 kind=step 记录）的 step，
 	// 按 step_id 单维去重（不带 plan_version——每个 step 的 kind=step 记录只在它完成那刻落盘
 	// 一次、归属完成时的 plan_version；重规划把已完成 step 并入新 plan 时不应在新版本下重复落盘）。

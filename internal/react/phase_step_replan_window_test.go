@@ -36,7 +36,7 @@ func TestBuildReviewWindow_BoundaryEmpty(t *testing.T) {
 			makeOutcome("s2", "done-2", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", nil)
+	win := a.buildReviewWindow(snapshot, "", "", nil)
 	if win == nil {
 		t.Fatalf("expected non-nil window")
 	}
@@ -54,6 +54,46 @@ func TestBuildReviewWindow_BoundaryEmpty(t *testing.T) {
 	}
 	if win.OmittedCount != 0 {
 		t.Fatalf("expected OmittedCount=0, got %d", win.OmittedCount)
+	}
+}
+
+// TestBuildReviewWindow_TopicFilter（Inc2）：topicFilter 非空时只收该 topic 的 step 卡；
+// 空时收全部（现有全局行为）；与边界协同——边界后 + 同 topic 才入窗。
+func TestBuildReviewWindow_TopicFilter(t *testing.T) {
+	a := &Agent{}
+	snapshot := builtin_tools.StateSnapshot{
+		Plan: []*builtin_tools.PlanItem{
+			{ID: "a1", PhaseID: "topic-a", Step: "a1", Status: builtin_tools.PlanStepCompleted},
+			{ID: "b1", PhaseID: "topic-b", Step: "b1", Status: builtin_tools.PlanStepCompleted},
+			{ID: "a2", PhaseID: "topic-a", Step: "a2", Status: builtin_tools.PlanStepCompleted},
+		},
+		StepOutcomes: []*builtin_tools.StepOutcome{
+			makeOutcome("a1", "done-a1", builtin_tools.StepOutcomeCompleted),
+			makeOutcome("b1", "done-b1", builtin_tools.StepOutcomeCompleted),
+			makeOutcome("a2", "done-a2", builtin_tools.StepOutcomeCompleted),
+		},
+	}
+	// 收窄 topic-a：只含 a1、a2（保持 plan 顺序）。
+	win := a.buildReviewWindow(snapshot, "", "topic-a", nil)
+	if got := len(win.Cards); got != 2 || win.Cards[0].ID != "a1" || win.Cards[1].ID != "a2" {
+		ids := make([]string, len(win.Cards))
+		for i, c := range win.Cards {
+			ids[i] = c.ID
+		}
+		t.Fatalf("topic-a 应只含 a1,a2，got %v", ids)
+	}
+	// 空 filter：含全部 3 卡。
+	if got := len(a.buildReviewWindow(snapshot, "", "", nil).Cards); got != 3 {
+		t.Fatalf("空 filter 应含 3 卡，got %d", got)
+	}
+	// 边界=a1 + topic-a：a1 及之前不再重审，只含 a2。
+	winB := a.buildReviewWindow(snapshot, "a1", "topic-a", nil)
+	if got := len(winB.Cards); got != 1 || winB.Cards[0].ID != "a2" {
+		ids := make([]string, len(winB.Cards))
+		for i, c := range winB.Cards {
+			ids[i] = c.ID
+		}
+		t.Fatalf("边界=a1 + topic-a 应只含 a2，got %v", ids)
 	}
 }
 
@@ -76,7 +116,7 @@ func TestBuildReviewWindow_BoundaryAdvanced(t *testing.T) {
 			makeOutcome("s5", "done-5", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "s2", nil)
+	win := a.buildReviewWindow(snapshot, "s2", "", nil)
 	if got := len(win.Cards); got != 3 {
 		t.Fatalf("expected 3 cards (s3,s4,s5), got %d", got)
 	}
@@ -103,7 +143,7 @@ func TestBuildReviewWindow_PendingExcluded(t *testing.T) {
 			makeOutcome("s1", "done-1", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", nil)
+	win := a.buildReviewWindow(snapshot, "", "", nil)
 	if got := len(win.Cards); got != 1 {
 		t.Fatalf("expected 1 card (only s1 completed), got %d", got)
 	}
@@ -125,7 +165,7 @@ func TestBuildReviewWindow_FailedIncluded(t *testing.T) {
 			makeOutcome("s2", "boom", builtin_tools.StepOutcomeFailed),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", nil)
+	win := a.buildReviewWindow(snapshot, "", "", nil)
 	if got := len(win.Cards); got != 2 {
 		t.Fatalf("expected 2 cards (s1 completed, s2 failed), got %d", got)
 	}
@@ -151,7 +191,7 @@ func TestBuildReviewWindow_PerBatchCeilingTruncation(t *testing.T) {
 		outcomes = append(outcomes, makeOutcome(id, "done-"+id, builtin_tools.StepOutcomeCompleted))
 	}
 	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
-	win := a.buildReviewWindow(snapshot, "", nil)
+	win := a.buildReviewWindow(snapshot, "", "", nil)
 	if got := len(win.Cards); got != reviewWindowMaxCardsBatchCeiling {
 		t.Fatalf("expected %d cards after ceiling truncation, got %d", reviewWindowMaxCardsBatchCeiling, got)
 	}
@@ -186,7 +226,7 @@ func TestBuildReviewWindow_PerBatchCoversWholeBatch(t *testing.T) {
 		outcomes = append(outcomes, makeOutcome(id, "done-"+id, builtin_tools.StepOutcomeCompleted))
 	}
 	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
-	win := a.buildReviewWindow(snapshot, "", nil)
+	win := a.buildReviewWindow(snapshot, "", "", nil)
 	if got := len(win.Cards); got != batch {
 		t.Fatalf("expected whole batch %d cards (no truncation), got %d", batch, got)
 	}
@@ -211,7 +251,7 @@ func TestBuildReviewWindow_BoundaryStaleFallsBackToFull(t *testing.T) {
 			makeOutcome("s2", "done-2", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "stale-id-not-in-plan", nil)
+	win := a.buildReviewWindow(snapshot, "stale-id-not-in-plan", "", nil)
 	if got := len(win.Cards); got != 2 {
 		t.Fatalf("expected 2 cards (fallback to full when boundary not found), got %d", got)
 	}
@@ -277,7 +317,7 @@ func TestBuildReviewWindow_HistoricalCardReusesCoverageFile(t *testing.T) {
 		},
 	}
 
-	win := a.buildReviewWindow(snapshot, "", runtime)
+	win := a.buildReviewWindow(snapshot, "", "", runtime)
 	if len(win.Cards) != 2 {
 		t.Fatalf("expected 2 cards, got %d", len(win.Cards))
 	}
@@ -343,7 +383,7 @@ func TestBuildReviewWindow_HistoricalCardWritesIfMissing(t *testing.T) {
 		},
 	}
 
-	win := a.buildReviewWindow(snapshot, "", runtime)
+	win := a.buildReviewWindow(snapshot, "", "", runtime)
 	if len(win.Cards) != 2 {
 		t.Fatalf("expected 2 cards, got %d", len(win.Cards))
 	}
@@ -380,7 +420,7 @@ func TestBuildReviewWindow_InlineCoverageNoPath(t *testing.T) {
 			},
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", runtime)
+	win := a.buildReviewWindow(snapshot, "", "", runtime)
 	if len(win.Cards) != 1 {
 		t.Fatalf("expected 1 card, got %d", len(win.Cards))
 	}

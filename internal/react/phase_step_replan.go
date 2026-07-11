@@ -266,7 +266,8 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
 	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
 	priorBoundaryStepID := a.lastReplanBoundaryStepID
-	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, a.workspaceRuntime)
+	// Inc2：接线前用全局边界 + 空 topicFilter（收全部 topic），行为不变；Inc3/Inc4 改 per-topic。
+	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, "", a.workspaceRuntime)
 	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
 	a.lastReplanBoundaryStepID = stepID
 
@@ -966,11 +967,14 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 //
 // 超过 reviewWindowMaxCards 时截断保最新 N 张并写入 OmittedCount，模板提示更早 step
 // 走 PLANNER_JOURNAL / PLAN_OVERVIEW 回读，避免 plan_exhausted 跨越全 plan 时 token 爆炸。
-func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, rt WorkspaceRuntime) *reviewWindow {
+// topicFilter 非空时只收该 topic（PhaseID）的 step 卡——第四阶段 per-topic 收窄 review 用；
+// 空则收全部 topic（现有全局行为，Inc3/Inc4 接线前的默认）。
+func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID, topicFilter string, rt WorkspaceRuntime) *reviewWindow {
 	plan := snapshot.Plan
 	if len(plan) == 0 {
 		return &reviewWindow{}
 	}
+	topicFilter = strings.TrimSpace(topicFilter)
 	boundaryIdx := -1
 	if bid := strings.TrimSpace(boundaryStepID); bid != "" {
 		for i, it := range plan {
@@ -984,6 +988,9 @@ func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundary
 	for i := boundaryIdx + 1; i < len(plan); i++ {
 		it := plan[i]
 		if it == nil {
+			continue
+		}
+		if topicFilter != "" && strings.TrimSpace(it.PhaseID) != topicFilter {
 			continue
 		}
 		switch it.Status {
