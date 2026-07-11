@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -95,12 +94,15 @@ const stepTimelineDigestMaxEntries = 200
 // 的权威来源（模型自报仅作兜底）。旧格式事件（无 Tool 一等字段）跳过。
 // 去重后超过 stepTimelineDigestMaxEntries 时截断并追加标记条目——否则截断的 digest 看起来
 // 仍然「丰富」，下游「digest 不足才回读 timeline」的判据会漏掉超限部分的调用。
-func reduceStepTimelineToolCallsDigest(l workspacefs.Layout, stepID string) []string {
-	path := l.StepTimeline(stepID)
-	if path == "" {
+func reduceStepTimelineToolCallsDigest(rt WorkspaceRuntime, stepID string) []string {
+	if rt == nil {
 		return nil
 	}
-	data, err := os.ReadFile(path)
+	rel := rt.Layout().StepTimelineRel(stepID)
+	if rel == "" {
+		return nil
+	}
+	data, err := rt.Store().Read(rel)
 	if err != nil {
 		return nil
 	}
@@ -142,12 +144,15 @@ func reduceStepTimelineToolCallsDigest(l workspacefs.Layout, stepID string) []st
 
 // stepTimelineToolCallCount 统计 step timeline 中 tool_call 事件数；数到 limit 即提前返回，
 // 供闸门类只需「执行量是否达阈值」的判定使用。
-func stepTimelineToolCallCount(l workspacefs.Layout, stepID string, limit int) int {
-	path := l.StepTimeline(stepID)
-	if path == "" || limit <= 0 {
+func stepTimelineToolCallCount(rt WorkspaceRuntime, stepID string, limit int) int {
+	if rt == nil || limit <= 0 {
 		return 0
 	}
-	data, err := os.ReadFile(path)
+	rel := rt.Layout().StepTimelineRel(stepID)
+	if rel == "" {
+		return 0
+	}
+	data, err := rt.Store().Read(rel)
 	if err != nil {
 		return 0
 	}
@@ -174,35 +179,35 @@ func stepTimelineToolCallCount(l workspacefs.Layout, stepID string, limit int) i
 	return count
 }
 
-func appendStepTimeline(l workspacefs.Layout, stepID string, event *TimelineEvent) error {
-	dir := l.StepDir(stepID)
-	if dir == "" || event == nil {
+func appendStepTimeline(rt WorkspaceRuntime, stepID string, event *TimelineEvent) error {
+	if rt == nil || event == nil {
 		return nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+	rel := rt.Layout().StepTimelineRel(stepID)
+	if rel == "" {
+		return nil
 	}
 	data, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	f, err := os.OpenFile(l.StepTimeline(stepID), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	_, werr := f.Write(data)
-	cerr := f.Close()
-	if werr != nil {
-		return werr
-	}
-	return cerr
+	// Store.Append 自动建父目录；无 fsync 维持现状（timeline 非崩溃安全流）。
+	return rt.Store().Append(rel, data)
 }
 
 func stepTimelineRelPath(stepID string) string {
 	return workspacefs.Layout{}.StepTimelineRel(stepID)
 }
 
-func stepTimelineExists(l workspacefs.Layout, stepID string) bool {
-	return statNonEmpty(l.StepTimeline(stepID))
+func stepTimelineExists(rt WorkspaceRuntime, stepID string) bool {
+	if rt == nil {
+		return false
+	}
+	rel := rt.Layout().StepTimelineRel(stepID)
+	if rel == "" {
+		return false
+	}
+	info, err := rt.Store().Stat(rel)
+	return err == nil && info.Size() > 0
 }

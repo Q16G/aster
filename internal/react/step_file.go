@@ -131,7 +131,7 @@ func (a *Agent) checkStepFileProgress(stepID string) error {
 	if stepFileProgressPresent(string(data)) {
 		return nil
 	}
-	if stepTimelineToolCallCount(l, stepID, stepFileGateMinToolCalls) < stepFileGateMinToolCalls {
+	if stepTimelineToolCallCount(a.workspaceRuntime, stepID, stepFileGateMinToolCalls) < stepFileGateMinToolCalls {
 		return nil
 	}
 	a.stepFileGateMu.Lock()

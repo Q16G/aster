@@ -62,7 +62,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		workspaceSharedDir = l.SharedDir()
 		for i := range stepOutcomeViews {
 			stepID := stepOutcomeViews[i].StepID
-			if stepID != "" && stepTimelineExists(l, stepID) {
+			if stepID != "" && stepTimelineExists(a.workspaceRuntime, stepID) {
 				stepOutcomeViews[i].TimelineFile = l.StepTimeline(stepID)
 			}
 		}

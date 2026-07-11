@@ -219,7 +219,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// digest 归约：runtime 对 timeline 的规则归约为权威来源，先于 SimpleTask bypass 与 LLM
 	// 判定 prompt 注入完成，确保所有下游路径（simple / 直达 Step / 子 Agent 回流）拿到同一
 	// 归约结果；applyReplanResult 不再重复归约。
-	if reduced := reduceStepTimelineToolCallsDigest(wsl, stepID); len(reduced) > 0 {
+	if reduced := reduceStepTimelineToolCallsDigest(a.workspaceRuntime, stepID); len(reduced) > 0 {
 		rawOutcome.ToolCallsDigest = reduced
 	}
 
@@ -266,7 +266,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
 	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
 	priorBoundaryStepID := a.lastReplanBoundaryStepID
-	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, wsl)
+	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, a.workspaceRuntime)
 	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
 	a.lastReplanBoundaryStepID = stepID
 
@@ -487,7 +487,7 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
 
 	var timelineFile string
-	if a.workspaceRuntime != nil && stepTimelineExists(a.wsLayout(), stepID) {
+	if stepTimelineExists(a.workspaceRuntime, stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
 	// step 过程文件（think_act 按三节契约维护）：存在才填指针；旧布局 fallback 兼容老 session。
@@ -920,7 +920,7 @@ type reviewWindow struct {
 	OmittedCount int               `json:"omitted_count,omitempty"`
 }
 
-func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, l workspacefs.Layout, resultPath, coveragePath string) *replanStepCard {
+func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, rt WorkspaceRuntime, resultPath, coveragePath string) *replanStepCard {
 	if current == nil || outcome == nil {
 		return nil
 	}
@@ -943,8 +943,8 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 	if card.CoverageFile != "" && len(card.CoverageChecklist) > coverageChecklistInlineMaxItems {
 		card.CoverageChecklist = card.CoverageChecklist[:coverageChecklistInlineMaxItems]
 	}
-	if stepTimelineExists(l, card.ID) {
-		card.TimelineFile = l.StepTimeline(card.ID)
+	if stepTimelineExists(rt, card.ID) {
+		card.TimelineFile = rt.Layout().StepTimeline(card.ID)
 	}
 	return card
 }
@@ -958,7 +958,7 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 //
 // 超过 reviewWindowMaxCards 时截断保最新 N 张并写入 OmittedCount，模板提示更早 step
 // 走 PLANNER_JOURNAL / PLAN_OVERVIEW 回读，避免 plan_exhausted 跨越全 plan 时 token 爆炸。
-func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, l workspacefs.Layout) *reviewWindow {
+func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, rt WorkspaceRuntime) *reviewWindow {
 	plan := snapshot.Plan
 	if len(plan) == 0 {
 		return &reviewWindow{}
@@ -1017,7 +1017,7 @@ func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundary
 		} else {
 			coverageRel = a.resolveCoverageFile(stepID, outcome)
 		}
-		card := buildReplanStepCard(item, outcome, l,
+		card := buildReplanStepCard(item, outcome, rt,
 			a.resolveStepResultPath(stepID, outcome),
 			a.absolutizeCoverageRel(coverageRel),
 		)

@@ -337,7 +337,7 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 			if len(render.Media) > 0 {
 				event.Payload = map[string]any{"media": render.Media}
 			}
-			_ = appendStepTimeline(wsl, stepID, event)
+			_ = appendStepTimeline(a.workspaceRuntime, stepID, event)
 		}
 
 		a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{

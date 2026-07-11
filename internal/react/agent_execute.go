@@ -580,7 +580,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				if a.workspaceRuntime != nil {
 					l := a.wsLayout()
 					if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); l.SharedDir() != "" && stepID != "" {
-						_ = appendStepTimeline(l, stepID, &TimelineEvent{
+						_ = appendStepTimeline(a.workspaceRuntime, stepID, &TimelineEvent{
 							TS:   time.Now().UTC(),
 							Type: "human_confirm_cancelled",
 							Key:  interruptID,
@@ -627,7 +627,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			if a.workspaceRuntime != nil {
 				l := a.wsLayout()
 				if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); l.SharedDir() != "" && stepID != "" {
-					_ = appendStepTimeline(l, stepID, &TimelineEvent{
+					_ = appendStepTimeline(a.workspaceRuntime, stepID, &TimelineEvent{
 						TS:   time.Now().UTC(),
 						Type: "human_confirm_resolved",
 						Key:  interruptID,

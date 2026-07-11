@@ -253,10 +253,10 @@ func TestTaskContextInputFactsPresent(t *testing.T) {
 	}
 }
 
-func seedStepTimelineToolCalls(t *testing.T, l workspacefs.Layout, stepID string, n int) {
+func seedStepTimelineToolCalls(t *testing.T, rt WorkspaceRuntime, stepID string, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if err := appendStepTimeline(l, stepID, &TimelineEvent{
+		if err := appendStepTimeline(rt, stepID, &TimelineEvent{
 			Type: "tool_call",
 			Tool: "bash",
 			Key:  fmt.Sprintf("call-%d", i),
@@ -280,13 +280,13 @@ func TestCheckStepFileProgress(t *testing.T) {
 	if err := ensureStepFileScaffold(rt, "s9", "示例步骤"); err != nil {
 		t.Fatalf("ensureStepFileScaffold failed: %v", err)
 	}
-	seedStepTimelineToolCalls(t, l, "s9", stepFileGateMinToolCalls-1)
+	seedStepTimelineToolCalls(t, rt, "s9", stepFileGateMinToolCalls-1)
 	if err := a.checkStepFileProgress("s9"); err != nil {
 		t.Fatalf("low-volume step must be exempt, got: %v", err)
 	}
 
 	// 空骨架 + 执行量达阈值：首次拒绝。
-	seedStepTimelineToolCalls(t, l, "s9", 1)
+	seedStepTimelineToolCalls(t, rt, "s9", 1)
 	if err := a.checkStepFileProgress("s9"); err == nil {
 		t.Fatal("empty scaffold with enough tool calls must be rejected")
 	}
@@ -298,7 +298,7 @@ func TestCheckStepFileProgress(t *testing.T) {
 	if err := ensureStepFileScaffold(rt, "s10", "另一步骤"); err != nil {
 		t.Fatalf("ensureStepFileScaffold failed: %v", err)
 	}
-	seedStepTimelineToolCalls(t, l, "s10", stepFileGateMinToolCalls)
+	seedStepTimelineToolCalls(t, rt, "s10", stepFileGateMinToolCalls)
 	if err := a.checkStepFileProgress("s10"); err == nil {
 		t.Fatal("another empty step must still be rejected once")
 	}
