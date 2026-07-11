@@ -2,7 +2,6 @@ package react
 
 import (
 	"encoding/json"
-	"os"
 	"sort"
 	"strings"
 
@@ -136,9 +135,8 @@ func (a *Agent) buildRecoveryChildContextJSON(snapshot builtin_tools.StateSnapsh
 		}
 		sort.Strings(stepIDs)
 		for _, id := range stepIDs {
-			dir := l.StepDir(id)
-			if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
-				stepDirs = append(stepDirs, dir)
+			if info, statErr := a.workspaceRuntime.Store().Stat(l.StepDirRel(id)); statErr == nil && info.IsDir() {
+				stepDirs = append(stepDirs, l.StepDir(id))
 			}
 		}
 	}
