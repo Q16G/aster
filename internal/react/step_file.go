@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"aster/internal/builtin_tools"
 	"aster/internal/workspacefs"
 )
 
@@ -156,7 +155,7 @@ func (a *Agent) checkStepFileProgress(stepID string) error {
 // 已存在则原样跳过（保护 resume / replan 重入同 step 的既有进展）。
 // 写入经 WorkspaceRuntime.WriteFileRel 完成——其内置 resolveAbsPath 根逃逸防护，
 // stepID 含 ".." 或 "/" 等异常字符时拒绝写出，避免骨架落在 sharedDir 之外。
-func ensureStepFileScaffold(rt builtin_tools.WorkspaceRuntime, stepID, stepTitle string) error {
+func ensureStepFileScaffold(rt WorkspaceRuntime, stepID, stepTitle string) error {
 	if rt == nil {
 		return nil
 	}
