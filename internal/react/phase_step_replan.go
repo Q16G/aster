@@ -1057,22 +1057,6 @@ func (a *Agent) absolutizeCoverageRel(rel string) string {
 	return filepath.Join(a.workspaceRootDir, rel)
 }
 
-// promptPreviewRatio 单个 prompt 注入块的 preview 上限占「可用输入预算」的比例。
-// 纯百分比、无 floor/ceil：大窗口下账本类字段 preview 自然更大、缓解截断；小窗口下
-// 自动收窄，使 parts 从源头有界（这本身即溢出兜底）。取 2% 的定标见 docs 决策 ④。
-const promptPreviewRatio = 0.02
-
-// promptPreviewTokens 返回单个注入块的 preview token 上限 = usableInputTokens × ratio。
-// 基准用 usableInputTokens（= 窗口 − 输出预留）而非整窗口——preview 属 input。
-// usableInputTokens <= 0 时兜底同口径：默认窗口减默认输出预留（而非整窗口）。
-func promptPreviewTokens(usableInputTokens int) int {
-	uit := usableInputTokens
-	if uit <= 0 {
-		uit = defaultContextWindowTokens - DefaultOutputReserveTokens
-	}
-	return int(float64(uit) * promptPreviewRatio)
-}
-
 // readSharedFileForPrompt 读取共享区文件全文用于注入；缺失时返回占位说明（不报错）。
 // 占位字符串供 step_replan_user.prompt 的 OPEN_ITEMS_LEDGER / TASK_CONTEXT_BOARD 显式注入，
 // 告知模型文件状态——这是 step_replan 阶段的设计意图。需要"缺失即留空"语义的调用方（如
@@ -1105,72 +1089,6 @@ func readSharedFileForPromptWithLimit(runtime builtin_tools.WorkspaceRuntime, sh
 	return readFileForPromptWithLimit(absPath, limitTokens)
 }
 
-// promptTruncatedMarker 是 preview 截断/外置标记串前缀；isTruncatedForPrompt 据此判定。
-const promptTruncatedMarker = "（内容超长"
-
-// previewForPrompt 是统一的 prompt 注入块 preview helper：content 的 token 数 ≤ limitTokens
-// 时返回原文；超限时在 token/UTF-8 边界截断并追加指针文案（工具名用 builtin 实名 read_file）。
-// limitTokens <= 0 不截断。limit 连指针文案本身都放不下时全指针化——指针是不可压缩的
-// 固定开销，此时再塞正文只会更超；判据显式比较 limit 与指针 token 成本（见 docs 决策④）。
-// 截断维度按 token（复用 countTokens）而非字节，消除中文「字节≠token」偏差。
-func previewForPrompt(raw string, absPath string, limitTokens int) string {
-	content := strings.TrimSpace(raw)
-	if content == "" {
-		return "(文件为空)"
-	}
-	if limitTokens <= 0 || countTokens(content) <= limitTokens {
-		return content
-	}
-	pointer := pointerOnlyForPrompt(absPath)
-	if limitTokens < countTokens(pointer) {
-		return pointer
-	}
-	truncated := truncateToTokenBudget(content, limitTokens)
-	if strings.TrimSpace(truncated) == "" {
-		return pointer
-	}
-	return truncated + "\n\n" + promptTruncatedMarker + "，仅显示前 " +
-		fmt.Sprintf("%d", countTokens(truncated)) + " tokens；完整内容见文件：" +
-		absPath + "，维护/验收前请先用 read_file 读取全量。）"
-}
-
-// pointerOnlyForPrompt 生成纯指针文案（limit 放不下任何正文时用）。
-func pointerOnlyForPrompt(absPath string) string {
-	return promptTruncatedMarker + "，完整内容见文件：" + absPath + "，请用 read_file 读取全量。）"
-}
-
-// truncateToTokenBudget 把 content 截到 token 数 ≤ limitTokens，尽量落在换行/UTF-8 边界。
-// 先按「字节 × limit/total」比例估初始截点，再按 token 实测收缩兜底（tokenizer 非线性）。
-func truncateToTokenBudget(content string, limitTokens int) string {
-	total := countTokens(content)
-	if total <= limitTokens {
-		return content
-	}
-	cutByte := len(content) * limitTokens / total
-	if cutByte >= len(content) {
-		cutByte = len(content) - 1
-	}
-	if cutByte < 1 {
-		return ""
-	}
-	// 尽量在换行边界截断（搜索范围 [cutByte/2, cutByte)，防截点太靠前损失过多）。
-	if i := strings.LastIndexByte(content[:cutByte], '\n'); i >= cutByte/2 {
-		cutByte = i
-	}
-	// 落到 UTF-8 字符边界。
-	for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
-		cutByte--
-	}
-	// token 实测收缩兜底：估算偏高时按 10% 逐步缩，直到达标。
-	for cutByte > 0 && countTokens(content[:cutByte]) > limitTokens {
-		cutByte = cutByte * 9 / 10
-		for cutByte > 0 && content[cutByte]&0xC0 == 0x80 {
-			cutByte--
-		}
-	}
-	return content[:cutByte]
-}
-
 // readFileForPromptWithLimit 是接受绝对路径的读取入口，供非共享区文件（例如
 // workspace/planner.jsonl）复用同一套读取 + preview + 占位策略。
 func readFileForPromptWithLimit(absPath string, limitTokens int) string {
@@ -1179,13 +1097,6 @@ func readFileForPromptWithLimit(absPath string, limitTokens int) string {
 		return "(文件尚不存在)"
 	}
 	return previewForPrompt(string(data), absPath, limitTokens)
-}
-
-// isTruncatedForPrompt 判定 previewForPrompt 产出的文本是否被超限截断/外置。
-// 截断尾部含固定标记串 promptTruncatedMarker；未截断或文件不存在的占位说明
-// （如「(文件尚不存在)」/「(文件为空)」）一律返回 false。
-func isTruncatedForPrompt(content string) bool {
-	return strings.Contains(content, promptTruncatedMarker)
 }
 
 // readPlannerJournalForPrompt 读取 workspace/planner.jsonl 全文用于注入。
