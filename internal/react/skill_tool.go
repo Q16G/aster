@@ -9,6 +9,7 @@ import (
 
 	"aster/internal/builtin_tools"
 	"aster/internal/utils/argx"
+	"aster/internal/workspacefs"
 )
 
 type SkillInfo struct {
@@ -154,7 +155,9 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 		childDef.Policies.BashPermissionContext = t.parentAgent.cfg.BashTool
 	}
 
-	childRootDir := filepath.Join(t.parentAgent.workspaceRootDir, "sub_agents", childName)
+	// 经 Join 而非 Layout.SubAgentDir：父 root 为空（未 Execute 的 agent）时保持
+	// 旧有相对路径语义 sub_agents/<child>，路径知识仍来自 Layout 的 rel 原语。
+	childRootDir := filepath.Join(t.parentAgent.workspaceRootDir, filepath.FromSlash(workspacefs.Layout{}.SubAgentDirRel(childName)))
 	childRuntime, err := newLocalWorkspaceRuntime(
 		t.parentAgent.workspaceSessionID,
 		childRootDir,

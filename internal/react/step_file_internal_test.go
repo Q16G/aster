@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 func newTestStepFileRuntime(t *testing.T) (builtin_tools.WorkspaceRuntime, string) {
@@ -26,7 +27,7 @@ func TestEnsureStepFileScaffold_CreateAndIdempotent(t *testing.T) {
 	if err := ensureStepFileScaffold(rt, "s1", "扫描目标目录"); err != nil {
 		t.Fatalf("ensureStepFileScaffold failed: %v", err)
 	}
-	abs := stepFileAbs(sharedDir, "s1")
+	abs := workspacefs.New(rt.RootDir(), "").StepFile("s1")
 	if abs != filepath.Join(sharedDir, "step_s1.md") {
 		t.Fatalf("unexpected step file abs path: %s", abs)
 	}
@@ -90,24 +91,27 @@ func TestEnsureStepFileScaffold_RootEscapeRejected(t *testing.T) {
 // TestStepFileExists_ZeroBytedIsExist 锁定 stepFileExists 在文件为 0 字节时仍判存在——
 // 防止写入工具中途短暂写空触发 readSharedStepFileForPrompt 回退到 legacy 路径读老内容。
 func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
-	sharedDir := t.TempDir()
-	abs := stepFileAbs(sharedDir, "s9")
+	l := workspacefs.New(t.TempDir(), "")
+	if err := os.MkdirAll(l.SharedDir(), 0o755); err != nil {
+		t.Fatalf("mkdir shared dir failed: %v", err)
+	}
+	abs := l.StepFile("s9")
 
-	if stepFileExists(sharedDir, "s9") {
+	if stepFileExists(l, "s9") {
 		t.Fatal("stepFileExists should be false before file creation")
 	}
 
 	if err := os.WriteFile(abs, []byte{}, 0o644); err != nil {
 		t.Fatalf("write empty file failed: %v", err)
 	}
-	if !stepFileExists(sharedDir, "s9") {
+	if !stepFileExists(l, "s9") {
 		t.Fatal("stepFileExists should be true for a 0-byte file (transient tool write)")
 	}
 
 	if err := os.WriteFile(abs, []byte("# step_s9\n"), 0o644); err != nil {
 		t.Fatalf("write content failed: %v", err)
 	}
-	if !stepFileExists(sharedDir, "s9") {
+	if !stepFileExists(l, "s9") {
 		t.Fatal("stepFileExists should be true for a non-empty file")
 	}
 }
@@ -115,24 +119,23 @@ func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
 // TestLegacyStepFileExists_RequiresContent 锁定 legacyStepFileExists 仍依赖 size>0
 // （旧布局只有有内容才值得 fallback）。
 func TestLegacyStepFileExists_RequiresContent(t *testing.T) {
-	sharedDir := t.TempDir()
-	legacyDir := filepath.Join(sharedDir, "s9")
-	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+	l := workspacefs.New(t.TempDir(), "")
+	legacy := l.LegacyStepFile("s9")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
 		t.Fatalf("mkdir legacy dir failed: %v", err)
 	}
-	legacy := filepath.Join(legacyDir, "step.md")
 
 	if err := os.WriteFile(legacy, []byte{}, 0o644); err != nil {
 		t.Fatalf("write empty legacy failed: %v", err)
 	}
-	if legacyStepFileExists(sharedDir, "s9") {
+	if legacyStepFileExists(l, "s9") {
 		t.Fatal("legacyStepFileExists should be false for 0-byte legacy file")
 	}
 
 	if err := os.WriteFile(legacy, []byte("# legacy step.md\n"), 0o644); err != nil {
 		t.Fatalf("write legacy content failed: %v", err)
 	}
-	if !legacyStepFileExists(sharedDir, "s9") {
+	if !legacyStepFileExists(l, "s9") {
 		t.Fatal("legacyStepFileExists should be true for non-empty legacy file")
 	}
 }
@@ -141,8 +144,8 @@ func TestStepFilePaths(t *testing.T) {
 	if got := stepFileRelPath("s2"); got != "shared/step_s2.md" {
 		t.Fatalf("stepFileRelPath = %q", got)
 	}
-	if got := stepFileAbs("", "s2"); got != "" {
-		t.Fatalf("stepFileAbs with empty sharedDir should be empty, got %q", got)
+	if got := workspacefs.New("", "").StepFile("s2"); got != "" {
+		t.Fatalf("StepFile with empty root should be empty, got %q", got)
 	}
 }
 
@@ -251,10 +254,10 @@ func TestTaskContextInputFactsPresent(t *testing.T) {
 	}
 }
 
-func seedStepTimelineToolCalls(t *testing.T, sharedDir, stepID string, n int) {
+func seedStepTimelineToolCalls(t *testing.T, l workspacefs.Layout, stepID string, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if err := appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+		if err := appendStepTimeline(l, stepID, &TimelineEvent{
 			Type: "tool_call",
 			Tool: "bash",
 			Key:  fmt.Sprintf("call-%d", i),
@@ -265,7 +268,8 @@ func seedStepTimelineToolCalls(t *testing.T, sharedDir, stepID string, n int) {
 }
 
 func TestCheckStepFileProgress(t *testing.T) {
-	rt, sharedDir := newTestStepFileRuntime(t)
+	rt, _ := newTestStepFileRuntime(t)
+	l := workspacefs.New(rt.RootDir(), "")
 	a := &Agent{workspaceRuntime: rt, state: NewStateTracker()}
 
 	// 文件不存在：放行（不把基础设施异常转嫁给模型）。
@@ -277,13 +281,13 @@ func TestCheckStepFileProgress(t *testing.T) {
 	if err := ensureStepFileScaffold(rt, "s9", "示例步骤"); err != nil {
 		t.Fatalf("ensureStepFileScaffold failed: %v", err)
 	}
-	seedStepTimelineToolCalls(t, sharedDir, "s9", stepFileGateMinToolCalls-1)
+	seedStepTimelineToolCalls(t, l, "s9", stepFileGateMinToolCalls-1)
 	if err := a.checkStepFileProgress("s9"); err != nil {
 		t.Fatalf("low-volume step must be exempt, got: %v", err)
 	}
 
 	// 空骨架 + 执行量达阈值：首次拒绝。
-	seedStepTimelineToolCalls(t, sharedDir, "s9", 1)
+	seedStepTimelineToolCalls(t, l, "s9", 1)
 	if err := a.checkStepFileProgress("s9"); err == nil {
 		t.Fatal("empty scaffold with enough tool calls must be rejected")
 	}
@@ -295,13 +299,13 @@ func TestCheckStepFileProgress(t *testing.T) {
 	if err := ensureStepFileScaffold(rt, "s10", "另一步骤"); err != nil {
 		t.Fatalf("ensureStepFileScaffold failed: %v", err)
 	}
-	seedStepTimelineToolCalls(t, sharedDir, "s10", stepFileGateMinToolCalls)
+	seedStepTimelineToolCalls(t, l, "s10", stepFileGateMinToolCalls)
 	if err := a.checkStepFileProgress("s10"); err == nil {
 		t.Fatal("another empty step must still be rejected once")
 	}
 
 	// 进展记录有内容：放行。
-	abs := stepFileAbs(sharedDir, "s9")
+	abs := l.StepFile("s9")
 	content := "# step_s9: 示例步骤\n\n## 未覆盖待补（实时维护）\n\n## 进展记录\n- 已完成 xx\n\n## 收尾产出\n"
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 		t.Fatalf("write step file failed: %v", err)

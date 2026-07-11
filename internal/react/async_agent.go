@@ -11,6 +11,7 @@ import (
 
 	"aster/internal/builtin_tools"
 	"aster/internal/runtimelog"
+	"aster/internal/workspacefs"
 )
 
 // AsyncAgentRegistry tracks background sub-agents spawned with run_in_background.
@@ -254,7 +255,7 @@ func writeAsyncResultFile(workspaceDir string, notif *AsyncAgentNotification) st
 	if workspaceDir == "" || notif == nil {
 		return ""
 	}
-	resultFile := filepath.Join(workspaceDir, "async_result.json")
+	resultFile := workspacefs.New(workspaceDir, "").AsyncResult()
 	data := map[string]any{
 		"agent_id": notif.AgentID,
 		"status":   notif.Status,

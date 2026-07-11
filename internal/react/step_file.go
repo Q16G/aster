@@ -3,41 +3,40 @@ package react
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 // step 过程文件：shared 目录下扁平的 step_<step_id>.md，由 runtime 在 step 入口
 // 预创建骨架（路径 100% 稳定），think_act 按系统 prompt 的三节契约每轮维护。
-
-func stepFileName(stepID string) string {
-	return "step_" + strings.TrimSpace(stepID) + ".md"
-}
+// 路径知识统一委托 workspacefs.Layout（rel 形态不依赖 Root）。
 
 func stepFileRelPath(stepID string) string {
-	return "shared/" + stepFileName(stepID)
+	return workspacefs.Layout{}.StepFileRel(stepID)
 }
 
-func stepFileAbs(sharedDir, stepID string) string {
-	if strings.TrimSpace(sharedDir) == "" || strings.TrimSpace(stepID) == "" {
-		return ""
+// statNonEmpty 判定路径存在且非空（size>0）；空路径直接判否。
+func statNonEmpty(path string) bool {
+	if path == "" {
+		return false
 	}
-	return filepath.Join(sharedDir, stepFileName(stepID))
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > 0
 }
 
 // legacyStepFileExists 检查旧布局 shared/<stepID>/step.md（老 session resume 兼容）。
-func legacyStepFileExists(sharedDir, stepID string) bool {
-	return stepSharedFileExists(sharedDir, stepID, "step.md")
+func legacyStepFileExists(l workspacefs.Layout, stepID string) bool {
+	return statNonEmpty(l.LegacyStepFile(stepID))
 }
 
 // stepFileExists 判定新布局过程文件是否存在——只看是否能 Stat，不看大小。
 // 写入工具中途把过程文件短暂写为 0 字节（rewrite / mv 替换 / 写入失败重试）
 // 仍应被认作"存在"，否则 readSharedStepFileForPrompt 会跌回 legacy 路径读到老 session
 // 残留的 shared/<stepID>/step.md。legacyStepFileExists 保留 size>0（旧文件价值在内容）。
-func stepFileExists(sharedDir, stepID string) bool {
-	abs := stepFileAbs(sharedDir, stepID)
+func stepFileExists(l workspacefs.Layout, stepID string) bool {
+	abs := l.StepFile(stepID)
 	if abs == "" {
 		return false
 	}
@@ -121,8 +120,8 @@ func (a *Agent) checkStepFileProgress(stepID string) error {
 	if a == nil || a.workspaceRuntime == nil {
 		return nil
 	}
-	sharedDir := a.workspaceRuntime.SharedDir()
-	abs := stepFileAbs(sharedDir, stepID)
+	l := a.wsLayout()
+	abs := l.StepFile(stepID)
 	if abs == "" {
 		return nil
 	}
@@ -133,7 +132,7 @@ func (a *Agent) checkStepFileProgress(stepID string) error {
 	if stepFileProgressPresent(string(data)) {
 		return nil
 	}
-	if stepTimelineToolCallCount(sharedDir, stepID, stepFileGateMinToolCalls) < stepFileGateMinToolCalls {
+	if stepTimelineToolCallCount(l, stepID, stepFileGateMinToolCalls) < stepFileGateMinToolCalls {
 		return nil
 	}
 	a.stepFileGateMu.Lock()
@@ -161,11 +160,11 @@ func ensureStepFileScaffold(rt builtin_tools.WorkspaceRuntime, stepID, stepTitle
 	if rt == nil {
 		return nil
 	}
-	sharedDir := rt.SharedDir()
-	if stepFileAbs(sharedDir, stepID) == "" {
+	l := workspacefs.New(rt.RootDir(), rt.Namespace())
+	if l.StepFile(stepID) == "" {
 		return nil
 	}
-	if stepFileExists(sharedDir, stepID) {
+	if stepFileExists(l, stepID) {
 		return nil
 	}
 	return rt.WriteFileRel(stepFileRelPath(stepID), []byte(stepFileScaffold(stepID, stepTitle)))

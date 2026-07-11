@@ -298,9 +298,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		HasMCPTable:     mcpCtx != nil && mcpCtx.HasTable(),
 	}
 	if a.workspaceRuntime != nil {
-		if sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir()); sharedDir != "" {
-			plannerInput.TaskContextPath = filepath.Join(sharedDir, taskContextFileName)
-			plannerInput.OpenItemsLedgerPath = filepath.Join(sharedDir, openItemsFileName)
+		if l := a.wsLayout(); l.SharedDir() != "" {
+			plannerInput.TaskContextPath = l.TaskContext()
+			plannerInput.OpenItemsLedgerPath = l.OpenItems()
 		}
 	}
 	// userInputTurn：本回合由顶层用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
@@ -614,7 +614,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 				// `## 输入事实` 须已落盘（planning_system「共享区终态」契约的机械兜底）。
 				// 超限降级为接受 + warning——闸门用于逼模型补写，事实板缺失不应使整个任务失败。
 				if parsed.NeedsPlanning && input.UserInputTurn && a.workspaceRuntime != nil {
-					raw := readSharedFileOptional(a.workspaceRuntime, a.workspaceRuntime.SharedDir(), taskContextFileName)
+					raw := readSharedFileOptional(a.workspaceRuntime, a.wsLayout(), taskContextFileName)
 					if !taskContextInputFactsPresent(raw) {
 						submitRetries++
 						if submitRetries <= maxSubmitRetries {
@@ -1729,10 +1729,10 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		})
 		a.emitter.EmitStateChange(waitSnap)
 
-		if sd := ""; a.workspaceRuntime != nil {
-			sd = a.workspaceRuntime.SharedDir()
-			if stepID := effectiveStepID(runCtx, prevSnapshot); sd != "" && stepID != "" {
-				_ = appendStepTimeline(sd, stepID, &TimelineEvent{
+		if a.workspaceRuntime != nil {
+			l := a.wsLayout()
+			if stepID := effectiveStepID(runCtx, prevSnapshot); l.SharedDir() != "" && stepID != "" {
+				_ = appendStepTimeline(l, stepID, &TimelineEvent{
 					TS:   time.Now().UTC(),
 					Type: "human_confirm",
 					Key:  interruptID,
@@ -1846,7 +1846,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		if len(render.Media) > 0 {
 			event.Payload = map[string]any{"media": render.Media}
 		}
-		_ = appendStepTimeline(sharedDir, stepID, event)
+		_ = appendStepTimeline(a.wsLayout(), stepID, event)
 	}
 
 	a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{
@@ -1975,7 +1975,7 @@ func (a *Agent) writePlannerTempFile(name, content string) string {
 	if a == nil || a.workspaceRuntime == nil {
 		return ""
 	}
-	dir := a.workspaceRuntime.SharedDir()
+	dir := a.wsLayout().SharedDir()
 	if dir == "" {
 		return ""
 	}

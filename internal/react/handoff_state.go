@@ -2,8 +2,9 @@ package react
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
+
+	"aster/internal/workspacefs"
 )
 
 type handoffState struct {
@@ -31,16 +32,19 @@ func (a *Agent) defaultOnHandoff(ctx context.Context, handoffTo string) string {
 	}
 
 	if rootDir := strings.TrimSpace(a.workspaceRootDir); rootDir != "" {
+		l := workspacefs.New(rootDir, a.workspaceNamespace)
+		// 顶层（归一后 Namespace==""）沿用历史 artifacts/root/… 写点指针
+		// （Layout 的 Legacy 只读回退路径），与既有输出逐字节一致。
+		planCurrentPath := l.PlanCurrent()
+		if l.Namespace == "" {
+			planCurrentPath = l.LegacyPlanCurrent()
+		}
 		var wsPointers strings.Builder
 		wsPointers.WriteString("\n\n工作区路径指针：\n")
 		wsPointers.WriteString("parent_workspace_root: " + rootDir + "\n")
-		wsPointers.WriteString("parent_step_contexts_path: " + filepath.Join(rootDir, "workspace", "step_contexts.jsonl") + "\n")
-		ns := strings.TrimSpace(a.workspaceNamespace)
-		if ns == "" {
-			ns = "root"
-		}
-		wsPointers.WriteString("parent_plan_current_path: " + filepath.Join(rootDir, "artifacts", ns, "plan", "current.json") + "\n")
-		wsPointers.WriteString("parent_task_context_path: " + filepath.Join(rootDir, "shared", "task_context.md") + "\n")
+		wsPointers.WriteString("parent_step_contexts_path: " + l.StepContexts() + "\n")
+		wsPointers.WriteString("parent_plan_current_path: " + planCurrentPath + "\n")
+		wsPointers.WriteString("parent_task_context_path: " + l.TaskContext() + "\n")
 		next = next + wsPointers.String()
 	}
 

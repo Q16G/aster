@@ -577,10 +577,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 				}
 
 			case cfg.interruptCancel != nil:
-				if sharedDir := ""; a.workspaceRuntime != nil {
-					sharedDir = a.workspaceRuntime.SharedDir()
-					if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); sharedDir != "" && stepID != "" {
-						_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+				if a.workspaceRuntime != nil {
+					l := a.wsLayout()
+					if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); l.SharedDir() != "" && stepID != "" {
+						_ = appendStepTimeline(l, stepID, &TimelineEvent{
 							TS:   time.Now().UTC(),
 							Type: "human_confirm_cancelled",
 							Key:  interruptID,
@@ -624,10 +624,10 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 		}
 
 		if cfg.interruptResolution != nil {
-			if sharedDir := ""; a.workspaceRuntime != nil {
-				sharedDir = a.workspaceRuntime.SharedDir()
-				if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); sharedDir != "" && stepID != "" {
-					_ = appendStepTimeline(sharedDir, stepID, &TimelineEvent{
+			if a.workspaceRuntime != nil {
+				l := a.wsLayout()
+				if stepID := strings.TrimSpace(a.state.Snapshot().CurrentStepID); l.SharedDir() != "" && stepID != "" {
+					_ = appendStepTimeline(l, stepID, &TimelineEvent{
 						TS:   time.Now().UTC(),
 						Type: "human_confirm_resolved",
 						Key:  interruptID,

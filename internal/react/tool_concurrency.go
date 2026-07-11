@@ -9,6 +9,7 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 const defaultMaxToolConcurrency = 5
@@ -291,9 +292,9 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 
 	// Write results to stepHistory in original order (single-writer invariant).
 	executed := 0
-	sharedDir := ""
+	var wsl workspacefs.Layout
 	if a.workspaceRuntime != nil {
-		sharedDir = a.workspaceRuntime.SharedDir()
+		wsl = a.wsLayout()
 	}
 
 	for _, slot := range slots {
@@ -331,12 +332,12 @@ func (a *Agent) executeToolCallsConcurrently(ctx context.Context, runCtx *Inline
 		a.handleSkillToolStateSync(slot.toolName, slot.argsMap, slot.out, slot.errText, runCtx)
 		a.AICallProxyWriteToolResult(runCtx, slot.callID, slot.toolName, slot.tool.Description(), slot.argsMap, render.Content, slot.errText, slot.isAgent)
 
-		if stepID := effectiveStepID(runCtx, prevSnapshot); sharedDir != "" && stepID != "" {
+		if stepID := effectiveStepID(runCtx, prevSnapshot); wsl.SharedDir() != "" && stepID != "" {
 			event := newToolCallTimelineEvent(slot.callID, slot.toolName, slot.argsMap, slot.out, slot.errText, slot.outFullPath, slot.duration)
 			if len(render.Media) > 0 {
 				event.Payload = map[string]any{"media": render.Media}
 			}
-			_ = appendStepTimeline(sharedDir, stepID, event)
+			_ = appendStepTimeline(wsl, stepID, event)
 		}
 
 		a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{

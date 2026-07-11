@@ -2,7 +2,6 @@ package react
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aster/internal/builtin_tools"
@@ -48,15 +47,16 @@ func (a *Agent) resolveStepFinalizePaths(stepID string, snapshot builtin_tools.S
 	}
 
 	var timelineFile string
-	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
+	if a.workspaceRuntime != nil && stepTimelineExists(a.wsLayout(), stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
 	var stepFile string
 	if a.workspaceRuntime != nil {
-		if stepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
+		l := a.wsLayout()
+		if stepFileExists(l, stepID) {
 			stepFile = stepFileRelPath(stepID)
-		} else if legacyStepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
-			stepFile = fmt.Sprintf("shared/%s/step.md", stepID)
+		} else if legacyStepFileExists(l, stepID) {
+			stepFile = l.LegacyStepFileRel(stepID)
 		}
 	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)

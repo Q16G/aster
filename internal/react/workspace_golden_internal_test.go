@@ -28,6 +28,7 @@ import (
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 var updateWorkspaceGolden = flag.Bool("update-workspace-golden", false, "重新生成 workspace golden 基线快照")
@@ -76,7 +77,7 @@ func buildGoldenWorkspace(t *testing.T, root string) {
 		{TS: goldenFixedTime, Type: "tool_call", Key: "call-2", Tool: "read_file", ArgsDigest: "path=/tmp/x", Error: "file not found"},
 	}
 	for _, ev := range events {
-		if err := appendStepTimeline(rt.SharedDir(), "p1-s1", ev); err != nil {
+		if err := appendStepTimeline(workspacefs.New(rt.RootDir(), ""), "p1-s1", ev); err != nil {
 			t.Fatalf("appendStepTimeline: %v", err)
 		}
 	}
@@ -315,7 +316,7 @@ func TestLegacyHelperPathSnapshot(t *testing.T) {
 		"builtin.artifacts_root_rel.":    builtin_tools.WorkspaceArtifactsRootRel(""),
 		"builtin.artifacts_root_rel.root": builtin_tools.WorkspaceArtifactsRootRel("root"),
 		"builtin.artifacts_root_rel.sub": builtin_tools.WorkspaceArtifactsRootRel("sub-a"),
-		"react.step_file_abs":            stepFileAbs("/ws-root/shared", "p1-s1"),
+		"react.step_file_abs":            workspacefs.New("/ws-root", "").StepFile("p1-s1"),
 	}
 	for _, ns := range []string{"root", "sub-a"} {
 		artifactPath, absPath, err := builtin_tools.WorkspaceArtifactWritePath(root, ns, "plan/current.json")
@@ -326,9 +327,10 @@ func TestLegacyHelperPathSnapshot(t *testing.T) {
 		paths["builtin.artifact_write_path."+ns+".abs"] = absPath
 	}
 
-	// artifactWriter 的 rel 方法族（root 与非 root namespace 各一份，
-	// 捕获当前「不归一」语义：ns=root 时 plan 写 artifacts/root/…——L09 有意差异的旧侧锚点）。
-	for _, ns := range []string{"root", "sub-a"} {
+	// artifactWriter 的 rel 方法族。M2 起 writer 已归一（顶层/root → artifacts/），
+	// 此处仅快照子 namespace（新旧规则一致）；顶层归一的有意差异与旧写点锚点由
+	// TestLayoutIntentionalNamespaceDivergence（L09）以字面断言固化。
+	for _, ns := range []string{"sub-a"} {
 		rt, err := newLocalWorkspaceRuntime("legacy-snap", t.TempDir(), ns)
 		if err != nil {
 			t.Fatalf("newLocalWorkspaceRuntime(%s): %v", ns, err)

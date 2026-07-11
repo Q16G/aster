@@ -4,36 +4,42 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"aster/internal/workspacefs"
 )
 
 func TestReadSharedFileOptional(t *testing.T) {
-	sharedDir := t.TempDir()
-	abs := filepath.Join(sharedDir, "task_context.md")
+	root := t.TempDir()
+	layout := workspacefs.New(root, "")
+	if err := os.MkdirAll(layout.SharedDir(), 0o755); err != nil {
+		t.Fatalf("mkdir shared dir failed: %v", err)
+	}
+	abs := filepath.Join(layout.SharedDir(), "task_context.md")
 
 	cases := []struct {
-		name      string
-		setup     func()
-		sharedDir string
-		fileName  string
-		want      string
+		name     string
+		setup    func()
+		layout   workspacefs.Layout
+		fileName string
+		want     string
 	}{
 		{
-			name:      "empty sharedDir → empty",
-			sharedDir: "",
-			fileName:  "task_context.md",
-			want:      "",
+			name:     "empty layout root → empty",
+			layout:   workspacefs.Layout{},
+			fileName: "task_context.md",
+			want:     "",
 		},
 		{
-			name:      "empty fileName → empty",
-			sharedDir: sharedDir,
-			fileName:  "",
-			want:      "",
+			name:     "empty fileName → empty",
+			layout:   layout,
+			fileName: "",
+			want:     "",
 		},
 		{
-			name:      "file does not exist → empty",
-			sharedDir: sharedDir,
-			fileName:  "task_context.md",
-			want:      "",
+			name:     "file does not exist → empty",
+			layout:   layout,
+			fileName: "task_context.md",
+			want:     "",
 		},
 		{
 			name: "file empty → empty",
@@ -42,9 +48,9 @@ func TestReadSharedFileOptional(t *testing.T) {
 					t.Fatalf("write empty file failed: %v", err)
 				}
 			},
-			sharedDir: sharedDir,
-			fileName:  "task_context.md",
-			want:      "",
+			layout:   layout,
+			fileName: "task_context.md",
+			want:     "",
 		},
 		{
 			name: "file has content → trimmed content",
@@ -53,9 +59,9 @@ func TestReadSharedFileOptional(t *testing.T) {
 					t.Fatalf("write content file failed: %v", err)
 				}
 			},
-			sharedDir: sharedDir,
-			fileName:  "task_context.md",
-			want:      "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: x",
+			layout:   layout,
+			fileName: "task_context.md",
+			want:     "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: x",
 		},
 	}
 
@@ -66,9 +72,9 @@ func TestReadSharedFileOptional(t *testing.T) {
 			} else {
 				_ = os.Remove(abs)
 			}
-			got := readSharedFileOptional(nil, tc.sharedDir, tc.fileName)
+			got := readSharedFileOptional(nil, tc.layout, tc.fileName)
 			if got != tc.want {
-				t.Fatalf("readSharedFileOptional(%q, %q) = %q, want %q", tc.sharedDir, tc.fileName, got, tc.want)
+				t.Fatalf("readSharedFileOptional(%q, %q) = %q, want %q", tc.layout.SharedDir(), tc.fileName, got, tc.want)
 			}
 		})
 	}

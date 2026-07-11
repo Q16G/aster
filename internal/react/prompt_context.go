@@ -158,7 +158,7 @@ func (a *Agent) buildPromptContext(snapshot builtin_tools.StateSnapshot, stepID 
 	pc.OpenItemsLedger = a.previewSharedFileForPrompt(openItemsFileName, limit)
 	pc.PlannerJournal = previewPlannerJournalForPrompt(a.workspaceRootDir, limit)
 	if a.workspaceRuntime != nil {
-		pc.StepFileContent = readSharedStepFileForPrompt(strings.TrimSpace(a.workspaceRuntime.SharedDir()), stepID, limit)
+		pc.StepFileContent = readSharedStepFileForPrompt(a.wsLayout(), stepID, limit)
 	}
 	return pc
 }
@@ -188,16 +188,16 @@ func (a *Agent) spillPromptContextField(field, content string) string {
 	if a == nil || a.workspaceRuntime == nil {
 		return ""
 	}
-	sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir())
-	if sharedDir == "" {
+	l := a.wsLayout()
+	if l.SharedDir() == "" {
 		return ""
 	}
 	name := field + ".md"
-	rel := filepath.ToSlash(filepath.Join("shared", promptContextDirName, name))
+	rel := filepath.ToSlash(filepath.Join(l.SharedDirRel(), promptContextDirName, name))
 	if err := a.workspaceRuntime.WriteFileRel(rel, []byte(content)); err != nil {
 		return ""
 	}
-	return filepath.Join(sharedDir, promptContextDirName, name)
+	return filepath.Join(l.SharedDir(), promptContextDirName, name)
 }
 
 // previewSharedFileForPrompt 读共享区文件并做 preview：缺失/空返回空串（HAS gate 语义），
@@ -206,12 +206,12 @@ func (a *Agent) previewSharedFileForPrompt(name string, limitTokens int) string 
 	if a == nil || a.workspaceRuntime == nil {
 		return ""
 	}
-	sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir())
-	if sharedDir == "" {
+	l := a.wsLayout()
+	if l.SharedDir() == "" {
 		return ""
 	}
-	raw := readSharedFileOptional(a.workspaceRuntime, sharedDir, name)
-	return previewNonEmptyForPrompt(raw, filepath.Join(sharedDir, name), limitTokens)
+	raw := readSharedFileOptional(a.workspaceRuntime, l, name)
+	return previewNonEmptyForPrompt(raw, filepath.Join(l.SharedDir(), name), limitTokens)
 }
 
 // previewPlannerJournalForPrompt 读 workspace/planner.jsonl 并做 preview；

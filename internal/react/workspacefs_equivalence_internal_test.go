@@ -37,10 +37,10 @@ func TestLayoutMatchesLegacyHelpers(t *testing.T) {
 			workspacefs.New(root, ns).ArtifactsRootRel())
 	}
 
-	// react step 过程文件 helper
+	// react step 过程文件 helper（M3a 起旧 helper 已删，旧侧改用字面公式锚点）
 	shared := filepath.Join(root, "shared")
-	eqPath(t, "step_file_abs", stepFileAbs(shared, "p1-s1"), l.StepFile("p1-s1"))
-	eqPath(t, "step_file_rel", stepFileRelPath("p1-s1"), l.StepFileRel("p1-s1"))
+	eqPath(t, "step_file_abs", filepath.Join(shared, "step_p1-s1.md"), l.StepFile("p1-s1"))
+	eqPath(t, "step_file_rel", "shared/step_p1-s1.md", l.StepFileRel("p1-s1"))
 
 	// react 内联拼接散点（timeline/coverage/tool-output/async/sub_agents/state）
 	eqPath(t, "timeline", filepath.Join(shared, "p1-s1", "timeline.jsonl"), l.StepTimeline("p1-s1"))

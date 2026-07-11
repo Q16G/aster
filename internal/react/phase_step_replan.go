@@ -15,6 +15,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/runtimelog"
+	"aster/internal/workspacefs"
 )
 
 const submitReplanToolName = "submit_replan"
@@ -210,15 +211,15 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		return fmt.Errorf("step_replan phase missing step outcome step_id=%s", stepID)
 	}
 
-	workspaceSharedDir := ""
+	var wsl workspacefs.Layout
 	if a.workspaceRuntime != nil {
-		workspaceSharedDir = strings.TrimSpace(a.workspaceRuntime.SharedDir())
+		wsl = a.wsLayout()
 	}
 
 	// digest 归约：runtime 对 timeline 的规则归约为权威来源，先于 SimpleTask bypass 与 LLM
 	// 判定 prompt 注入完成，确保所有下游路径（simple / 直达 Step / 子 Agent 回流）拿到同一
 	// 归约结果；applyReplanResult 不再重复归约。
-	if reduced := reduceStepTimelineToolCallsDigest(workspaceSharedDir, stepID); len(reduced) > 0 {
+	if reduced := reduceStepTimelineToolCallsDigest(wsl, stepID); len(reduced) > 0 {
 		rawOutcome.ToolCallsDigest = reduced
 	}
 
@@ -265,7 +266,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
 	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
 	priorBoundaryStepID := a.lastReplanBoundaryStepID
-	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, workspaceSharedDir)
+	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, wsl)
 	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
 	a.lastReplanBoundaryStepID = stepID
 
@@ -279,9 +280,9 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	stepContextsPath := a.resolveStepContextsPath()
 	openItemsPath := ""
 	taskContextPath := ""
-	if workspaceSharedDir != "" {
-		openItemsPath = filepath.Join(workspaceSharedDir, openItemsFileName)
-		taskContextPath = filepath.Join(workspaceSharedDir, taskContextFileName)
+	if wsl.SharedDir() != "" {
+		openItemsPath = wsl.OpenItems()
+		taskContextPath = wsl.TaskContext()
 	}
 	// 统一 PromptContext：内存字段与共享区文件字段全部经动态 preview 上限投影（M2 接线）。
 	pc := a.buildPromptContext(snapshot, stepID)
@@ -324,7 +325,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"step_transcript_path":   stepTranscriptPath,
 		"open_items_path":        openItemsPath,
 		"task_context_path":      taskContextPath,
-		"step_file_path":         stepFileAbs(workspaceSharedDir, stepID),
+		"step_file_path":         wsl.StepFile(stepID),
 		"prior_boundary_step_id": priorBoundaryStepID,
 		"skills_context":         skillsCtx,
 		"available_tools":        functionToolsToAvailableInfo(fnTools),
@@ -486,16 +487,17 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	contextKey := a.resolveStepContextKey(stepID, rawOutcome, snapshot)
 
 	var timelineFile string
-	if a.workspaceRuntime != nil && stepTimelineExists(a.workspaceRuntime.SharedDir(), stepID) {
+	if a.workspaceRuntime != nil && stepTimelineExists(a.wsLayout(), stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
 	// step 过程文件（think_act 按三节契约维护）：存在才填指针；旧布局 fallback 兼容老 session。
 	var stepFile string
 	if a.workspaceRuntime != nil {
-		if stepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
+		l := a.wsLayout()
+		if stepFileExists(l, stepID) {
 			stepFile = stepFileRelPath(stepID)
-		} else if legacyStepFileExists(a.workspaceRuntime.SharedDir(), stepID) {
-			stepFile = fmt.Sprintf("shared/%s/step.md", stepID)
+		} else if legacyStepFileExists(l, stepID) {
+			stepFile = l.LegacyStepFileRel(stepID)
 		}
 	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
@@ -735,9 +737,9 @@ func (a *Agent) resolveCoverageFile(stepID string, outcome *builtin_tools.StepOu
 			return ""
 		}
 	}
-	abs := filepath.Join(a.workspaceRuntime.SharedDir(), stepID, "coverage.json")
-	if info, err := os.Stat(abs); err == nil && !info.IsDir() {
-		return fmt.Sprintf("shared/%s/coverage.json", stepID)
+	l := a.wsLayout()
+	if info, err := os.Stat(l.StepCoverage(stepID)); err == nil && !info.IsDir() {
+		return l.StepCoverageRel(stepID)
 	}
 	return a.persistCoverageChecklist(stepID, outcome)
 }
@@ -755,20 +757,20 @@ func (a *Agent) persistCoverageChecklist(stepID string, outcome *builtin_tools.S
 	if len(outcome.CoverageChecklist) <= coverageChecklistInlineMaxItems && len(data) <= coverageChecklistInlineMaxBytes {
 		return ""
 	}
-	dir := filepath.Join(a.workspaceRuntime.SharedDir(), stepID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	l := a.wsLayout()
+	if err := os.MkdirAll(l.StepDir(stepID), 0o755); err != nil {
 		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
 			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
 		})
 		return ""
 	}
-	if err := os.WriteFile(filepath.Join(dir, "coverage.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(l.StepCoverage(stepID), data, 0o644); err != nil {
 		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
 			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
 		})
 		return ""
 	}
-	return fmt.Sprintf("shared/%s/coverage.json", stepID)
+	return l.StepCoverageRel(stepID)
 }
 
 // appendPlannerJournalStepRecordAt 在 step 终态产出烘焙完成后，把该 plan_item 增量
@@ -924,7 +926,7 @@ type reviewWindow struct {
 	OmittedCount int               `json:"omitted_count,omitempty"`
 }
 
-func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, sharedDir, resultPath, coveragePath string) *replanStepCard {
+func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools.StepOutcome, l workspacefs.Layout, resultPath, coveragePath string) *replanStepCard {
 	if current == nil || outcome == nil {
 		return nil
 	}
@@ -947,8 +949,8 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 	if card.CoverageFile != "" && len(card.CoverageChecklist) > coverageChecklistInlineMaxItems {
 		card.CoverageChecklist = card.CoverageChecklist[:coverageChecklistInlineMaxItems]
 	}
-	if stepTimelineExists(sharedDir, card.ID) {
-		card.TimelineFile = filepath.Join(sharedDir, card.ID, "timeline.jsonl")
+	if stepTimelineExists(l, card.ID) {
+		card.TimelineFile = l.StepTimeline(card.ID)
 	}
 	return card
 }
@@ -962,7 +964,7 @@ func buildReplanStepCard(current *builtin_tools.PlanItem, outcome *builtin_tools
 //
 // 超过 reviewWindowMaxCards 时截断保最新 N 张并写入 OmittedCount，模板提示更早 step
 // 走 PLANNER_JOURNAL / PLAN_OVERVIEW 回读，避免 plan_exhausted 跨越全 plan 时 token 爆炸。
-func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, sharedDir string) *reviewWindow {
+func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundaryStepID string, l workspacefs.Layout) *reviewWindow {
 	plan := snapshot.Plan
 	if len(plan) == 0 {
 		return &reviewWindow{}
@@ -1021,7 +1023,7 @@ func (a *Agent) buildReviewWindow(snapshot builtin_tools.StateSnapshot, boundary
 		} else {
 			coverageRel = a.resolveCoverageFile(stepID, outcome)
 		}
-		card := buildReplanStepCard(item, outcome, sharedDir,
+		card := buildReplanStepCard(item, outcome, l,
 			a.resolveStepResultPath(stepID, outcome),
 			a.absolutizeCoverageRel(coverageRel),
 		)
@@ -1071,16 +1073,15 @@ func (a *Agent) ensureTaskContextSkeleton() {
 	if a == nil || a.workspaceRuntime == nil {
 		return
 	}
-	sharedDir := a.workspaceRuntime.SharedDir()
-	if strings.TrimSpace(sharedDir) == "" {
+	l := a.wsLayout()
+	absPath := l.TaskContext()
+	if absPath == "" {
 		return
 	}
-	absPath := filepath.Join(sharedDir, taskContextFileName)
 	if _, err := os.Stat(absPath); err == nil {
 		return
 	}
-	relPath := filepath.ToSlash(filepath.Join("shared", taskContextFileName))
-	if err := a.workspaceRuntime.WriteFileRel(relPath, []byte(taskContextSkeleton)); err != nil {
+	if err := a.workspaceRuntime.WriteFileRel(l.TaskContextRel(), []byte(taskContextSkeleton)); err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "task_context_skeleton_write_failed",
 			"path":  absPath,
@@ -1098,37 +1099,37 @@ func (a *Agent) ensureTaskContextSkeleton() {
 //
 // 短路顺序保持与旧版语义一致：name 或 sharedDir 任一为空 → 不发起任何 IO，直接返回 ""。
 // （review P1-5：避免 runtime != nil + sharedDir == "" 时悄悄走 runtime IO 产生额外失败调用。）
-func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, sharedDir, name string) string {
-	if strings.TrimSpace(sharedDir) == "" || strings.TrimSpace(name) == "" {
+func readSharedFileOptional(runtime builtin_tools.WorkspaceRuntime, l workspacefs.Layout, name string) string {
+	if l.SharedDir() == "" || strings.TrimSpace(name) == "" {
 		return ""
 	}
 	if runtime != nil {
-		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join("shared", name)))
+		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join(l.SharedDirRel(), name)))
 		if err != nil {
 			return ""
 		}
 		return strings.TrimSpace(string(data))
 	}
-	data, err := os.ReadFile(filepath.Join(sharedDir, name))
+	data, err := os.ReadFile(filepath.Join(l.SharedDir(), name))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
 
-func readSharedStepFileForPrompt(sharedDir, stepID string, limitTokens int) string {
-	if stepFileExists(sharedDir, stepID) {
-		data, err := os.ReadFile(stepFileAbs(sharedDir, stepID))
+func readSharedStepFileForPrompt(l workspacefs.Layout, stepID string, limitTokens int) string {
+	if stepFileExists(l, stepID) {
+		data, err := os.ReadFile(l.StepFile(stepID))
 		if err != nil {
 			return ""
 		}
-		return previewStepFileForPrompt(string(data), stepFileAbs(sharedDir, stepID), limitTokens)
+		return previewStepFileForPrompt(string(data), l.StepFile(stepID), limitTokens)
 	}
 	// 旧布局 shared/<stepID>/step.md fallback（老 session resume）。
-	if !legacyStepFileExists(sharedDir, stepID) {
+	if !legacyStepFileExists(l, stepID) {
 		return ""
 	}
-	legacyPath := filepath.Join(sharedDir, stepID, "step.md")
+	legacyPath := l.LegacyStepFile(stepID)
 	data, err := os.ReadFile(legacyPath)
 	if err != nil {
 		return ""
