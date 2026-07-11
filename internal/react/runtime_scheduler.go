@@ -311,17 +311,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		// TaskContextBoard 按动态上限截断：task_context.md 是精简事实板，正常不会过大，
 		// 但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
 		raw := readSharedFileOptional(a.workspaceRuntime, a.workspaceRuntime.SharedDir(), taskContextFileName)
-		limit := sharedFileLimitBytes(a.contextWindowTokens)
-		if limit > 0 && len(raw) > limit {
+		if raw != "" {
 			absPath := filepath.Join(a.workspaceRuntime.SharedDir(), taskContextFileName)
-			cutByte := limit
-			if i := strings.LastIndexByte(raw[:limit], '\n'); i >= limit/2 {
-				cutByte = i
-			}
-			for cutByte > 0 && raw[cutByte]&0xC0 == 0x80 {
-				cutByte--
-			}
-			raw = raw[:cutByte] + "\n\n（[截断] 仅显示前 " + formatBytes(cutByte) + "。完整内容见文件：" + absPath + "，如需全量数据请用文件工具读取。）"
+			raw = previewForPrompt(raw, absPath, promptPreviewTokens(a.usableInputTokens))
 		}
 		plannerInput.TaskContextBoard = raw
 	}

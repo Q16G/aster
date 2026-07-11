@@ -288,6 +288,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 
 	runBudget := resolveContextBudget(runClient)
 	a.contextWindowTokens = runBudget.ContextWindowTokens
+	a.usableInputTokens = runBudget.UsableInputTokens
 	if compressor, ok := a.cfg.HistoryCompressor.(*AIHistoryCompressor); ok && compressor != nil {
 		triggerTokens := runBudget.TriggerTokens
 		if triggerTokens <= 0 {
