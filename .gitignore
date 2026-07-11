@@ -18,3 +18,4 @@ tmp/
 internal/react/artifacts/
 .playwright-mcp/
 docs/
+refactor-docs/
