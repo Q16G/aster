@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1980,12 +1979,14 @@ func (a *Agent) writePlannerTempFile(name, content string) string {
 	if a == nil || a.workspaceRuntime == nil {
 		return ""
 	}
-	dir := a.wsLayout().SharedDir()
+	l := a.wsLayout()
+	dir := l.SharedDir()
 	if dir == "" {
 		return ""
 	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	rel := filepath.ToSlash(filepath.Join(l.SharedDirRel(), name))
+	if err := a.workspaceRuntime.Store().Write(rel, []byte(content)); err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event":   "planner_overflow_file_write_failed",
 			"message": "failed to write planner overflow file",

@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -290,11 +289,16 @@ func resolvePlannerJournalPointer(workspaceRootDir string) string {
 	if root == "" {
 		return ""
 	}
-	p := workspacefs.New(root, "").PlannerJournal()
+	l := workspacefs.New(root, "")
+	p := l.PlannerJournal()
 	if p == "" {
 		return ""
 	}
-	info, err := os.Stat(p)
+	store, err := workspacefs.NewLocalStore(root)
+	if err != nil {
+		return ""
+	}
+	info, err := store.Stat(l.PlannerJournalRel())
 	if err != nil || info.Size() <= 0 {
 		return ""
 	}
