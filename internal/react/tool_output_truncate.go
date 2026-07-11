@@ -100,7 +100,7 @@ func truncateToolOutput(output string, root, relDir string) (toolOutputResult, e
 	}
 
 	content := fmt.Sprintf(
-		"%s\n\n...%d %s truncated...\n\nThe tool call succeeded but the output was truncated. Full output saved to: %s\nUse Grep to search the full content or Read with offset/limit to view specific sections.",
+		"%s\n\n...%d %s truncated...\n\nThe tool call succeeded but the output was truncated. Full output saved to: %s\nUse rg to search the full content or read_file with offset/limit to view specific sections.",
 		preview,
 		removed,
 		unit,
