@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 //go:embed prompts/think_act_system.prompt
@@ -289,7 +290,7 @@ func resolvePlannerJournalPointer(workspaceRootDir string) string {
 	if root == "" {
 		return ""
 	}
-	p := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	p := workspacefs.New(root, "").PlannerJournal()
 	if p == "" {
 		return ""
 	}

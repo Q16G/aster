@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 // promptBodyTokens 取 preview 产出中标记串之前的正文 token 数（未截断则全文）。
@@ -113,10 +114,10 @@ func TestBuildPromptContextPointerTargets(t *testing.T) {
 	}
 
 	// Plan / StepOutcomes 指针 → 既有真相源。
-	if p := builtin_tools.WorkspacePlannerJournalFileAbs(dir); !strings.Contains(pc.Plan, p) {
+	if p := workspacefs.New(dir, "").PlannerJournal(); !strings.Contains(pc.Plan, p) {
 		t.Errorf("Plan 指针应指 %s，got 尾部 %q", p, tail(pc.Plan, 120))
 	}
-	if p := builtin_tools.WorkspaceStepContextsFileAbs(dir); !strings.Contains(pc.StepOutcomes, p) {
+	if p := workspacefs.New(dir, "").StepContexts(); !strings.Contains(pc.StepOutcomes, p) {
 		t.Errorf("StepOutcomes 指针应指 %s", p)
 	}
 

@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-const workspaceStepContextsRelPath = "workspace/step_contexts.jsonl"
+	"aster/internal/workspacefs"
+)
 
 func NormalizeWorkspaceNamespace(namespace string) string {
 	namespace = filepath.ToSlash(strings.TrimSpace(namespace))
@@ -19,14 +19,6 @@ func NormalizeWorkspaceNamespace(namespace string) string {
 		return "root"
 	}
 	return namespace
-}
-
-func WorkspaceStepContextsFileAbs(workspaceRootDir string) string {
-	workspaceRootDir = strings.TrimSpace(workspaceRootDir)
-	if workspaceRootDir == "" {
-		return ""
-	}
-	return filepath.Join(workspaceRootDir, filepath.FromSlash(workspaceStepContextsRelPath))
 }
 
 func WorkspaceArtifactPath(workspaceRootDir string, filePath string) string {
@@ -49,7 +41,7 @@ func AppendWorkspaceStepContextRecords(workspaceRootDir string, records []*StepC
 	if len(records) == 0 {
 		return nil
 	}
-	absPath := WorkspaceStepContextsFileAbs(workspaceRootDir)
+	absPath := workspacefs.New(workspaceRootDir, "").StepContexts()
 	if absPath == "" {
 		return fmt.Errorf("workspace root is empty")
 	}
@@ -103,7 +95,7 @@ func AppendWorkspaceStepContextRecords(workspaceRootDir string, records []*StepC
 //
 // If limit > 0, it returns at most the last `limit` records (in original order).
 func LoadWorkspaceStepContextRecords(workspaceRootDir string, limit int) ([]*StepContextRecord, error) {
-	absPath := WorkspaceStepContextsFileAbs(workspaceRootDir)
+	absPath := workspacefs.New(workspaceRootDir, "").StepContexts()
 	if absPath == "" {
 		return nil, fmt.Errorf("workspace root is empty")
 	}

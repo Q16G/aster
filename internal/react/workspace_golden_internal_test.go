@@ -309,14 +309,12 @@ func TestWorkspaceGoldenTree(t *testing.T) {
 // 新旧等价测试的期望值。helper 全部删除（M3/M5）后本测试与 testdata 一并删除。
 func TestLegacyHelperPathSnapshot(t *testing.T) {
 	const root = "/ws-root"
+	// M3b 起纯公式 helper（PlannerJournalFileAbs/StepContextsFileAbs/ArtifactsRootRel）
+	// 已删除，其锚定职责由 workspacefs_equivalence_internal_test.go 的字面断言承接；
+	// 此处仅保留仍存活的语义 helper 快照。
 	paths := map[string]string{
-		"builtin.planner_journal_abs":    builtin_tools.WorkspacePlannerJournalFileAbs(root),
-		"builtin.step_contexts_abs":      builtin_tools.WorkspaceStepContextsFileAbs(root),
-		"builtin.artifact_path":          builtin_tools.WorkspaceArtifactPath(root, "notes/x.md"),
-		"builtin.artifacts_root_rel.":    builtin_tools.WorkspaceArtifactsRootRel(""),
-		"builtin.artifacts_root_rel.root": builtin_tools.WorkspaceArtifactsRootRel("root"),
-		"builtin.artifacts_root_rel.sub": builtin_tools.WorkspaceArtifactsRootRel("sub-a"),
-		"react.step_file_abs":            workspacefs.New("/ws-root", "").StepFile("p1-s1"),
+		"builtin.artifact_path": builtin_tools.WorkspaceArtifactPath(root, "notes/x.md"),
+		"react.step_file_abs":   workspacefs.New("/ws-root", "").StepFile("p1-s1"),
 	}
 	for _, ns := range []string{"root", "sub-a"} {
 		artifactPath, absPath, err := builtin_tools.WorkspaceArtifactWritePath(root, ns, "plan/current.json")

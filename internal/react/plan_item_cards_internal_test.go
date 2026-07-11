@@ -23,7 +23,7 @@ func TestResolvePlannerJournalPointer(t *testing.T) {
 		t.Fatalf("missing journal should return empty, got %q", got)
 	}
 
-	journalPath := builtin_tools.WorkspacePlannerJournalFileAbs(root)
+	journalPath := workspacefs.New(root, "").PlannerJournal()
 	if err := os.MkdirAll(filepath.Dir(journalPath), 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
