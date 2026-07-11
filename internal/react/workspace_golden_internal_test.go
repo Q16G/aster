@@ -77,7 +77,7 @@ func buildGoldenWorkspace(t *testing.T, root string) {
 		{TS: goldenFixedTime, Type: "tool_call", Key: "call-2", Tool: "read_file", ArgsDigest: "path=/tmp/x", Error: "file not found"},
 	}
 	for _, ev := range events {
-		if err := appendStepTimeline(workspacefs.New(rt.RootDir(), ""), "p1-s1", ev); err != nil {
+		if err := appendStepTimeline(rt, "p1-s1", ev); err != nil {
 			t.Fatalf("appendStepTimeline: %v", err)
 		}
 	}

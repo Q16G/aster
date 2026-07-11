@@ -6,12 +6,13 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"aster/internal/workspacefs"
 )
 
 func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
+	rt, err := newLocalWorkspaceRuntime("sess-tl", t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
 	stepID := "step-abc"
 
 	events := []*TimelineEvent{
@@ -36,12 +37,12 @@ func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
 	}
 
 	for _, ev := range events {
-		if err := appendStepTimeline(l, stepID, ev); err != nil {
+		if err := appendStepTimeline(rt, stepID, ev); err != nil {
 			t.Fatalf("appendStepTimeline: %v", err)
 		}
 	}
 
-	fp := l.StepTimeline(stepID)
+	fp := rt.Layout().StepTimeline(stepID)
 	f, err := os.Open(fp)
 	if err != nil {
 		t.Fatalf("open timeline file: %v", err)
@@ -74,30 +75,37 @@ func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
 
 func TestAppendStepTimeline_EmptyInputs(t *testing.T) {
 	ev := &TimelineEvent{TS: time.Now().UTC(), Type: "tool_call", Key: "x"}
-
-	if err := appendStepTimeline(workspacefs.Layout{}, "step-1", ev); err != nil {
-		t.Errorf("empty layout root should return nil, got %v", err)
+	rt, err := newLocalWorkspaceRuntime("sess-tl", t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
 	}
-	if err := appendStepTimeline(workspacefs.New("/tmp", ""), "", ev); err != nil {
+
+	if err := appendStepTimeline(nil, "step-1", ev); err != nil {
+		t.Errorf("nil runtime should return nil, got %v", err)
+	}
+	if err := appendStepTimeline(rt, "", ev); err != nil {
 		t.Errorf("empty stepID should return nil, got %v", err)
 	}
-	if err := appendStepTimeline(workspacefs.New("/tmp", ""), "step-1", nil); err != nil {
+	if err := appendStepTimeline(rt, "step-1", nil); err != nil {
 		t.Errorf("nil event should return nil, got %v", err)
 	}
 }
 
 func TestStepTimelineExists(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
+	rt, err := newLocalWorkspaceRuntime("sess-tl", t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
 
-	if stepTimelineExists(l, "nonexistent") {
+	if stepTimelineExists(rt, "nonexistent") {
 		t.Error("should return false for nonexistent file")
 	}
 
-	_ = appendStepTimeline(l, "step-1", &TimelineEvent{
+	_ = appendStepTimeline(rt, "step-1", &TimelineEvent{
 		TS: time.Now().UTC(), Type: "tool_call", Key: "c1",
 	})
 
-	if !stepTimelineExists(l, "step-1") {
+	if !stepTimelineExists(rt, "step-1") {
 		t.Error("should return true after writing")
 	}
 }

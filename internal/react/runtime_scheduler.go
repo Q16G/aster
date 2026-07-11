@@ -1737,7 +1737,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		if a.workspaceRuntime != nil {
 			l := a.wsLayout()
 			if stepID := effectiveStepID(runCtx, prevSnapshot); l.SharedDir() != "" && stepID != "" {
-				_ = appendStepTimeline(l, stepID, &TimelineEvent{
+				_ = appendStepTimeline(a.workspaceRuntime, stepID, &TimelineEvent{
 					TS:   time.Now().UTC(),
 					Type: "human_confirm",
 					Key:  interruptID,
@@ -1851,7 +1851,7 @@ func (a *Agent) executeToolCall(ctx context.Context, runCtx *InlineStepCtx, iter
 		if len(render.Media) > 0 {
 			event.Payload = map[string]any{"media": render.Media}
 		}
-		_ = appendStepTimeline(a.wsLayout(), stepID, event)
+		_ = appendStepTimeline(a.workspaceRuntime, stepID, event)
 	}
 
 	a.emitter.EmitToolEnd(iter, builtin_tools.ToolResult{

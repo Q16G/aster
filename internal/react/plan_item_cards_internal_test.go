@@ -101,7 +101,7 @@ func TestBuildReplanStepCard_CoveragePointerTruncatesInline(t *testing.T) {
 	}
 
 	// 有指针：内联截留前 N 条。
-	card := buildReplanStepCard(current, outcome, workspacefs.Layout{}, "", "/ws/shared/s1/coverage.json")
+	card := buildReplanStepCard(current, outcome, nil, "", "/ws/shared/s1/coverage.json")
 	if card.CoverageFile != "/ws/shared/s1/coverage.json" {
 		t.Fatalf("unexpected coverage file: %q", card.CoverageFile)
 	}
@@ -110,7 +110,7 @@ func TestBuildReplanStepCard_CoveragePointerTruncatesInline(t *testing.T) {
 	}
 
 	// 无指针：原样内联，不截断。
-	card = buildReplanStepCard(current, outcome, workspacefs.Layout{}, "", "")
+	card = buildReplanStepCard(current, outcome, nil, "", "")
 	if card.CoverageFile != "" {
 		t.Fatalf("expected empty coverage file, got %q", card.CoverageFile)
 	}

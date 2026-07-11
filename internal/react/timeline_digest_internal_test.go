@@ -5,12 +5,19 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"aster/internal/workspacefs"
 )
 
+func newTestTimelineRuntime(t *testing.T) WorkspaceRuntime {
+	t.Helper()
+	rt, err := newLocalWorkspaceRuntime("sess-timeline", t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
+	return rt
+}
+
 func TestReduceStepTimelineToolCallsDigest(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
+	rt := newTestTimelineRuntime(t)
 	stepID := "step-1"
 
 	ev1 := newToolCallTimelineEvent("c1", "bash", map[string]any{
@@ -27,7 +34,7 @@ func TestReduceStepTimelineToolCallsDigest(t *testing.T) {
 	}, "src/a.go:12: sink(...)\nsrc/b.go:30: sink(...)", "", "", 900*time.Millisecond)
 
 	for _, ev := range []*TimelineEvent{ev1, ev2, ev3} {
-		if err := appendStepTimeline(l, stepID, ev); err != nil {
+		if err := appendStepTimeline(rt, stepID, ev); err != nil {
 			t.Fatalf("append timeline: %v", err)
 		}
 	}
@@ -39,7 +46,7 @@ func TestReduceStepTimelineToolCallsDigest(t *testing.T) {
 		t.Fatalf("expected digests populated, got %+v", ev1)
 	}
 
-	digest := reduceStepTimelineToolCallsDigest(l, stepID)
+	digest := reduceStepTimelineToolCallsDigest(rt, stepID)
 	if len(digest) != 2 {
 		t.Fatalf("expected 2 deduped digest entries, got %d: %v", len(digest), digest)
 	}
@@ -52,13 +59,13 @@ func TestReduceStepTimelineToolCallsDigest(t *testing.T) {
 }
 
 func TestReduceStepTimelineToolCallsDigest_MissingFile(t *testing.T) {
-	if got := reduceStepTimelineToolCallsDigest(workspacefs.New(t.TempDir(), ""), "nope"); got != nil {
+	if got := reduceStepTimelineToolCallsDigest(newTestTimelineRuntime(t), "nope"); got != nil {
 		t.Fatalf("expected nil for missing timeline, got %v", got)
 	}
 }
 
 func TestReduceStepTimelineToolCallsDigest_TruncationMarker(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
+	rt := newTestTimelineRuntime(t)
 	stepID := "step-cap"
 
 	appendRange := func(start, n int) {
@@ -69,7 +76,7 @@ func TestReduceStepTimelineToolCallsDigest_TruncationMarker(t *testing.T) {
 				map[string]any{"command": fmt.Sprintf("echo %d", i)},
 				fmt.Sprintf("out-%d", i), "", "", time.Millisecond,
 			)
-			if err := appendStepTimeline(l, stepID, ev); err != nil {
+			if err := appendStepTimeline(rt, stepID, ev); err != nil {
 				t.Fatalf("append timeline: %v", err)
 			}
 		}
@@ -77,7 +84,7 @@ func TestReduceStepTimelineToolCallsDigest_TruncationMarker(t *testing.T) {
 
 	// 恰好达上限：不追加标记。
 	appendRange(0, stepTimelineDigestMaxEntries)
-	digest := reduceStepTimelineToolCallsDigest(l, stepID)
+	digest := reduceStepTimelineToolCallsDigest(rt, stepID)
 	if len(digest) != stepTimelineDigestMaxEntries {
 		t.Fatalf("expected %d entries, got %d", stepTimelineDigestMaxEntries, len(digest))
 	}
@@ -87,7 +94,7 @@ func TestReduceStepTimelineToolCallsDigest_TruncationMarker(t *testing.T) {
 
 	// 超上限：截断 + 末尾标记含总数。
 	appendRange(stepTimelineDigestMaxEntries, 5)
-	digest = reduceStepTimelineToolCallsDigest(l, stepID)
+	digest = reduceStepTimelineToolCallsDigest(rt, stepID)
 	if len(digest) != stepTimelineDigestMaxEntries+1 {
 		t.Fatalf("expected %d entries incl marker, got %d", stepTimelineDigestMaxEntries+1, len(digest))
 	}

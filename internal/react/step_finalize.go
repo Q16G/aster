@@ -47,7 +47,7 @@ func (a *Agent) resolveStepFinalizePaths(stepID string, snapshot builtin_tools.S
 	}
 
 	var timelineFile string
-	if a.workspaceRuntime != nil && stepTimelineExists(a.wsLayout(), stepID) {
+	if stepTimelineExists(a.workspaceRuntime, stepID) {
 		timelineFile = stepTimelineRelPath(stepID)
 	}
 	var stepFile string
