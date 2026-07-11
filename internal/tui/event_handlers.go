@@ -619,7 +619,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					id, _ := itemMap["id"].(string)
 					step, _ := itemMap["step"].(string)
 					status, _ := itemMap["status"].(string)
-					topicID, _ := itemMap["phase_id"].(string)
+					topicID, _ := itemMap["topic_id"].(string)
 					if status == "" {
 						status = "pending"
 					}
@@ -627,7 +627,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				}
 			}
 		}
-		phases := parseTopicViews(event.Payload["phases"])
+		phases := parseTopicViews(event.Payload["topics"])
 		if len(items) > 0 || explanation != "" {
 			planPart := &PlanPart{
 				AgentName:   event.AgentName,
@@ -828,10 +828,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			ReplanReason:     replanReason,
 			NextGoal:         nextGoal,
 			PlanSize:         planSize,
-			TopicAssessments: payloadInt(event.Payload, "phase_assessments_size"),
-			TopicContinue:    payloadInt(event.Payload, "phase_continue_size"),
-			TopicCompleted:   payloadInt(event.Payload, "phase_completed_size"),
-			TopicBlocked:     payloadInt(event.Payload, "phase_blocked_size"),
+			TopicAssessments: payloadInt(event.Payload, "topic_assessments_size"),
+			TopicContinue:    payloadInt(event.Payload, "topic_continue_size"),
+			TopicCompleted:   payloadInt(event.Payload, "topic_completed_size"),
+			TopicBlocked:     payloadInt(event.Payload, "topic_blocked_size"),
 			Warnings:         warnings,
 		}
 		m.chat.AddPart(DisplayPart{

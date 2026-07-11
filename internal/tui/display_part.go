@@ -184,7 +184,7 @@ type PlanPart struct {
 	Explanation  string         `json:"explanation,omitempty"`
 	Items        []PlanItemView `json:"items,omitempty"`
 	// Topics 是业务 lane 清单，展开渲染时按 lane 分组 step；单 synthetic phase 不渲染组头。
-	Topics []TopicView `json:"phases,omitempty"`
+	Topics []TopicView `json:"topics,omitempty"`
 	// IsExpanded 是 UI 展开/折叠状态——volatile session 态，不持久化。
 	IsExpanded bool `json:"-"`
 }
@@ -209,7 +209,7 @@ type PlanItemView struct {
 	ID        string `json:"id,omitempty"`
 	Step      string `json:"step"`
 	Status    string `json:"status"`
-	TopicID   string `json:"phase_id,omitempty"`
+	TopicID   string `json:"topic_id,omitempty"`
 	Depth     int    `json:"depth,omitempty"`
 	AgentName string `json:"agent_name,omitempty"`
 }
@@ -293,10 +293,10 @@ type StepReplanPart struct {
 	PlanSize     int    `json:"plan_size,omitempty"`
 	// Phase 评估计数（Parallel Frontier）：本轮 frontier 内各 active phase 的 continue/
 	// completed/blocked 归置计数，折叠态显示 completed/blocked 收束数。
-	TopicAssessments int      `json:"phase_assessments,omitempty"`
-	TopicContinue    int      `json:"phase_continue,omitempty"`
-	TopicCompleted   int      `json:"phase_completed,omitempty"`
-	TopicBlocked     int      `json:"phase_blocked,omitempty"`
+	TopicAssessments int      `json:"topic_assessments,omitempty"`
+	TopicContinue    int      `json:"topic_continue,omitempty"`
+	TopicCompleted   int      `json:"topic_completed,omitempty"`
+	TopicBlocked     int      `json:"topic_blocked,omitempty"`
 	Warnings         []string `json:"warnings,omitempty"`
 
 	// IsExpanded 是 UI 展开/折叠态——volatile session 态，不持久化。

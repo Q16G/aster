@@ -46,7 +46,7 @@ func TestParseSubmitPlanArgs_TopicsRequired(t *testing.T) {
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 分析多个对等模块的访问控制",
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-a", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "topic_id": "phase-a", "depends_on": []string{}},
 		},
 		// phases 缺失 ↓
 	}, true, nil, nil)
@@ -81,13 +81,13 @@ func TestParseSubmitPlanArgs_TopicsAccepted(t *testing.T) {
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
-		"phases": []map[string]any{
+		"topics": []map[string]any{
 			{"id": "phase-a", "name": "模块 A 的访问控制分析", "depends_on": []string{}},
 			{"id": "phase-b", "name": "模块 B 的访问控制分析", "depends_on": []string{}},
 		},
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-a", "depends_on": []string{}},
-			{"id": "step-2", "step": "枚举模块 B 接口", "status": "pending", "phase_id": "phase-b", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "topic_id": "phase-a", "depends_on": []string{}},
+			{"id": "step-2", "step": "枚举模块 B 接口", "status": "pending", "topic_id": "phase-b", "depends_on": []string{}},
 		},
 	}, true, nil, nil)
 	if err != nil {
@@ -105,11 +105,11 @@ func TestParseSubmitPlanArgs_DanglingTopicIDRejected(t *testing.T) {
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
-		"phases": []map[string]any{
+		"topics": []map[string]any{
 			{"id": "phase-a", "name": "模块 A 的访问控制分析", "depends_on": []string{}},
 		},
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-ghost", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "topic_id": "phase-ghost", "depends_on": []string{}},
 		},
 	}, true, nil, nil)
 	if err == nil {
@@ -129,12 +129,12 @@ func TestParseSubmitPlanArgs_MergePreservesTerminalTopics(t *testing.T) {
 		"needs_planning":     true,
 		"explanation":        "重规划",
 		"goal_understanding": "核心目标: 继续推进",
-		"phases": []map[string]any{
+		"topics": []map[string]any{
 			{"id": "phase-next", "name": "下一个 lane", "depends_on": []string{}},
 		},
 		"plan": []map[string]any{
-			{"id": "step-old", "step": "已完成的旧步骤", "status": "completed", "phase_id": "phase-done", "depends_on": []string{}},
-			{"id": "step-new", "step": "新步骤", "status": "pending", "phase_id": "phase-next", "depends_on": []string{}},
+			{"id": "step-old", "step": "已完成的旧步骤", "status": "completed", "topic_id": "phase-done", "depends_on": []string{}},
+			{"id": "step-new", "step": "新步骤", "status": "pending", "topic_id": "phase-next", "depends_on": []string{}},
 		},
 	}, false, prior, nil)
 	if err != nil {
@@ -167,11 +167,11 @@ func TestParseSubmitPlanArgs_MergePreservesPhaseReferencedByTerminalStep(t *test
 		"needs_planning":     true,
 		"explanation":        "重规划",
 		"goal_understanding": "核心目标: 继续推进",
-		"phases": []map[string]any{
+		"topics": []map[string]any{
 			{"id": "phase-next", "name": "下一个 lane", "depends_on": []string{}},
 		},
 		"plan": []map[string]any{
-			{"id": "b1", "step": "新步骤", "status": "pending", "phase_id": "phase-next", "depends_on": []string{}},
+			{"id": "b1", "step": "新步骤", "status": "pending", "topic_id": "phase-next", "depends_on": []string{}},
 		},
 	}, false, prior, priorPlan)
 	if err != nil {

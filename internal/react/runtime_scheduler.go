@@ -322,7 +322,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		RecoveryContextJSON: recoveryCtx.Text,
 		InputTimeline:       pc.InputTimeline.Text,
 		TaskItemsJSON:       pc.Plan.Text,
-		PhasesJSON:          pc.Topics.Text,
+		TopicsJSON:          pc.Topics.Text,
 		ReplanContextJSON:   replanCtx.Text,
 	})
 	if inputStr == "" {
@@ -785,7 +785,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 						"description": "执行计划步骤列表。needs_planning=true 时必填且非空；须承接已有 <TASK_ITEMS>/<EXECUTION_LINE>，不得无视既有完成项从零改写。minItems=1 是 schema 级硬约束，传空数组 [] 会被 function-call 校验直接拒绝。needs_planning=false 时本字段可省略（function-call 协议层允许 required 字段缺省，由 runtime 走 direct_response 分支）。",
 						"items": map[string]any{
 							"type":     "object",
-							"required": []string{"id", "step", "status", "phase_id", "depends_on"},
+							"required": []string{"id", "step", "status", "topic_id", "depends_on"},
 							"properties": map[string]any{
 								"id":   map[string]any{"type": "string", "description": "步骤唯一标识，不得为空或重复。"},
 								"step": map[string]any{"type": "string", "description": "一条 step 必须是 atomic work item：object × action × acceptance。object 是一个具体执行对象（文件、接口、参数、页面、账户等对象标识）；action 是唯一动作维度（枚举、观测、验证某项属性、生成报告等）；acceptance 是一个可独立验收的产出或结论。规划时先列 objects，再列 actions，最后生成三元组；任一维度不同就拆成不同 step。清单是数据流：生成清单可作为一个 step，消费清单时必须展开清单内 objects，清单文件名本身不是批量执行对象。机械兜底门：单条 step 文案 ≤120 字符，且不得出现中文分号「；」（多句堆叠强信号）；超限或含分号会被 runtime 拒绝并回写要求拆条重试。不得为空，不得出现 <SKILLS_INDEX>/<MCP_SERVERS> 中的名称。"},
@@ -794,7 +794,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 									"enum":        []string{"pending", "in_progress", "completed", "failed"},
 									"description": "步骤状态。新规划步骤填 pending；承接已完成步骤时保留其原状态。",
 								},
-								"phase_id": map[string]any{
+								"topic_id": map[string]any{
 									"type":        "string",
 									"description": "所属业务 lane 的 phase id，必须引用 phases 中的有效条目（或承接既有 completed/blocked phase 的 id）。",
 								},
@@ -806,7 +806,7 @@ func buildSubmitPlanFunctionTool() *ai.FunctionTool {
 							},
 						},
 					},
-					"phases": map[string]any{
+					"topics": map[string]any{
 						"type":        "array",
 						"description": "业务 lane 清单。needs_planning=true 且 simple=false 时必填且非空。一个 phase 是一个最小的、可从浅到深推进的可闭环切面（纵向深度层在 phase 内以 step 推进，不拆成多个 phase）；互不依赖的 phase 会被并发调度，仅当一个 phase 的启动确实需要另一个 phase 的产出时才写 depends_on——深度递进链应留在同一 phase 内，不要拆成串行 phase 链。重规划回合按 id 承接既有 phases：completed/blocked 项由 runtime 保留，取消一个 lane 只能显式提交其 status=blocked，不得静默省略。",
 						"items": map[string]any{
@@ -1178,7 +1178,7 @@ type PlannerInputOptions struct {
 	// 截断 + 指针），空时按 snapshot 原地构建（兼容未接线调用方与既有测试）。
 	InputTimeline     string
 	TaskItemsJSON     string
-	PhasesJSON        string
+	TopicsJSON        string
 	ReplanContextJSON string
 }
 
@@ -1248,10 +1248,10 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	}
 
 	// PHASES：既有业务 lane 清单（含状态），重规划回合供 planner 承接。
-	if opts.PhasesJSON != "" {
-		data.PhasesJSON = opts.PhasesJSON
+	if opts.TopicsJSON != "" {
+		data.TopicsJSON = opts.TopicsJSON
 	} else if len(snapshot.Topics) > 0 {
-		data.PhasesJSON = prettyJSON(snapshot.Topics)
+		data.TopicsJSON = prettyJSON(snapshot.Topics)
 	}
 
 	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入；helper 内置 stat 与 size>0 判定）。

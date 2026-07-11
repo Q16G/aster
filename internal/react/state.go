@@ -598,7 +598,7 @@ func (t *StateTracker) ApplyTopicAssessmentsScoped(assessments []*builtin_tools.
 	}
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.touchLocked()
-	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "phase_assessment"))
+	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "topic_assessment"))
 	return builtin_tools.CloneAnalysisTopics(changed), *t.state
 }
 

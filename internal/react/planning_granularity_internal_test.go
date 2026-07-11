@@ -269,7 +269,7 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"无可深未深",
 		"视角 A 新对象登账本",
 		"skill 仅作为职责维度候选的弹性参考",
-		"phase_assessments 提交契约",
+		"topic_assessments 提交契约",
 	}
 	for _, needle := range stepReplanRequired {
 		if !strings.Contains(stepReplanSystemPrompt, needle) {

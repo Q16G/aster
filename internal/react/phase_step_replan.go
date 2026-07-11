@@ -56,7 +56,7 @@ func (t *submitReplanTool) Description() string {
 func (t *submitReplanTool) Parameters() any {
 	return map[string]any{
 		"type":     "object",
-		"required": []string{"should_replan", "replan_reason", "phase_assessments"},
+		"required": []string{"should_replan", "replan_reason", "topic_assessments"},
 		"properties": map[string]any{
 			"should_replan": map[string]any{
 				"type":        "boolean",
@@ -66,14 +66,14 @@ func (t *submitReplanTool) Parameters() any {
 				"type":        "string",
 				"description": "should_replan=true 时填一句人类可读的跨 phase 缺口总括；false 时填空字符串。",
 			},
-			"phase_assessments": map[string]any{
+			"topic_assessments": map[string]any{
 				"type":        "array",
 				"description": "对本轮 frontier 内每个 active phase 独立给出一条评估。逐个判定，不要合并多个 phase。",
 				"items": map[string]any{
 					"type":     "object",
-					"required": []string{"phase_id", "status"},
+					"required": []string{"topic_id", "status"},
 					"properties": map[string]any{
-						"phase_id": map[string]any{
+						"topic_id": map[string]any{
 							"type":        "string",
 							"description": "被评估的 active phase id，必须是本轮 frontier 内的有效 active phase。",
 						},
@@ -189,7 +189,7 @@ type stepReplanModelOutput struct {
 	// TopicAssessments 是对本轮 frontier 内各 active phase 的逐个评估（continue/completed/blocked
 	// + 该 phase 范围内三轴缺口）。runtime 机械承接：completed/blocked 写回 AnalysisTopic.Status，
 	// blocked 联动 skip 其下 pending step；continue 汇总三轴回流 planner 继续释放 step。
-	TopicAssessments []*builtin_tools.TopicAssessment `json:"phase_assessments,omitempty"`
+	TopicAssessments []*builtin_tools.TopicAssessment `json:"topic_assessments,omitempty"`
 }
 
 func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.ChatClient) error {
@@ -350,7 +350,7 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	prompt, err := a.BuildStepReplanPrompt(map[string]any{
 		"current_goal":           snapshot.CurrentGoal,
 		"goal_understanding":     pc.GoalUnderstanding.Text,
-		"active_phases":          activeTopics,
+		"active_topics":          activeTopics,
 		"input_timeline":         pc.InputTimeline.Text,
 		"review_window":          reviewWin,
 		"plan_overview":          pc.Plan.Text,

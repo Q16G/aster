@@ -17,12 +17,12 @@
 {{.TaskItemsJSON}}
 </TASK_ITEMS>
 {{- end}}
-{{- if .PhasesJSON}}
+{{- if .TopicsJSON}}
 
-<PHASES>
+<TOPICS>
 说明：既有业务 lane 清单。completed/blocked 项已收束（runtime 自动保留，不必重复提交）；pending 项由本轮 plan 承接：继续释放其 step、或显式提交 status=blocked 收束。新 lane 直接新增条目。
-{{.PhasesJSON}}
-</PHASES>
+{{.TopicsJSON}}
+</TOPICS>
 {{- end}}
 {{- if .PlannerJournalPath}}
 计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PlannerJournalPath}}`

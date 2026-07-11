@@ -88,7 +88,7 @@ func (a *Agent) applyInjectionBudget(priority []injectionField, budget int) {
 // 仅 injectsTaskBoard 时注入——无条件计入会高估总量、过度降级 InputTimeline/Plan 等规划必需字段。
 // Topics/事实板可先降级为指针，InputTimeline/Plan 排末端最后降级。
 func planInjectionBudgetFields(pc *PromptContext, regenGoal, injectsTaskBoard bool) []injectionField {
-	fields := []injectionField{{field: &pc.Topics, spillName: "phases"}}
+	fields := []injectionField{{field: &pc.Topics, spillName: "topics"}}
 	if injectsTaskBoard {
 		fields = append(fields, injectionField{field: &pc.TaskContextBoard})
 	}
@@ -248,7 +248,7 @@ func (a *Agent) buildPromptContext(snapshot builtin_tools.StateSnapshot, stepID 
 		pc.Plan = previewNonEmptyForPrompt(prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir)), journalAbs, limit)
 	}
 	if len(snapshot.Topics) > 0 {
-		pc.Topics = a.previewMemoryField("phases", prettyJSON(snapshot.Topics), limit)
+		pc.Topics = a.previewMemoryField("topics", prettyJSON(snapshot.Topics), limit)
 	}
 	if len(snapshot.StepOutcomes) > 0 {
 		// step 产出真相源已落盘 step_contexts.jsonl，不 spill。

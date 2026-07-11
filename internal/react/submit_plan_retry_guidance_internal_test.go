@@ -112,7 +112,7 @@ func TestParseSubmitPlanArgs_TopicsMissing_NoShapeReminder(t *testing.T) {
 		"explanation":        "复杂任务",
 		"goal_understanding": "核心目标: 多模块审计",
 		"plan": []map[string]any{
-			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "phase_id": "phase-a", "depends_on": []string{}},
+			{"id": "step-1", "step": "枚举模块 A 接口", "status": "pending", "topic_id": "phase-a", "depends_on": []string{}},
 		},
 		// phases 缺失
 	}, true, nil, nil)
