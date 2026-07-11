@@ -17,6 +17,7 @@ import (
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	"aster/internal/runtimelog"
+	"aster/internal/workspacefs"
 )
 
 type executeModelReply struct {
@@ -2058,6 +2059,16 @@ type realFileWorkspaceRuntime struct {
 func (w *realFileWorkspaceRuntime) SessionID() string { return "test-session" }
 func (w *realFileWorkspaceRuntime) RootDir() string   { return w.rootDir }
 func (w *realFileWorkspaceRuntime) Namespace() string { return "" }
+func (w *realFileWorkspaceRuntime) Layout() workspacefs.Layout {
+	return workspacefs.New(w.rootDir, "")
+}
+func (w *realFileWorkspaceRuntime) Store() workspacefs.Store {
+	store, err := workspacefs.NewLocalStore(w.rootDir)
+	if err != nil {
+		panic(err)
+	}
+	return store
+}
 func (w *realFileWorkspaceRuntime) SharedDir() string { return w.rootDir + "/shared" }
 func (w *realFileWorkspaceRuntime) ReadFileRel(_ string) ([]byte, error) {
 	return nil, fmt.Errorf("not implemented")
@@ -2076,10 +2087,10 @@ func (w *realFileWorkspaceRuntime) AppendWorkspaceReferences(_ []*builtin_tools.
 	return nil
 }
 func (w *realFileWorkspaceRuntime) LoadStepContextRecords(limit int) ([]*builtin_tools.StepContextRecord, error) {
-	return builtin_tools.LoadWorkspaceStepContextRecords(w.rootDir, limit)
+	return LoadWorkspaceStepContextRecords(w.rootDir, limit)
 }
 func (w *realFileWorkspaceRuntime) AppendStepContextRecords(records []*builtin_tools.StepContextRecord) error {
-	return builtin_tools.AppendWorkspaceStepContextRecords(w.rootDir, records)
+	return AppendWorkspaceStepContextRecords(w.rootDir, records)
 }
 func (w *realFileWorkspaceRuntime) ArtifactWritePath(relPath string) (string, string, error) {
 	return relPath, w.rootDir + "/" + relPath, nil
@@ -2142,7 +2153,7 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 	}
 
 	// Load records from the real step_contexts.jsonl file via builtin_tools
-	records, loadErr := builtin_tools.LoadWorkspaceStepContextRecords(wsRoot, 0)
+	records, loadErr := LoadWorkspaceStepContextRecords(wsRoot, 0)
 	if loadErr != nil {
 		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
 	}
@@ -2247,7 +2258,7 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 		t.Fatalf("expected success, got %#v", runResult)
 	}
 
-	records, loadErr := builtin_tools.LoadWorkspaceStepContextRecords(wsRoot, 0)
+	records, loadErr := LoadWorkspaceStepContextRecords(wsRoot, 0)
 	if loadErr != nil {
 		t.Fatalf("LoadWorkspaceStepContextRecords failed: %v", loadErr)
 	}

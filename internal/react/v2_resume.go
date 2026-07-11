@@ -80,7 +80,7 @@ func (a *Agent) alignPlanWithJournal(st *builtin_tools.StateSnapshot) {
 	if a == nil || a.workspaceRuntime == nil || st == nil {
 		return
 	}
-	items, phases, version, err := builtin_tools.LoadPlannerJournalSnapshot(a.workspaceRuntime.RootDir())
+	items, phases, version, err := LoadPlannerJournalSnapshot(a.workspaceRuntime.RootDir())
 	if err != nil {
 		runtimelog.LogJSON("warn", map[string]any{"msg": "alignPlanWithJournal: load planner journal", "error": err.Error()})
 		return

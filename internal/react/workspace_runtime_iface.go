@@ -2,6 +2,7 @@ package react
 
 import (
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 // WorkspaceRuntime is the stable workspace contract consumed by runtime code.
@@ -13,6 +14,11 @@ type WorkspaceRuntime interface {
 	SessionID() string
 	RootDir() string
 	Namespace() string
+
+	// Layout 返回本 workspace 的路径布局（路径唯一来源）。
+	Layout() workspacefs.Layout
+	// Store 返回底层存储（Go 侧 workspace IO 的唯一入口）。
+	Store() workspacefs.Store
 
 	// SharedDir returns the absolute path to the cross-step shared workspace directory.
 	// All non-step-specific and non-plan-specific data (tool outputs, evidence,

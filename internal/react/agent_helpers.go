@@ -66,7 +66,7 @@ func (a *Agent) appendPlannerJournalFullPlan(snapshot builtin_tools.StateSnapsho
 			Phase:       phase,
 		})
 	}
-	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
+	if err := AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
 		a.emitRuntimeLog("warn", "append planner journal failed", snapshot, map[string]any{
 			"event": "planner_journal_append_failed",
 			"error": err.Error(),
@@ -94,7 +94,7 @@ func (a *Agent) appendPlannerJournalPhaseRecords(phases []*builtin_tools.PlanPha
 			Phase:       phase,
 		})
 	}
-	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
+	if err := AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), records); err != nil {
 		a.emitRuntimeLog("warn", "append planner journal phase records failed", a.state.Snapshot(), map[string]any{
 			"event": "planner_journal_phase_append_failed",
 			"error": err.Error(),

@@ -2,7 +2,6 @@ package builtin_tools
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -38,26 +37,14 @@ func WorkspaceArtifactWritePath(workspaceRootDir string, namespace string, relPa
 	}
 
 	artifactPath = filepath.ToSlash(filepath.Join(workspacefs.New("", namespace).ArtifactsRootRel(), cleanRel))
-	absCandidate := filepath.Join(workspaceRootDir, filepath.FromSlash(artifactPath))
-	absPath, err = filepath.Abs(absCandidate)
-	if err != nil {
-		return "", "", fmt.Errorf("resolve artifact path failed: %w", err)
-	}
-	absPath = filepath.Clean(absPath)
-
-	workspaceAbs, err := filepath.Abs(workspaceRootDir)
+	// 逃逸校验收口 Store.AbsPath（rel→abs 的唯一出口，含 root 内双重防穿越校验）。
+	store, err := workspacefs.NewLocalStore(workspaceRootDir)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve workspace root dir failed: %w", err)
 	}
-	workspaceAbs = filepath.Clean(workspaceAbs)
-
-	relToRoot, err := filepath.Rel(workspaceAbs, absPath)
+	absPath, err = store.AbsPath(artifactPath)
 	if err != nil {
-		return "", "", fmt.Errorf("resolve artifact path rel failed: %w", err)
-	}
-	relToRoot = filepath.Clean(relToRoot)
-	if relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(os.PathSeparator)) || filepath.IsAbs(relToRoot) {
-		return "", "", fmt.Errorf("artifact path escapes workspace root")
+		return "", "", err
 	}
 	return artifactPath, filepath.ToSlash(absPath), nil
 }

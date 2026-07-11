@@ -50,7 +50,7 @@ func buildFinalizeTestAgent(t *testing.T) (*Agent, string) {
 
 func journalIDs(t *testing.T, rootDir string) map[string]*builtin_tools.PlanItem {
 	t.Helper()
-	items, _, err := builtin_tools.LoadPlannerJournal(rootDir)
+	items, _, err := LoadPlannerJournal(rootDir)
 	if err != nil {
 		t.Fatalf("load planner journal: %v", err)
 	}

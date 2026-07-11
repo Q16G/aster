@@ -146,7 +146,7 @@ func buildGoldenWorkspace(t *testing.T, root string) {
 	}); err != nil {
 		t.Fatalf("AppendStepContextRecords: %v", err)
 	}
-	if err := builtin_tools.AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
+	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
 		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "p1-s1", Step: "golden step one"}, CreatedAt: goldenFixedTime},
 		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "ph1", Name: "golden phase"}, CreatedAt: goldenFixedTime},
 	}); err != nil {

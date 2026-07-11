@@ -208,7 +208,7 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 	// 0) workspace/planner.jsonl —— plan 唯一真相源（step 终态即时 append，比任何
 	//    checkpoint 快照都新）。journal 缺失（旧 session）时回退 assessed_state。
 	if writer != nil {
-		if items, phases, version, err := builtin_tools.LoadPlannerJournalSnapshot(writer.sessionRoot); err == nil && len(items) > 0 {
+		if items, phases, version, err := LoadPlannerJournalSnapshot(writer.sessionRoot); err == nil && len(items) > 0 {
 			snapshot.Plan = items
 			snapshot.Phases = phases
 			snapshot.PlanVersion = version
