@@ -1,6 +1,7 @@
 package persistv2
 
 import (
+	"aster/internal/workspacefs"
 	"bufio"
 	"bytes"
 	"crypto/sha256"
@@ -48,14 +49,14 @@ func Open(workspaceRoot, sessionID string) (*Store, error) {
 		return nil, fmt.Errorf("session_id is empty")
 	}
 
-	sessionDir := filepath.Join(workspaceRoot, "workspace", "sessions", sessionID)
+	l := workspacefs.New(workspaceRoot, "")
 	s := &Store{
 		workspaceRoot: workspaceRoot,
 		sessionID:     sessionID,
-		sessionDir:    sessionDir,
-		eventsPath:    filepath.Join(sessionDir, "events.jsonl"),
-		snapshotPath:  filepath.Join(sessionDir, "snapshot.json"),
-		blobsDir:      filepath.Join(sessionDir, "blobs"),
+		sessionDir:    l.SessionDir(sessionID),
+		eventsPath:    l.SessionEvents(sessionID),
+		snapshotPath:  l.SessionSnapshot(sessionID),
+		blobsDir:      l.SessionBlobsDir(sessionID),
 	}
 	if err := os.MkdirAll(s.blobsDir, 0o755); err != nil {
 		return nil, err

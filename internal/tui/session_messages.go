@@ -511,6 +511,9 @@ func loadSessionAIHistory(baseDir, sessionID string) ([]*ai.MsgInfo, error) {
 }
 
 func loadSessionWorkspaceState(baseDir, sessionID string) (*builtin_tools.WorkspaceState, error) {
+	// 注意：tui 的 state.json 位于 workspace 根顶层（<root>/state.json），
+	// 与 runtime 的 workspacefs Layout StateJSON（<root>/workspace/state.json）
+	// 是两个不同文件——历史如此，M3 路径收口不改变磁盘布局，此处不归 Layout。
 	path := filepath.Join(sessionWorkspaceDir(baseDir, sessionID), "state.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -561,6 +564,7 @@ func saveSessionWorkspaceState(baseDir, sessionID string, state *builtin_tools.W
 		return err
 	}
 	data = append(data, '\n')
+	// 与 loadSessionWorkspaceState 同一口径：tui state.json 在 workspace 根顶层，不归 Layout。
 	return os.WriteFile(filepath.Join(dir, "state.json"), data, 0o644)
 }
 
