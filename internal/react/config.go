@@ -41,6 +41,10 @@ type AgentConfig struct {
 	OnHandoffFunc  OnHandoffFunc
 	InitialHistory []*ai.MsgInfo
 
+	// toolMiddlewares 是工具调用洋葱链的用户中间件（WithToolMiddleware 注册，
+	// 注册序 = 由外向内）；构造期经 buildToolExecChain 一次性装配，运行期不可变。
+	toolMiddlewares []toolMiddleware
+
 	EnableStreaming bool
 
 	TaskPlanner builtin_tools.TaskPlanner
