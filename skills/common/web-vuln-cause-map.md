@@ -69,7 +69,7 @@
 
 | 漏洞类 | source | sink | 成因 | skillPath |
 |---|---|---|---|---|
-| 业务逻辑（价格 / 数量 / 折扣 / 状态机） | 用户可控的业务字段 | 业务计算 / 状态机判定 | 客户端可控金额 / 数量负数 / 优惠券叠加 / 状态机倒退 / 退款无校验 | `(覆盖缺口，曾在 business-logic-testing，已删除；建议按 IDOR / 越权 / race 等具体方向 + page-analysis 提取信号驱动)` |
+| 业务逻辑（价格 / 数量 / 折扣 / 状态机） | 用户可控的业务字段 | 业务计算 / 状态机判定 | 客户端可控金额 / 数量负数 / 优惠券叠加 / 状态机倒退 / 退款无校验 | `(覆盖缺口，曾在 business-logic-testing，已删除；建议按 IDOR / 越权 / race 等具体方向 + page-model 提取信号驱动)` |
 | 竞态条件 / TOCTOU | 并发请求 | 共享资源（库存 / 余额 / 限量优惠） | 检查-修改非原子，多并发请求都通过检查后才写入 | `pentest/race-condition/SKILL.md` |
 | 通知滥用 | 注册 / 发送 / 触发请求 | 短信 / 邮件 / IM 触达 | 无速率限制 / 无验证码，可批量轰炸 | `pentest/notification-abuse/SKILL.md` |
 | 注册滥用 | 注册请求 | 用户创建 | 无速率限制 / 无唯一约束 / 无验证码，可批量创建账号 | `pentest/registration-abuse/SKILL.md` |
