@@ -193,15 +193,14 @@ func (w *artifactWriter) appendWorkspaceReferences(records []*builtin_tools.Work
 
 // maxSeqInRelDir 扫描 relDir 下的数字目录名取最大序号；目录不存在返回 0。
 func (w *artifactWriter) maxSeqInRelDir(relDir string) (int, error) {
-	if w == nil {
+	if w == nil || w.runtime == nil {
 		return 0, fmt.Errorf("artifact writer is nil")
 	}
 	relDir = filepath.ToSlash(strings.TrimSpace(relDir))
 	if relDir == "" {
 		return 0, nil
 	}
-	absDir := filepath.Join(w.sessionRoot, filepath.FromSlash(relDir))
-	entries, err := os.ReadDir(absDir)
+	entries, err := w.runtime.Store().List(relDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil

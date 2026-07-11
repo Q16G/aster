@@ -126,6 +126,54 @@ func TestPersistFinalArtifacts_FreshSessionUsesNormalizedLayout(t *testing.T) {
 	}
 }
 
+// I05 final seq 扫描：混合目录名（合法数字 / 非数字 / 文件非目录 / 空目录）下 max 推导正确，
+// 且新旧目录（legacy fixture 预置 artifacts/root/final/1）取 max 合并。
+func TestMaxSeqScan_MixedEntriesAndLegacyMerge(t *testing.T) {
+	root := t.TempDir()
+	seedLegacyWorkspaceFixture(t, root) // 含 artifacts/root/final/1/…
+	w := newTopLevelArtifactWriter(t, root)
+
+	finalRoot := filepath.Join(root, "artifacts", "final")
+	for _, dir := range []string{"2", "7", "not-a-number", "07x"} {
+		if err := os.MkdirAll(filepath.Join(finalRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 文件非目录：数字名文件不参与序号推导。
+	if err := os.WriteFile(filepath.Join(finalRoot, "9"), []byte("file, not dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	maxSeq, err := w.maxSeqInRelDir(w.layout.FinalRootRel())
+	if err != nil {
+		t.Fatalf("maxSeqInRelDir: %v", err)
+	}
+	if maxSeq != 7 {
+		t.Fatalf("maxSeqInRelDir = %d, want 7（忽略非数字目录与数字名文件）", maxSeq)
+	}
+
+	// 目录不存在 → 0，无错误。
+	if got, err := w.maxSeqInRelDir("artifacts/no-such-dir"); err != nil || got != 0 {
+		t.Fatalf("missing dir: got %d, err=%v, want 0,nil", got, err)
+	}
+
+	// 空目录 → 0。
+	if err := os.MkdirAll(filepath.Join(root, "artifacts", "empty-final"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := w.maxSeqInRelDir("artifacts/empty-final"); err != nil || got != 0 {
+		t.Fatalf("empty dir: got %d, err=%v, want 0,nil", got, err)
+	}
+
+	// resume 侧新旧合并：legacy max 更大时取 legacy。
+	if err := os.MkdirAll(filepath.Join(root, "artifacts", "root", "final", "11"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := maxFinalSeqInNamespace(w); got != 11 {
+		t.Fatalf("maxFinalSeqInNamespace = %d, want 11（max(新 7, legacy 11)）", got)
+	}
+}
+
 // A05 子 namespace 不受归一影响：见既有 TestPersistFinalArtifacts_UsesNamespacedFinalSequence
 //（tests/durable_resume_test.go），其路径断言 artifacts/<ns>/final/… 原样通过。
 

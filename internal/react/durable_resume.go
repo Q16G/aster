@@ -3,9 +3,7 @@ package react
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -150,7 +148,7 @@ func LoadLatestFinalAssessment(writer *artifactWriter, workspaceState *builtin_t
 }
 
 // readFinalArtifactWithLegacy 先读新布局 rel，缺失时回退旧 artifacts/root/ 布局
-//（legacyRel 为空表示无回退，例如子 namespace）。
+// （legacyRel 为空表示无回退，例如子 namespace）。
 func readFinalArtifactWithLegacy(writer *artifactWriter, rel, legacyRel string) ([]byte, error) {
 	raw, err := writer.ReadFileRel(rel)
 	if err == nil {
@@ -162,36 +160,17 @@ func readFinalArtifactWithLegacy(writer *artifactWriter, rel, legacyRel string) 
 	return writer.ReadFileRel(legacyRel)
 }
 
+// maxFinalSeqInNamespace 复用 artifactWriter.maxSeqInRelDir（经 Store.List）扫描
+// final 序号；resume 侧任何扫描错误一律降级为 0（与旧 maxFinalSeqInDir 吞错口径一致）。
 func maxFinalSeqInNamespace(writer *artifactWriter) int {
 	if writer == nil {
 		return 0
 	}
-	maxSeq := maxFinalSeqInDir(filepath.Join(writer.sessionRoot, filepath.FromSlash(writer.layout.FinalRootRel())))
+	maxSeq, _ := writer.maxSeqInRelDir(writer.layout.FinalRootRel())
 	// 旧布局 artifacts/root/final 一并纳入（存量 session resume 序号不回退）。
 	if legacyRel := writer.layout.LegacyFinalRootRel(); legacyRel != "" {
-		if legacyMax := maxFinalSeqInDir(filepath.Join(writer.sessionRoot, filepath.FromSlash(legacyRel))); legacyMax > maxSeq {
+		if legacyMax, _ := writer.maxSeqInRelDir(legacyRel); legacyMax > maxSeq {
 			maxSeq = legacyMax
-		}
-	}
-	return maxSeq
-}
-
-func maxFinalSeqInDir(absDir string) int {
-	entries, err := os.ReadDir(absDir)
-	if err != nil {
-		return 0
-	}
-	maxSeq := 0
-	for _, entry := range entries {
-		if entry == nil || !entry.IsDir() {
-			continue
-		}
-		seq, err := strconv.Atoi(strings.TrimSpace(entry.Name()))
-		if err != nil || seq <= 0 {
-			continue
-		}
-		if seq > maxSeq {
-			maxSeq = seq
 		}
 	}
 	return maxSeq
