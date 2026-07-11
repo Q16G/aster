@@ -1,0 +1,7 @@
+{
+  "workspace/sessions/golden-persist-sess/blobs/413a374e9c683ba323ef33ac263343bd4cc5a5fc34fd4e2c153ad98677d86047": "413a374e9c683ba323ef33ac263343bd4cc5a5fc34fd4e2c153ad98677d86047",
+  "workspace/sessions/golden-persist-sess/blobs/4514f190c945fb634906fcc487d7b005d6007cca2aab6cadf45a7e6f846b17f8": "4514f190c945fb634906fcc487d7b005d6007cca2aab6cadf45a7e6f846b17f8",
+  "workspace/sessions/golden-persist-sess/events.jsonl": "7b916c8767c3d3c22905347c25fd1cba603b158235d83c6f9fa242bc77c83fd9",
+  "workspace/sessions/golden-persist-sess/snapshot.json": "4cc2c98fd02acde8f0a5a0818ecdc8bd6aaaeb0be5ceb8b17ade4973a590d888",
+  "workspace/sessions/golden-persist-sess/steps/p1-s1/attempts/call_gold01/result.json": "d0f142c2c0b50739717cf4ba72d6abd9f2deb2093599729995051f5c7e9ee85d"
+}
