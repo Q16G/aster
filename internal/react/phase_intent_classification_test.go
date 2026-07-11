@@ -1,6 +1,7 @@
 package react
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -86,20 +87,17 @@ func TestBuildIntentClassificationInput(t *testing.T) {
 	if input.TotalCount != 3 {
 		t.Errorf("TotalCount = %d, want 3", input.TotalCount)
 	}
-	if len(input.RecentOutcomes) != 2 {
-		t.Errorf("RecentOutcomes len = %d, want 2", len(input.RecentOutcomes))
+	if got := strings.Count(input.RecentOutcomes, "**"); got != 4 { // 每条产出块首行 **id** 一对
+		t.Errorf("RecentOutcomes 应含 2 条产出块，got:\n%s", input.RecentOutcomes)
 	}
-	if len(input.InputTimeline) != 2 {
-		t.Errorf("InputTimeline len = %d, want 2", len(input.InputTimeline))
+	if got := strings.Count(input.InputTimeline, "\n") + 1; got != 2 {
+		t.Errorf("InputTimeline 应为 2 行，got:\n%s", input.InputTimeline)
 	}
-	if input.InputTimeline[0].Content != "帮我分析main.go" {
-		t.Errorf("InputTimeline[0].Content = %q", input.InputTimeline[0].Content)
+	if !strings.Contains(input.InputTimeline, "帮我分析main.go") {
+		t.Errorf("InputTimeline 应含首条输入，got:\n%s", input.InputTimeline)
 	}
-	if len(input.PendingSteps) != 1 {
-		t.Fatalf("PendingSteps len = %d, want 1", len(input.PendingSteps))
-	}
-	if input.PendingSteps[0].ID != "s3" || input.PendingSteps[0].Step != "输出报告" {
-		t.Errorf("PendingSteps[0] = %+v, want {s3, 输出报告}", input.PendingSteps[0])
+	if input.PendingSteps != "- s3: 输出报告" {
+		t.Errorf("PendingSteps = %q, want %q", input.PendingSteps, "- s3: 输出报告")
 	}
 }
 
@@ -114,20 +112,21 @@ func TestBuildIntentClassificationInput_AllOutcomesIncluded(t *testing.T) {
 		},
 	}
 	input := buildIntentClassificationInput(snapshot)
-	if len(input.RecentOutcomes) != 5 {
-		t.Errorf("RecentOutcomes len = %d, want 5 (all outcomes after reducer)", len(input.RecentOutcomes))
+	blocks := strings.Split(input.RecentOutcomes, "\n\n")
+	if len(blocks) != 5 {
+		t.Errorf("RecentOutcomes 块数 = %d, want 5 (all outcomes after reducer)", len(blocks))
 	}
-	if input.RecentOutcomes[0].StepID != "s1" {
-		t.Errorf("first outcome should be s1, got %q", input.RecentOutcomes[0].StepID)
+	if !strings.HasPrefix(blocks[0], "**s1**") {
+		t.Errorf("首块应为 s1，got %q", blocks[0])
 	}
-	if input.RecentOutcomes[0].LongSummary != "detail-a" {
-		t.Errorf("LongSummary = %q, want 'detail-a'", input.RecentOutcomes[0].LongSummary)
+	if !strings.Contains(blocks[0], "详情：detail-a") {
+		t.Errorf("首块应含 LongSummary 详情行，got %q", blocks[0])
 	}
-	if len(input.RecentOutcomes[0].KeyFacts) != 1 || input.RecentOutcomes[0].KeyFacts[0] != "fact1" {
-		t.Errorf("KeyFacts = %v, want [fact1]", input.RecentOutcomes[0].KeyFacts)
+	if !strings.Contains(blocks[0], "关键发现：\n  · fact1") {
+		t.Errorf("首块应含 KeyFacts，got %q", blocks[0])
 	}
-	if len(input.RecentOutcomes[1].OpenQuestions) != 1 || input.RecentOutcomes[1].OpenQuestions[0] != "q1" {
-		t.Errorf("OpenQuestions = %v, want [q1]", input.RecentOutcomes[1].OpenQuestions)
+	if !strings.Contains(blocks[1], "遗留问题：\n  · q1") {
+		t.Errorf("第二块应含 OpenQuestions，got %q", blocks[1])
 	}
 }
 

@@ -29,6 +29,14 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	input := buildIntentClassificationInput(snapshot)
 	input.AgentRole = strings.TrimSpace(a.cfg.Role)
 	input.AgentBackground = strings.TrimSpace(a.cfg.Background)
+	// 高频阶段（每次用户新输入都跑）注入块经统一动态 preview 上限投影（方案审查#4）：
+	// RECENT_OUTCOMES / PENDING_STEPS 指针指既有真相源（step_contexts.jsonl / planner.jsonl）
+	// 不 spill；INPUT_TIMELINE 无单义真相源，超限 spill 到 shared/prompt_context/。
+	previewLimit := promptPreviewTokens(a.usableInputTokens)
+	input.RecentOutcomes = previewNonEmptyForPrompt(input.RecentOutcomes, a.resolveStepContextsPath(), previewLimit)
+	input.PendingSteps = previewNonEmptyForPrompt(input.PendingSteps,
+		builtin_tools.WorkspacePlannerJournalFileAbs(strings.TrimSpace(a.workspaceRootDir)), previewLimit)
+	input.InputTimeline = a.previewMemoryField("input_timeline", input.InputTimeline, previewLimit)
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
 		a.emitRuntimeLog("warn", "build intent classification prompt failed, fallback to carry", snapshot, map[string]any{
@@ -140,6 +148,7 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 		LatestInput:       latestInputContent(snapshot),
 	}
 
+	pending := make([]string, 0, len(snapshot.Plan))
 	for _, item := range snapshot.Plan {
 		if item == nil {
 			continue
@@ -151,14 +160,13 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 			id := strings.TrimSpace(item.ID)
 			step := strings.TrimSpace(item.Step)
 			if id != "" && step != "" {
-				input.PendingSteps = append(input.PendingSteps, IntentPendingStep{
-					ID:   id,
-					Step: step,
-				})
+				pending = append(pending, "- "+id+": "+step)
 			}
 		}
 	}
+	input.PendingSteps = strings.Join(pending, "\n")
 
+	outcomes := make([]string, 0, len(snapshot.StepOutcomes))
 	for _, o := range snapshot.StepOutcomes {
 		if o == nil {
 			continue
@@ -170,31 +178,36 @@ func buildIntentClassificationInput(snapshot builtin_tools.StateSnapshot) Intent
 		if short == "" {
 			continue
 		}
-		input.RecentOutcomes = append(input.RecentOutcomes, IntentOutcomeSummary{
-			StepID:        strings.TrimSpace(o.StepID),
-			Status:        string(o.Status),
-			ShortSummary:  short,
-			LongSummary:   strings.TrimSpace(o.LongSummary),
-			KeyFacts:      o.KeyFacts,
-			OpenQuestions: o.OpenQuestions,
-		})
+		outcomes = append(outcomes, formatIntentOutcomeBlock(o, short))
 	}
+	input.RecentOutcomes = strings.Join(outcomes, "\n\n")
 
-	for _, t := range snapshot.InputTimeline {
-		if t == nil {
-			continue
-		}
-		timeStr := ""
-		if !t.CreatedAt.IsZero() {
-			timeStr = t.CreatedAt.Format("15:04:05")
-		}
-		input.InputTimeline = append(input.InputTimeline, IntentTimelineEntry{
-			Time:    timeStr,
-			Content: strings.TrimSpace(t.Content),
-		})
-	}
+	input.InputTimeline = formatInputTimelineLines(snapshot.InputTimeline)
 
 	return input
+}
+
+// formatIntentOutcomeBlock 渲染单条 step 产出块（沿用原模板版式：粗体步骤行 +
+// 缩进的详情/关键发现/遗留问题）。
+func formatIntentOutcomeBlock(o *builtin_tools.StepOutcome, short string) string {
+	var b strings.Builder
+	b.WriteString("**" + strings.TrimSpace(o.StepID) + "** [" + string(o.Status) + "]: " + short)
+	if long := strings.TrimSpace(o.LongSummary); long != "" {
+		b.WriteString("\n  详情：" + long)
+	}
+	if len(o.KeyFacts) > 0 {
+		b.WriteString("\n  关键发现：")
+		for _, f := range o.KeyFacts {
+			b.WriteString("\n  · " + f)
+		}
+	}
+	if len(o.OpenQuestions) > 0 {
+		b.WriteString("\n  遗留问题：")
+		for _, q := range o.OpenQuestions {
+			b.WriteString("\n  · " + q)
+		}
+	}
+	return b.String()
 }
 
 // buildSubmitIntentFunctionTool 从 builtin_tools.SubmitIntentTool 取契约（名称 / 描述 /

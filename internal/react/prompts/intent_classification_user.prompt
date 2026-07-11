@@ -11,38 +11,17 @@
 {{- if .HAS_RECENT_OUTCOMES}}
 
 ### 已执行步骤
-{{- range .RECENT_OUTCOMES}}
 
-**{{.StepID}}** [{{.Status}}]: {{.ShortSummary}}
-{{- if .LongSummary}}
-  详情：{{.LongSummary}}
-{{- end}}
-{{- if .KeyFacts}}
-  关键发现：
-  {{- range .KeyFacts}}
-  · {{.}}
-  {{- end}}
-{{- end}}
-{{- if .OpenQuestions}}
-  遗留问题：
-  {{- range .OpenQuestions}}
-  · {{.}}
-  {{- end}}
-{{- end}}
-{{- end}}
+{{.RECENT_OUTCOMES}}
 {{- end}}
 {{- if .HAS_PENDING_STEPS}}
 
 ### 未完成步骤
-{{- range .PENDING_STEPS}}
-- {{.ID}}: {{.Step}}
-{{- end}}
+{{.PENDING_STEPS}}
 {{- end}}
 
 ## 对话脉络
-{{- range .INPUT_TIMELINE}}
-- [{{.Time}}] {{.Content}}
-{{- end}}
+{{.INPUT_TIMELINE}}
 
 ## 本回合最新用户输入（待判定）
 {{.LATEST_INPUT}}
