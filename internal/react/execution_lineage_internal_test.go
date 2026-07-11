@@ -46,7 +46,7 @@ func setupParentWorkspace(t *testing.T, childName string, parentStepKey string, 
 
 func writeStepContextRecord(t *testing.T, rootDir string, rec *builtin_tools.StepContextRecord) {
 	t.Helper()
-	if err := builtin_tools.AppendWorkspaceStepContextRecords(rootDir, []*builtin_tools.StepContextRecord{rec}); err != nil {
+	if err := AppendWorkspaceStepContextRecords(rootDir, []*builtin_tools.StepContextRecord{rec}); err != nil {
 		t.Fatalf("append step context record: %v", err)
 	}
 }

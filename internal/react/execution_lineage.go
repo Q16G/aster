@@ -70,7 +70,7 @@ func (a *Agent) ensureFrozenStepLineage(snapshot builtin_tools.StateSnapshot) (*
 		return lineage, nil
 	}
 
-	records, err := builtin_tools.LoadWorkspaceStepContextRecords(workspaceRoot, 800)
+	records, err := LoadWorkspaceStepContextRecords(workspaceRoot, 800)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (a *Agent) parentContextKeyFromParentWorkspace() string {
 }
 
 func latestRootContextKey(workspaceRoot string) string {
-	records, err := builtin_tools.LoadWorkspaceStepContextRecords(workspaceRoot, 800)
+	records, err := LoadWorkspaceStepContextRecords(workspaceRoot, 800)
 	if err != nil || len(records) == 0 {
 		return ""
 	}

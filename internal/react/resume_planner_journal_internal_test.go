@@ -8,7 +8,7 @@ import (
 
 func seedPlannerJournal(t *testing.T, rootDir string) {
 	t.Helper()
-	if err := builtin_tools.AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
+	if err := AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
 		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 2, Item: &builtin_tools.PlanItem{ID: "step-1", Step: "A", Status: builtin_tools.PlanStepCompleted, ShortSummary: "done"}},
 		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 2, Item: &builtin_tools.PlanItem{ID: "step-2", Step: "B", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}}},
 	}); err != nil {
@@ -134,7 +134,7 @@ func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writer: %v", err)
 	}
-	if err := builtin_tools.AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
+	if err := AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
 		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"}},
 		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "b1", Step: "B", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"}},
 		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-a", Status: builtin_tools.PlanPhaseCompleted}},

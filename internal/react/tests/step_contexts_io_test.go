@@ -1,7 +1,8 @@
-package builtin_tools_test
+package react_test
 
 import (
-	. "aster/internal/builtin_tools"
+	"aster/internal/builtin_tools"
+	. "aster/internal/react"
 	"aster/internal/workspacefs"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ func TestWorkspaceStepContexts_AppendAndLoad_NormalizesNamespaceAndLimits(t *tes
 	root := t.TempDir()
 	now := time.Now()
 
-	if err := AppendWorkspaceStepContextRecords(root, []*StepContextRecord{
+	if err := AppendWorkspaceStepContextRecords(root, []*builtin_tools.StepContextRecord{
 		{ContextKey: "ctx-1", Namespace: "", StepID: "step-1", PlanVersion: 1, SummaryFile: "shared/step_artifacts/step-1.summary.md", ResultFile: "shared/step_artifacts/step-1.result.json", CreatedAt: now},
 		{ContextKey: "ctx-2", Namespace: "agents/msg/call/agent", StepID: "step-2", PlanVersion: 1, CreatedAt: now},
 		{ContextKey: "ctx-3", Namespace: "root", StepID: "step-3", PlanVersion: 1, CreatedAt: now},
@@ -29,7 +30,7 @@ func TestWorkspaceStepContexts_AppendAndLoad_NormalizesNamespaceAndLimits(t *tes
 	if len(all) != 3 {
 		t.Fatalf("expected 3 records, got %d", len(all))
 	}
-	if got := NormalizeWorkspaceNamespace(all[0].Namespace); got != "root" {
+	if got := builtin_tools.NormalizeWorkspaceNamespace(all[0].Namespace); got != "root" {
 		t.Fatalf("expected record[0] namespace normalized to root, got %q", got)
 	}
 	if got, want := all[0].SummaryFile, filepath.ToSlash(filepath.Join(root, "shared", "step_artifacts", "step-1.summary.md")); got != want {
@@ -54,7 +55,7 @@ func TestWorkspaceStepContexts_AppendAndLoad_NormalizesNamespaceAndLimits(t *tes
 func TestWorkspaceStepContexts_PersistsAbsoluteArtifactPaths(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()
-	if err := AppendWorkspaceStepContextRecords(root, []*StepContextRecord{
+	if err := AppendWorkspaceStepContextRecords(root, []*builtin_tools.StepContextRecord{
 		{
 			ContextKey:  "ctx-1",
 			Namespace:   "",
@@ -82,7 +83,7 @@ func TestWorkspaceStepContexts_LoadDoesNotDuplicateAbsoluteArtifactPaths(t *test
 	root := t.TempDir()
 	now := time.Now()
 
-	if err := AppendWorkspaceStepContextRecords(root, []*StepContextRecord{
+	if err := AppendWorkspaceStepContextRecords(root, []*builtin_tools.StepContextRecord{
 		{
 			ContextKey:  "ctx-stable",
 			Namespace:   "",
@@ -116,7 +117,7 @@ func TestWorkspaceStepContexts_LoadDoesNotDuplicateAbsoluteArtifactPaths(t *test
 		t.Fatalf("expected second load result_file %q, got %q", wantResult, got)
 	}
 
-	if got := WorkspaceArtifactPath(root, firstLoad[0].ResultFile); got != wantResult {
+	if got := builtin_tools.WorkspaceArtifactPath(root, firstLoad[0].ResultFile); got != wantResult {
 		t.Fatalf("expected resolving absolute result_file to stay stable, want=%q got=%q", wantResult, got)
 	}
 }
@@ -130,7 +131,7 @@ func TestWorkspaceStepContexts_ReferencesConvertedToAbsolutePaths(t *testing.T) 
 	absRef1 := filepath.ToSlash(filepath.Join(root, relRef1))
 	absRef2 := filepath.ToSlash(filepath.Join(root, relRef2))
 
-	if err := AppendWorkspaceStepContextRecords(root, []*StepContextRecord{
+	if err := AppendWorkspaceStepContextRecords(root, []*builtin_tools.StepContextRecord{
 		{
 			ContextKey:  "ctx-ref",
 			Namespace:   "root",
@@ -174,7 +175,7 @@ func TestWorkspaceStepContexts_ReferencesConvertedToAbsolutePaths(t *testing.T) 
 	}
 
 	// Idempotency: already-absolute references should not be double-prefixed
-	if got := WorkspaceArtifactPath(root, absRef1); got != absRef1 {
+	if got := builtin_tools.WorkspaceArtifactPath(root, absRef1); got != absRef1 {
 		t.Fatalf("expected idempotent, want=%q got=%q", absRef1, got)
 	}
 }

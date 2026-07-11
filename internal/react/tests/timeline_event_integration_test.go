@@ -141,7 +141,7 @@ func TestExecute_WritesTimelineEventsForToolCalls(t *testing.T) {
 	}
 
 	// --- Verify StepContextRecord.TimelineFile is set ---
-	records, loadErr := builtin_tools.LoadWorkspaceStepContextRecords(wsRoot, 0)
+	records, loadErr := LoadWorkspaceStepContextRecords(wsRoot, 0)
 	if loadErr != nil {
 		t.Fatalf("LoadWorkspaceStepContextRecords: %v", loadErr)
 	}

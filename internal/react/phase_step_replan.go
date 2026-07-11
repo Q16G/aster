@@ -797,7 +797,7 @@ func (a *Agent) appendPlannerJournalStepRecordAt(stepID string, snapshot builtin
 	// 浅拷贝 + 克隆会被路径归一化原地改写的 slice，避免 append 时把 state 内的相对路径改成绝对路径。
 	clone := *item
 	clone.References = builtin_tools.CloneStringSlice(item.References)
-	if err := builtin_tools.AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), []*builtin_tools.PlannerJournalRecord{
+	if err := AppendPlannerJournalRecords(a.workspaceRuntime.RootDir(), []*builtin_tools.PlannerJournalRecord{
 		{Kind: builtin_tools.PlannerJournalKindStep, PlanVersion: planVersion, Item: &clone},
 	}); err != nil {
 		a.emitRuntimeLog("warn", "append planner journal step record failed", snapshot, map[string]any{
