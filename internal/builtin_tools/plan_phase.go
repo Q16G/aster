@@ -281,6 +281,47 @@ func PhaseHasPendingStep(plan []*PlanItem, phaseID string) bool {
 	return false
 }
 
+// PhaseQuiesced 判断某 phase（topic）是否到达「局部静默点」：已释放 ≥1 个 step 且其全部 step
+// 均为 terminal（completed/failed/skipped，无 pending、无 in_progress）。0-step phase（G_topic
+// 占位、尚未释放 step）返回 false——由 planner 先释放首批 step，不触发空 review（0-step 守卫）。
+// 第四阶段将以此把全局 frontier barrier 改为每 topic 局部触发 step_replan（当前仍未接线）。
+func PhaseQuiesced(plan []*PlanItem, phaseID string) bool {
+	phaseID = strings.TrimSpace(phaseID)
+	if phaseID == "" {
+		return false
+	}
+	count := 0
+	for _, item := range plan {
+		if item == nil || strings.TrimSpace(item.PhaseID) != phaseID {
+			continue
+		}
+		count++
+		switch item.Status {
+		case PlanStepCompleted, PlanStepFailed, PlanStepSkipped:
+		default:
+			return false // pending / in_progress → 未静默
+		}
+	}
+	return count > 0
+}
+
+// QuiescedActivePhases 返回本轮已达局部静默点、可触发单 topic review 的 active phase 集：
+// 在 ActivePhases（非终态 + 前置 topic 全终态）基础上，进一步筛出 PhaseQuiesced 为真者。
+// 供第四阶段路由把「等全局 frontier 空」改为「某 topic 静默即 review 该 topic」。
+func QuiescedActivePhases(plan []*PlanItem, phases []*PlanPhase) []*PlanPhase {
+	active := ActivePhases(phases)
+	if len(active) == 0 {
+		return nil
+	}
+	var out []*PlanPhase
+	for _, phase := range active {
+		if phase != nil && PhaseQuiesced(plan, phase.ID) {
+			out = append(out, phase)
+		}
+	}
+	return out
+}
+
 // AllPhasesSettled 判断所有 phase 是否已收束（completed/blocked）。
 // 空清单视为已收束（无 phase 上下文时不阻塞收尾）。
 func AllPhasesSettled(phases []*PlanPhase) bool {
