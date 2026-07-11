@@ -72,25 +72,24 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
-		// TODO(第四阶段 Inc3/4/5)：接线 a.nextSchedulerPhase（per-topic 双触发路由）——需与
-		// runStepReplanPhase 收窄 + scoped mutation 一体落地（含 bypass 路径提前推进 per-topic 边界
-		// 防无限重选、re-bake 幂等）。当前仍走全局 currentPhase，行为不变。
-		phase := currentPhase(snapshot, a.maxParallelSteps())
+		phase := a.nextSchedulerPhase(snapshot)
 		if phase != snapshot.Phase {
 			_ = a.state.SetPhase(phase)
 			snapshot = a.state.Snapshot()
 		}
 
-		// X2 并发屏障：真正进 step_replan 前等所有 in_progress inline peer 落定。
-		// step_replan 会读 plan 做复核 / 整盘替换（NewPlan），若此刻还有 peer 在跑，会基于
-		// 不完整状态重规划、且与 peer 完成回写竞态（结果丢失 / plan_version 错配）。await 后
-		// 重算 phase：peer 落定可能解锁新 ready → 回 Step 继续滚动；否则全 terminal 才进 step_replan。
-		// 仅在 phase 解析为 StepReplan 时阻塞，不影响 X2 滚动派发（那条路 phase=Step）。
-		if phase == builtin_tools.AgentPhaseStepReplan && a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
+		// 并发屏障：进**全局 reducer**（reviewTopicID=""）前等所有 in_progress inline peer 落定——
+		// reducer 读全 plan 做全半径判定/整盘决策，peer 在跑会基于不完整状态、且与回写竞态。await 后
+		// 重算 phase：peer 落定可能解锁新 ready → 回 Step；否则全 terminal 才进 reducer。
+		// **局部 review（reviewTopicID!=""）不 await**：收窄到该 topic（已静默、无自己的 peer），
+		// mutation 只动该 topic（ReplaceTopicID 保护他 topic pending），与他 topic 在跑的 peer 无竞态——
+		// 这正是「不锁步并发」的关键。
+		if phase == builtin_tools.AgentPhaseStepReplan && a.reviewTopicID == "" &&
+			a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
 			a.awaitRunningInlineSteps(ctx)
 			a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
 			snapshot = a.state.Snapshot()
-			phase = currentPhase(snapshot, a.maxParallelSteps())
+			phase = a.nextSchedulerPhase(snapshot)
 			if phase != snapshot.Phase {
 				_ = a.state.SetPhase(phase)
 				snapshot = a.state.Snapshot()
@@ -413,7 +412,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	if res != nil && len(res.Plan) > 0 {
 		planItems := res.Plan
 		if snapshot.ReplanContext != nil && snapshot.ReplanContext.ReplacePending {
-			planItems = mergeReplannedPlan(snapshot.Plan, planItems)
+			planItems = mergeReplannedPlan(snapshot.Plan, planItems, snapshot.ReplanContext.ReplaceTopicID)
 		}
 		normalized, err := builtin_tools.NormalizePlanItems(planItems, true)
 		if err != nil {
@@ -582,7 +581,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					// validateTarget == parsed.Plan，行为与合并前一致。
 					validateTarget := parsed.Plan
 					if priorSnap.ReplanContext != nil && priorSnap.ReplanContext.ReplacePending {
-						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan)
+						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan, priorSnap.ReplanContext.ReplaceTopicID)
 					}
 					if _, normErr := builtin_tools.NormalizePlanItems(validateTarget, true); normErr != nil {
 						submitRetries++
@@ -1259,10 +1258,13 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	return buf.String()
 }
 
-func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.PlanItem) []*builtin_tools.PlanItem {
+// replaceTopicID 非空时把 pending 替换收窄到该 topic：只丢该 topic 的 pending（由 next 替换），
+// 其他 topic 的 pending 作为保留锚点保住——第四阶段 per-topic 局部 review 的红线（不 clobber 他 topic）。
+func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.PlanItem, replaceTopicID string) []*builtin_tools.PlanItem {
 	if len(prev) == 0 || len(next) == 0 {
 		return next
 	}
+	replaceTopicID = strings.TrimSpace(replaceTopicID)
 	merged := make([]*builtin_tools.PlanItem, 0, len(prev)+len(next))
 	preserved := make(map[string]struct{}, len(prev))
 	// preservedText: 保留项 normalizeStepText → 保留项 id。用于把「因文案撞车被去重
@@ -1274,8 +1276,15 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		// 与烘焙载体；pending 由 next 完整替换。失败 / 跳过项一并保留可避免：
 		// ①烘焙字段（step_file / timeline_file / coverage_file / references）丢失；
 		// ②planner.jsonl 全量重写后历史痕迹消失；③模型新 plan 用同 id 复活但 BakeOutcome 清零。
-		if item == nil || item.Status == builtin_tools.PlanStepPending {
+		if item == nil {
 			continue
+		}
+		if item.Status == builtin_tools.PlanStepPending {
+			// 全局模式（replaceTopicID=""）丢全部 pending 由 next 替换；per-topic 收窄模式只丢
+			// 该 topic 的 pending，其他 topic 的 pending 作为保留锚点保住——不 clobber 在跑的他 topic。
+			if replaceTopicID == "" || strings.TrimSpace(item.PhaseID) == replaceTopicID {
+				continue
+			}
 		}
 		// 完整浅拷贝 + 切片字段克隆，保留 BakeOutcome 写回的烘焙字段（short_summary /
 		// key_facts / tool_calls_digest / coverage_checklist / step_file / result_file /

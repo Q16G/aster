@@ -395,6 +395,10 @@ type ReplanContext struct {
 	NewSurfaces     []*AxisItem `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集、尚未被任何已完成工作覆盖的面
 	Warnings        []string    `json:"warnings,omitempty"`
 	ReplacePending  bool        `json:"replace_pending,omitempty"`
+	// ReplaceTopicID 非空时把 ReplacePending 收窄到该 topic（第四阶段 per-topic 局部 review）：
+	// 只替换该 topic 的 pending step，其他 topic 的 pending/in_progress 原样保留（不 clobber 在跑
+	// 的他 topic）。空 = 全局整盘替换（现有行为）。
+	ReplaceTopicID  string      `json:"replace_topic_id,omitempty"`
 	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
 	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
 	// PhaseAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
