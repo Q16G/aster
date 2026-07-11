@@ -738,7 +738,7 @@ func (a *Agent) resolveCoverageFile(stepID string, outcome *builtin_tools.StepOu
 		}
 	}
 	l := a.wsLayout()
-	if info, err := os.Stat(l.StepCoverage(stepID)); err == nil && !info.IsDir() {
+	if info, err := a.workspaceRuntime.Store().Stat(l.StepCoverageRel(stepID)); err == nil && !info.IsDir() {
 		return l.StepCoverageRel(stepID)
 	}
 	return a.persistCoverageChecklist(stepID, outcome)
@@ -758,13 +758,7 @@ func (a *Agent) persistCoverageChecklist(stepID string, outcome *builtin_tools.S
 		return ""
 	}
 	l := a.wsLayout()
-	if err := os.MkdirAll(l.StepDir(stepID), 0o755); err != nil {
-		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
-			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
-		})
-		return ""
-	}
-	if err := os.WriteFile(l.StepCoverage(stepID), data, 0o644); err != nil {
+	if err := a.workspaceRuntime.Store().Write(l.StepCoverageRel(stepID), data); err != nil {
 		a.emitRuntimeLog("warn", "persist coverage checklist failed", a.state.Snapshot(), map[string]any{
 			"event": "coverage_checklist_persist_failed", "step_id": stepID, "error": err.Error(),
 		})
@@ -1078,7 +1072,7 @@ func (a *Agent) ensureTaskContextSkeleton() {
 	if absPath == "" {
 		return
 	}
-	if _, err := os.Stat(absPath); err == nil {
+	if _, err := a.workspaceRuntime.Store().Stat(l.TaskContextRel()); err == nil {
 		return
 	}
 	if err := a.workspaceRuntime.WriteFileRel(l.TaskContextRel(), []byte(taskContextSkeleton)); err != nil {
@@ -1091,35 +1085,35 @@ func (a *Agent) ensureTaskContextSkeleton() {
 }
 
 // readSharedFileOptional 与 readSharedFileForPrompt 同源读取共享区文件，但所有"无内容"分支
-// （sharedDir 为空 / 文件不存在 / 文件为空）一律返回 ""，让外层的 `HAS_XXX` gate（基于
+// （runtime 缺位 / 文件不存在 / 文件为空）一律返回 ""，让外层的 `HAS_XXX` gate（基于
 // strings.TrimSpace != ""）正确判定"是否注入"。
 //
-// runtime != nil 时走 ReadFileRel 让 task_context.md / open_items.md 经 sharedFileLocks
-// 保护；nil 时退化为直接 os.ReadFile。
+// 读取经 rt.Store() 走 per-key 锁保护（task_context.md / open_items.md 与并发写者串行化）。
 //
 // 短路顺序保持与旧版语义一致：name 或 sharedDir 任一为空 → 不发起任何 IO，直接返回 ""。
-// （review P1-5：避免 runtime != nil + sharedDir == "" 时悄悄走 runtime IO 产生额外失败调用。）
-func readSharedFileOptional(runtime WorkspaceRuntime, l workspacefs.Layout, name string) string {
+// （review P1-5：避免 sharedDir == "" 时悄悄走 runtime IO 产生额外失败调用。）
+func readSharedFileOptional(rt WorkspaceRuntime, name string) string {
+	if rt == nil {
+		return ""
+	}
+	l := rt.Layout()
 	if l.SharedDir() == "" || strings.TrimSpace(name) == "" {
 		return ""
 	}
-	if runtime != nil {
-		data, err := runtime.ReadFileRel(filepath.ToSlash(filepath.Join(l.SharedDirRel(), name)))
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(string(data))
-	}
-	data, err := os.ReadFile(filepath.Join(l.SharedDir(), name))
+	data, err := rt.Store().Read(filepath.ToSlash(filepath.Join(l.SharedDirRel(), name)))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
 
-func readSharedStepFileForPrompt(l workspacefs.Layout, stepID string, limitTokens int) string {
+func readSharedStepFileForPrompt(rt WorkspaceRuntime, stepID string, limitTokens int) string {
+	if rt == nil {
+		return ""
+	}
+	l := rt.Layout()
 	if stepFileExists(l, stepID) {
-		data, err := os.ReadFile(l.StepFile(stepID))
+		data, err := rt.Store().Read(l.StepFileRel(stepID))
 		if err != nil {
 			return ""
 		}
@@ -1129,12 +1123,11 @@ func readSharedStepFileForPrompt(l workspacefs.Layout, stepID string, limitToken
 	if !legacyStepFileExists(l, stepID) {
 		return ""
 	}
-	legacyPath := l.LegacyStepFile(stepID)
-	data, err := os.ReadFile(legacyPath)
+	data, err := rt.Store().Read(l.LegacyStepFileRel(stepID))
 	if err != nil {
 		return ""
 	}
-	return previewStepFileForPrompt(string(data), legacyPath, limitTokens)
+	return previewStepFileForPrompt(string(data), l.LegacyStepFile(stepID), limitTokens)
 }
 
 // previewStepFileForPrompt 对 step 文件内容应用统一 preview；空内容保持返回空串

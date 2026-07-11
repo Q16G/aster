@@ -4,40 +4,40 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"aster/internal/workspacefs"
 )
 
 func TestReadSharedFileOptional(t *testing.T) {
-	root := t.TempDir()
-	layout := workspacefs.New(root, "")
-	if err := os.MkdirAll(layout.SharedDir(), 0o755); err != nil {
+	rt, err := newLocalWorkspaceRuntime("sess-shared", t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("newLocalWorkspaceRuntime: %v", err)
+	}
+	if err := os.MkdirAll(rt.SharedDir(), 0o755); err != nil {
 		t.Fatalf("mkdir shared dir failed: %v", err)
 	}
-	abs := filepath.Join(layout.SharedDir(), "task_context.md")
+	abs := filepath.Join(rt.SharedDir(), "task_context.md")
 
 	cases := []struct {
 		name     string
 		setup    func()
-		layout   workspacefs.Layout
+		rt       WorkspaceRuntime
 		fileName string
 		want     string
 	}{
 		{
-			name:     "empty layout root → empty",
-			layout:   workspacefs.Layout{},
+			name:     "nil runtime → empty",
+			rt:       nil,
 			fileName: "task_context.md",
 			want:     "",
 		},
 		{
 			name:     "empty fileName → empty",
-			layout:   layout,
+			rt:       rt,
 			fileName: "",
 			want:     "",
 		},
 		{
 			name:     "file does not exist → empty",
-			layout:   layout,
+			rt:       rt,
 			fileName: "task_context.md",
 			want:     "",
 		},
@@ -48,7 +48,7 @@ func TestReadSharedFileOptional(t *testing.T) {
 					t.Fatalf("write empty file failed: %v", err)
 				}
 			},
-			layout:   layout,
+			rt:       rt,
 			fileName: "task_context.md",
 			want:     "",
 		},
@@ -59,7 +59,7 @@ func TestReadSharedFileOptional(t *testing.T) {
 					t.Fatalf("write content file failed: %v", err)
 				}
 			},
-			layout:   layout,
+			rt:       rt,
 			fileName: "task_context.md",
 			want:     "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: x",
 		},
@@ -72,9 +72,9 @@ func TestReadSharedFileOptional(t *testing.T) {
 			} else {
 				_ = os.Remove(abs)
 			}
-			got := readSharedFileOptional(nil, tc.layout, tc.fileName)
+			got := readSharedFileOptional(tc.rt, tc.fileName)
 			if got != tc.want {
-				t.Fatalf("readSharedFileOptional(%q, %q) = %q, want %q", tc.layout.SharedDir(), tc.fileName, got, tc.want)
+				t.Fatalf("readSharedFileOptional(%q) = %q, want %q", tc.fileName, got, tc.want)
 			}
 		})
 	}
