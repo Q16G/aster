@@ -227,6 +227,42 @@ func TestLayoutPersistV2PathEquivalence(t *testing.T) {
 	}
 }
 
+// legacy Abs 双形态与 int 参数防呆分支补充覆盖。
+func TestLayoutLegacyAbsAndGuards(t *testing.T) {
+	top := New("/ws", "")
+	pairs := map[string][2]string{
+		"LegacyPlanCurrent":     {top.LegacyPlanCurrentRel(), top.LegacyPlanCurrent()},
+		"LegacyPlanHistory":     {top.LegacyPlanHistoryRel(2), top.LegacyPlanHistory(2)},
+		"LegacyFinalRoot":       {top.LegacyFinalRootRel(), top.LegacyFinalRoot()},
+		"LegacyFinalDir":        {top.LegacyFinalDirRel(2), top.LegacyFinalDir(2)},
+		"LegacyFinalAnswer":     {top.LegacyFinalAnswerRel(2), top.LegacyFinalAnswer(2)},
+		"LegacyFinalAssessment": {top.LegacyFinalAssessmentRel(2), top.LegacyFinalAssessment(2)},
+	}
+	for name, pair := range pairs {
+		rel, abs := pair[0], pair[1]
+		if rel == "" || abs != filepath.Join("/ws", filepath.FromSlash(rel)) {
+			t.Errorf("%s: rel=%q abs=%q 不满足恒等式", name, rel, abs)
+		}
+	}
+	// int 参数防呆（与旧 artifactWriter 行为一致）
+	if got := top.PlanHistoryRel(0); got != "artifacts/plan/history/1.json" {
+		t.Errorf("PlanHistoryRel(0) = %q, want 归一为版本 1", got)
+	}
+	if got := top.FinalDirRel(0); got != "" {
+		t.Errorf("FinalDirRel(0) = %q, want 空", got)
+	}
+	if got := top.FinalAnswerRel(-1); got != "" {
+		t.Errorf("FinalAnswerRel(-1) = %q, want 空", got)
+	}
+	sub := New("/ws", "sub-a")
+	if got := sub.LegacyFinalAnswerRel(1); got != "" {
+		t.Errorf("子 ns LegacyFinalAnswerRel = %q, want 空", got)
+	}
+	if got := sub.LegacyFinalAssessment(1); got != "" {
+		t.Errorf("子 ns LegacyFinalAssessment = %q, want 空", got)
+	}
+}
+
 // SubAgentLayout 派生：子 workspace 与父同构（顶层语义）。
 func TestLayoutSubAgentDerivation(t *testing.T) {
 	parent := New("/ws", "")
