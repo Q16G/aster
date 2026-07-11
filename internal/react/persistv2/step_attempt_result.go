@@ -1,11 +1,8 @@
 package persistv2
 
 import (
-	"aster/internal/workspacefs"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -51,27 +48,28 @@ type StepAttemptTiming struct {
 	FinishedAt int64 `json:"finished_at,omitempty"`
 }
 
-func (s *Store) stepAttemptDir(stepID, attemptID string) (string, error) {
+// stepAttemptIDs 消毒并校验 step/attempt 两段路径组件。
+func (s *Store) stepAttemptIDs(stepID, attemptID string) (string, string, error) {
 	if s == nil {
-		return "", fmt.Errorf("store is nil")
+		return "", "", fmt.Errorf("store is nil")
 	}
 	stepID = sanitizePathComponent(stepID)
 	attemptID = sanitizePathComponent(attemptID)
 	if stepID == "" {
-		return "", fmt.Errorf("step_id is empty")
+		return "", "", fmt.Errorf("step_id is empty")
 	}
 	if attemptID == "" {
-		return "", fmt.Errorf("attempt_id is empty")
+		return "", "", fmt.Errorf("attempt_id is empty")
 	}
-	return workspacefs.New(s.workspaceRoot, "").StepAttemptDir(s.sessionID, stepID, attemptID), nil
+	return stepID, attemptID, nil
 }
 
 func (s *Store) StepAttemptResultPath(stepID, attemptID string) (string, error) {
-	dir, err := s.stepAttemptDir(stepID, attemptID)
+	stepID, attemptID, err := s.stepAttemptIDs(stepID, attemptID)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "result.json"), nil
+	return s.layout.StepAttemptResult(s.sessionID, stepID, attemptID), nil
 }
 
 func (s *Store) WriteStepAttemptResult(stepID, attemptID string, res *StepAttemptResult) (string, error) {
@@ -81,11 +79,8 @@ func (s *Store) WriteStepAttemptResult(stepID, attemptID string, res *StepAttemp
 	if res == nil {
 		return "", fmt.Errorf("result is nil")
 	}
-	dir, err := s.stepAttemptDir(stepID, attemptID)
+	stepID, attemptID, err := s.stepAttemptIDs(stepID, attemptID)
 	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	res.FormatVersion = FormatVersion
@@ -97,11 +92,11 @@ func (s *Store) WriteStepAttemptResult(stepID, attemptID string, res *StepAttemp
 		return "", fmt.Errorf("marshal step attempt result: %w", err)
 	}
 	data = append(data, '\n')
-	outPath := filepath.Join(dir, "result.json")
-	if err := writeFileAtomic(outPath, data, 0o644); err != nil {
+	// WriteAtomic 自动建父目录，原 MkdirAll 前置随之收编。
+	if err := s.fsStore.WriteAtomic(s.layout.StepAttemptResultRel(s.sessionID, stepID, attemptID), data); err != nil {
 		return "", err
 	}
-	return outPath, nil
+	return s.layout.StepAttemptResult(s.sessionID, stepID, attemptID), nil
 }
 
 func sanitizePathComponent(s string) string {

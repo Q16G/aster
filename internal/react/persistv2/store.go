@@ -7,9 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +23,11 @@ type Store struct {
 	eventsPath   string
 	snapshotPath string
 	blobsDir     string
+
+	// fsStore/layout：M7 起全部常规 IO 经 workspacefs.Store（rel 经 layout 的
+	// Session* 方法族取 Rel 形态）；events_repair.go 的截断修复是唯一 os 直连豁免。
+	fsStore workspacefs.Store
+	layout  workspacefs.Layout
 
 	mu sync.Mutex
 
@@ -39,7 +44,20 @@ type Store struct {
 	eventsCacheLastSeq uint64
 }
 
-func Open(workspaceRoot, sessionID string) (*Store, error) {
+type openOptions struct {
+	fsStore workspacefs.Store
+}
+
+// Option 配置 Open 行为。
+type Option func(*openOptions)
+
+// WithStore 注入既有 workspacefs.Store（如 WorkspaceRuntime.Store()），
+// 缺省时 Open 自建 workspacefs.NewLocalStore(workspaceRoot)。
+func WithStore(st workspacefs.Store) Option {
+	return func(o *openOptions) { o.fsStore = st }
+}
+
+func Open(workspaceRoot, sessionID string, opts ...Option) (*Store, error) {
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
 	sessionID = strings.TrimSpace(sessionID)
 	if workspaceRoot == "" {
@@ -47,6 +65,21 @@ func Open(workspaceRoot, sessionID string) (*Store, error) {
 	}
 	if sessionID == "" {
 		return nil, fmt.Errorf("session_id is empty")
+	}
+
+	var o openOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	fsStore := o.fsStore
+	if fsStore == nil {
+		st, err := workspacefs.NewLocalStore(workspaceRoot)
+		if err != nil {
+			return nil, err
+		}
+		fsStore = st
 	}
 
 	l := workspacefs.New(workspaceRoot, "")
@@ -57,8 +90,10 @@ func Open(workspaceRoot, sessionID string) (*Store, error) {
 		eventsPath:    l.SessionEvents(sessionID),
 		snapshotPath:  l.SessionSnapshot(sessionID),
 		blobsDir:      l.SessionBlobsDir(sessionID),
+		fsStore:       fsStore,
+		layout:        l,
 	}
-	if err := os.MkdirAll(s.blobsDir, 0o755); err != nil {
+	if err := s.fsStore.EnsureDir(l.SessionBlobsDirRel(sessionID)); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -96,10 +131,10 @@ func (s *Store) LoadSnapshot() (*Snapshot, error) {
 	if s == nil {
 		return nil, fmt.Errorf("store is nil")
 	}
-	raw, err := os.ReadFile(s.snapshotPath)
+	raw, err := s.fsStore.Read(s.layout.SessionSnapshotRel(s.sessionID))
 	snap := (*Snapshot)(nil)
 	if err != nil {
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
 		// snapshot.json missing is recoverable: treat it as an empty materialized view
@@ -185,9 +220,9 @@ func (s *Store) eventsLastSeqLocked() (uint64, *SystemDiagnostics, error) {
 	if s == nil {
 		return 0, nil, fmt.Errorf("store is nil")
 	}
-	st, err := os.Stat(s.eventsPath)
+	st, err := s.fsStore.Stat(s.layout.SessionEventsRel(s.sessionID))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			s.mu.Lock()
 			s.eventsCacheValid = false
 			s.mu.Unlock()
@@ -209,7 +244,7 @@ func (s *Store) eventsLastSeqLocked() (uint64, *SystemDiagnostics, error) {
 
 	lastSeq, diag := s.scanLastSeqLocked()
 	// Refresh the cache with the most recent stat (best-effort).
-	if st2, serr := os.Stat(s.eventsPath); serr == nil {
+	if st2, serr := s.fsStore.Stat(s.layout.SessionEventsRel(s.sessionID)); serr == nil {
 		size = st2.Size()
 		modTime = st2.ModTime()
 	}
@@ -243,7 +278,7 @@ func (s *Store) SaveSnapshotAtomic(snap *Snapshot) error {
 	// Retry idempotent atomic writes: if a transient IO error happens we can safely
 	// retry the whole temp+rename sequence.
 	return withIOWriteRetry(func() error {
-		return writeFileAtomic(s.snapshotPath, data, 0o644)
+		return s.fsStore.WriteAtomic(s.layout.SessionSnapshotRel(s.sessionID), data)
 	})
 }
 
@@ -285,24 +320,10 @@ func (s *Store) AppendEvent(ev *Event) (*Event, error) {
 	}
 	line = append(line, '\n')
 
-	if err := os.MkdirAll(filepath.Dir(s.eventsPath), 0o755); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(s.eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, fmt.Errorf("open events.jsonl: %w", err)
-	}
-	_, werr := f.Write(line)
-	serr := f.Sync()
-	cerr := f.Close()
-	if werr != nil {
-		return nil, fmt.Errorf("append events.jsonl: %w", werr)
-	}
-	if serr != nil {
-		return nil, fmt.Errorf("fsync events.jsonl: %w", serr)
-	}
-	if cerr != nil {
-		return nil, cerr
+	// 崩溃安全语义：O_APPEND + 写后 fsync（WithFsync），与迁移前一致；
+	// append 写有意不走 withIOWriteRetry（盲重试可能重复事件，见 io_retry.go）。
+	if err := s.fsStore.Append(s.layout.SessionEventsRel(s.sessionID), line, workspacefs.WithFsync()); err != nil {
+		return nil, fmt.Errorf("append events.jsonl: %w", err)
 	}
 
 	return &out, nil
@@ -317,12 +338,12 @@ func (s *Store) WriteBlob(data []byte) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	name := hex.EncodeToString(sum[:])
-	path := filepath.Join(s.blobsDir, name)
-	if _, err := os.Stat(path); err == nil {
+	rel := s.layout.SessionBlobRel(s.sessionID, name)
+	if _, err := s.fsStore.Stat(rel); err == nil {
 		return "sha256:" + name, nil
 	}
 	if err := withIOWriteRetry(func() error {
-		return writeFileAtomic(path, data, 0o644)
+		return s.fsStore.WriteAtomic(rel, data)
 	}); err != nil {
 		return "", err
 	}
@@ -333,32 +354,19 @@ func (s *Store) ReadBlob(ref string) ([]byte, error) {
 	if s == nil {
 		return nil, fmt.Errorf("store is nil")
 	}
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
+	// layout.SessionBlobRel 承接裸 hex 与 "sha256:" 前缀两种形态的归一。
+	rel := s.layout.SessionBlobRel(s.sessionID, ref)
+	if rel == "" {
 		return nil, nil
 	}
-	if strings.HasPrefix(ref, "sha256:") {
-		ref = strings.TrimPrefix(ref, "sha256:")
-	}
-	if ref == "" {
-		return nil, nil
-	}
-	path := filepath.Join(s.blobsDir, ref)
-	return os.ReadFile(path)
+	return s.fsStore.Read(rel)
 }
 
 func (s *Store) BlobPath(ref string) string {
 	if s == nil {
 		return ""
 	}
-	ref = strings.TrimSpace(ref)
-	if strings.HasPrefix(ref, "sha256:") {
-		ref = strings.TrimPrefix(ref, "sha256:")
-	}
-	if ref == "" {
-		return ""
-	}
-	return filepath.Join(s.blobsDir, ref)
+	return s.layout.SessionBlob(s.sessionID, ref)
 }
 
 // ReplayEvents scans events.jsonl and calls apply for each valid event.
@@ -372,9 +380,9 @@ func (s *Store) ReplayEvents(apply func(ev *Event) error) (*SystemDiagnostics, e
 		return nil, fmt.Errorf("apply func is nil")
 	}
 
-	raw, err := os.ReadFile(s.eventsPath)
+	raw, err := s.fsStore.Read(s.layout.SessionEventsRel(s.sessionID))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
@@ -425,7 +433,7 @@ func (s *Store) ReplayEvents(apply func(ev *Event) error) (*SystemDiagnostics, e
 // scanLastSeqLocked reads the last good event sequence.
 // Caller must hold s.mu.
 func (s *Store) scanLastSeqLocked() (uint64, *SystemDiagnostics) {
-	raw, err := os.ReadFile(s.eventsPath)
+	raw, err := s.fsStore.Read(s.layout.SessionEventsRel(s.sessionID))
 	if err != nil {
 		return 0, nil
 	}

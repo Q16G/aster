@@ -6,8 +6,10 @@
 # 全部 workspace IO 必须经 WorkspaceRuntime.Store()（workspacefs.Store：per-key 锁 + 防穿越），
 # 无 runtime 的裸 root 场景经 workspacefs.NewLocalStore。
 #
-# 白名单（非 workspace 用途，允许 os 直连）：
-#   1. internal/react/persistv2/        —— event-sourcing 持久化包整体跳过，M7 统一迁移。
+# 白名单（允许 os 直连）：
+#   1. internal/react/persistv2/events_repair.go —— events.jsonl 尾损修复需要截断
+#      （os.Truncate）到最后完好行边界，Store 无 Truncate 原语（截断只此一处，属 FS
+#      专属崩溃恢复机械）；persistv2 其余文件已随 M7 迁移至 workspacefs.Store 并纳入断言。
 #   2. internal/react/tool_result_render.go —— buildImageDataURL 读取工具产出引用的媒体文件，
 #      路径由工具输出给出，可指向 workspace 之外的任意本地文件，Store（root 锚定）不适用。
 #
@@ -25,7 +27,7 @@ PATTERN='os\.(ReadFile|WriteFile|OpenFile|MkdirAll|ReadDir|Remove|Stat)\('
 
 violations=$(grep -rnE "$PATTERN" internal/react --include='*.go' \
   | grep -v '_test\.go:' \
-  | grep -v '^internal/react/persistv2/' \
+  | grep -v '^internal/react/persistv2/events_repair\.go:' \
   | grep -v '^internal/react/tool_result_render\.go:' \
   || true)
 
