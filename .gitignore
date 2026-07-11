@@ -17,4 +17,4 @@ tmp/
 **/sub_agents/
 internal/react/artifacts/
 .playwright-mcp/
-docs/exec-plans/
+docs/
