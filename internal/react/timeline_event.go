@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"aster/internal/workspacefs"
 )
 
 // TimelineEvent 是 step 执行期间事件日志（shared/<stepID>/timeline.jsonl）的单行记录。
@@ -94,11 +95,12 @@ const stepTimelineDigestMaxEntries = 200
 // 的权威来源（模型自报仅作兜底）。旧格式事件（无 Tool 一等字段）跳过。
 // 去重后超过 stepTimelineDigestMaxEntries 时截断并追加标记条目——否则截断的 digest 看起来
 // 仍然「丰富」，下游「digest 不足才回读 timeline」的判据会漏掉超限部分的调用。
-func reduceStepTimelineToolCallsDigest(sharedDir, stepID string) []string {
-	if sharedDir == "" || stepID == "" {
+func reduceStepTimelineToolCallsDigest(l workspacefs.Layout, stepID string) []string {
+	path := l.StepTimeline(stepID)
+	if path == "" {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "timeline.jsonl"))
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
@@ -140,11 +142,12 @@ func reduceStepTimelineToolCallsDigest(sharedDir, stepID string) []string {
 
 // stepTimelineToolCallCount 统计 step timeline 中 tool_call 事件数；数到 limit 即提前返回，
 // 供闸门类只需「执行量是否达阈值」的判定使用。
-func stepTimelineToolCallCount(sharedDir, stepID string, limit int) int {
-	if sharedDir == "" || stepID == "" || limit <= 0 {
+func stepTimelineToolCallCount(l workspacefs.Layout, stepID string, limit int) int {
+	path := l.StepTimeline(stepID)
+	if path == "" || limit <= 0 {
 		return 0
 	}
-	data, err := os.ReadFile(filepath.Join(sharedDir, stepID, "timeline.jsonl"))
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0
 	}
@@ -171,11 +174,11 @@ func stepTimelineToolCallCount(sharedDir, stepID string, limit int) int {
 	return count
 }
 
-func appendStepTimeline(sharedDir, stepID string, event *TimelineEvent) error {
-	if sharedDir == "" || stepID == "" || event == nil {
+func appendStepTimeline(l workspacefs.Layout, stepID string, event *TimelineEvent) error {
+	dir := l.StepDir(stepID)
+	if dir == "" || event == nil {
 		return nil
 	}
-	dir := filepath.Join(sharedDir, stepID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -184,7 +187,7 @@ func appendStepTimeline(sharedDir, stepID string, event *TimelineEvent) error {
 		return err
 	}
 	data = append(data, '\n')
-	f, err := os.OpenFile(filepath.Join(dir, "timeline.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(l.StepTimeline(stepID), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
@@ -197,18 +200,9 @@ func appendStepTimeline(sharedDir, stepID string, event *TimelineEvent) error {
 }
 
 func stepTimelineRelPath(stepID string) string {
-	return fmt.Sprintf("shared/%s/timeline.jsonl", stepID)
+	return workspacefs.Layout{}.StepTimelineRel(stepID)
 }
 
-func stepTimelineExists(sharedDir, stepID string) bool {
-	return stepSharedFileExists(sharedDir, stepID, "timeline.jsonl")
-}
-
-// stepSharedFileExists 检查 shared/<stepID>/<name> 是否存在且非空。
-func stepSharedFileExists(sharedDir, stepID, name string) bool {
-	if sharedDir == "" || stepID == "" || name == "" {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(sharedDir, stepID, name))
-	return err == nil && info.Size() > 0
+func stepTimelineExists(l workspacefs.Layout, stepID string) bool {
+	return statNonEmpty(l.StepTimeline(stepID))
 }

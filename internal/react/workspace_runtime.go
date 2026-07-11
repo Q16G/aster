@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 type localWorkspaceRuntime struct {
@@ -121,7 +122,7 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 	if w == nil || w.rootDir == "" {
 		return ""
 	}
-	return filepath.Join(w.rootDir, "shared")
+	return workspacefs.New(w.rootDir, "").SharedDir()
 }
 
 // 骨架内容须与 prompt 期望的标题逐字一致：task_planner.prompt 原则 0.7、

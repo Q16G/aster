@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 // TestResolvePlannerJournalPointer 锁定 helper 的四个分支：空 rootDir / 不存在 / 0 字节 / 有内容。
@@ -100,7 +101,7 @@ func TestBuildReplanStepCard_CoveragePointerTruncatesInline(t *testing.T) {
 	}
 
 	// 有指针：内联截留前 N 条。
-	card := buildReplanStepCard(current, outcome, "", "", "/ws/shared/s1/coverage.json")
+	card := buildReplanStepCard(current, outcome, workspacefs.Layout{}, "", "/ws/shared/s1/coverage.json")
 	if card.CoverageFile != "/ws/shared/s1/coverage.json" {
 		t.Fatalf("unexpected coverage file: %q", card.CoverageFile)
 	}
@@ -109,7 +110,7 @@ func TestBuildReplanStepCard_CoveragePointerTruncatesInline(t *testing.T) {
 	}
 
 	// 无指针：原样内联，不截断。
-	card = buildReplanStepCard(current, outcome, "", "", "")
+	card = buildReplanStepCard(current, outcome, workspacefs.Layout{}, "", "")
 	if card.CoverageFile != "" {
 		t.Fatalf("expected empty coverage file, got %q", card.CoverageFile)
 	}

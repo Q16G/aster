@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"aster/internal/workspacefs"
 )
 
 func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
-	sharedDir := filepath.Join(t.TempDir(), "shared")
+	l := workspacefs.New(t.TempDir(), "")
 	stepID := "step-abc"
 
 	events := []*TimelineEvent{
@@ -35,12 +36,12 @@ func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
 	}
 
 	for _, ev := range events {
-		if err := appendStepTimeline(sharedDir, stepID, ev); err != nil {
+		if err := appendStepTimeline(l, stepID, ev); err != nil {
 			t.Fatalf("appendStepTimeline: %v", err)
 		}
 	}
 
-	fp := filepath.Join(sharedDir, stepID, "timeline.jsonl")
+	fp := l.StepTimeline(stepID)
 	f, err := os.Open(fp)
 	if err != nil {
 		t.Fatalf("open timeline file: %v", err)
@@ -74,29 +75,29 @@ func TestAppendStepTimeline_CreatesFileAndAppends(t *testing.T) {
 func TestAppendStepTimeline_EmptyInputs(t *testing.T) {
 	ev := &TimelineEvent{TS: time.Now().UTC(), Type: "tool_call", Key: "x"}
 
-	if err := appendStepTimeline("", "step-1", ev); err != nil {
-		t.Errorf("empty sharedDir should return nil, got %v", err)
+	if err := appendStepTimeline(workspacefs.Layout{}, "step-1", ev); err != nil {
+		t.Errorf("empty layout root should return nil, got %v", err)
 	}
-	if err := appendStepTimeline("/tmp/shared", "", ev); err != nil {
+	if err := appendStepTimeline(workspacefs.New("/tmp", ""), "", ev); err != nil {
 		t.Errorf("empty stepID should return nil, got %v", err)
 	}
-	if err := appendStepTimeline("/tmp/shared", "step-1", nil); err != nil {
+	if err := appendStepTimeline(workspacefs.New("/tmp", ""), "step-1", nil); err != nil {
 		t.Errorf("nil event should return nil, got %v", err)
 	}
 }
 
 func TestStepTimelineExists(t *testing.T) {
-	sharedDir := filepath.Join(t.TempDir(), "shared")
+	l := workspacefs.New(t.TempDir(), "")
 
-	if stepTimelineExists(sharedDir, "nonexistent") {
+	if stepTimelineExists(l, "nonexistent") {
 		t.Error("should return false for nonexistent file")
 	}
 
-	_ = appendStepTimeline(sharedDir, "step-1", &TimelineEvent{
+	_ = appendStepTimeline(l, "step-1", &TimelineEvent{
 		TS: time.Now().UTC(), Type: "tool_call", Key: "c1",
 	})
 
-	if !stepTimelineExists(sharedDir, "step-1") {
+	if !stepTimelineExists(l, "step-1") {
 		t.Error("should return true after writing")
 	}
 }

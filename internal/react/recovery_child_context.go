@@ -3,7 +3,6 @@ package react
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -128,16 +127,16 @@ func (a *Agent) buildRecoveryChildContextJSON(snapshot builtin_tools.StateSnapsh
 		}
 	}
 
-	sharedDir := strings.TrimSpace(a.workspaceRuntime.SharedDir())
+	l := a.wsLayout()
 	stepDirs := make([]string, 0, len(stepDirSet))
-	if sharedDir != "" {
+	if l.SharedDir() != "" {
 		stepIDs := make([]string, 0, len(stepDirSet))
 		for id := range stepDirSet {
 			stepIDs = append(stepIDs, id)
 		}
 		sort.Strings(stepIDs)
 		for _, id := range stepIDs {
-			dir := filepath.Join(sharedDir, id)
+			dir := l.StepDir(id)
 			if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
 				stepDirs = append(stepDirs, dir)
 			}

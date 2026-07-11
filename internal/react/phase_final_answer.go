@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"aster/internal/ai"
@@ -59,12 +58,12 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	stepOutcomeViews := collectAllStepContextViews(snapshot.Plan, snapshot.StepOutcomes)
 	workspaceSharedDir := ""
 	if a.workspaceRuntime != nil {
-		sharedDir := a.workspaceRuntime.SharedDir()
-		workspaceSharedDir = strings.TrimSpace(sharedDir)
+		l := a.wsLayout()
+		workspaceSharedDir = l.SharedDir()
 		for i := range stepOutcomeViews {
 			stepID := stepOutcomeViews[i].StepID
-			if stepID != "" && stepTimelineExists(sharedDir, stepID) {
-				stepOutcomeViews[i].TimelineFile = filepath.Join(sharedDir, stepID, "timeline.jsonl")
+			if stepID != "" && stepTimelineExists(l, stepID) {
+				stepOutcomeViews[i].TimelineFile = l.StepTimeline(stepID)
 			}
 		}
 	}

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"aster/internal/workspacefs"
 )
 
 const (
@@ -36,9 +38,8 @@ type toolOutputResult struct {
 }
 
 func resolveToolOutputDir(workspaceRootDir string) string {
-	workspaceRootDir = strings.TrimSpace(workspaceRootDir)
-	if workspaceRootDir != "" {
-		return filepath.Join(workspaceRootDir, "tool-output")
+	if dir := workspacefs.New(workspaceRootDir, "").ToolOutputDir(); dir != "" {
+		return dir
 	}
 	return filepath.Join(os.TempDir(), "sastpro-tool-output")
 }

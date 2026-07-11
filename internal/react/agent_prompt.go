@@ -45,11 +45,11 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot 
 	openItemsLedgerPath := ""
 	taskContextPath := ""
 	if a.workspaceRuntime != nil {
-		sharedDir := a.workspaceRuntime.SharedDir()
-		stepFilePath = stepFileAbs(sharedDir, snap.CurrentStepID)
-		if strings.TrimSpace(sharedDir) != "" {
-			openItemsLedgerPath = filepath.Join(sharedDir, openItemsFileName)
-			taskContextPath = filepath.Join(sharedDir, taskContextFileName)
+		l := a.wsLayout()
+		stepFilePath = l.StepFile(snap.CurrentStepID)
+		if l.SharedDir() != "" {
+			openItemsLedgerPath = l.OpenItems()
+			taskContextPath = l.TaskContext()
 		}
 	}
 

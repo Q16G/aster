@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 )
 
 func makePlanItem(id, step string, status builtin_tools.PlanStepStatus) *builtin_tools.PlanItem {
@@ -36,7 +37,7 @@ func TestBuildReviewWindow_BoundaryEmpty(t *testing.T) {
 			makeOutcome("s2", "done-2", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", "")
+	win := a.buildReviewWindow(snapshot, "", workspacefs.Layout{})
 	if win == nil {
 		t.Fatalf("expected non-nil window")
 	}
@@ -76,7 +77,7 @@ func TestBuildReviewWindow_BoundaryAdvanced(t *testing.T) {
 			makeOutcome("s5", "done-5", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "s2", "")
+	win := a.buildReviewWindow(snapshot, "s2", workspacefs.Layout{})
 	if got := len(win.Cards); got != 3 {
 		t.Fatalf("expected 3 cards (s3,s4,s5), got %d", got)
 	}
@@ -103,7 +104,7 @@ func TestBuildReviewWindow_PendingExcluded(t *testing.T) {
 			makeOutcome("s1", "done-1", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", "")
+	win := a.buildReviewWindow(snapshot, "", workspacefs.Layout{})
 	if got := len(win.Cards); got != 1 {
 		t.Fatalf("expected 1 card (only s1 completed), got %d", got)
 	}
@@ -125,7 +126,7 @@ func TestBuildReviewWindow_FailedIncluded(t *testing.T) {
 			makeOutcome("s2", "boom", builtin_tools.StepOutcomeFailed),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", "")
+	win := a.buildReviewWindow(snapshot, "", workspacefs.Layout{})
 	if got := len(win.Cards); got != 2 {
 		t.Fatalf("expected 2 cards (s1 completed, s2 failed), got %d", got)
 	}
@@ -151,7 +152,7 @@ func TestBuildReviewWindow_PerBatchCeilingTruncation(t *testing.T) {
 		outcomes = append(outcomes, makeOutcome(id, "done-"+id, builtin_tools.StepOutcomeCompleted))
 	}
 	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
-	win := a.buildReviewWindow(snapshot, "", "")
+	win := a.buildReviewWindow(snapshot, "", workspacefs.Layout{})
 	if got := len(win.Cards); got != reviewWindowMaxCardsBatchCeiling {
 		t.Fatalf("expected %d cards after ceiling truncation, got %d", reviewWindowMaxCardsBatchCeiling, got)
 	}
@@ -186,7 +187,7 @@ func TestBuildReviewWindow_PerBatchCoversWholeBatch(t *testing.T) {
 		outcomes = append(outcomes, makeOutcome(id, "done-"+id, builtin_tools.StepOutcomeCompleted))
 	}
 	snapshot := builtin_tools.StateSnapshot{Plan: plan, StepOutcomes: outcomes}
-	win := a.buildReviewWindow(snapshot, "", "")
+	win := a.buildReviewWindow(snapshot, "", workspacefs.Layout{})
 	if got := len(win.Cards); got != batch {
 		t.Fatalf("expected whole batch %d cards (no truncation), got %d", batch, got)
 	}
@@ -211,7 +212,7 @@ func TestBuildReviewWindow_BoundaryStaleFallsBackToFull(t *testing.T) {
 			makeOutcome("s2", "done-2", builtin_tools.StepOutcomeCompleted),
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "stale-id-not-in-plan", "")
+	win := a.buildReviewWindow(snapshot, "stale-id-not-in-plan", workspacefs.Layout{})
 	if got := len(win.Cards); got != 2 {
 		t.Fatalf("expected 2 cards (fallback to full when boundary not found), got %d", got)
 	}
@@ -277,7 +278,7 @@ func TestBuildReviewWindow_HistoricalCardReusesCoverageFile(t *testing.T) {
 		},
 	}
 
-	win := a.buildReviewWindow(snapshot, "", runtime.SharedDir())
+	win := a.buildReviewWindow(snapshot, "", workspacefs.New(runtime.RootDir(), ""))
 	if len(win.Cards) != 2 {
 		t.Fatalf("expected 2 cards, got %d", len(win.Cards))
 	}
@@ -343,7 +344,7 @@ func TestBuildReviewWindow_HistoricalCardWritesIfMissing(t *testing.T) {
 		},
 	}
 
-	win := a.buildReviewWindow(snapshot, "", runtime.SharedDir())
+	win := a.buildReviewWindow(snapshot, "", workspacefs.New(runtime.RootDir(), ""))
 	if len(win.Cards) != 2 {
 		t.Fatalf("expected 2 cards, got %d", len(win.Cards))
 	}
@@ -380,7 +381,7 @@ func TestBuildReviewWindow_InlineCoverageNoPath(t *testing.T) {
 			},
 		},
 	}
-	win := a.buildReviewWindow(snapshot, "", runtime.SharedDir())
+	win := a.buildReviewWindow(snapshot, "", workspacefs.New(runtime.RootDir(), ""))
 	if len(win.Cards) != 1 {
 		t.Fatalf("expected 1 card, got %d", len(win.Cards))
 	}
