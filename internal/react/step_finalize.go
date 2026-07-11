@@ -51,13 +51,10 @@ func (a *Agent) resolveStepFinalizePaths(stepID string, snapshot builtin_tools.S
 		timelineFile = stepTimelineRelPath(stepID)
 	}
 	var stepFile string
-	if a.workspaceRuntime != nil {
-		l := a.wsLayout()
-		if stepFileExists(l, stepID) {
-			stepFile = stepFileRelPath(stepID)
-		} else if legacyStepFileExists(l, stepID) {
-			stepFile = l.LegacyStepFileRel(stepID)
-		}
+	if stepFileExists(a.workspaceRuntime, stepID) {
+		stepFile = stepFileRelPath(stepID)
+	} else if legacyStepFileExists(a.workspaceRuntime, stepID) {
+		stepFile = a.wsLayout().LegacyStepFileRel(stepID)
 	}
 	coverageFile := a.persistCoverageChecklist(stepID, rawOutcome)
 

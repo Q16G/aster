@@ -90,27 +90,27 @@ func TestEnsureStepFileScaffold_RootEscapeRejected(t *testing.T) {
 // TestStepFileExists_ZeroBytedIsExist 锁定 stepFileExists 在文件为 0 字节时仍判存在——
 // 防止写入工具中途短暂写空触发 readSharedStepFileForPrompt 回退到 legacy 路径读老内容。
 func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
-	if err := os.MkdirAll(l.SharedDir(), 0o755); err != nil {
+	rt, sharedDir := newTestStepFileRuntime(t)
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
 		t.Fatalf("mkdir shared dir failed: %v", err)
 	}
-	abs := l.StepFile("s9")
+	abs := rt.Layout().StepFile("s9")
 
-	if stepFileExists(l, "s9") {
+	if stepFileExists(rt, "s9") {
 		t.Fatal("stepFileExists should be false before file creation")
 	}
 
 	if err := os.WriteFile(abs, []byte{}, 0o644); err != nil {
 		t.Fatalf("write empty file failed: %v", err)
 	}
-	if !stepFileExists(l, "s9") {
+	if !stepFileExists(rt, "s9") {
 		t.Fatal("stepFileExists should be true for a 0-byte file (transient tool write)")
 	}
 
 	if err := os.WriteFile(abs, []byte("# step_s9\n"), 0o644); err != nil {
 		t.Fatalf("write content failed: %v", err)
 	}
-	if !stepFileExists(l, "s9") {
+	if !stepFileExists(rt, "s9") {
 		t.Fatal("stepFileExists should be true for a non-empty file")
 	}
 }
@@ -118,8 +118,8 @@ func TestStepFileExists_ZeroBytedIsExist(t *testing.T) {
 // TestLegacyStepFileExists_RequiresContent 锁定 legacyStepFileExists 仍依赖 size>0
 // （旧布局只有有内容才值得 fallback）。
 func TestLegacyStepFileExists_RequiresContent(t *testing.T) {
-	l := workspacefs.New(t.TempDir(), "")
-	legacy := l.LegacyStepFile("s9")
+	rt, _ := newTestStepFileRuntime(t)
+	legacy := rt.Layout().LegacyStepFile("s9")
 	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
 		t.Fatalf("mkdir legacy dir failed: %v", err)
 	}
@@ -127,14 +127,14 @@ func TestLegacyStepFileExists_RequiresContent(t *testing.T) {
 	if err := os.WriteFile(legacy, []byte{}, 0o644); err != nil {
 		t.Fatalf("write empty legacy failed: %v", err)
 	}
-	if legacyStepFileExists(l, "s9") {
+	if legacyStepFileExists(rt, "s9") {
 		t.Fatal("legacyStepFileExists should be false for 0-byte legacy file")
 	}
 
 	if err := os.WriteFile(legacy, []byte("# legacy step.md\n"), 0o644); err != nil {
 		t.Fatalf("write legacy content failed: %v", err)
 	}
-	if !legacyStepFileExists(l, "s9") {
+	if !legacyStepFileExists(rt, "s9") {
 		t.Fatal("legacyStepFileExists should be true for non-empty legacy file")
 	}
 }
