@@ -146,6 +146,12 @@ type Agent struct {
 	// Inc2：与全局边界并存、仅落字段 + review 窗口按 topic 过滤能力；接线在 Inc3/Inc4。
 	lastReplanBoundaryByTopic map[string]string
 
+	// reviewTopicID 是本次 step_replan 收窄复核的目标 topic（局部 review 模式）；空串 = 全局
+	// 模式（现有全局 barrier / active=∅ reducer）。由调度路由（nextSchedulerPhase）在决定进
+	// StepReplan 时置位，runStepReplanPhase 据此收窄 stepID 锚（该 topic 最新 step）、review 窗口、
+	// ActivePhases 与 mutation；仅调度 goroutine 读写。
+	reviewTopicID string
+
 	// journaledStepIDs 记录已固化（烘焙 + 写 planner.jsonl 的 kind=step 记录）的 step，
 	// 按 step_id 单维去重（不带 plan_version——每个 step 的 kind=step 记录只在它完成那刻落盘
 	// 一次、归属完成时的 plan_version；重规划把已完成 step 并入新 plan 时不应在新版本下重复落盘）。

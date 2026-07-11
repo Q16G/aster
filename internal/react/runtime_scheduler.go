@@ -72,6 +72,9 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 
 		a.reduceStepOutcomesInState(ctx, runClient)
 		snapshot := a.state.Snapshot()
+		// TODO(第四阶段 Inc3/4/5)：接线 a.nextSchedulerPhase（per-topic 双触发路由）——需与
+		// runStepReplanPhase 收窄 + scoped mutation 一体落地（含 bypass 路径提前推进 per-topic 边界
+		// 防无限重选、re-bake 幂等）。当前仍走全局 currentPhase，行为不变。
 		phase := currentPhase(snapshot, a.maxParallelSteps())
 		if phase != snapshot.Phase {
 			_ = a.state.SetPhase(phase)
@@ -233,6 +236,50 @@ func currentPhase(snapshot builtin_tools.StateSnapshot, maxParallel int) builtin
 		return snapshot.Phase
 	default:
 		return builtin_tools.AgentPhasePlan
+	}
+}
+
+func (a *Agent) topicReviewBoundary(topicID string) string {
+	if a.lastReplanBoundaryByTopic == nil {
+		return ""
+	}
+	return a.lastReplanBoundaryByTopic[strings.TrimSpace(topicID)]
+}
+
+func (a *Agent) setTopicReviewBoundary(topicID, stepID string) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
+		return
+	}
+	if a.lastReplanBoundaryByTopic == nil {
+		a.lastReplanBoundaryByTopic = make(map[string]string)
+	}
+	a.lastReplanBoundaryByTopic[topicID] = strings.TrimSpace(stepID)
+}
+
+// nextSchedulerPhase 在 currentPhase 之上叠加第四阶段 per-topic 双触发路由（Step/StepReplan 阶段）：
+//  ① 有可局部 review 的 topic（静默且自其边界后有新 terminal）→ StepReplan(local，置 reviewTopicID)；
+//  否则清 reviewTopicID：② 有 ready step → Step（继续派发/滚动）；
+//  ③ 未全终态 → StepReplan(全局 reducer，active=∅)；④ 全终态 → FinalAnswer。
+// Plan/Intent/FinalAnswer 阶段不介入 topic 路由，走 currentPhase 兜底。
+func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
+	switch snapshot.Phase {
+	case builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan:
+		if topicID, _ := nextReviewableTopic(snapshot.Plan, snapshot.Phases, a.lastReplanBoundaryByTopic); topicID != "" {
+			a.reviewTopicID = topicID
+			return builtin_tools.AgentPhaseStepReplan
+		}
+		a.reviewTopicID = ""
+		if builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) != "" {
+			return builtin_tools.AgentPhaseStep
+		}
+		if builtin_tools.AllPhasesSettled(snapshot.Phases) {
+			return builtin_tools.AgentPhaseFinalAnswer
+		}
+		return builtin_tools.AgentPhaseStepReplan // 全局 reducer 态（reviewTopicID=""）
+	default:
+		a.reviewTopicID = ""
+		return currentPhase(snapshot, a.maxParallelSteps())
 	}
 }
 
