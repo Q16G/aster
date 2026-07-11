@@ -184,16 +184,16 @@ func TestPlannerJournal_PhaseRecordsSurviveRewrite(t *testing.T) {
 
 	// plan 提交：item 行在前、phase 行在后（版本提升批次契约）
 	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
-		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"}},
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-a", Name: "lane A", Status: builtin_tools.PlanPhasePending}},
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-b", Name: "lane B", DependsOn: []string{"phase-a"}, Status: builtin_tools.PlanPhasePending}},
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 1, Phase: &builtin_tools.AnalysisTopic{ID: "phase-a", Name: "lane A", Status: builtin_tools.AnalysisTopicPending}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 1, Phase: &builtin_tools.AnalysisTopic{ID: "phase-b", Name: "lane B", DependsOn: []string{"phase-a"}, Status: builtin_tools.AnalysisTopicPending}},
 	}); err != nil {
 		t.Fatalf("append plan+phase records failed: %v", err)
 	}
 
 	// step 终态增量落盘触发 snapshot 原子重写——phase 行必须存活
 	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
-		{Kind: builtin_tools.PlannerJournalKindStep, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"}},
+		{Kind: builtin_tools.PlannerJournalKindStep, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"}},
 	}); err != nil {
 		t.Fatalf("append step record failed: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestPlannerJournal_PhaseRecordsSurviveRewrite(t *testing.T) {
 
 	// phase 状态增量覆盖（step_replan 承接路径）
 	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-a", Name: "lane A", Status: builtin_tools.PlanPhaseCompleted}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 1, Phase: &builtin_tools.AnalysisTopic{ID: "phase-a", Name: "lane A", Status: builtin_tools.AnalysisTopicCompleted}},
 	}); err != nil {
 		t.Fatalf("append phase upsert failed: %v", err)
 	}
@@ -222,14 +222,14 @@ func TestPlannerJournal_PhaseRecordsSurviveRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload failed: %v", err)
 	}
-	if phases[0].Status != builtin_tools.PlanPhaseCompleted {
+	if phases[0].Status != builtin_tools.AnalysisTopicCompleted {
 		t.Fatalf("expected phase-a completed, got %+v", phases[0])
 	}
 
 	// 重规划版本提升：plan 行在前 reset 旧 phases，新 phase 行随后落地
 	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{
-		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 2, Item: &builtin_tools.PlanItem{ID: "c1", Step: "C1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-c"}},
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 2, Phase: &builtin_tools.PlanPhase{ID: "phase-c", Status: builtin_tools.PlanPhasePending}},
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 2, Item: &builtin_tools.PlanItem{ID: "c1", Step: "C1", Status: builtin_tools.PlanStepPending, TopicID: "phase-c"}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 2, Phase: &builtin_tools.AnalysisTopic{ID: "phase-c", Status: builtin_tools.AnalysisTopicPending}},
 	}); err != nil {
 		t.Fatalf("append v2 records failed: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestPlannerJournal_PhaseRecordsSurviveRewrite(t *testing.T) {
 	}
 }
 
-func TestPlannerJournal_LegacyFileNoPhases(t *testing.T) {
+func TestPlannerJournal_LegacyFileNoTopics(t *testing.T) {
 	root := t.TempDir()
 	// 旧格式：只有 item 行（无 phase 概念、item 无 phase_id）
 	if err := AppendPlannerJournalRecords(root, []*builtin_tools.PlannerJournalRecord{

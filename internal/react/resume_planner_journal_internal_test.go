@@ -112,19 +112,19 @@ func TestSynthesizeResumeSnapshot_LegacyDataGetsSyntheticPhase(t *testing.T) {
 	if !planValid {
 		t.Fatal("expected plan valid from journal")
 	}
-	if len(snapshot.Phases) != 1 || snapshot.Phases[0].ID != builtin_tools.SyntheticPhaseID {
-		t.Fatalf("expected synthetic phase for legacy data, got %+v", snapshot.Phases)
+	if len(snapshot.Topics) != 1 || snapshot.Topics[0].ID != builtin_tools.SyntheticTopicID {
+		t.Fatalf("expected synthetic phase for legacy data, got %+v", snapshot.Topics)
 	}
 	for _, item := range snapshot.Plan {
-		if item.PhaseID != builtin_tools.SyntheticPhaseID {
-			t.Fatalf("item %s not attached to synthetic phase: %q", item.ID, item.PhaseID)
+		if item.TopicID != builtin_tools.SyntheticTopicID {
+			t.Fatalf("item %s not attached to synthetic phase: %q", item.ID, item.TopicID)
 		}
 	}
 }
 
-// TestSynthesizeResumeSnapshot_JournalPhasesRestored 校验 journal 含 phase 行时恢复
+// TestSynthesizeResumeSnapshot_JournalTopicsRestored 校验 journal 含 phase 行时恢复
 // phases 并保持 item 挂靠。
-func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
+func TestSynthesizeResumeSnapshot_JournalTopicsRestored(t *testing.T) {
 	rootDir := t.TempDir()
 	runtime, err := newLocalWorkspaceRuntime("s1", rootDir, "root")
 	if err != nil {
@@ -135,10 +135,10 @@ func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
 		t.Fatalf("writer: %v", err)
 	}
 	if err := AppendPlannerJournalRecords(rootDir, []*builtin_tools.PlannerJournalRecord{
-		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"}},
-		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "b1", Step: "B", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"}},
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-a", Status: builtin_tools.PlanPhaseCompleted}},
-		{Kind: builtin_tools.PlannerJournalKindPhase, PlanVersion: 1, Phase: &builtin_tools.PlanPhase{ID: "phase-b", Status: builtin_tools.PlanPhasePending, DependsOn: []string{"phase-a"}}},
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "a1", Step: "A", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"}},
+		{Kind: builtin_tools.PlannerJournalKindPlan, PlanVersion: 1, Item: &builtin_tools.PlanItem{ID: "b1", Step: "B", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 1, Phase: &builtin_tools.AnalysisTopic{ID: "phase-a", Status: builtin_tools.AnalysisTopicCompleted}},
+		{Kind: builtin_tools.PlannerJournalKindTopic, PlanVersion: 1, Phase: &builtin_tools.AnalysisTopic{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending, DependsOn: []string{"phase-a"}}},
 	}); err != nil {
 		t.Fatalf("seed journal: %v", err)
 	}
@@ -147,10 +147,10 @@ func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
 	if !planValid {
 		t.Fatal("expected plan valid")
 	}
-	if len(snapshot.Phases) != 2 || snapshot.Phases[0].Status != builtin_tools.PlanPhaseCompleted {
-		t.Fatalf("expected journal phases restored, got %+v", snapshot.Phases)
+	if len(snapshot.Topics) != 2 || snapshot.Topics[0].Status != builtin_tools.AnalysisTopicCompleted {
+		t.Fatalf("expected journal phases restored, got %+v", snapshot.Topics)
 	}
-	if snapshot.Plan[1].PhaseID != "phase-b" {
+	if snapshot.Plan[1].TopicID != "phase-b" {
 		t.Fatalf("item attachment lost: %+v", snapshot.Plan[1])
 	}
 }
@@ -158,17 +158,17 @@ func TestSynthesizeResumeSnapshot_JournalPhasesRestored(t *testing.T) {
 // TestResolveResumeCurrentStepID_RespectsPhaseGate 校验 review #2：resume 选步用 frontier
 // 判定（带 phase 门），不选被 blocked / 依赖未解锁 lane 下的 step。
 func TestResolveResumeCurrentStepID_RespectsPhaseGate(t *testing.T) {
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhaseBlocked},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending, DependsOn: []string{"phase-a"}},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicBlocked},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending, DependsOn: []string{"phase-a"}},
 	}
 	plan := []*builtin_tools.PlanItem{
-		// phase-a 被 blocked，其下 a1 应被 SkipStepsOfBlockedPhases 收敛，不应被选中
-		{ID: "a1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
+		// phase-a 被 blocked，其下 a1 应被 SkipStepsOfBlockedTopics 收敛，不应被选中
+		{ID: "a1", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"},
 		// phase-b 依赖 phase-a（blocked=terminal 解锁）→ b1 可选
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
-	builtin_tools.SkipStepsOfBlockedPhases(plan, phases)
+	builtin_tools.SkipStepsOfBlockedTopics(plan, phases)
 	builtin_tools.HydratePlanRelations(plan)
 	got := resolveResumeCurrentStepID(plan, phases, "a1")
 	if got != "b1" {

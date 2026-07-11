@@ -907,7 +907,7 @@ func TestExecute_WritesPhaseLogsToTerminal(t *testing.T) {
 }
 
 func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
-	var selectedPhases []string
+	var selectedTopics []string
 	emitter := NewEmitter("phase-order-session", "phase-order-agent", func(event *AgentOutputEvent) error {
 		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
 			return nil
@@ -915,7 +915,7 @@ func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
 		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
 			return nil
 		}
-		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		selectedTopics = append(selectedTopics, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
 		return nil
 	})
 
@@ -960,19 +960,19 @@ func TestExecute_SelectsPlanPhaseBeforeStepByDefault(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	if len(selectedPhases) < 2 {
-		t.Fatalf("expected at least plan and step phase selections, got %v", selectedPhases)
+	if len(selectedTopics) < 2 {
+		t.Fatalf("expected at least plan and step phase selections, got %v", selectedTopics)
 	}
-	if selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
-		t.Fatalf("expected first selected phase %q, got %v", builtin_tools.AgentPhasePlan, selectedPhases)
+	if selectedTopics[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected first selected phase %q, got %v", builtin_tools.AgentPhasePlan, selectedTopics)
 	}
-	if selectedPhases[1] != string(builtin_tools.AgentPhaseStep) {
-		t.Fatalf("expected second selected phase %q, got %v", builtin_tools.AgentPhaseStep, selectedPhases)
+	if selectedTopics[1] != string(builtin_tools.AgentPhaseStep) {
+		t.Fatalf("expected second selected phase %q, got %v", builtin_tools.AgentPhaseStep, selectedTopics)
 	}
 }
 
 func TestExecute_PlanPhaseUsesPlannerDirectResponseWhenPlannerReturnsEmptyPlan(t *testing.T) {
-	var selectedPhases []string
+	var selectedTopics []string
 	emitter := NewEmitter("implicit-plan-session", "implicit-plan-agent", func(event *AgentOutputEvent) error {
 		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
 			return nil
@@ -980,7 +980,7 @@ func TestExecute_PlanPhaseUsesPlannerDirectResponseWhenPlannerReturnsEmptyPlan(t
 		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
 			return nil
 		}
-		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		selectedTopics = append(selectedTopics, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
 		return nil
 	})
 
@@ -1036,13 +1036,13 @@ func TestExecute_PlanPhaseUsesPlannerDirectResponseWhenPlannerReturnsEmptyPlan(t
 	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
 		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
 	}
-	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
-		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
+	if len(selectedTopics) != 1 || selectedTopics[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedTopics)
 	}
 }
 
 func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.T) {
-	var selectedPhases []string
+	var selectedTopics []string
 	emitter := NewEmitter("planner-direct-session", "planner-direct-agent", func(event *AgentOutputEvent) error {
 		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
 			return nil
@@ -1050,7 +1050,7 @@ func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.
 		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
 			return nil
 		}
-		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		selectedTopics = append(selectedTopics, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
 		return nil
 	})
 
@@ -1111,13 +1111,13 @@ func TestExecute_DefaultPlannerDirectResponseSkipsStepAndFinalAnswer(t *testing.
 	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
 		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
 	}
-	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
-		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
+	if len(selectedTopics) != 1 || selectedTopics[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedTopics)
 	}
 }
 
 func TestExecute_PlanPhaseWithToolsFallsBackToAssistantText(t *testing.T) {
-	var selectedPhases []string
+	var selectedTopics []string
 	emitter := NewEmitter("planner-fallback-session", "planner-fallback-agent", func(event *AgentOutputEvent) error {
 		if event == nil || event.Type != EventTypeLog || event.Payload == nil {
 			return nil
@@ -1125,7 +1125,7 @@ func TestExecute_PlanPhaseWithToolsFallsBackToAssistantText(t *testing.T) {
 		if strings.TrimSpace(phaseStringFromAny(event.Payload["event"])) != "phase_selected" {
 			return nil
 		}
-		selectedPhases = append(selectedPhases, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
+		selectedTopics = append(selectedTopics, strings.TrimSpace(phaseStringFromAny(event.Payload["selected_phase"])))
 		return nil
 	})
 
@@ -1179,8 +1179,8 @@ func TestExecute_PlanPhaseWithToolsFallsBackToAssistantText(t *testing.T) {
 	if strings.TrimSpace(snapshot.FinalAnswer.Source) != "planner_direct" {
 		t.Fatalf("expected final answer source %q, got %q", "planner_direct", snapshot.FinalAnswer.Source)
 	}
-	if len(selectedPhases) != 1 || selectedPhases[0] != string(builtin_tools.AgentPhasePlan) {
-		t.Fatalf("expected only plan phase selection, got %v", selectedPhases)
+	if len(selectedTopics) != 1 || selectedTopics[0] != string(builtin_tools.AgentPhasePlan) {
+		t.Fatalf("expected only plan phase selection, got %v", selectedTopics)
 	}
 }
 
@@ -1678,7 +1678,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"replan_reason": "旧计划未覆盖新增验证缺口",
 						"phase_assessments": []any{
 							map[string]any{
-								"phase_id":         builtin_tools.SyntheticPhaseID,
+								"phase_id":         builtin_tools.SyntheticTopicID,
 								"status":           "continue",
 								"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
 							},
@@ -1703,7 +1703,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"replan_reason": "",
 						"next_goal":     "",
 						"phase_assessments": []any{
-							map[string]any{"phase_id": builtin_tools.SyntheticPhaseID, "status": "completed"},
+							map[string]any{"phase_id": builtin_tools.SyntheticTopicID, "status": "completed"},
 						},
 					}),
 				},

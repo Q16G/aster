@@ -64,7 +64,7 @@ func isolateSnapshot(src *builtin_tools.StateSnapshot) builtin_tools.StateSnapsh
 		}
 		builtin_tools.HydratePlanRelations(out.Plan)
 	}
-	out.Phases = builtin_tools.ClonePlanPhases(src.Phases)
+	out.Topics = builtin_tools.CloneAnalysisTopics(src.Topics)
 
 	if len(src.StepOutcomes) > 0 {
 		out.StepOutcomes = make([]*builtin_tools.StepOutcome, len(src.StepOutcomes))
@@ -206,7 +206,7 @@ func (t *StateTracker) Replace(snapshot builtin_tools.StateSnapshot) builtin_too
 
 	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(snapshot.Plan)
-	snapshot.Phases = builtin_tools.SynthesizePhasesIfMissing(snapshot.Plan, snapshot.Phases, snapshot.CurrentGoal)
+	snapshot.Topics = builtin_tools.SynthesizeTopicsIfMissing(snapshot.Plan, snapshot.Topics, snapshot.CurrentGoal)
 	if snapshot.PlanVersion <= 0 && len(snapshot.Plan) > 0 {
 		snapshot.PlanVersion = 1
 	}
@@ -488,7 +488,7 @@ func (t *StateTracker) applyPlanLocked(plan []*builtin_tools.PlanItem, explanati
 	prev := t.snapshotPlanStatusesLocked()
 	builtin_tools.HydratePlanRelations(plan)
 	t.state.Plan = plan
-	t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(plan, t.state.Phases, t.state.CurrentGoal)
+	t.state.Topics = builtin_tools.SynthesizeTopicsIfMissing(plan, t.state.Topics, t.state.CurrentGoal)
 	t.state.NeedsPlanning = needsPlanning
 	t.state.PlanVersion++
 	t.state.Phase = builtin_tools.AgentPhaseStep
@@ -525,59 +525,59 @@ func (t *StateTracker) SetGoalUnderstanding(understanding string) builtin_tools.
 	return *t.state
 }
 
-// SetPhases 原子替换业务 lane 清单（planner 提交/重规划合并后的终态）。
-// 调用方负责先经 NormalizePlanPhases 校验；此处仅做克隆与 plan 挂靠闭合兜底。
-func (t *StateTracker) SetPhases(phases []*builtin_tools.PlanPhase) builtin_tools.StateSnapshot {
+// SetTopics 原子替换业务 lane 清单（planner 提交/重规划合并后的终态）。
+// 调用方负责先经 NormalizeAnalysisTopics 校验；此处仅做克隆与 plan 挂靠闭合兜底。
+func (t *StateTracker) SetTopics(phases []*builtin_tools.AnalysisTopic) builtin_tools.StateSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(t.state.Plan, phases, t.state.CurrentGoal)
+	t.state.Topics = builtin_tools.SynthesizeTopicsIfMissing(t.state.Plan, phases, t.state.CurrentGoal)
 	t.touchLocked()
 	return *t.state
 }
 
-// ApplyPhaseAssessments 机械承接 step_replan 的 phase 评估：completed/blocked 写回
-// 对应 PlanPhase.Status，blocked 联动把该 lane 下 pending step 收敛为 skipped（含跨
+// ApplyTopicAssessments 机械承接 step_replan 的 phase 评估：completed/blocked 写回
+// 对应 AnalysisTopic.Status，blocked 联动把该 lane 下 pending step 收敛为 skipped（含跨
 // phase 下游传递）；continue 与未知 phase_id 忽略（合法性由 submit_replan 工具层校验）。
 // 返回状态实际发生变化的 phase 子集（供调用方增量落 journal）。
-func (t *StateTracker) ApplyPhaseAssessments(assessments []*builtin_tools.PhaseAssessment) ([]*builtin_tools.PlanPhase, builtin_tools.StateSnapshot) {
-	return t.ApplyPhaseAssessmentsScoped(assessments, "")
+func (t *StateTracker) ApplyTopicAssessments(assessments []*builtin_tools.TopicAssessment) ([]*builtin_tools.AnalysisTopic, builtin_tools.StateSnapshot) {
+	return t.ApplyTopicAssessmentsScoped(assessments, "")
 }
 
-// ApplyPhaseAssessmentsScoped 在 ApplyPhaseAssessments 基础上按 reviewTopicID 收窄 blocked 联动：
-// reviewTopicID=="" 为全局 reducer 路径，走整盘 SkipStepsOfBlockedPhases（含跨 topic 下游传播）；
+// ApplyTopicAssessmentsScoped 在 ApplyTopicAssessments 基础上按 reviewTopicID 收窄 blocked 联动：
+// reviewTopicID=="" 为全局 reducer 路径，走整盘 SkipStepsOfBlockedTopics（含跨 topic 下游传播）；
 // reviewTopicID!="" 为 per-topic 局部 review，只 skip 属该 topic 的 blocked-phase pending，
 // 不做跨 topic 传播（延到全局 reducer 状态定型后统一收敛，M2）。
-func (t *StateTracker) ApplyPhaseAssessmentsScoped(assessments []*builtin_tools.PhaseAssessment, reviewTopicID string) ([]*builtin_tools.PlanPhase, builtin_tools.StateSnapshot) {
+func (t *StateTracker) ApplyTopicAssessmentsScoped(assessments []*builtin_tools.TopicAssessment, reviewTopicID string) ([]*builtin_tools.AnalysisTopic, builtin_tools.StateSnapshot) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	reviewTopicID = strings.TrimSpace(reviewTopicID)
-	if len(assessments) == 0 || len(t.state.Phases) == 0 {
+	if len(assessments) == 0 || len(t.state.Topics) == 0 {
 		return nil, *t.state
 	}
 
 	prev := t.snapshotPlanStatusesLocked()
-	byID := make(map[string]*builtin_tools.PlanPhase, len(t.state.Phases))
-	for _, phase := range t.state.Phases {
+	byID := make(map[string]*builtin_tools.AnalysisTopic, len(t.state.Topics))
+	for _, phase := range t.state.Topics {
 		if phase != nil {
 			byID[strings.TrimSpace(phase.ID)] = phase
 		}
 	}
 
-	var changed []*builtin_tools.PlanPhase
+	var changed []*builtin_tools.AnalysisTopic
 	for _, assess := range assessments {
 		if assess == nil {
 			continue
 		}
-		phase, ok := byID[strings.TrimSpace(assess.PhaseID)]
+		phase, ok := byID[strings.TrimSpace(assess.TopicID)]
 		if !ok {
 			continue
 		}
-		var next builtin_tools.PlanPhaseStatus
+		var next builtin_tools.AnalysisTopicStatus
 		switch assess.Status {
-		case builtin_tools.PhaseAssessCompleted:
-			next = builtin_tools.PlanPhaseCompleted
-		case builtin_tools.PhaseAssessBlocked:
-			next = builtin_tools.PlanPhaseBlocked
+		case builtin_tools.TopicAssessCompleted:
+			next = builtin_tools.AnalysisTopicCompleted
+		case builtin_tools.TopicAssessBlocked:
+			next = builtin_tools.AnalysisTopicBlocked
 		default:
 			continue
 		}
@@ -592,14 +592,14 @@ func (t *StateTracker) ApplyPhaseAssessmentsScoped(assessments []*builtin_tools.
 	}
 
 	if reviewTopicID == "" {
-		builtin_tools.SkipStepsOfBlockedPhases(t.state.Plan, t.state.Phases)
+		builtin_tools.SkipStepsOfBlockedTopics(t.state.Plan, t.state.Topics)
 	} else {
-		builtin_tools.SkipStepsOfBlockedPhaseInTopic(t.state.Plan, t.state.Phases, reviewTopicID)
+		builtin_tools.SkipStepsOfBlockedTopicScoped(t.state.Plan, t.state.Topics, reviewTopicID)
 	}
 	t.state.Progress = builtin_tools.PlanProgress(t.state.Plan)
 	t.touchLocked()
 	t.fanoutPlanItemChangesLocked(t.diffPlanStatusesLocked(prev, planItemActorSystem, "phase_assessment"))
-	return builtin_tools.ClonePlanPhases(changed), *t.state
+	return builtin_tools.CloneAnalysisTopics(changed), *t.state
 }
 
 func (t *StateTracker) UpdateCurrentStep(update builtin_tools.CurrentStepUpdate) builtin_tools.StateSnapshot {
@@ -820,7 +820,7 @@ func (t *StateTracker) ApplyStepReplan(stepID string, update stepReplanUpdate) b
 	if len(update.NewPlan) > 0 {
 		builtin_tools.HydratePlanRelations(update.NewPlan)
 		t.state.Plan = update.NewPlan
-		t.state.Phases = builtin_tools.SynthesizePhasesIfMissing(update.NewPlan, t.state.Phases, t.state.CurrentGoal)
+		t.state.Topics = builtin_tools.SynthesizeTopicsIfMissing(update.NewPlan, t.state.Topics, t.state.CurrentGoal)
 		t.state.PlanVersion++
 		t.state.NeedsPlanning = true
 	}
@@ -1182,11 +1182,11 @@ func (t *StateTracker) SoftResetFrom(
 		Phase:             builtin_tools.AgentPhasePlan,
 		Status:            builtin_tools.TaskStatusPreparing,
 		GoalUnderstanding: strings.TrimSpace(st.GoalUnderstanding),
-		CurrentPhase:      strings.TrimSpace(st.CurrentPhase),
+		TopicFocus:      strings.TrimSpace(st.TopicFocus),
 		CurrentGoal:       strings.TrimSpace(st.CurrentGoal),
 		CurrentStepID:     strings.TrimSpace(st.CurrentStepID),
 		Plan:              st.Plan,
-		Phases:            builtin_tools.SynthesizePhasesIfMissing(st.Plan, st.Phases, st.CurrentGoal),
+		Topics:            builtin_tools.SynthesizeTopicsIfMissing(st.Plan, st.Topics, st.CurrentGoal),
 		PlanVersion:       st.PlanVersion,
 		UnresolvedAxes:    st.UnresolvedAxes,
 		ActiveSkillNames:  st.ActiveSkillNames,
@@ -1231,7 +1231,7 @@ func (t *StateTracker) ensureCurrentStepLocked() {
 		}
 		t.state.CurrentStepID = ""
 	}
-	nextID := builtin_tools.NextFrontierPlanStepID(t.state.Plan, t.state.Phases)
+	nextID := builtin_tools.NextFrontierPlanStepID(t.state.Plan, t.state.Topics)
 	if nextID != "" {
 		t.state.CurrentStepID = nextID
 	}

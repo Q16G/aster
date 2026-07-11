@@ -372,10 +372,10 @@ func TestPlanPart_GroupedByPhase(t *testing.T) {
 	plan := &PlanPart{
 		AgentName: "agent",
 		Items: []PlanItemView{
-			{ID: "a1", Step: "枚举模块A接口", Status: "completed", PhaseID: "phase-a"},
-			{ID: "b1", Step: "枚举模块B接口", Status: "in_progress", PhaseID: "phase-b"},
+			{ID: "a1", Step: "枚举模块A接口", Status: "completed", TopicID: "phase-a"},
+			{ID: "b1", Step: "枚举模块B接口", Status: "in_progress", TopicID: "phase-b"},
 		},
-		Phases: []PhaseView{
+		Topics: []TopicView{
 			{ID: "phase-a", Name: "模块A 的访问控制", Status: "completed"},
 			{ID: "phase-b", Name: "模块B 的访问控制", Status: "pending"},
 		},
@@ -398,10 +398,10 @@ func TestPlanPart_SyntheticPhaseNoHeader(t *testing.T) {
 	plan := &PlanPart{
 		AgentName: "agent",
 		Items: []PlanItemView{
-			{ID: "s1", Step: "唯一步骤", Status: "pending", PhaseID: builtin_tools.SyntheticPhaseID},
+			{ID: "s1", Step: "唯一步骤", Status: "pending", TopicID: builtin_tools.SyntheticTopicID},
 		},
-		Phases: []PhaseView{
-			{ID: builtin_tools.SyntheticPhaseID, Name: "综合任务", Status: "pending"},
+		Topics: []TopicView{
+			{ID: builtin_tools.SyntheticTopicID, Name: "综合任务", Status: "pending"},
 		},
 		IsExpanded: true,
 	}

@@ -213,9 +213,9 @@ func currentPhase(snapshot builtin_tools.StateSnapshot, maxParallel int) builtin
 	//     should_replan 回流仍兜底），避免 completed step 但 lane 未判定就提前收尾。
 	if snapshot.Phase == builtin_tools.AgentPhaseStep &&
 		len(snapshot.Plan) > 0 &&
-		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) == "" &&
+		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics) == "" &&
 		builtin_tools.AllPlanStepsTerminal(snapshot.Plan) {
-		if builtin_tools.AllPhasesSettled(snapshot.Phases) {
+		if builtin_tools.AllTopicsSettled(snapshot.Topics) {
 			return builtin_tools.AgentPhaseFinalAnswer
 		}
 		return builtin_tools.AgentPhaseStepReplan
@@ -226,7 +226,7 @@ func currentPhase(snapshot builtin_tools.StateSnapshot, maxParallel int) builtin
 	// 滚动派发，直到 frontier=0 且 in_progress=0 才真正进 step_replan（frontier barrier）。
 	if maxParallel >= 2 &&
 		snapshot.Phase == builtin_tools.AgentPhaseStepReplan &&
-		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) != "" {
+		builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics) != "" {
 		return builtin_tools.AgentPhaseStep
 	}
 
@@ -264,15 +264,15 @@ func (a *Agent) setTopicReviewBoundary(topicID, stepID string) {
 func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
 	switch snapshot.Phase {
 	case builtin_tools.AgentPhaseStep, builtin_tools.AgentPhaseStepReplan:
-		if topicID, _ := nextReviewableTopic(snapshot.Plan, snapshot.Phases, a.lastReplanBoundaryByTopic); topicID != "" {
+		if topicID, _ := nextReviewableTopic(snapshot.Plan, snapshot.Topics, a.lastReplanBoundaryByTopic); topicID != "" {
 			a.reviewTopicID = topicID
 			return builtin_tools.AgentPhaseStepReplan
 		}
 		a.reviewTopicID = ""
-		if builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Phases) != "" {
+		if builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics) != "" {
 			return builtin_tools.AgentPhaseStep
 		}
-		if builtin_tools.AllPhasesSettled(snapshot.Phases) {
+		if builtin_tools.AllTopicsSettled(snapshot.Topics) {
 			return builtin_tools.AgentPhaseFinalAnswer
 		}
 		return builtin_tools.AgentPhaseStepReplan // 全局 reducer 态（reviewTopicID=""）
@@ -322,7 +322,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		RecoveryContextJSON: recoveryCtx.Text,
 		InputTimeline:       pc.InputTimeline.Text,
 		TaskItemsJSON:       pc.Plan.Text,
-		PhasesJSON:          pc.Phases.Text,
+		PhasesJSON:          pc.Topics.Text,
 		ReplanContextJSON:   replanCtx.Text,
 	})
 	if inputStr == "" {
@@ -465,9 +465,9 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		a.SetGoalUnderstanding(res.GoalUnderstanding)
 		// 业务 lane 贯穿：parse 侧已完成与既有 phases 的按 id 合并（completed/blocked 保留），
 		// 此处原子替换。simple/direct 任务未提交 phases 时保留既有 lane，由写回段的
-		// SynthesizePhasesIfMissing 兜底挂靠新 item（须在 plan 写回前设好，供 merge 挂靠）。
-		if len(res.Phases) > 0 {
-			a.state.SetPhases(res.Phases)
+		// SynthesizeTopicsIfMissing 兜底挂靠新 item（须在 plan 写回前设好，供 merge 挂靠）。
+		if len(res.Topics) > 0 {
+			a.state.SetTopics(res.Topics)
 		}
 	}
 	if replacePending {
@@ -570,7 +570,7 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 			}
 			if tc.Function.Name == submitPlanToolName {
 				priorSnap := a.state.Snapshot()
-				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding, priorSnap.Phases, priorSnap.Plan)
+				parsed, parseErr := parseSubmitPlanArgs(tc.Function.Arguments, requireGoalUnderstanding, priorSnap.Topics, priorSnap.Plan)
 				if parseErr != nil {
 					submitRetries++
 					if submitRetries > maxSubmitRetries {
@@ -961,7 +961,7 @@ func validatePlanItemsGranularity(items []*builtin_tools.PlanItem) error {
 	return errors.New(b.String())
 }
 
-func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []*builtin_tools.PlanPhase, priorPlan []*builtin_tools.PlanItem) (*builtin_tools.TaskPlannerResult, error) {
+func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorTopics []*builtin_tools.AnalysisTopic, priorPlan []*builtin_tools.PlanItem) (*builtin_tools.TaskPlannerResult, error) {
 	var data []byte
 	switch v := args.(type) {
 	case string:
@@ -1001,14 +1001,14 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 			submitPlanShapeReminder, submitPlanItemSample)
 	}
 
-	// Phases（业务 lane）校验与合并：
+	// Topics（业务 lane）校验与合并：
 	//  1. needs_planning 且非 simple 时 phases 必填；
 	//  2. 归一化（id 唯一 / 引用闭包 / 无环 / 禁 synthetic 保留 id）；
 	//  3. 与既有 phases 按 id 合并——completed/blocked 项被省略时保留（取消 lane 只能
 	//     显式提交 blocked，见 D7b）；
 	//  4. plan item 的 phase_id 必须在合并后的 phase 集内（防悬空引用被错挂 synthetic）。
 	if result.NeedsPlanning {
-		normalized, err := builtin_tools.NormalizePlanPhases(result.Phases, true)
+		normalized, err := builtin_tools.NormalizeAnalysisTopics(result.Topics, true)
 		if err != nil {
 			return nil, fmt.Errorf("submit_plan: phases 校验失败：%w。请修正 phases 结构（id 唯一、depends_on 引用有效且无环）后重新调用", err)
 		}
@@ -1017,7 +1017,7 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 				"请提交业务 lane 清单（每项 {id, name, depends_on}，name 格式「<对象> 的 <深度推进目标>」），" +
 				"并给每个 plan item 填 phase_id 后重新调用")
 		}
-		merged := mergePlanPhases(priorPhases, normalized, priorPlan)
+		merged := mergeAnalysisTopics(priorTopics, normalized, priorPlan)
 		if len(merged) > 0 {
 			known := make(map[string]struct{}, len(merged))
 			for _, phase := range merged {
@@ -1028,13 +1028,13 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 				if item == nil {
 					continue
 				}
-				phaseID := canonicalizePlanPhaseRef(item.PhaseID)
-				if phaseID == "" {
+				topicID := canonicalizeAnalysisTopicRef(item.TopicID)
+				if topicID == "" {
 					dangling = append(dangling, fmt.Sprintf("step %q 缺 phase_id", strings.TrimSpace(item.ID)))
 					continue
 				}
-				if _, ok := known[phaseID]; !ok {
-					dangling = append(dangling, fmt.Sprintf("step %q 引用未知 phase %q", strings.TrimSpace(item.ID), phaseID))
+				if _, ok := known[topicID]; !ok {
+					dangling = append(dangling, fmt.Sprintf("step %q 引用未知 phase %q", strings.TrimSpace(item.ID), topicID))
 				}
 			}
 			if len(dangling) > 0 {
@@ -1047,7 +1047,7 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorPhases []
 				return nil, err
 			}
 		}
-		result.Phases = merged
+		result.Topics = merged
 	}
 	return &result, nil
 }
@@ -1062,14 +1062,14 @@ func validateStepDepsSameTopic(plan []*builtin_tools.PlanItem) error {
 		if item == nil {
 			continue
 		}
-		topicOf[builtin_tools.CanonicalizePlanIDToken(item.ID)] = canonicalizePlanPhaseRef(item.PhaseID)
+		topicOf[builtin_tools.CanonicalizePlanIDToken(item.ID)] = canonicalizeAnalysisTopicRef(item.TopicID)
 	}
 	var cross []string
 	for _, item := range plan {
 		if item == nil {
 			continue
 		}
-		self := canonicalizePlanPhaseRef(item.PhaseID)
+		self := canonicalizeAnalysisTopicRef(item.TopicID)
 		if self == "" {
 			continue
 		}
@@ -1090,12 +1090,12 @@ func validateStepDepsSameTopic(plan []*builtin_tools.PlanItem) error {
 	return nil
 }
 
-// canonicalizePlanPhaseRef 与 NormalizePlanPhases 的 id 规整同源，供 phase_id 引用对齐。
-func canonicalizePlanPhaseRef(raw string) string {
+// canonicalizeAnalysisTopicRef 与 NormalizeAnalysisTopics 的 id 规整同源，供 phase_id 引用对齐。
+func canonicalizeAnalysisTopicRef(raw string) string {
 	return builtin_tools.CanonicalizePlanIDToken(raw)
 }
 
-// mergePlanPhases 把 planner 本轮提交的 phases 与既有 phases 按 id 合并：
+// mergeAnalysisTopics 把 planner 本轮提交的 phases 与既有 phases 按 id 合并：
 // 提交项以 planner 为准（承接/重开/显式 blocked 均由其表达）；被省略的既有 phase
 // 在两种情况下保留（与 mergeReplannedPlan 保留 non-pending step 同型，避免保留 step 的
 // phase_id 悬空被错挂 synthetic）：
@@ -1105,12 +1105,12 @@ func canonicalizePlanPhaseRef(raw string) string {
 //
 // 被省略且无 terminal step 引用的既有 pending lane 不保留——其下 pending step 若仍存在
 // 会因引用不闭合被 parse 拒绝，倒逼 planner 显式表达。
-func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.PlanPhase, priorPlan []*builtin_tools.PlanItem) []*builtin_tools.PlanPhase {
+func mergeAnalysisTopics(prev []*builtin_tools.AnalysisTopic, next []*builtin_tools.AnalysisTopic, priorPlan []*builtin_tools.PlanItem) []*builtin_tools.AnalysisTopic {
 	if len(prev) == 0 {
 		return next
 	}
 	if len(next) == 0 {
-		return builtin_tools.ClonePlanPhases(prev)
+		return builtin_tools.CloneAnalysisTopics(prev)
 	}
 	submitted := make(map[string]struct{}, len(next))
 	for _, phase := range next {
@@ -1124,11 +1124,11 @@ func mergePlanPhases(prev []*builtin_tools.PlanPhase, next []*builtin_tools.Plan
 		if item == nil || item.Status == builtin_tools.PlanStepPending {
 			continue
 		}
-		if id := strings.TrimSpace(item.PhaseID); id != "" {
+		if id := strings.TrimSpace(item.TopicID); id != "" {
 			referencedByTerminal[id] = struct{}{}
 		}
 	}
-	merged := make([]*builtin_tools.PlanPhase, 0, len(prev)+len(next))
+	merged := make([]*builtin_tools.AnalysisTopic, 0, len(prev)+len(next))
 	for _, phase := range prev {
 		if phase == nil {
 			continue
@@ -1250,8 +1250,8 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 	// PHASES：既有业务 lane 清单（含状态），重规划回合供 planner 承接。
 	if opts.PhasesJSON != "" {
 		data.PhasesJSON = opts.PhasesJSON
-	} else if len(snapshot.Phases) > 0 {
-		data.PhasesJSON = prettyJSON(snapshot.Phases)
+	} else if len(snapshot.Topics) > 0 {
+		data.PhasesJSON = prettyJSON(snapshot.Topics)
 	}
 
 	// planner.jsonl：plan 唯一真相源的按需回读指针（文件存在才注入；helper 内置 stat 与 size>0 判定）。
@@ -1296,7 +1296,7 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		if item.Status == builtin_tools.PlanStepPending {
 			// 全局模式（replaceTopicID=""）丢全部 pending 由 next 替换；per-topic 收窄模式只丢
 			// 该 topic 的 pending，其他 topic 的 pending 作为保留锚点保住——不 clobber 在跑的他 topic。
-			if replaceTopicID == "" || strings.TrimSpace(item.PhaseID) == replaceTopicID {
+			if replaceTopicID == "" || strings.TrimSpace(item.TopicID) == replaceTopicID {
 				continue
 			}
 		}
@@ -1322,7 +1322,7 @@ func mergeReplannedPlan(prev []*builtin_tools.PlanItem, next []*builtin_tools.Pl
 		// M3: per-topic 收窄模式（replaceTopicID != ""）只登记属 reviewTopic 的保留项文案。
 		// 他 topic 的 pending / non-pending 不入文案去重表，避免 planner 为 reviewTopic 产的新
 		// step 与他 topic pending 归一文案撞车被误去重丢弃、依赖被 remap 到他 topic（跨 topic 错连）。
-		if replaceTopicID == "" || strings.TrimSpace(clone.PhaseID) == replaceTopicID {
+		if replaceTopicID == "" || strings.TrimSpace(clone.TopicID) == replaceTopicID {
 			if norm := normalizeStepText(clone.Step); norm != "" {
 				if _, ok := preservedText[norm]; !ok {
 					preservedText[norm] = clone.ID

@@ -21,7 +21,7 @@ func completeStep(t *testing.T, tracker *StateTracker, stepID string) builtin_to
 	return tracker.Replace(builtin_tools.StateSnapshot{
 		Phase:       builtin_tools.AgentPhaseStep,
 		Plan:        plan,
-		Phases:      snap.Phases,
+		Topics:      snap.Topics,
 		PlanVersion: snap.PlanVersion,
 		CurrentGoal: snap.CurrentGoal,
 	})
@@ -35,37 +35,37 @@ func completeStep(t *testing.T, tracker *StateTracker, stepID string) builtin_to
 //
 // 断言：初始 frontier 只放 phase-a → a1/a2 顺次完成后 phase-a 未 settled 时 b1 仍被锁 →
 // barrier 处 currentPhase 路由到 StepReplan → assessment 判 phase-a completed 解锁 phase-b →
-// frontier 放 b1 → b1 完成 + phase-b completed → AllPhasesSettled → currentPhase 路由 FinalAnswer。
+// frontier 放 b1 → b1 完成 + phase-b completed → AllTopicsSettled → currentPhase 路由 FinalAnswer。
 func TestFrontier_TwoLaneLifecycle(t *testing.T) {
 	const maxParallel = 3
 	tracker := NewStateTracker()
-	tracker.SetPhases([]*builtin_tools.PlanPhase{
-		{ID: "phase-a", Name: "lane A", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Name: "lane B", DependsOn: []string{"phase-a"}, Status: builtin_tools.PlanPhasePending},
+	tracker.SetTopics([]*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Name: "lane A", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Name: "lane B", DependsOn: []string{"phase-a"}, Status: builtin_tools.AnalysisTopicPending},
 	})
 	tracker.UpdatePlan([]*builtin_tools.PlanItem{
-		{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
-		{ID: "a2", Step: "A2", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a", DependsOn: []string{"a1"}},
-		{ID: "b1", Step: "B1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"},
+		{ID: "a2", Step: "A2", Status: builtin_tools.PlanStepPending, TopicID: "phase-a", DependsOn: []string{"a1"}},
+		{ID: "b1", Step: "B1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}, "two-lane", true)
 
 	snap := tracker.Snapshot()
 
 	// 1) 初始 frontier：只放 phase-a 的 a1（a2 依赖 a1 未满足；b1 被 phase-b 锁）。
-	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Phases); len(got) != 1 || got[0] != "a1" {
+	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Topics); len(got) != 1 || got[0] != "a1" {
 		t.Fatalf("initial frontier should release only a1, got %v", got)
 	}
 
 	// 2) a1 完成 → frontier 放 a2；b1 仍被锁。
 	snap = completeStep(t, tracker, "a1")
-	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Phases); len(got) != 1 || got[0] != "a2" {
+	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Topics); len(got) != 1 || got[0] != "a2" {
 		t.Fatalf("after a1 done, frontier should release a2, got %v", got)
 	}
 
 	// 3) a2 完成 → phase-a 的 step 全 terminal，但 phase-a 状态仍 pending（未 settled），
 	//    b1 仍被 phase-b 锁 → frontier 空。
 	snap = completeStep(t, tracker, "a2")
-	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Phases); got != nil {
+	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Topics); got != nil {
 		t.Fatalf("phase-a steps done but phase-a unsettled: b1 must stay locked, got %v", got)
 	}
 	// currentPhase 在 Step 阶段、frontier 空、非全 plan terminal（b1 pending）→ 不是终态防卫；
@@ -77,13 +77,13 @@ func TestFrontier_TwoLaneLifecycle(t *testing.T) {
 	}
 
 	// 4) step_replan 判 phase-a completed → 解锁 phase-b → frontier 放 b1。
-	changed, snap := tracker.ApplyPhaseAssessments([]*builtin_tools.PhaseAssessment{
-		{PhaseID: "phase-a", Status: builtin_tools.PhaseAssessCompleted},
+	changed, snap := tracker.ApplyTopicAssessments([]*builtin_tools.TopicAssessment{
+		{TopicID: "phase-a", Status: builtin_tools.TopicAssessCompleted},
 	})
 	if len(changed) != 1 {
 		t.Fatalf("expected phase-a status change, got %d", len(changed))
 	}
-	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Phases); len(got) != 1 || got[0] != "b1" {
+	if got := builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Topics); len(got) != 1 || got[0] != "b1" {
 		t.Fatalf("after phase-a completed, frontier should release b1, got %v", got)
 	}
 
@@ -98,11 +98,11 @@ func TestFrontier_TwoLaneLifecycle(t *testing.T) {
 		t.Fatalf("all-terminal but phase-b unsettled should route StepReplan, got %q", got)
 	}
 
-	// 6) step_replan 判 phase-b completed → AllPhasesSettled → currentPhase 路由 FinalAnswer。
-	_, snap = tracker.ApplyPhaseAssessments([]*builtin_tools.PhaseAssessment{
-		{PhaseID: "phase-b", Status: builtin_tools.PhaseAssessCompleted},
+	// 6) step_replan 判 phase-b completed → AllTopicsSettled → currentPhase 路由 FinalAnswer。
+	_, snap = tracker.ApplyTopicAssessments([]*builtin_tools.TopicAssessment{
+		{TopicID: "phase-b", Status: builtin_tools.TopicAssessCompleted},
 	})
-	if !builtin_tools.AllPhasesSettled(snap.Phases) {
+	if !builtin_tools.AllTopicsSettled(snap.Topics) {
 		t.Fatal("all phases should be settled")
 	}
 	finalSnap := snap
@@ -116,16 +116,16 @@ func TestFrontier_TwoLaneLifecycle(t *testing.T) {
 // 并使全 plan 达 terminal + 全 phase settled，正常收尾到 FinalAnswer（不卡死）。
 func TestFrontier_BlockedLaneSkipsAndSettles(t *testing.T) {
 	tracker := NewStateTracker()
-	tracker.SetPhases([]*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
+	tracker.SetTopics([]*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
 	})
 	tracker.UpdatePlan([]*builtin_tools.PlanItem{
-		{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
-		{ID: "a2", Step: "A2", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
+		{ID: "a1", Step: "A1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"},
+		{ID: "a2", Step: "A2", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"},
 	}, "blocked-lane", true)
 
-	_, snap := tracker.ApplyPhaseAssessments([]*builtin_tools.PhaseAssessment{
-		{PhaseID: "phase-a", Status: builtin_tools.PhaseAssessBlocked},
+	_, snap := tracker.ApplyTopicAssessments([]*builtin_tools.TopicAssessment{
+		{TopicID: "phase-a", Status: builtin_tools.TopicAssessBlocked},
 	})
 	// blocked lane 的 pending a2 被收敛 skipped。
 	for _, item := range snap.Plan {
@@ -133,7 +133,7 @@ func TestFrontier_BlockedLaneSkipsAndSettles(t *testing.T) {
 			t.Fatalf("blocked lane pending step should be skipped, got %s", item.Status)
 		}
 	}
-	if !builtin_tools.AllPlanStepsTerminal(snap.Plan) || !builtin_tools.AllPhasesSettled(snap.Phases) {
+	if !builtin_tools.AllPlanStepsTerminal(snap.Plan) || !builtin_tools.AllTopicsSettled(snap.Topics) {
 		t.Fatal("blocked lane should make plan terminal and phases settled")
 	}
 	finalSnap := snap

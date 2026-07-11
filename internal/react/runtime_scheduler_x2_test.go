@@ -93,15 +93,15 @@ func TestCurrentPhase_TerminalDefenseStillFiresUnderX2(t *testing.T) {
 // TestCurrentPhase_FrontierReleasesMultiLaneReady：跨 phase lane 的 ready step
 // 都进入 frontier——StepReplan 下 X2 guard 因 frontier 非空绕回 Step。
 func TestCurrentPhase_FrontierReleasesMultiLaneReady(t *testing.T) {
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
-	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStepReplan, Plan: plan, Phases: phases}
+	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStepReplan, Plan: plan, Topics: phases}
 	if got := currentPhase(snap, 3); got != builtin_tools.AgentPhaseStep {
 		t.Fatalf("cross-lane frontier ready should route back to Step, got %q", got)
 	}
@@ -110,34 +110,34 @@ func TestCurrentPhase_FrontierReleasesMultiLaneReady(t *testing.T) {
 // TestCurrentPhase_PhaseLockedNotReleased：被 depends_on 锁住的 phase 下 step 不进 frontier；
 // 唯一未完成 lane 被锁 + 所有 step terminal 时不成立，此处验证 barrier 判定用 frontier。
 func TestCurrentPhase_PhaseLockedHoldsStepReplan(t *testing.T) {
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending, DependsOn: []string{"phase-a"}},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending, DependsOn: []string{"phase-a"}},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepInProgress, PhaseID: "phase-a"},
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Status: builtin_tools.PlanStepInProgress, TopicID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
 	// phase-b 被 phase-a 锁住，b1 不进 frontier；a1 in_progress 非 pending。frontier=空。
-	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStepReplan, Plan: plan, Phases: phases}
+	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStepReplan, Plan: plan, Topics: phases}
 	if got := currentPhase(snap, 3); got != builtin_tools.AgentPhaseStepReplan {
 		t.Fatalf("locked phase must not release frontier, stay StepReplan, got %q", got)
 	}
 }
 
-// TestCurrentPhase_AllTerminalPhasesUnsettledRoutesStepReplan：D6 双条件——所有 step
+// TestCurrentPhase_AllTerminalTopicsUnsettledRoutesStepReplan：D6 双条件——所有 step
 // terminal 但仍有 phase 未 settled 时回 StepReplan（让 phase_assessments 定夺），不直达 final。
-func TestCurrentPhase_AllTerminalPhasesUnsettledRoutesStepReplan(t *testing.T) {
-	phases := []*builtin_tools.PlanPhase{{ID: "phase-a", Status: builtin_tools.PlanPhasePending}}
-	plan := []*builtin_tools.PlanItem{{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"}}
-	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStep, Plan: plan, Phases: phases}
+func TestCurrentPhase_AllTerminalTopicsUnsettledRoutesStepReplan(t *testing.T) {
+	phases := []*builtin_tools.AnalysisTopic{{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending}}
+	plan := []*builtin_tools.PlanItem{{ID: "a1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"}}
+	snap := builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStep, Plan: plan, Topics: phases}
 	if got := currentPhase(snap, 3); got != builtin_tools.AgentPhaseStepReplan {
 		t.Fatalf("all-terminal + unsettled phase should route StepReplan, got %q", got)
 	}
 
 	// phase settled → 直达 FinalAnswer
-	phases[0].Status = builtin_tools.PlanPhaseCompleted
-	snap = builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStep, Plan: plan, Phases: phases}
+	phases[0].Status = builtin_tools.AnalysisTopicCompleted
+	snap = builtin_tools.StateSnapshot{Phase: builtin_tools.AgentPhaseStep, Plan: plan, Topics: phases}
 	if got := currentPhase(snap, 3); got != builtin_tools.AgentPhaseFinalAnswer {
 		t.Fatalf("all-terminal + settled phases should route FinalAnswer, got %q", got)
 	}
@@ -147,15 +147,15 @@ func TestCurrentPhase_AllTerminalPhasesUnsettledRoutesStepReplan(t *testing.T) {
 // fan-out（受 maxParallel 全局上限约束）。
 func TestCollectInlineStepIDs_CrossPhaseFanout(t *testing.T) {
 	a := &Agent{cfg: &AgentConfig{MaxParallelSteps: 3}, asyncRegistry: NewAsyncAgentRegistry()}
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
-	snap := builtin_tools.StateSnapshot{Plan: plan, Phases: phases, CurrentStepID: "a1"}
+	snap := builtin_tools.StateSnapshot{Plan: plan, Topics: phases, CurrentStepID: "a1"}
 	got := a.collectInlineStepIDs(snap)
 	if len(got) != 2 || got[0] != "a1" {
 		t.Fatalf("expected [a1 b1] cross-phase fanout, got %v", got)
@@ -173,15 +173,15 @@ func TestCollectInlineStepIDs_CrossPhaseFanout(t *testing.T) {
 // 只含主路径（无 peer），退化等价现状串行。
 func TestFrontier_MaxParallel1_SerialDegenerate(t *testing.T) {
 	a := &Agent{cfg: &AgentConfig{MaxParallelSteps: 1}, asyncRegistry: NewAsyncAgentRegistry()}
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-a"},
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Status: builtin_tools.PlanStepPending, TopicID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
-	snap := builtin_tools.StateSnapshot{Plan: plan, Phases: phases, CurrentStepID: "a1"}
+	snap := builtin_tools.StateSnapshot{Plan: plan, Topics: phases, CurrentStepID: "a1"}
 	got := a.collectInlineStepIDs(snap)
 	if len(got) != 1 || got[0] != "a1" {
 		t.Fatalf("serial (max=1) should only run main path, got %v", got)

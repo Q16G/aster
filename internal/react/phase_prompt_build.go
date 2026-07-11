@@ -26,7 +26,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		CapabilityIndex:     CapabilityIndex{SkillsContext: skillsCtx, AvailableTools: availableTools},
 		CurrentGoal:         payload["current_goal"],
 		GoalUnderstanding:   stringFromPayload(payload, "goal_understanding"),
-		ActivePhases:        payload["active_phases"],
+		ActiveTopics:        payload["active_phases"],
 		InputTimeline:       payload["input_timeline"],
 		ReviewWindow:        payload["review_window"],
 		PlanOverview:        payload["plan_overview"],
@@ -67,7 +67,7 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 		InputTimeline:      payload["input_timeline"],
 		GoalUnderstanding:  stringFromPayload(payload, "goal_understanding"),
 		PlanItems:          payload["plan_items"],
-		Phases:             payload["phases"],
+		Topics:             payload["phases"],
 		PlannerJournalPath: stringFromPayload(payload, "planner_journal_path"),
 		OpenItemsLedger:    stringFromPayload(payload, "open_items_ledger"),
 		Warnings:           payload["warnings"],
@@ -79,10 +79,10 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 	return parts, nil
 }
 
-// activePhasesNonEmpty 判断 ACTIVE_PHASES 注入是否含至少一个 phase（供模板 HAS 分支）。
-func activePhasesNonEmpty(value any) bool {
+// activeTopicsNonEmpty 判断 ACTIVE_PHASES 注入是否含至少一个 phase（供模板 HAS 分支）。
+func activeTopicsNonEmpty(value any) bool {
 	switch v := value.(type) {
-	case []*builtin_tools.PlanPhase:
+	case []*builtin_tools.AnalysisTopic:
 		return len(v) > 0
 	case nil:
 		return false

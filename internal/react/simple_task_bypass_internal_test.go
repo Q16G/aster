@@ -38,9 +38,9 @@ func TestSetSimpleTask_ResetOnReplan(t *testing.T) {
 	}
 }
 
-// TestParseSubmitPlanArgs_PhasesRequired 校验 needs_planning=true && !simple 时
+// TestParseSubmitPlanArgs_TopicsRequired 校验 needs_planning=true && !simple 时
 // phases 必填——缺失即返回 error，迫使模型在 submit_plan 重试通道补字段。
-func TestParseSubmitPlanArgs_PhasesRequired(t *testing.T) {
+func TestParseSubmitPlanArgs_TopicsRequired(t *testing.T) {
 	_, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
@@ -55,8 +55,8 @@ func TestParseSubmitPlanArgs_PhasesRequired(t *testing.T) {
 	}
 }
 
-// TestParseSubmitPlanArgs_PhasesSimpleExempt 校验 simple=true 任务豁免 phases。
-func TestParseSubmitPlanArgs_PhasesSimpleExempt(t *testing.T) {
+// TestParseSubmitPlanArgs_TopicsSimpleExempt 校验 simple=true 任务豁免 phases。
+func TestParseSubmitPlanArgs_TopicsSimpleExempt(t *testing.T) {
 	res, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"simple":             true,
@@ -70,13 +70,13 @@ func TestParseSubmitPlanArgs_PhasesSimpleExempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("simple task should bypass phases check, got error: %v", err)
 	}
-	if len(res.Phases) != 0 {
-		t.Fatalf("expected empty phases, got %+v", res.Phases)
+	if len(res.Topics) != 0 {
+		t.Fatalf("expected empty phases, got %+v", res.Topics)
 	}
 }
 
-// TestParseSubmitPlanArgs_PhasesAccepted 校验 phases 与 phase_id 被正确解析归一。
-func TestParseSubmitPlanArgs_PhasesAccepted(t *testing.T) {
+// TestParseSubmitPlanArgs_TopicsAccepted 校验 phases 与 phase_id 被正确解析归一。
+func TestParseSubmitPlanArgs_TopicsAccepted(t *testing.T) {
 	res, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
@@ -93,14 +93,14 @@ func TestParseSubmitPlanArgs_PhasesAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if len(res.Phases) != 2 || res.Phases[0].ID != "phase-a" || res.Phases[0].Status != builtin_tools.PlanPhasePending {
-		t.Fatalf("phases mismatch: %+v", res.Phases)
+	if len(res.Topics) != 2 || res.Topics[0].ID != "phase-a" || res.Topics[0].Status != builtin_tools.AnalysisTopicPending {
+		t.Fatalf("phases mismatch: %+v", res.Topics)
 	}
 }
 
-// TestParseSubmitPlanArgs_DanglingPhaseIDRejected 校验 plan×phases 引用闭包：
+// TestParseSubmitPlanArgs_DanglingTopicIDRejected 校验 plan×phases 引用闭包：
 // step 引用未知 phase / 缺 phase_id 时拒绝提交（防被错挂 synthetic phase）。
-func TestParseSubmitPlanArgs_DanglingPhaseIDRejected(t *testing.T) {
+func TestParseSubmitPlanArgs_DanglingTopicIDRejected(t *testing.T) {
 	_, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
 		"explanation":        "复杂任务",
@@ -117,13 +117,13 @@ func TestParseSubmitPlanArgs_DanglingPhaseIDRejected(t *testing.T) {
 	}
 }
 
-// TestParseSubmitPlanArgs_MergePreservesTerminalPhases 校验重规划合并：被省略的既有
+// TestParseSubmitPlanArgs_MergePreservesTerminalTopics 校验重规划合并：被省略的既有
 // completed/blocked phase 保留，其下承接的 completed step 引用不悬空；被省略的既有
 // pending phase 不保留。
-func TestParseSubmitPlanArgs_MergePreservesTerminalPhases(t *testing.T) {
-	prior := []*builtin_tools.PlanPhase{
-		{ID: "phase-done", Name: "已收束 lane", Status: builtin_tools.PlanPhaseCompleted},
-		{ID: "phase-old-pending", Name: "被放弃 lane", Status: builtin_tools.PlanPhasePending},
+func TestParseSubmitPlanArgs_MergePreservesTerminalTopics(t *testing.T) {
+	prior := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-done", Name: "已收束 lane", Status: builtin_tools.AnalysisTopicCompleted},
+		{ID: "phase-old-pending", Name: "被放弃 lane", Status: builtin_tools.AnalysisTopicPending},
 	}
 	res, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
@@ -141,14 +141,14 @@ func TestParseSubmitPlanArgs_MergePreservesTerminalPhases(t *testing.T) {
 		t.Fatalf("parse failed: %v", err)
 	}
 	ids := map[string]bool{}
-	for _, phase := range res.Phases {
+	for _, phase := range res.Topics {
 		ids[phase.ID] = true
 	}
 	if !ids["phase-done"] || !ids["phase-next"] {
-		t.Fatalf("expected terminal phase preserved and new phase adopted, got %+v", res.Phases)
+		t.Fatalf("expected terminal phase preserved and new phase adopted, got %+v", res.Topics)
 	}
 	if ids["phase-old-pending"] {
-		t.Fatalf("omitted pending phase must not be preserved, got %+v", res.Phases)
+		t.Fatalf("omitted pending phase must not be preserved, got %+v", res.Topics)
 	}
 }
 
@@ -156,12 +156,12 @@ func TestParseSubmitPlanArgs_MergePreservesTerminalPhases(t *testing.T) {
 // 被省略的既有 pending phase 若被前轮某 terminal step 引用（该 step 会被 mergeReplannedPlan
 // 保留），该 phase 也必须保留，避免保留 step 的 phase_id 悬空被错挂 synthetic。
 func TestParseSubmitPlanArgs_MergePreservesPhaseReferencedByTerminalStep(t *testing.T) {
-	prior := []*builtin_tools.PlanPhase{
+	prior := []*builtin_tools.AnalysisTopic{
 		// phase-mixed 仍是 pending（其下有 completed a1 + 本轮不再提交），但被 terminal step 引用
-		{ID: "phase-mixed", Name: "混合 lane", Status: builtin_tools.PlanPhasePending},
+		{ID: "phase-mixed", Name: "混合 lane", Status: builtin_tools.AnalysisTopicPending},
 	}
 	priorPlan := []*builtin_tools.PlanItem{
-		{ID: "a1", Step: "已完成步骤", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-mixed"},
+		{ID: "a1", Step: "已完成步骤", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-mixed"},
 	}
 	res, err := parseSubmitPlanArgs(map[string]any{
 		"needs_planning":     true,
@@ -178,13 +178,13 @@ func TestParseSubmitPlanArgs_MergePreservesPhaseReferencedByTerminalStep(t *test
 		t.Fatalf("parse failed: %v", err)
 	}
 	found := false
-	for _, phase := range res.Phases {
+	for _, phase := range res.Topics {
 		if phase.ID == "phase-mixed" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("pending phase referenced by terminal step must be preserved, got %+v", res.Phases)
+		t.Fatalf("pending phase referenced by terminal step must be preserved, got %+v", res.Topics)
 	}
 }
 

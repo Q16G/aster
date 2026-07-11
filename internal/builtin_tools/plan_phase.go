@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-// ClonePlanPhases 深拷贝 phase 清单，供快照隔离与状态写入使用。
-func ClonePlanPhases(in []*PlanPhase) []*PlanPhase {
+// CloneAnalysisTopics 深拷贝 phase 清单，供快照隔离与状态写入使用。
+func CloneAnalysisTopics(in []*AnalysisTopic) []*AnalysisTopic {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]*PlanPhase, 0, len(in))
+	out := make([]*AnalysisTopic, 0, len(in))
 	for _, phase := range in {
 		if phase == nil {
 			continue
@@ -25,12 +25,12 @@ func ClonePlanPhases(in []*PlanPhase) []*PlanPhase {
 	return out
 }
 
-// ClonePhaseAssessments 深拷贝 phase 评估清单。
-func ClonePhaseAssessments(in []*PhaseAssessment) []*PhaseAssessment {
+// CloneTopicAssessments 深拷贝 phase 评估清单。
+func CloneTopicAssessments(in []*TopicAssessment) []*TopicAssessment {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]*PhaseAssessment, 0, len(in))
+	out := make([]*TopicAssessment, 0, len(in))
 	for _, a := range in {
 		if a == nil {
 			continue
@@ -47,16 +47,16 @@ func ClonePhaseAssessments(in []*PhaseAssessment) []*PhaseAssessment {
 	return out
 }
 
-// NormalizePlanPhases 归一化 planner 提交的 phase 清单：trim、id 必填且唯一、
+// NormalizeAnalysisTopics 归一化 planner 提交的 phase 清单：trim、id 必填且唯一、
 // status 合法（缺省 pending）、depends_on 引用闭包且无环。forbidSynthetic 为 true
-// 时拒绝 planner 主动使用保留 id（SyntheticPhaseID），防止与 runtime 兜底挂靠碰撞。
-func NormalizePlanPhases(phases []*PlanPhase, forbidSynthetic bool) ([]*PlanPhase, error) {
+// 时拒绝 planner 主动使用保留 id（SyntheticTopicID），防止与 runtime 兜底挂靠碰撞。
+func NormalizeAnalysisTopics(phases []*AnalysisTopic, forbidSynthetic bool) ([]*AnalysisTopic, error) {
 	if len(phases) == 0 {
 		return nil, nil
 	}
 
-	out := make([]*PlanPhase, 0, len(phases))
-	byID := make(map[string]*PlanPhase, len(phases))
+	out := make([]*AnalysisTopic, 0, len(phases))
+	byID := make(map[string]*AnalysisTopic, len(phases))
 	for _, phase := range phases {
 		if phase == nil {
 			continue
@@ -65,23 +65,23 @@ func NormalizePlanPhases(phases []*PlanPhase, forbidSynthetic bool) ([]*PlanPhas
 		if id == "" {
 			return nil, fmt.Errorf("phases[].id is required")
 		}
-		if forbidSynthetic && id == SyntheticPhaseID {
-			return nil, fmt.Errorf("phase id %q is reserved for runtime", SyntheticPhaseID)
+		if forbidSynthetic && id == SyntheticTopicID {
+			return nil, fmt.Errorf("phase id %q is reserved for runtime", SyntheticTopicID)
 		}
 		if _, exists := byID[id]; exists {
 			return nil, fmt.Errorf("duplicate phase id %q", id)
 		}
 
-		status := PlanPhaseStatus(strings.TrimSpace(string(phase.Status)))
+		status := AnalysisTopicStatus(strings.TrimSpace(string(phase.Status)))
 		switch status {
 		case "":
-			status = PlanPhasePending
-		case PlanPhasePending, PlanPhaseCompleted, PlanPhaseBlocked:
+			status = AnalysisTopicPending
+		case AnalysisTopicPending, AnalysisTopicCompleted, AnalysisTopicBlocked:
 		default:
 			return nil, fmt.Errorf("invalid phase status %q for phase %q", status, id)
 		}
 
-		norm := &PlanPhase{
+		norm := &AnalysisTopic{
 			ID:     id,
 			Name:   strings.TrimSpace(phase.Name),
 			Status: status,
@@ -107,13 +107,13 @@ func NormalizePlanPhases(phases []*PlanPhase, forbidSynthetic bool) ([]*PlanPhas
 			}
 		}
 	}
-	if err := validatePhaseDependencyGraph(out, byID); err != nil {
+	if err := validateTopicDependencyGraph(out, byID); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func validatePhaseDependencyGraph(phases []*PlanPhase, byID map[string]*PlanPhase) error {
+func validateTopicDependencyGraph(phases []*AnalysisTopic, byID map[string]*AnalysisTopic) error {
 	visiting := make(map[string]bool, len(phases))
 	visited := make(map[string]bool, len(phases))
 	var visit func(string) error
@@ -144,8 +144,8 @@ func validatePhaseDependencyGraph(phases []*PlanPhase, byID map[string]*PlanPhas
 	return nil
 }
 
-func planPhasesByID(phases []*PlanPhase) map[string]*PlanPhase {
-	out := make(map[string]*PlanPhase, len(phases))
+func planTopicsByID(phases []*AnalysisTopic) map[string]*AnalysisTopic {
+	out := make(map[string]*AnalysisTopic, len(phases))
 	for _, phase := range phases {
 		if phase == nil {
 			continue
@@ -159,7 +159,7 @@ func planPhasesByID(phases []*PlanPhase) map[string]*PlanPhase {
 
 // phaseUnlocked 判断 phase 是否已解锁：depends_on 引用的 phase 全部 terminal
 // （completed/blocked 均视同 terminal，偏放行）。引用悬空的依赖视为已满足。
-func phaseUnlocked(phase *PlanPhase, byID map[string]*PlanPhase) bool {
+func phaseUnlocked(phase *AnalysisTopic, byID map[string]*AnalysisTopic) bool {
 	if phase == nil {
 		return true
 	}
@@ -175,24 +175,24 @@ func phaseUnlocked(phase *PlanPhase, byID map[string]*PlanPhase) bool {
 	return true
 }
 
-// planItemPhaseAdmits 判断 step 的 phase 门是否放行：
+// planItemTopicAdmits 判断 step 的 phase 门是否放行：
 //   - phases 为空（无 phase 上下文的调用方）或 step 未挂 phase / 挂靠悬空 → 放行
 //     （悬空由 submit 时校验拦截，runtime 不二次卡死）；
 //   - phase 已 terminal → 不放行（completed lane 不再释放 step；blocked lane 的
-//     pending step 由 SkipStepsOfBlockedPhases 收敛）；
+//     pending step 由 SkipStepsOfBlockedTopics 收敛）；
 //   - 其余按 phase 解锁判定。
-func planItemPhaseAdmits(item *PlanItem, byID map[string]*PlanPhase) bool {
+func planItemTopicAdmits(item *PlanItem, byID map[string]*AnalysisTopic) bool {
 	if item == nil {
 		return false
 	}
 	if len(byID) == 0 {
 		return true
 	}
-	phaseID := strings.TrimSpace(item.PhaseID)
-	if phaseID == "" {
+	topicID := strings.TrimSpace(item.TopicID)
+	if topicID == "" {
 		return true
 	}
-	phase, ok := byID[phaseID]
+	phase, ok := byID[topicID]
 	if !ok {
 		return true
 	}
@@ -205,11 +205,11 @@ func planItemPhaseAdmits(item *PlanItem, byID map[string]*PlanPhase) bool {
 // ReadyFrontierPlanStepIDs 返回当前 frontier：所有 step depends_on 已满足、
 // 且所属 phase 已解锁的 pending step ID，顺序按 plan 原序。
 // 是 ReadyRunnablePlanStepIDs 的超集判定（多一道 phase 门）。
-func ReadyFrontierPlanStepIDs(plan []*PlanItem, phases []*PlanPhase) []string {
+func ReadyFrontierPlanStepIDs(plan []*PlanItem, phases []*AnalysisTopic) []string {
 	if len(plan) == 0 {
 		return nil
 	}
-	byID := planPhasesByID(phases)
+	byID := planTopicsByID(phases)
 	completed := planReadyDependencies(plan)
 	out := make([]string, 0, len(plan))
 	for _, item := range plan {
@@ -222,7 +222,7 @@ func ReadyFrontierPlanStepIDs(plan []*PlanItem, phases []*PlanPhase) []string {
 		if !planItemDependenciesSatisfied(item, completed) {
 			continue
 		}
-		if !planItemPhaseAdmits(item, byID) {
+		if !planItemTopicAdmits(item, byID) {
 			continue
 		}
 		id := strings.TrimSpace(item.ID)
@@ -238,21 +238,21 @@ func ReadyFrontierPlanStepIDs(plan []*PlanItem, phases []*PlanPhase) []string {
 }
 
 // NextFrontierPlanStepID 返回 frontier 中的首个 step ID（主路径用），无 ready 项返回空串。
-func NextFrontierPlanStepID(plan []*PlanItem, phases []*PlanPhase) string {
+func NextFrontierPlanStepID(plan []*PlanItem, phases []*AnalysisTopic) string {
 	if ids := ReadyFrontierPlanStepIDs(plan, phases); len(ids) > 0 {
 		return ids[0]
 	}
 	return ""
 }
 
-// ActivePhases 返回本轮处于活跃态的 phase：未 terminal 且已解锁（depends_on 全 terminal）。
+// ActiveTopics 返回本轮处于活跃态的 phase：未 terminal 且已解锁（depends_on 全 terminal）。
 // step_replan 对这批 phase 逐个输出 phase_assessments。
-func ActivePhases(phases []*PlanPhase) []*PlanPhase {
+func ActiveTopics(phases []*AnalysisTopic) []*AnalysisTopic {
 	if len(phases) == 0 {
 		return nil
 	}
-	byID := planPhasesByID(phases)
-	var out []*PlanPhase
+	byID := planTopicsByID(phases)
+	var out []*AnalysisTopic
 	for _, phase := range phases {
 		if phase == nil || phase.Terminal() {
 			continue
@@ -264,35 +264,35 @@ func ActivePhases(phases []*PlanPhase) []*PlanPhase {
 	return out
 }
 
-// PhaseHasPendingStep 判断某 phase 下是否仍有 pending step（供 completed-with-pending 守卫）。
-func PhaseHasPendingStep(plan []*PlanItem, phaseID string) bool {
-	phaseID = strings.TrimSpace(phaseID)
-	if phaseID == "" {
+// TopicHasPendingStep 判断某 phase 下是否仍有 pending step（供 completed-with-pending 守卫）。
+func TopicHasPendingStep(plan []*PlanItem, topicID string) bool {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
 		return false
 	}
 	for _, item := range plan {
 		if item == nil {
 			continue
 		}
-		if item.Status == PlanStepPending && strings.TrimSpace(item.PhaseID) == phaseID {
+		if item.Status == PlanStepPending && strings.TrimSpace(item.TopicID) == topicID {
 			return true
 		}
 	}
 	return false
 }
 
-// PhaseQuiesced 判断某 phase（topic）是否到达「局部静默点」：已释放 ≥1 个 step 且其全部 step
+// TopicQuiesced 判断某 phase（topic）是否到达「局部静默点」：已释放 ≥1 个 step 且其全部 step
 // 均为 terminal（completed/failed/skipped，无 pending、无 in_progress）。0-step phase（G_topic
 // 占位、尚未释放 step）返回 false——由 planner 先释放首批 step，不触发空 review（0-step 守卫）。
 // 第四阶段将以此把全局 frontier barrier 改为每 topic 局部触发 step_replan（当前仍未接线）。
-func PhaseQuiesced(plan []*PlanItem, phaseID string) bool {
-	phaseID = strings.TrimSpace(phaseID)
-	if phaseID == "" {
+func TopicQuiesced(plan []*PlanItem, topicID string) bool {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
 		return false
 	}
 	count := 0
 	for _, item := range plan {
-		if item == nil || strings.TrimSpace(item.PhaseID) != phaseID {
+		if item == nil || strings.TrimSpace(item.TopicID) != topicID {
 			continue
 		}
 		count++
@@ -305,26 +305,26 @@ func PhaseQuiesced(plan []*PlanItem, phaseID string) bool {
 	return count > 0
 }
 
-// QuiescedActivePhases 返回本轮已达局部静默点、可触发单 topic review 的 active phase 集：
-// 在 ActivePhases（非终态 + 前置 topic 全终态）基础上，进一步筛出 PhaseQuiesced 为真者。
+// QuiescedActiveTopics 返回本轮已达局部静默点、可触发单 topic review 的 active phase 集：
+// 在 ActiveTopics（非终态 + 前置 topic 全终态）基础上，进一步筛出 TopicQuiesced 为真者。
 // 供第四阶段路由把「等全局 frontier 空」改为「某 topic 静默即 review 该 topic」。
-func QuiescedActivePhases(plan []*PlanItem, phases []*PlanPhase) []*PlanPhase {
-	active := ActivePhases(phases)
+func QuiescedActiveTopics(plan []*PlanItem, phases []*AnalysisTopic) []*AnalysisTopic {
+	active := ActiveTopics(phases)
 	if len(active) == 0 {
 		return nil
 	}
-	var out []*PlanPhase
+	var out []*AnalysisTopic
 	for _, phase := range active {
-		if phase != nil && PhaseQuiesced(plan, phase.ID) {
+		if phase != nil && TopicQuiesced(plan, phase.ID) {
 			out = append(out, phase)
 		}
 	}
 	return out
 }
 
-// AllPhasesSettled 判断所有 phase 是否已收束（completed/blocked）。
+// AllTopicsSettled 判断所有 phase 是否已收束（completed/blocked）。
 // 空清单视为已收束（无 phase 上下文时不阻塞收尾）。
-func AllPhasesSettled(phases []*PlanPhase) bool {
+func AllTopicsSettled(phases []*AnalysisTopic) bool {
 	for _, phase := range phases {
 		if phase == nil {
 			continue
@@ -336,36 +336,36 @@ func AllPhasesSettled(phases []*PlanPhase) bool {
 	return true
 }
 
-// SynthesizePhasesIfMissing 保证 plan 与 phases 的挂靠闭合：
+// SynthesizeTopicsIfMissing 保证 plan 与 phases 的挂靠闭合：
 //   - plan 为空时原样返回；
 //   - phases 为空时合成单个 synthetic phase 并把全部 item 挂上去；
 //   - item 的 phase_id 缺失或悬空时挂到 synthetic phase（不存在则追加）。
 //
-// 原地修正 plan item 的 PhaseID；返回的 phases 为拷贝后的新切片，不共享入参底座。
+// 原地修正 plan item 的 TopicID；返回的 phases 为拷贝后的新切片，不共享入参底座。
 // fallbackName 用作 synthetic phase 的展示名（取首行），为空时退化为 id。
-func SynthesizePhasesIfMissing(plan []*PlanItem, phases []*PlanPhase, fallbackName string) []*PlanPhase {
-	out := ClonePlanPhases(phases)
+func SynthesizeTopicsIfMissing(plan []*PlanItem, phases []*AnalysisTopic, fallbackName string) []*AnalysisTopic {
+	out := CloneAnalysisTopics(phases)
 	if len(plan) == 0 {
 		return out
 	}
 
-	byID := planPhasesByID(out)
-	var synthetic *PlanPhase
-	if existing, ok := byID[SyntheticPhaseID]; ok {
+	byID := planTopicsByID(out)
+	var synthetic *AnalysisTopic
+	if existing, ok := byID[SyntheticTopicID]; ok {
 		synthetic = existing
 	}
 
-	ensureSynthetic := func() *PlanPhase {
+	ensureSynthetic := func() *AnalysisTopic {
 		if synthetic != nil {
 			return synthetic
 		}
-		synthetic = &PlanPhase{
-			ID:     SyntheticPhaseID,
-			Name:   syntheticPhaseName(fallbackName),
-			Status: PlanPhasePending,
+		synthetic = &AnalysisTopic{
+			ID:     SyntheticTopicID,
+			Name:   syntheticTopicName(fallbackName),
+			Status: AnalysisTopicPending,
 		}
 		out = append(out, synthetic)
-		byID[SyntheticPhaseID] = synthetic
+		byID[SyntheticTopicID] = synthetic
 		return synthetic
 	}
 
@@ -373,33 +373,33 @@ func SynthesizePhasesIfMissing(plan []*PlanItem, phases []*PlanPhase, fallbackNa
 		if item == nil {
 			continue
 		}
-		phaseID := strings.TrimSpace(item.PhaseID)
-		if phaseID != "" {
-			if _, ok := byID[phaseID]; ok {
-				item.PhaseID = phaseID
+		topicID := strings.TrimSpace(item.TopicID)
+		if topicID != "" {
+			if _, ok := byID[topicID]; ok {
+				item.TopicID = topicID
 				continue
 			}
 		}
-		item.PhaseID = ensureSynthetic().ID
+		item.TopicID = ensureSynthetic().ID
 	}
 	return out
 }
 
-func syntheticPhaseName(fallbackName string) string {
+func syntheticTopicName(fallbackName string) string {
 	name := strings.TrimSpace(fallbackName)
 	if idx := strings.IndexByte(name, '\n'); idx >= 0 {
 		name = strings.TrimSpace(name[:idx])
 	}
 	if name == "" {
-		return SyntheticPhaseID
+		return SyntheticTopicID
 	}
 	return name
 }
 
-// SkipStepsOfBlockedPhases 把 blocked phase 下的 pending step 标记为 skipped，
+// SkipStepsOfBlockedTopics 把 blocked phase 下的 pending step 标记为 skipped，
 // 并经 PropagateSkippedPlanSteps 把跨 phase 的下游依赖一并传递收敛。
 // 返回是否有 step 状态被改变。
-func SkipStepsOfBlockedPhases(plan []*PlanItem, phases []*PlanPhase) (changed bool) {
+func SkipStepsOfBlockedTopics(plan []*PlanItem, phases []*AnalysisTopic) (changed bool) {
 	if len(plan) == 0 || len(phases) == 0 {
 		return false
 	}
@@ -408,7 +408,7 @@ func SkipStepsOfBlockedPhases(plan []*PlanItem, phases []*PlanPhase) (changed bo
 		if phase == nil {
 			continue
 		}
-		if phase.Status == PlanPhaseBlocked {
+		if phase.Status == AnalysisTopicBlocked {
 			if id := strings.TrimSpace(phase.ID); id != "" {
 				blocked[id] = struct{}{}
 			}
@@ -421,7 +421,7 @@ func SkipStepsOfBlockedPhases(plan []*PlanItem, phases []*PlanPhase) (changed bo
 		if item == nil || item.Status != PlanStepPending {
 			continue
 		}
-		if _, ok := blocked[strings.TrimSpace(item.PhaseID)]; ok {
+		if _, ok := blocked[strings.TrimSpace(item.TopicID)]; ok {
 			item.Status = PlanStepSkipped
 			changed = true
 		}
@@ -432,19 +432,19 @@ func SkipStepsOfBlockedPhases(plan []*PlanItem, phases []*PlanPhase) (changed bo
 	return changed
 }
 
-// SkipStepsOfBlockedPhaseInTopic 是 SkipStepsOfBlockedPhases 的 per-topic 局部 review 裁剪版：
+// SkipStepsOfBlockedTopicScoped 是 SkipStepsOfBlockedTopics 的 per-topic 局部 review 裁剪版：
 // 只把「属 topicID 且该 phase 为 blocked」的 pending step 收敛为 skipped，且【不做】跨 phase
 // 下游传播（不调 PropagateSkippedPlanSteps）。跨 topic 下游 skip 的正确时机是全局 reducer
 // （barrier 已 await 全部 peer、全盘状态定型），此处延后不丢失、只避免局部 review 越权替
 // 正在写活盘的他 topic 决策（M2）。返回是否有 step 状态被改变。
-func SkipStepsOfBlockedPhaseInTopic(plan []*PlanItem, phases []*PlanPhase, topicID string) (changed bool) {
+func SkipStepsOfBlockedTopicScoped(plan []*PlanItem, phases []*AnalysisTopic, topicID string) (changed bool) {
 	topicID = strings.TrimSpace(topicID)
 	if len(plan) == 0 || topicID == "" {
 		return false
 	}
 	blocked := false
 	for _, phase := range phases {
-		if phase != nil && phase.Status == PlanPhaseBlocked && strings.TrimSpace(phase.ID) == topicID {
+		if phase != nil && phase.Status == AnalysisTopicBlocked && strings.TrimSpace(phase.ID) == topicID {
 			blocked = true
 			break
 		}
@@ -456,7 +456,7 @@ func SkipStepsOfBlockedPhaseInTopic(plan []*PlanItem, phases []*PlanPhase, topic
 		if item == nil || item.Status != PlanStepPending {
 			continue
 		}
-		if strings.TrimSpace(item.PhaseID) == topicID {
+		if strings.TrimSpace(item.TopicID) == topicID {
 			item.Status = PlanStepSkipped
 			changed = true
 		}

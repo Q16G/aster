@@ -28,13 +28,13 @@ func snapshotMergedPlan(items []*builtin_tools.PlanItem) []string {
 // 并与全局模式（ReplaceTopicID=""，丢全部 pending）对照，暴露具体差异。
 func TestMergeReplannedPlan_ScopedToTopic(t *testing.T) {
 	prev := []*builtin_tools.PlanItem{
-		{ID: "a1", PhaseID: "topic-a", Status: builtin_tools.PlanStepCompleted},
-		{ID: "a2", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending},    // topic-a 旧 pending → 应被替换
-		{ID: "b1", PhaseID: "topic-b", Status: builtin_tools.PlanStepInProgress}, // topic-b 在跑 → 必须保留
-		{ID: "b2", PhaseID: "topic-b", Status: builtin_tools.PlanStepPending},    // topic-b pending → 必须保留（红线）
+		{ID: "a1", TopicID: "topic-a", Status: builtin_tools.PlanStepCompleted},
+		{ID: "a2", TopicID: "topic-a", Status: builtin_tools.PlanStepPending},    // topic-a 旧 pending → 应被替换
+		{ID: "b1", TopicID: "topic-b", Status: builtin_tools.PlanStepInProgress}, // topic-b 在跑 → 必须保留
+		{ID: "b2", TopicID: "topic-b", Status: builtin_tools.PlanStepPending},    // topic-b pending → 必须保留（红线）
 	}
 	next := []*builtin_tools.PlanItem{ // planner 局部回流只产 topic-a 的新深 step
-		{ID: "a3", PhaseID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 深化"},
+		{ID: "a3", TopicID: "topic-a", Status: builtin_tools.PlanStepPending, Step: "topic-a 深化"},
 	}
 
 	scoped := snapshotMergedPlan(mergeReplannedPlan(prev, next, "topic-a"))

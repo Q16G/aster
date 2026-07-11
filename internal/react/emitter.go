@@ -413,7 +413,7 @@ func (e *Emitter) EmitHumanRequest(iteration int, requestID string, question str
 // EmitTaskPlan 发射任务计划事件。phases 是业务 lane 清单，供 TUI 按 lane 分组展示 step。
 // **不调** ResetThinkGroupID：计划重建是结构事件，与逐 step reasoning 边界正交（与
 // EmitTaskItem 同类）。详见 ResetThinkGroupID doc 的「禁止边界」。
-func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, phases []*builtin_tools.PlanPhase, explanation string) {
+func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, phases []*builtin_tools.AnalysisTopic, explanation string) {
 	e.Emit(&AgentOutputEvent{
 		Type:   EventTypeTaskPlan,
 		NodeID: "task_plan",
@@ -568,16 +568,16 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 		return
 	}
 	completed, blocked, cont := 0, 0, 0
-	for _, assess := range result.PhaseAssessments {
+	for _, assess := range result.TopicAssessments {
 		if assess == nil {
 			continue
 		}
 		switch assess.Status {
-		case builtin_tools.PhaseAssessCompleted:
+		case builtin_tools.TopicAssessCompleted:
 			completed++
-		case builtin_tools.PhaseAssessBlocked:
+		case builtin_tools.TopicAssessBlocked:
 			blocked++
-		case builtin_tools.PhaseAssessContinue:
+		case builtin_tools.TopicAssessContinue:
 			cont++
 		}
 	}
@@ -589,7 +589,7 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 			"step_name":              strings.TrimSpace(stepName),
 			"should_replan":          result.ShouldReplan,
 			"replan_reason":          strings.TrimSpace(result.ReplanReason),
-			"phase_assessments_size": len(result.PhaseAssessments),
+			"phase_assessments_size": len(result.TopicAssessments),
 			"phase_continue_size":    cont,
 			"phase_completed_size":   completed,
 			"phase_blocked_size":     blocked,

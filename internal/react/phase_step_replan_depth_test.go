@@ -12,11 +12,11 @@ import (
 // 供单条 assessment 的用例——完整性校验只要求评估 phase-a。
 func activeReplanTool(t *testing.T) *submitReplanTool {
 	t.Helper()
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
+		{ID: "a1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"},
 	}
 	return newSubmitReplanTool(phases, plan)
 }
@@ -25,11 +25,11 @@ func activeReplanTool(t *testing.T) *submitReplanTool {
 // 供 completed-with-pending 守卫测试。
 func pendingPhaseReplanTool(t *testing.T) *submitReplanTool {
 	t.Helper()
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
 	return newSubmitReplanTool(phases, plan)
 }
@@ -66,8 +66,8 @@ func TestSubmitReplanTool_NoReplanSucceeds(t *testing.T) {
 	}
 }
 
-// TestSubmitReplanTool_PhaseAssessmentsParsed 校验 phase_assessments 与其三轴正确解析。
-func TestSubmitReplanTool_PhaseAssessmentsParsed(t *testing.T) {
+// TestSubmitReplanTool_TopicAssessmentsParsed 校验 phase_assessments 与其三轴正确解析。
+func TestSubmitReplanTool_TopicAssessmentsParsed(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "phase-a 仍有深度缺口",
@@ -86,11 +86,11 @@ func TestSubmitReplanTool_PhaseAssessmentsParsed(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 	result := tool.getResult()
-	if result == nil || !result.ShouldReplan || len(result.PhaseAssessments) != 1 {
+	if result == nil || !result.ShouldReplan || len(result.TopicAssessments) != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	a := result.PhaseAssessments[0]
-	if a.PhaseID != "phase-a" || a.Status != builtin_tools.PhaseAssessContinue {
+	a := result.TopicAssessments[0]
+	if a.TopicID != "phase-a" || a.Status != builtin_tools.TopicAssessContinue {
 		t.Fatalf("assessment mismatch: %+v", a)
 	}
 	if len(a.IncompleteItems) != 1 || len(a.DepthGaps) != 1 || len(a.NewSurfaces) != 1 {
@@ -98,8 +98,8 @@ func TestSubmitReplanTool_PhaseAssessmentsParsed(t *testing.T) {
 	}
 }
 
-// TestSubmitReplanTool_UnknownPhaseIDRejected 校验 phase_id 必须是本轮 active phase。
-func TestSubmitReplanTool_UnknownPhaseIDRejected(t *testing.T) {
+// TestSubmitReplanTool_UnknownTopicIDRejected 校验 phase_id 必须是本轮 active phase。
+func TestSubmitReplanTool_UnknownTopicIDRejected(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "x",
@@ -155,7 +155,7 @@ func TestSubmitReplanTool_BlockedAccepted(t *testing.T) {
 	if _, err := tool.Execute(context.Background(), args); err != nil {
 		t.Fatalf("blocked assessment should be accepted: %v", err)
 	}
-	if tool.getResult().PhaseAssessments[0].Status != builtin_tools.PhaseAssessBlocked {
+	if tool.getResult().TopicAssessments[0].Status != builtin_tools.TopicAssessBlocked {
 		t.Fatal("expected blocked status stored")
 	}
 }
@@ -163,13 +163,13 @@ func TestSubmitReplanTool_BlockedAccepted(t *testing.T) {
 // TestSubmitReplanTool_IncompleteCoverageRejected 校验完整性守卫：本轮多个 active phase
 // 但只评估其一 → 拒绝（漏评的 lane 会被静默跳过）。ACTIVE_PHASES 为空时豁免。
 func TestSubmitReplanTool_IncompleteCoverageRejected(t *testing.T) {
-	phases := []*builtin_tools.PlanPhase{
-		{ID: "phase-a", Status: builtin_tools.PlanPhasePending},
-		{ID: "phase-b", Status: builtin_tools.PlanPhasePending},
+	phases := []*builtin_tools.AnalysisTopic{
+		{ID: "phase-a", Status: builtin_tools.AnalysisTopicPending},
+		{ID: "phase-b", Status: builtin_tools.AnalysisTopicPending},
 	}
 	plan := []*builtin_tools.PlanItem{
-		{ID: "a1", Status: builtin_tools.PlanStepCompleted, PhaseID: "phase-a"},
-		{ID: "b1", Status: builtin_tools.PlanStepPending, PhaseID: "phase-b"},
+		{ID: "a1", Status: builtin_tools.PlanStepCompleted, TopicID: "phase-a"},
+		{ID: "b1", Status: builtin_tools.PlanStepPending, TopicID: "phase-b"},
 	}
 	tool := newSubmitReplanTool(phases, plan)
 	// 只评估 phase-a，漏 phase-b
@@ -215,8 +215,8 @@ func TestStepReplanModelOutput_JSONTags(t *testing.T) {
 	out := stepReplanModelOutput{
 		ShouldReplan: true,
 		ReplanReason: "test",
-		PhaseAssessments: []*builtin_tools.PhaseAssessment{
-			{PhaseID: "phase-a", Status: builtin_tools.PhaseAssessContinue},
+		TopicAssessments: []*builtin_tools.TopicAssessment{
+			{TopicID: "phase-a", Status: builtin_tools.TopicAssessContinue},
 		},
 	}
 	raw, err := json.Marshal(out)

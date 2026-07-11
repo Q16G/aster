@@ -78,7 +78,7 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		// plan/plan_version/step_outcomes 保留供 assessed_state 持久化（resume 回退源）；
 		// prompt 注入改走 plan_items 卡片 + 账本全文（CARRIED_* 已由账本吸收）。
 		"plan":                 snapshot.Plan,
-		"phases":               snapshot.Phases,
+		"phases":               snapshot.Topics,
 		"plan_version":         snapshot.PlanVersion,
 		"step_outcomes":        stepOutcomeViews,
 		"plan_items":           ProjectPlanItemCards(snapshot.Plan, a.workspaceRootDir),

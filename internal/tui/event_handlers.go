@@ -611,7 +611,7 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 				if status == "" {
 					status = "pending"
 				}
-				items = append(items, PlanItemView{ID: item.ID, Step: item.Step, Status: status, PhaseID: item.PhaseID})
+				items = append(items, PlanItemView{ID: item.ID, Step: item.Step, Status: status, TopicID: item.TopicID})
 			}
 		case []any:
 			for _, item := range v {
@@ -619,21 +619,21 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 					id, _ := itemMap["id"].(string)
 					step, _ := itemMap["step"].(string)
 					status, _ := itemMap["status"].(string)
-					phaseID, _ := itemMap["phase_id"].(string)
+					topicID, _ := itemMap["phase_id"].(string)
 					if status == "" {
 						status = "pending"
 					}
-					items = append(items, PlanItemView{ID: id, Step: step, Status: status, PhaseID: phaseID})
+					items = append(items, PlanItemView{ID: id, Step: step, Status: status, TopicID: topicID})
 				}
 			}
 		}
-		phases := parsePhaseViews(event.Payload["phases"])
+		phases := parseTopicViews(event.Payload["phases"])
 		if len(items) > 0 || explanation != "" {
 			planPart := &PlanPart{
 				AgentName:   event.AgentName,
 				Explanation: explanation,
 				Items:       items,
-				Phases:      phases,
+				Topics:      phases,
 			}
 			if !m.chat.isRootAgentPlan(planPart) {
 				if _, known := m.chat.store.agentParent[event.AgentName]; !known {
@@ -828,10 +828,10 @@ func (m *Model) handleAgentEvent(event *react.AgentOutputEvent) {
 			ReplanReason:     replanReason,
 			NextGoal:         nextGoal,
 			PlanSize:         planSize,
-			PhaseAssessments: payloadInt(event.Payload, "phase_assessments_size"),
-			PhaseContinue:    payloadInt(event.Payload, "phase_continue_size"),
-			PhaseCompleted:   payloadInt(event.Payload, "phase_completed_size"),
-			PhaseBlocked:     payloadInt(event.Payload, "phase_blocked_size"),
+			TopicAssessments: payloadInt(event.Payload, "phase_assessments_size"),
+			TopicContinue:    payloadInt(event.Payload, "phase_continue_size"),
+			TopicCompleted:   payloadInt(event.Payload, "phase_completed_size"),
+			TopicBlocked:     payloadInt(event.Payload, "phase_blocked_size"),
 			Warnings:         warnings,
 		}
 		m.chat.AddPart(DisplayPart{
@@ -1004,17 +1004,17 @@ func (m *Model) handleBatchedEvents(events []TuiEvent) {
 	}
 }
 
-// parsePhaseViews 从 task_plan payload 解析业务 lane 清单，兼容强类型（同进程 emit）
+// parseTopicViews 从 task_plan payload 解析业务 lane 清单，兼容强类型（同进程 emit）
 // 与 map（持久化重放 / 跨进程 JSON）两种形态。
-func parsePhaseViews(raw any) []PhaseView {
-	var out []PhaseView
+func parseTopicViews(raw any) []TopicView {
+	var out []TopicView
 	switch v := raw.(type) {
-	case []*builtin_tools.PlanPhase:
+	case []*builtin_tools.AnalysisTopic:
 		for _, phase := range v {
 			if phase == nil {
 				continue
 			}
-			out = append(out, PhaseView{ID: phase.ID, Name: phase.Name, Status: string(phase.Status)})
+			out = append(out, TopicView{ID: phase.ID, Name: phase.Name, Status: string(phase.Status)})
 		}
 	case []any:
 		for _, item := range v {
@@ -1022,7 +1022,7 @@ func parsePhaseViews(raw any) []PhaseView {
 				id, _ := m["id"].(string)
 				name, _ := m["name"].(string)
 				status, _ := m["status"].(string)
-				out = append(out, PhaseView{ID: id, Name: name, Status: status})
+				out = append(out, TopicView{ID: id, Name: name, Status: status})
 			}
 		}
 	}

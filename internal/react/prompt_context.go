@@ -86,9 +86,9 @@ func (a *Agent) applyInjectionBudget(priority []injectionField, budget int) {
 // planInjectionBudgetFields 构建 plan 阶段聚合封顶的字段优先级列表（低优先→高优先，先降级）。
 // 只纳入本回合确实会注入 prompt 的字段：GoalUnderstanding 仅 !regenGoal 时注入、TaskContextBoard
 // 仅 injectsTaskBoard 时注入——无条件计入会高估总量、过度降级 InputTimeline/Plan 等规划必需字段。
-// Phases/事实板可先降级为指针，InputTimeline/Plan 排末端最后降级。
+// Topics/事实板可先降级为指针，InputTimeline/Plan 排末端最后降级。
 func planInjectionBudgetFields(pc *PromptContext, regenGoal, injectsTaskBoard bool) []injectionField {
-	fields := []injectionField{{field: &pc.Phases, spillName: "phases"}}
+	fields := []injectionField{{field: &pc.Topics, spillName: "phases"}}
 	if injectsTaskBoard {
 		fields = append(fields, injectionField{field: &pc.TaskContextBoard})
 	}
@@ -221,7 +221,7 @@ type PromptContext struct {
 	GoalUnderstanding PreviewField
 	// —— 计划与产出 ——
 	Plan         PreviewField // 指针 → planner.jsonl
-	Phases       PreviewField
+	Topics       PreviewField
 	StepOutcomes PreviewField // 指针 → step_contexts.jsonl
 	// —— 共享区三件套 + step 文件 ——
 	TaskContextBoard PreviewField // shared/task_context.md
@@ -247,8 +247,8 @@ func (a *Agent) buildPromptContext(snapshot builtin_tools.StateSnapshot, stepID 
 		journalAbs := a.wsLayout().PlannerJournal()
 		pc.Plan = previewNonEmptyForPrompt(prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir)), journalAbs, limit)
 	}
-	if len(snapshot.Phases) > 0 {
-		pc.Phases = a.previewMemoryField("phases", prettyJSON(snapshot.Phases), limit)
+	if len(snapshot.Topics) > 0 {
+		pc.Topics = a.previewMemoryField("phases", prettyJSON(snapshot.Topics), limit)
 	}
 	if len(snapshot.StepOutcomes) > 0 {
 		// step 产出真相源已落盘 step_contexts.jsonl，不 spill。

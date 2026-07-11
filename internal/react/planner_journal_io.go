@@ -14,7 +14,7 @@ import (
 )
 
 // planner.jsonl 的 IO 实现（M5b 自 builtin_tools 迁入 react）：
-// 记录类型 PlannerJournalRecord / PlanItem / PlanPhase 与 PlannerJournalKind*
+// 记录类型 PlannerJournalRecord / PlanItem / AnalysisTopic 与 PlannerJournalKind*
 // 常量仍留在 builtin_tools（工具侧契约），本文件只承担读写。
 // 路径经 workspacefs.Layout，IO 经 workspacefs.Store（含防穿越与 per-key 锁）。
 
@@ -36,7 +36,7 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*builtin_too
 	}
 
 	// 1) 读现有 snapshot 作为合并基底（不存在视作空）。
-	existingItems, existingPhases, planVersion, err := LoadPlannerJournalSnapshot(workspaceRootDir)
+	existingItems, existingTopics, planVersion, err := LoadPlannerJournalSnapshot(workspaceRootDir)
 	if err != nil {
 		return fmt.Errorf("load planner.jsonl snapshot failed: %w", err)
 	}
@@ -63,20 +63,20 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*builtin_too
 		byID[id] = item
 	}
 
-	phaseOrder := make([]string, 0, len(existingPhases)+len(records))
-	phaseByID := make(map[string]*builtin_tools.PlanPhase, len(existingPhases)+len(records))
-	upsertPhase := func(phase *builtin_tools.PlanPhase) {
+	phaseOrder := make([]string, 0, len(existingTopics)+len(records))
+	phaseByID := make(map[string]*builtin_tools.AnalysisTopic, len(existingTopics)+len(records))
+	upsertTopic := func(phase *builtin_tools.AnalysisTopic) {
 		id := strings.TrimSpace(phase.ID)
 		if _, exists := phaseByID[id]; !exists {
 			phaseOrder = append(phaseOrder, id)
 		}
 		phaseByID[id] = phase
 	}
-	for _, phase := range existingPhases {
+	for _, phase := range existingTopics {
 		if phase == nil || strings.TrimSpace(phase.ID) == "" {
 			continue
 		}
-		upsertPhase(phase)
+		upsertTopic(phase)
 	}
 
 	// 2) 按 LoadPlannerJournal 的语义把新 records 应用进合并基底。
@@ -89,14 +89,14 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*builtin_too
 			return fmt.Errorf("invalid planner journal record: plan_version is required")
 		}
 
-		if record.Kind == builtin_tools.PlannerJournalKindPhase {
+		if record.Kind == builtin_tools.PlannerJournalKindTopic {
 			if record.Phase == nil || strings.TrimSpace(record.Phase.ID) == "" {
 				return fmt.Errorf("invalid planner journal record: phase.id is required")
 			}
 			if record.PlanVersion > planVersion {
 				planVersion = record.PlanVersion
 			}
-			upsertPhase(record.Phase)
+			upsertTopic(record.Phase)
 			continue
 		}
 
@@ -121,7 +121,7 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*builtin_too
 				order = order[:0]
 				byID = make(map[string]*builtin_tools.PlanItem)
 				phaseOrder = phaseOrder[:0]
-				phaseByID = make(map[string]*builtin_tools.PlanPhase)
+				phaseByID = make(map[string]*builtin_tools.AnalysisTopic)
 			}
 			upsert(record.Item)
 		case builtin_tools.PlannerJournalKindStep:
@@ -165,7 +165,7 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*builtin_too
 			continue
 		}
 		rec := &builtin_tools.PlannerJournalRecord{
-			Kind:        builtin_tools.PlannerJournalKindPhase,
+			Kind:        builtin_tools.PlannerJournalKindTopic,
 			PlanVersion: planVersion,
 			Phase:       phase,
 			CreatedAt:   now,
@@ -200,10 +200,10 @@ func LoadPlannerJournal(workspaceRootDir string) ([]*builtin_tools.PlanItem, int
 // 重放规则：kind=plan 且版本号更高时整体替换（items 与 phases 一并 reset，planner
 // 提交的全量集合已含保留项）；kind=step / kind=phase 按 id 覆盖。条目保持首次出现
 // 的顺序。文件不存在时返回 (nil, nil, 0, nil)。旧文件无 phase 行时 phases 为 nil，
-// 由 runtime 的 SynthesizePhasesIfMissing 兜底。
+// 由 runtime 的 SynthesizeTopicsIfMissing 兜底。
 // 新写路径（AppendPlannerJournalRecords）已改为 snapshot 重写，磁盘文件只含最新
 // plan_version 的合并行；但本函数对旧 session 的 append-only 文件保持兼容重放。
-func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanItem, []*builtin_tools.PlanPhase, int, error) {
+func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanItem, []*builtin_tools.AnalysisTopic, int, error) {
 	store, err := workspacefs.NewLocalStore(workspaceRootDir)
 	if err != nil {
 		return nil, nil, 0, err
@@ -223,12 +223,12 @@ func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanI
 	order := make([]string, 0)
 	byID := make(map[string]*builtin_tools.PlanItem)
 	phaseOrder := make([]string, 0)
-	phaseByID := make(map[string]*builtin_tools.PlanPhase)
+	phaseByID := make(map[string]*builtin_tools.AnalysisTopic)
 	reset := func() {
 		order = order[:0]
 		byID = make(map[string]*builtin_tools.PlanItem)
 		phaseOrder = phaseOrder[:0]
-		phaseByID = make(map[string]*builtin_tools.PlanPhase)
+		phaseByID = make(map[string]*builtin_tools.AnalysisTopic)
 	}
 	upsert := func(item *builtin_tools.PlanItem) {
 		id := strings.TrimSpace(item.ID)
@@ -237,7 +237,7 @@ func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanI
 		}
 		byID[id] = item
 	}
-	upsertPhase := func(phase *builtin_tools.PlanPhase) {
+	upsertTopic := func(phase *builtin_tools.AnalysisTopic) {
 		id := strings.TrimSpace(phase.ID)
 		if _, exists := phaseByID[id]; !exists {
 			phaseOrder = append(phaseOrder, id)
@@ -254,14 +254,14 @@ func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanI
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			return nil, nil, 0, fmt.Errorf("unmarshal planner journal record failed: %w", err)
 		}
-		if record.Kind == builtin_tools.PlannerJournalKindPhase {
+		if record.Kind == builtin_tools.PlannerJournalKindTopic {
 			if record.Phase == nil || strings.TrimSpace(record.Phase.ID) == "" {
 				continue
 			}
 			if record.PlanVersion > planVersion {
 				planVersion = record.PlanVersion
 			}
-			upsertPhase(record.Phase)
+			upsertTopic(record.Phase)
 			continue
 		}
 		if record.Item == nil || strings.TrimSpace(record.Item.ID) == "" {
@@ -285,9 +285,9 @@ func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*builtin_tools.PlanI
 		return nil, nil, 0, fmt.Errorf("scan planner journal failed: %w", err)
 	}
 
-	var phases []*builtin_tools.PlanPhase
+	var phases []*builtin_tools.AnalysisTopic
 	if len(phaseOrder) > 0 {
-		phases = make([]*builtin_tools.PlanPhase, 0, len(phaseOrder))
+		phases = make([]*builtin_tools.AnalysisTopic, 0, len(phaseOrder))
 		for _, id := range phaseOrder {
 			phases = append(phases, phaseByID[id])
 		}

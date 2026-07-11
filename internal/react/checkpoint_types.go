@@ -18,10 +18,10 @@ type planCurrentCheckpoint struct {
 	Phase         builtin_tools.AgentPhase `json:"phase,omitempty"`
 	PlanVersion   int                      `json:"plan_version,omitempty"`
 	CurrentStepID string                   `json:"current_step_id,omitempty"`
-	// Phases 是业务 lane 骨架（Parallel Frontier）。plan 条目本体归 planner.jsonl，
+	// Topics 是业务 lane 骨架（Parallel Frontier）。plan 条目本体归 planner.jsonl，
 	// 但 phases 数量小、状态由 replan 评估驱动，随 checkpoint 冗余一份供 journal
 	// 缺 phase 行的旧数据 resume 兜底。
-	Phases            []*builtin_tools.PlanPhase     `json:"phases,omitempty"`
+	Topics            []*builtin_tools.AnalysisTopic     `json:"phases,omitempty"`
 	Status            builtin_tools.TaskStatus       `json:"status,omitempty"`
 	UpdatedAt         time.Time                      `json:"updated_at,omitempty"`
 	Explanation       string                         `json:"explanation,omitempty"`
@@ -43,7 +43,7 @@ type assessedStatePayload struct {
 	InputTimeline     []*builtin_tools.TimelineInput   `json:"input_timeline,omitempty"`
 	NeedsPlanning     bool                             `json:"needs_planning,omitempty"`
 	Plan              []*builtin_tools.PlanItem        `json:"plan,omitempty"`
-	Phases            []*builtin_tools.PlanPhase       `json:"phases,omitempty"`
+	Topics            []*builtin_tools.AnalysisTopic       `json:"phases,omitempty"`
 	PlanVersion       int                              `json:"plan_version,omitempty"`
 	StepOutcomes      []*builtin_tools.StepOutcome     `json:"step_outcomes,omitempty"`
 	ExternalInterrupt *builtin_tools.ExternalInterrupt `json:"external_interrupt,omitempty"`
