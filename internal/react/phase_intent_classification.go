@@ -35,7 +35,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	previewLimit := promptPreviewTokens(a.usableInputTokens)
 	input.RecentOutcomes = previewNonEmptyForPrompt(input.RecentOutcomes, a.resolveStepContextsPath(), previewLimit)
 	input.PendingSteps = previewNonEmptyForPrompt(input.PendingSteps,
-		builtin_tools.WorkspacePlannerJournalFileAbs(strings.TrimSpace(a.workspaceRootDir)), previewLimit)
+		a.wsLayout().PlannerJournal(), previewLimit)
 	input.InputTimeline = a.previewMemoryField("input_timeline", input.InputTimeline, previewLimit)
 	prompt, err := a.promptManager.BuildIntentClassificationPrompt(input)
 	if err != nil {
@@ -95,7 +95,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 						})
 						return a.applyIntentClassification(snapshot, intentClassificationModelOutput{Action: "carry", Reason: "submit retry fallback"})
 					}
-					a.AICallProxyWriteToolResult(nil, 
+					a.AICallProxyWriteToolResult(nil,
 						strings.TrimSpace(tc.Id), submitIntentToolName,
 						"", nil, "",
 						fmt.Sprintf("submit_intent 参数校验失败: %s\n请修正后重新调用 submit_intent。", parseErr.Error()),

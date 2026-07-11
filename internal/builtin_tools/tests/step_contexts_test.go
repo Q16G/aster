@@ -2,6 +2,7 @@ package builtin_tools_test
 
 import (
 	. "aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,7 +67,7 @@ func TestWorkspaceStepContexts_PersistsAbsoluteArtifactPaths(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("append step contexts failed: %v", err)
 	}
-	raw, err := os.ReadFile(WorkspaceStepContextsFileAbs(root))
+	raw, err := os.ReadFile(workspacefs.New(root, "").StepContexts())
 	if err != nil {
 		t.Fatalf("read step contexts file failed: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestWorkspaceStepContexts_ReferencesConvertedToAbsolutePaths(t *testing.T) 
 		t.Fatalf("append failed: %v", err)
 	}
 
-	raw, err := os.ReadFile(WorkspaceStepContextsFileAbs(root))
+	raw, err := os.ReadFile(workspacefs.New(root, "").StepContexts())
 	if err != nil {
 		t.Fatalf("read jsonl failed: %v", err)
 	}

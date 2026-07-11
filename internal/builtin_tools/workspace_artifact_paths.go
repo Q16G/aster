@@ -5,15 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-func WorkspaceArtifactsRootRel(namespace string) string {
-	ns := NormalizeWorkspaceNamespace(namespace)
-	if ns == "" || ns == "root" {
-		return "artifacts"
-	}
-	return filepath.ToSlash(filepath.Join("artifacts", ns))
-}
+	"aster/internal/workspacefs"
+)
 
 func WorkspaceArtifactWritePath(workspaceRootDir string, namespace string, relPath string) (artifactPath string, absPath string, err error) {
 	workspaceRootDir = strings.TrimSpace(workspaceRootDir)
@@ -43,7 +37,7 @@ func WorkspaceArtifactWritePath(workspaceRootDir string, namespace string, relPa
 		return "", "", fmt.Errorf("artifact path contains duplicated structural segments: %s", cleanRel)
 	}
 
-	artifactPath = filepath.ToSlash(filepath.Join(WorkspaceArtifactsRootRel(namespace), cleanRel))
+	artifactPath = filepath.ToSlash(filepath.Join(workspacefs.New("", namespace).ArtifactsRootRel(), cleanRel))
 	absCandidate := filepath.Join(workspaceRootDir, filepath.FromSlash(artifactPath))
 	absPath, err = filepath.Abs(absCandidate)
 	if err != nil {

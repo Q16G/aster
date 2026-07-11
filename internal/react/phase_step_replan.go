@@ -827,7 +827,7 @@ func (a *Agent) resolveStepContextsPath() string {
 	if a == nil {
 		return ""
 	}
-	return builtin_tools.WorkspaceStepContextsFileAbs(a.workspaceRootDir)
+	return a.wsLayout().StepContexts()
 }
 
 func findOutcome(outcomes []*builtin_tools.StepOutcome, stepID string) *builtin_tools.StepOutcome {

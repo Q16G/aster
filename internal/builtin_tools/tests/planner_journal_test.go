@@ -2,6 +2,7 @@ package builtin_tools_test
 
 import (
 	. "aster/internal/builtin_tools"
+	"aster/internal/workspacefs"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -125,7 +126,7 @@ func TestPlannerJournal_SnapshotRewriteDropsOldVersionLines(t *testing.T) {
 		t.Fatalf("append v2 failed: %v", err)
 	}
 
-	raw, err := os.ReadFile(WorkspacePlannerJournalFileAbs(root))
+	raw, err := os.ReadFile(workspacefs.New(root, "").PlannerJournal())
 	if err != nil {
 		t.Fatalf("read planner.jsonl failed: %v", err)
 	}

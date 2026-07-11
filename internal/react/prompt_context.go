@@ -136,7 +136,7 @@ func (a *Agent) buildPromptContext(snapshot builtin_tools.StateSnapshot, stepID 
 	pc.GoalUnderstanding = a.previewMemoryField("goal_understanding", snapshot.GoalUnderstanding, limit)
 	if len(snapshot.Plan) > 0 {
 		// plan 真相源已落盘 planner.jsonl，不 spill，指针直指真相源。
-		journalAbs := builtin_tools.WorkspacePlannerJournalFileAbs(strings.TrimSpace(a.workspaceRootDir))
+		journalAbs := a.wsLayout().PlannerJournal()
 		pc.Plan = previewNonEmptyForPrompt(prettyJSON(ProjectPlanItemCardsSlim(snapshot.Plan, a.workspaceRootDir)), journalAbs, limit)
 	}
 	if len(snapshot.Phases) > 0 {

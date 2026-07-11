@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-)
 
-const workspacePlannerJournalRelPath = "workspace/planner.jsonl"
+	"aster/internal/workspacefs"
+)
 
 const (
 	// PlannerJournalKindPlan 表示 plan 提交（首次规划 / 重规划）时的全量条目落地。
@@ -35,14 +35,6 @@ type PlannerJournalRecord struct {
 	CreatedAt   time.Time  `json:"created_at,omitempty"`
 }
 
-func WorkspacePlannerJournalFileAbs(workspaceRootDir string) string {
-	workspaceRootDir = strings.TrimSpace(workspaceRootDir)
-	if workspaceRootDir == "" {
-		return ""
-	}
-	return filepath.Join(workspaceRootDir, filepath.FromSlash(workspacePlannerJournalRelPath))
-}
-
 // AppendPlannerJournalRecords 把 records 合并入当前 planner.jsonl 的 snapshot 并
 // 原子重写。语义与旧的 append-only 一致——按 LoadPlannerJournal 的重放规则消化：
 // kind=plan 且 plan_version 更高时全量替换（items 与 phases 一并 reset）；
@@ -55,7 +47,7 @@ func AppendPlannerJournalRecords(workspaceRootDir string, records []*PlannerJour
 	if len(records) == 0 {
 		return nil
 	}
-	absPath := WorkspacePlannerJournalFileAbs(workspaceRootDir)
+	absPath := workspacefs.New(workspaceRootDir, "").PlannerJournal()
 	if absPath == "" {
 		return fmt.Errorf("workspace root is empty")
 	}
@@ -236,7 +228,7 @@ func LoadPlannerJournal(workspaceRootDir string) ([]*PlanItem, int, error) {
 // 新写路径（AppendPlannerJournalRecords）已改为 snapshot 重写，磁盘文件只含最新
 // plan_version 的合并行；但本函数对旧 session 的 append-only 文件保持兼容重放。
 func LoadPlannerJournalSnapshot(workspaceRootDir string) ([]*PlanItem, []*PlanPhase, int, error) {
-	absPath := WorkspacePlannerJournalFileAbs(workspaceRootDir)
+	absPath := workspacefs.New(workspaceRootDir, "").PlannerJournal()
 	if absPath == "" {
 		return nil, nil, 0, fmt.Errorf("workspace root is empty")
 	}

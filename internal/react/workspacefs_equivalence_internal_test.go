@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"aster/internal/builtin_tools"
 	"aster/internal/workspacefs"
 )
 
@@ -26,15 +25,13 @@ func TestLayoutMatchesLegacyHelpers(t *testing.T) {
 	const root = "/ws-root"
 	l := workspacefs.New(root, "")
 
-	// builtin_tools 导出 helper（abs 族）
-	eqPath(t, "planner_journal_abs", builtin_tools.WorkspacePlannerJournalFileAbs(root), l.PlannerJournal())
-	eqPath(t, "step_contexts_abs", builtin_tools.WorkspaceStepContextsFileAbs(root), l.StepContexts())
+	// builtin_tools 旧导出 helper（M3b 已删），字面公式锚点固化（与 M0 testdata 一致）
+	eqPath(t, "planner_journal_abs", filepath.Join(root, "workspace", "planner.jsonl"), l.PlannerJournal())
+	eqPath(t, "step_contexts_abs", filepath.Join(root, "workspace", "step_contexts.jsonl"), l.StepContexts())
 
-	// builtin_tools 归一版 artifacts root（其语义与新 Layout 相同）
-	for _, ns := range []string{"", "root", "sub-a"} {
-		eqPath(t, "artifacts_root_rel/"+ns,
-			builtin_tools.WorkspaceArtifactsRootRel(ns),
-			workspacefs.New(root, ns).ArtifactsRootRel())
+	// artifacts root 归一语义锚点（旧 WorkspaceArtifactsRootRel 语义，M3b 起由 Layout 独承）
+	for ns, want := range map[string]string{"": "artifacts", "root": "artifacts", "sub-a": "artifacts/sub-a"} {
+		eqPath(t, "artifacts_root_rel/"+ns, want, workspacefs.New(root, ns).ArtifactsRootRel())
 	}
 
 	// react step 过程文件 helper（M3a 起旧 helper 已删，旧侧改用字面公式锚点）
