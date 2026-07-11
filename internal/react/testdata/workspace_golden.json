@@ -1,0 +1,17 @@
+{
+  "artifacts/root/final/1/final_answer.md": "505cab949b8f307d2fbe03f86a6d23fda3f10341c42e173b3af9721dea754e21",
+  "artifacts/root/final/1/final_assessment.json": "2f1922043d4f22bf7a3b9e5c117fa15ddffd6abe1d63c762f606eefff5e50571",
+  "artifacts/root/plan/current.json": "b7dc4e65d66629539047f8de56e975a138c0047530540afd6cdb4d0649b47bca",
+  "artifacts/root/plan/history/1.json": "b7dc4e65d66629539047f8de56e975a138c0047530540afd6cdb4d0649b47bca",
+  "async_result.json": "734715cbfe9c506bb1ea5995efa348642610efe73f1a86965265a3d244c70bd2",
+  "shared/open_items.md": "82739d942c6b586bb5a34e1347c194f5d68306b486cd1923f31f6a58ec09d7d3",
+  "shared/p1-s1/coverage.json": "e1c270bf8db20d1edc33a2d9d31e7b6ef1f8160389c4babb2c59b616d96defbb",
+  "shared/p1-s1/timeline.jsonl": "33ea0b07ef71ffc1af6ce70f5a68ebae6ff65287a71bd5b155a2daef2ab78861",
+  "shared/step_p1-s1.md": "f00328ea0477880a3e8e5c30fac41ff52d40224391c91f2583557f7489654ea8",
+  "shared/task_context.md": "77131c586b7ef6e1f70601fe211ed6e9f015a777d74bc55b7c9f6119459728e7",
+  "tool-output/output-0.txt": "808ff8f1d646821f6fb103d15e4401c0ebb7d5ca44337a46525b9f9a9ab52224",
+  "workspace/planner.jsonl": "3cea1334263da0c3b59340c1ac2cd3600b7da84ba55297d8cf44ba1846beefb2",
+  "workspace/references.jsonl": "99165a47aa1bd436ddb0e6c2b4e2680211805c42464088f373a7b3e3fe723bd8",
+  "workspace/state.json": "4e54cc0de8564f8eeede7ce53d1cf120a35ef89cb10c3d39f015bd8832a1d702",
+  "workspace/step_contexts.jsonl": "ae876937e604d78070633b7618cb3b20d243f5ee0ecd424aedaff580828ed757"
+}
