@@ -58,7 +58,7 @@ type TaskPlannerResult struct {
 	// 归属其一。needs_planning=true && !Simple 时必填；simple/direct_response 任务豁免
 	// （runtime 以 synthetic phase 兜底）。重规划回合经 parse 侧按 id 与既有 phases 合并
 	// （completed/blocked 保留），取消 lane 只能显式提交该 phase 为 blocked。
-	Topics []*AnalysisTopic `json:"phases,omitempty"`
+	Topics []*AnalysisTopic `json:"topics,omitempty"`
 	// Plan 阶段调查上下文，持久化后传递给后续 Step
 	Summary         string   `json:"summary,omitempty"`
 	ToolCallsDigest []string `json:"tool_calls_digest,omitempty"`

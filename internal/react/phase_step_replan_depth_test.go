@@ -39,8 +39,8 @@ func TestSubmitReplanTool_ReplanReasonRequired(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-a", "status": "continue"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-a", "status": "continue"},
 		},
 	}
 	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
@@ -53,8 +53,8 @@ func TestSubmitReplanTool_NoReplanSucceeds(t *testing.T) {
 	args := map[string]any{
 		"should_replan": false,
 		"replan_reason": "",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-a", "status": "completed"},
 		},
 	}
 	out, err := activeReplanTool(t).Execute(context.Background(), args)
@@ -71,9 +71,9 @@ func TestSubmitReplanTool_TopicAssessmentsParsed(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "phase-a 仍有深度缺口",
-		"phase_assessments": []any{
+		"topic_assessments": []any{
 			map[string]any{
-				"phase_id":         "phase-a",
+				"topic_id":         "phase-a",
 				"status":           "continue",
 				"incomplete_items": []any{"接口 B 从未覆盖"},
 				"depth_gaps":       []any{"auth 结论停在 JWT 层"},
@@ -103,8 +103,8 @@ func TestSubmitReplanTool_UnknownTopicIDRejected(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "x",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-ghost", "status": "continue"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-ghost", "status": "continue"},
 		},
 	}
 	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
@@ -118,9 +118,9 @@ func TestSubmitReplanTool_CompletedWithPendingRejected(t *testing.T) {
 	args := map[string]any{
 		"should_replan": false,
 		"replan_reason": "",
-		"phase_assessments": []any{
+		"topic_assessments": []any{
 			// phase-b 仍有 pending step b1
-			map[string]any{"phase_id": "phase-b", "status": "completed"},
+			map[string]any{"topic_id": "phase-b", "status": "completed"},
 		},
 	}
 	if _, err := pendingPhaseReplanTool(t).Execute(context.Background(), args); err == nil {
@@ -133,8 +133,8 @@ func TestSubmitReplanTool_ContinueRequiresShouldReplan(t *testing.T) {
 	args := map[string]any{
 		"should_replan": false,
 		"replan_reason": "",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-a", "status": "continue"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-a", "status": "continue"},
 		},
 	}
 	if _, err := activeReplanTool(t).Execute(context.Background(), args); err == nil {
@@ -147,8 +147,8 @@ func TestSubmitReplanTool_BlockedAccepted(t *testing.T) {
 	args := map[string]any{
 		"should_replan": false,
 		"replan_reason": "",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-b", "status": "blocked", "reason": "外部依赖不可用"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-b", "status": "blocked", "reason": "外部依赖不可用"},
 		},
 	}
 	tool := pendingPhaseReplanTool(t)
@@ -176,8 +176,8 @@ func TestSubmitReplanTool_IncompleteCoverageRejected(t *testing.T) {
 	args := map[string]any{
 		"should_replan": false,
 		"replan_reason": "",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-a", "status": "completed"},
 		},
 	}
 	if _, err := tool.Execute(context.Background(), args); err == nil {
@@ -187,7 +187,7 @@ func TestSubmitReplanTool_IncompleteCoverageRejected(t *testing.T) {
 	// 空 active phase（simple/历史 session）→ 空 assessments 豁免
 	emptyTool := newSubmitReplanTool(nil, nil)
 	if _, err := emptyTool.Execute(context.Background(), map[string]any{
-		"should_replan": false, "replan_reason": "", "phase_assessments": []any{},
+		"should_replan": false, "replan_reason": "", "topic_assessments": []any{},
 	}); err != nil {
 		t.Fatalf("empty active phases should exempt completeness: %v", err)
 	}
@@ -199,9 +199,9 @@ func TestSubmitReplanTool_DuplicateAssessmentRejected(t *testing.T) {
 	args := map[string]any{
 		"should_replan": true,
 		"replan_reason": "x",
-		"phase_assessments": []any{
-			map[string]any{"phase_id": "phase-a", "status": "continue"},
-			map[string]any{"phase_id": "phase-a", "status": "completed"},
+		"topic_assessments": []any{
+			map[string]any{"topic_id": "phase-a", "status": "continue"},
+			map[string]any{"topic_id": "phase-a", "status": "completed"},
 		},
 	}
 	if _, err := tool.Execute(context.Background(), args); err == nil {
@@ -227,7 +227,7 @@ func TestStepReplanModelOutput_JSONTags(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if _, ok := back["phase_assessments"]; !ok {
+	if _, ok := back["topic_assessments"]; !ok {
 		t.Fatalf("expected json key phase_assessments, got %s", string(raw))
 	}
 	for _, removed := range []string{"current_phase_done", "incomplete_items", "depth_gaps", "new_surfaces", "next_phase", "plan"} {
@@ -242,7 +242,7 @@ func TestStepReplanModelOutput_JSONTags(t *testing.T) {
 func TestSubmitReplanTool_ParametersSchema(t *testing.T) {
 	params := activeReplanTool(t).Parameters().(map[string]any)
 	props := params["properties"].(map[string]any)
-	for _, field := range []string{"should_replan", "replan_reason", "phase_assessments"} {
+	for _, field := range []string{"should_replan", "replan_reason", "topic_assessments"} {
 		if _, ok := props[field]; !ok {
 			t.Fatalf("field %q missing from properties", field)
 		}
@@ -255,7 +255,7 @@ func TestSubmitReplanTool_ParametersSchema(t *testing.T) {
 	required, _ := params["required"].([]string)
 	hasPA := false
 	for _, r := range required {
-		if r == "phase_assessments" {
+		if r == "topic_assessments" {
 			hasPA = true
 		}
 	}

@@ -1676,9 +1676,9 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-replan-1", "submit_replan", map[string]any{
 						"should_replan": true,
 						"replan_reason": "旧计划未覆盖新增验证缺口",
-						"phase_assessments": []any{
+						"topic_assessments": []any{
 							map[string]any{
-								"phase_id":         builtin_tools.SyntheticTopicID,
+								"topic_id":         builtin_tools.SyntheticTopicID,
 								"status":           "continue",
 								"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
 							},
@@ -1702,8 +1702,8 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 						"should_replan": false,
 						"replan_reason": "",
 						"next_goal":     "",
-						"phase_assessments": []any{
-							map[string]any{"phase_id": builtin_tools.SyntheticTopicID, "status": "completed"},
+						"topic_assessments": []any{
+							map[string]any{"topic_id": builtin_tools.SyntheticTopicID, "status": "completed"},
 						},
 					}),
 				},
@@ -1803,7 +1803,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 	if got := strings.TrimSpace(builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["replan_reason"])); got != "旧计划未覆盖新增验证缺口" {
 		t.Fatalf("expected replan reason in event, got %#v", stepReplanEvent.Payload)
 	}
-	if got := builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["phase_continue_size"]); got != "1" {
+	if got := builtin_tools.ToolRuntimeValue(stepReplanEvent.Payload["topic_continue_size"]); got != "1" {
 		t.Fatalf("expected phase_continue_size=1 in event, got %#v", stepReplanEvent.Payload)
 	}
 }
@@ -1946,9 +1946,9 @@ func TestExecute_PlanPhaseWithToolsParsesPlanFromAIProxy(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-plan", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "phase_id": "phase-main", "depends_on": []any{}},
+							map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "topic_id": "phase-main", "depends_on": []any{}},
 						},
-						"phases": []any{
+						"topics": []any{
 							map[string]any{"id": "phase-main", "name": "用户请求 的 执行", "depends_on": []any{}},
 						},
 						"explanation":        "需要规划",
@@ -2639,10 +2639,10 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-bad", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "phase_id": "phase-fix"},
-							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "phase_id": "phase-fix", "depends_on": []string{"S-01"}},
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "topic_id": "phase-fix"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "topic_id": "phase-fix", "depends_on": []string{"S-01"}},
 						},
-						"phases": []any{
+						"topics": []any{
 							map[string]any{"id": "phase-fix", "name": "代码漏洞 的 分析与修复", "depends_on": []any{}},
 						},
 						"explanation":        "planned",
@@ -2656,10 +2656,10 @@ func TestPlanPhaseWithTools_SubmitPlanValidationRetry(t *testing.T) {
 					mustBuildToolCall(t, "call-submit-ok", "submit_plan", map[string]any{
 						"needs_planning": true,
 						"plan": []any{
-							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "phase_id": "phase-fix"},
-							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "phase_id": "phase-fix", "depends_on": []string{"step-0"}},
+							map[string]any{"id": "step-0", "step": "分析代码", "status": "pending", "topic_id": "phase-fix"},
+							map[string]any{"id": "step-1", "step": "修复漏洞", "status": "pending", "topic_id": "phase-fix", "depends_on": []string{"step-0"}},
 						},
-						"phases": []any{
+						"topics": []any{
 							map[string]any{"id": "phase-fix", "name": "代码漏洞 的 分析与修复", "depends_on": []any{}},
 						},
 						"explanation":        "planned",
@@ -2834,9 +2834,9 @@ func TestPlanPhaseWithTools_InputFactsGateRetriesThenDegrades(t *testing.T) {
 				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
 					"needs_planning": true,
 					"plan": []any{
-						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "phase_id": "phase-main", "depends_on": []any{}},
+						map[string]any{"id": "step-1", "step": "执行用户请求", "status": "pending", "topic_id": "phase-main", "depends_on": []any{}},
 					},
-					"phases": []any{
+					"topics": []any{
 						map[string]any{"id": "phase-main", "name": "用户请求 的 执行", "depends_on": []any{}},
 					},
 					"explanation":        "需要规划",
@@ -2919,9 +2919,9 @@ func TestPlanPhaseWithTools_GranularityGateRetriesThenDegrades(t *testing.T) {
 				mustBuildToolCall(t, callID, "submit_plan", map[string]any{
 					"needs_planning": true,
 					"plan": []any{
-						map[string]any{"id": "p14-ssi-testfile", "step": overlongStep, "status": "pending", "phase_id": "phase-probe", "depends_on": []any{}},
+						map[string]any{"id": "p14-ssi-testfile", "step": overlongStep, "status": "pending", "topic_id": "phase-probe", "depends_on": []any{}},
 					},
-					"phases": []any{
+					"topics": []any{
 						map[string]any{"id": "phase-probe", "name": "对象 的 深度探测", "depends_on": []any{}},
 					},
 					"explanation":        "需要规划",

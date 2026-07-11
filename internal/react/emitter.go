@@ -419,7 +419,7 @@ func (e *Emitter) EmitTaskPlan(plan []*builtin_tools.PlanItem, phases []*builtin
 		NodeID: "task_plan",
 		Payload: map[string]any{
 			"plan":        plan,
-			"phases":      phases,
+			"topics":      phases,
 			"explanation": explanation,
 		},
 	})
@@ -589,10 +589,10 @@ func (e *Emitter) EmitStepReplanResult(stepID string, stepName string, result *s
 			"step_name":              strings.TrimSpace(stepName),
 			"should_replan":          result.ShouldReplan,
 			"replan_reason":          strings.TrimSpace(result.ReplanReason),
-			"phase_assessments_size": len(result.TopicAssessments),
-			"phase_continue_size":    cont,
-			"phase_completed_size":   completed,
-			"phase_blocked_size":     blocked,
+			"topic_assessments_size": len(result.TopicAssessments),
+			"topic_continue_size":    cont,
+			"topic_completed_size":   completed,
+			"topic_blocked_size":     blocked,
 		},
 	})
 }

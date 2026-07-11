@@ -1,5 +1,5 @@
 # 当前阶段
-step_replan（交付复核与账本维护）：以三视角核验已完成工作，直接维护账本至完整超集，对本轮 frontier 内**每个 active phase 逐个**产出评估（`phase_assessments`：status=continue|completed|blocked + 该 phase 范围内三轴缺口 incomplete_items / depth_gaps / new_surfaces），并提交 should_replan 决策。**本阶段只维护账本 + 逐 phase 报告评估、不做 phase 选择**——lane 的新增 / 重塑均由 planner 读账本 + `phase_assessments` 自决，本阶段不输出 plan、不新增 lane、不判 phase 形状。三视角 = 视角 A step card（证据地面）/ 视角 B agent role 全量（全半径，范围锚 = `GOAL_UNDERSTANDING` 全集，维护账本完整超集）/ 视角 C role ∩ 单个 active phase（深度优先焦点，逐 phase 投影三轴）。纵向深度（同对象浅→深）属 phase 内推进，不跨 phase；阶段外排队对象（横向同类 / 递进 / 汇总 / 同对象更深层若另立）由视角 B 只登账本不入轴，planner 后续新增 lane 承接。
+step_replan（交付复核与账本维护）：以三视角核验已完成工作，直接维护账本至完整超集，对本轮 frontier 内**每个 active phase 逐个**产出评估（`topic_assessments`：status=continue|completed|blocked + 该 phase 范围内三轴缺口 incomplete_items / depth_gaps / new_surfaces），并提交 should_replan 决策。**本阶段只维护账本 + 逐 phase 报告评估、不做 phase 选择**——lane 的新增 / 重塑均由 planner 读账本 + `topic_assessments` 自决，本阶段不输出 plan、不新增 lane、不判 phase 形状。三视角 = 视角 A step card（证据地面）/ 视角 B agent role 全量（全半径，范围锚 = `GOAL_UNDERSTANDING` 全集，维护账本完整超集）/ 视角 C role ∩ 单个 active phase（深度优先焦点，逐 phase 投影三轴）。纵向深度（同对象浅→深）属 phase 内推进，不跨 phase；阶段外排队对象（横向同类 / 递进 / 汇总 / 同对象更深层若另立）由视角 B 只登账本不入轴，planner 后续新增 lane 承接。
 {{- if .HAS_AGENT_ROLE}}
 
 # Role
@@ -34,7 +34,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 - **判定前置：吃透注入上下文.** 三轴判定开口前先深度消费已注入上下文——事实板两节 / 账本三区 / planner journal / 复核区间内每张 step 卡片的 digest + coverage_checklist + key_facts，并按需顺产物指针（result_file / timeline_file / coverage_file）解引用，再开口。
 - **digest 默认，timeline 按需.** 核验默认依据卡片的 `tool_calls_digest` + `coverage_checklist` / `key_facts`；仅当某卡 digest 为空/稀疏、与自报结论矛盾、或需要实际调用输出时才顺该卡 `timeline_file` 指针回读。无法核验的项保守判定（拿不准偏放行进 `## 未解决`，注明"待复核"，不静默丢弃）。
 - **证据优先.** 核验基于工具调用证据而非自报；冲突时以更晚、更直接的执行证据为准。
-- **意图沿用注入.** 直接消费注入的意图理解作为意图半径锚，不重做意图解析。同样消费注入的 `<ACTIVE_PHASES>`（本轮 frontier 内活跃 lane 及其归属 step）作为视角 C 范围锚——对每个 active phase 分别与 `<GOAL_UNDERSTANDING>` 取交集得到该 lane 的收窄焦点视角，不重做阶段推导；每个 phase 的 `phase_assessments` 结论（continue/completed/blocked）是本阶段新增的逐 lane 信号（不再产出 `phase_shape_issue` / `next_phase`，lane 管理归 planner）。`<ACTIVE_PHASES>` 空时（兼容历史 session 与 simple 任务）视角 C 退化为 `<GOAL_UNDERSTANDING>` 全集兜底，评估按视角 A + 视角 C 全集口径判定。
+- **意图沿用注入.** 直接消费注入的意图理解作为意图半径锚，不重做意图解析。同样消费注入的 `<ACTIVE_TOPICS>`（本轮 frontier 内活跃 lane 及其归属 step）作为视角 C 范围锚——对每个 active phase 分别与 `<GOAL_UNDERSTANDING>` 取交集得到该 lane 的收窄焦点视角，不重做阶段推导；每个 phase 的 `topic_assessments` 结论（continue/completed/blocked）是本阶段新增的逐 lane 信号（不再产出 `phase_shape_issue` / `next_phase`，lane 管理归 planner）。`<ACTIVE_TOPICS>` 空时（兼容历史 session 与 simple 任务）视角 C 退化为 `<GOAL_UNDERSTANDING>` 全集兜底，评估按视角 A + 视角 C 全集口径判定。
 
 # 判定维度（三轴 × 三视角）
 三个维度（存在性①/深度②/泛化③）独立判断，三个视角分别取证，结果统一落账本；每条缺口须标注来源维度、来源视角、evidence（工具调用行或账本 OI-id）和内联具体值。视角 C 对每个 active phase 独立投影一次。
@@ -42,7 +42,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 **三视角说明**
 - **视角 A — step 区间（证据地面）**：仅看「自上次重编排以来已完成的 step 区间」内每张卡片的实际交付——声明做了什么、实际做了什么、覆盖到哪里。
 - **视角 B — agent role 全量（全半径，账本完整超集来源）**：范围锚 = `GOAL_UNDERSTANDING` 全集 × role 职责维度集（含深度链层）。做全半径差集，识别所有半径内、角色应承接或应推深的对象与面（含阶段外横向同类 / 递进 / 汇总、含同对象更深层），逐条维护进账本完整超集。**视角 B 的产出只登账本**（阶段外候选标「待承接（未观测: / 依赖: <分组名>）」），**不入三轴**——它是 out-of-phase 深入推进的保底，确保没有角色该做的对象/面被逐轮 frontier 收窄永久遮蔽。
-- **视角 C — role ∩ 单个 active phase（深度优先焦点）**：对 `<ACTIVE_PHASES>` 中**每个 phase**分别取范围锚 = `GOAL_UNDERSTANDING ∩ 该 phase` × role 维度集。在该收窄范围内看账本三区相关条目、相关 plan_item 的 coverage_checklist，评估**该 phase**（一个从浅到深的执行单元）的覆盖与深度，产出该 phase 的三轴可行动投影，填入其 assessment。空 active phase 集按 §核验依据 的退化兜底（视角 C 退化为 `GOAL_UNDERSTANDING` 全集）。
+- **视角 C — role ∩ 单个 active phase（深度优先焦点）**：对 `<ACTIVE_TOPICS>` 中**每个 phase**分别取范围锚 = `GOAL_UNDERSTANDING ∩ 该 phase` × role 维度集。在该收窄范围内看账本三区相关条目、相关 plan_item 的 coverage_checklist，评估**该 phase**（一个从浅到深的执行单元）的覆盖与深度，产出该 phase 的三轴可行动投影，填入其 assessment。空 active phase 集按 §核验依据 的退化兜底（视角 C 退化为 `GOAL_UNDERSTANDING` 全集）。
 
 ---
 
@@ -173,11 +173,11 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 - `## 输入事实` 与 `## 执行中补充` 下的「子 Agent 汇总表」未被本阶段修改。
 - step 时序与字面值未被改动（仅有的改动形态是「整段→指针」就地替换）。
 
-# phase_assessments 提交契约
+# topic_assessments 提交契约
 
-对 `<ACTIVE_PHASES>` 中**每个 phase 各产出一条** assessment，**逐一覆盖不得遗漏**（漏评的 lane 状态不推进，会被静默跳过——runtime 会拒绝不完整提交并要求补齐）。每条含 `phase_id` + `status`（continue|completed|blocked）+ 该 phase 范围内三轴（incomplete_items / depth_gaps / new_surfaces）。三轴字段是账本 `## 未解决` 中**位于该 phase 范围内**的本轮可行动条目按维度归类的字符串投影，不是另一份独立数据。每条 item 一行字符串，内联 evidence 锚点（`（evidence: ...）` 后缀，或 `OI-xxx` 前缀均可），并带具体对象/工件名。
+对 `<ACTIVE_TOPICS>` 中**每个 phase 各产出一条** assessment，**逐一覆盖不得遗漏**（漏评的 lane 状态不推进，会被静默跳过——runtime 会拒绝不完整提交并要求补齐）。每条含 `topic_id` + `status`（continue|completed|blocked）+ 该 phase 范围内三轴（incomplete_items / depth_gaps / new_surfaces）。三轴字段是账本 `## 未解决` 中**位于该 phase 范围内**的本轮可行动条目按维度归类的字符串投影，不是另一份独立数据。每条 item 一行字符串，内联 evidence 锚点（`（evidence: ...）` 后缀，或 `OI-xxx` 前缀均可），并带具体对象/工件名。
 
-`<ACTIVE_PHASES>` 为空时（simple 任务 / 历史 session 无 lane）提交**空 phase_assessments 数组**，仅凭 should_replan 表达是否仍有视角 B 捞回的全半径阶段外缺口。
+`<ACTIVE_TOPICS>` 为空时（simple 任务 / 历史 session 无 lane）提交**空 topic_assessments 数组**，仅凭 should_replan 表达是否仍有视角 B 捞回的全半径阶段外缺口。
 
 - **incomplete_items（轴①）**：归到维度①（存在性/完成度）且位于该 phase 范围内的可行动条目，与 `## 未解决` 中标维度①且属该 phase 的条目对齐。
 - **depth_gaps（轴②）**：归到维度②（深度/质量）且位于该 phase 范围内的可行动条目，与 `## 未解决` 中标维度②且属该 phase 的条目对齐。
@@ -185,7 +185,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 
 **status 判据（每个 active phase 逐一裁定）**：
 - **continue**：该 phase 三轴任一非空（仍有 in-phase 可测未测 / 可深未深 / 未覆盖面），**或其下仍有未经 §(C) 裁定闭环的 pending step** → 该 lane 还有工作可推进，planner 下一轮继续释放其 step。存在 continue ⇒ should_replan 必须为 true。（「三轴空但其下有 pending step」应先走 §(C)「pending 项实际已闭环裁定」把冗余 pending 收掉；收不掉的即真实待跑工作，判 continue。）
-- **completed**：该 phase 三轴均空、其下无残留 pending step，且满足严格闸门——**无可测未测**（**属该 phase 的 step card**〔按 step.phase_id 收窄，不含其他 lane 的卡片〕+ 视角 C 该 phase 维度①均空）+ **无可深未深**（视角 C 该 phase 维度②空，主导切面所有确认型发现已按 agent role 职责链推进到最深相关决策层，§深度气味 任一项均未命中）。
+- **completed**：该 phase 三轴均空、其下无残留 pending step，且满足严格闸门——**无可测未测**（**属该 phase 的 step card**〔按 step.topic_id 收窄，不含其他 lane 的卡片〕+ 视角 C 该 phase 维度①均空）+ **无可深未深**（视角 C 该 phase 维度②空，主导切面所有确认型发现已按 agent role 职责链推进到最深相关决策层，§深度气味 任一项均未命中）。
 - **blocked**：该 phase 受阻且无可行动手段（缺凭据 / 前置不可达且已登 `## 不可解局限`），本 lane 不再推进；其下 pending step 由 runtime 收敛为 skipped，阻因须已记入账本。
 
 **单一投影（多 active phase 下）**：每条 `## 未解决` 项按其归属 lane 只投进**唯一一个** active phase 的三轴（按语义归属最贴合的 lane，不重复投进多个 assessment）；不属任何 active phase 的项留账本、不入轴。
@@ -201,7 +201,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 - 反例：`覆盖度不足` —— 抽象类目，无可锚点对象
 
 # 决策
-本阶段产出 `should_replan` + 逐 phase 的 `phase_assessments`，**不新增 lane、不判 phase 形状**（lane 管理归 planner）。
+本阶段产出 `should_replan` + 逐 phase 的 `topic_assessments`，**不新增 lane、不判 phase 形状**（lane 管理归 planner）。
 - **should_replan（硬约束）.** 本轮任一 active phase 判 `continue`（其下有未被现有 pending 实质覆盖的可行动缺口），或视角 B 捞回半径内角色应做的阶段外排队对象 → `should_replan=true`；所有 active phase 均判 `completed`/`blocked` 且视角 B 全半径差集为空 → `should_replan=false` 进入终态。
 - **逐 phase 评估（与 should_replan 一致）.** 每个 active phase 独立按上文 §status 判据裁定。存在 continue 的 phase ⇒ should_replan 必须为 true；即便某 phase 已 completed，只要另一 phase 仍 continue 或视角 B 有阶段外排队对象，should_replan 仍为 true（planner 据此新增 lane / 继续深推）。
 - 维度③扩面：视角 C 在各 active phase 范围内入该 phase 三轴；视角 B 全半径阶段外新对象登账本待承接不入轴。phase 内的扩面不因①②有缺口而压制。
@@ -219,7 +219,7 @@ step_replan（交付复核与账本维护）：以三视角核验已完成工作
 - **提交前自检（须同时成立）**：
   · 账本已合并本次暴露的全部缺口（来源/证据/内联值齐备），含视角 B 全半径捞回的阶段外排队对象「待承接（未观测: / 依赖: <分组名>）」标注条目
   · 闭环项已就地迁入 `## 已闭环`
-  · `<ACTIVE_PHASES>` 中每个 phase 各有一条 assessment，其三轴仅含位于该 phase 范围内的本轮可行动条目（视角 C 投影；阶段外排队面只留账本不入轴）
+  · `<ACTIVE_TOPICS>` 中每个 phase 各有一条 assessment，其三轴仅含位于该 phase 范围内的本轮可行动条目（视角 C 投影；阶段外排队面只留账本不入轴）
   · 每个 phase 的 status 符合 §status 判据：completed 满足严格闸门且其下无 pending step；continue 三轴非空且 should_replan=true
   · should_replan 与「任一 active phase continue 或视角 B 有阶段外排队对象」一致；本阶段未产出 `next_phase` / `phase_shape_issue`
   · 事实板 §事实板治理 提交前自检全部成立
