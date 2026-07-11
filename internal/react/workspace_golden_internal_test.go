@@ -154,7 +154,7 @@ func buildGoldenWorkspace(t *testing.T, root string) {
 	}
 
 	// tool-output 超长输出外置
-	if _, err := truncateToolOutput(strings.Repeat("golden tool output line\n", 3000), filepath.Join(root, "tool-output")); err != nil {
+	if _, err := truncateToolOutput(strings.Repeat("golden tool output line\n", 3000), root, "tool-output"); err != nil {
 		t.Fatalf("truncateToolOutput: %v", err)
 	}
 

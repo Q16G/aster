@@ -3,7 +3,6 @@ package react
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,7 +23,8 @@ func TruncateToolOutput(toolName string, output string, workspaceRootDir string)
 		return output, false, ""
 	}
 
-	res, err := truncateToolOutput(output, resolveToolOutputDir(workspaceRootDir))
+	root, relDir := resolveToolOutputTarget(workspaceRootDir)
+	res, err := truncateToolOutput(output, root, relDir)
 	if err != nil {
 		return output, false, ""
 	}
@@ -37,14 +37,18 @@ type toolOutputResult struct {
 	OutputPath string
 }
 
-func resolveToolOutputDir(workspaceRootDir string) string {
-	if dir := workspacefs.New(workspaceRootDir, "").ToolOutputDir(); dir != "" {
-		return dir
+// resolveToolOutputTarget 返回工具输出落盘位置 (root, relDir)。
+// workspace root 缺失时回退系统临时目录——非 workspace 路径，Store 在此仅作
+// 带防穿越与 per-key 锁的本地 IO 原语复用（root 换成 TempDir）。
+func resolveToolOutputTarget(workspaceRootDir string) (root, relDir string) {
+	l := workspacefs.New(workspaceRootDir, "")
+	if l.ToolOutputDir() != "" {
+		return l.Root, l.ToolOutputDirRel()
 	}
-	return filepath.Join(os.TempDir(), "sastpro-tool-output")
+	return os.TempDir(), "sastpro-tool-output"
 }
 
-func truncateToolOutput(output string, outputDir string) (toolOutputResult, error) {
+func truncateToolOutput(output string, root, relDir string) (toolOutputResult, error) {
 	lines := strings.Split(output, "\n")
 	totalBytes := len([]byte(output))
 	if len(lines) <= toolOutputTruncateMaxLines && totalBytes <= toolOutputTruncateMaxBytes {
@@ -77,18 +81,22 @@ func truncateToolOutput(output string, outputDir string) (toolOutputResult, erro
 	}
 	preview := strings.Join(out, "\n")
 
-	absDir, err := filepath.Abs(filepath.Clean(outputDir))
+	store, err := workspacefs.NewLocalStore(root)
 	if err != nil {
-		return toolOutputResult{}, fmt.Errorf("resolve output dir %s failed: %w", outputDir, err)
+		return toolOutputResult{}, fmt.Errorf("resolve output root %s failed: %w", root, err)
 	}
-	if err := os.MkdirAll(absDir, 0o755); err != nil {
-		return toolOutputResult{}, fmt.Errorf("create output dir %s failed: %w", absDir, err)
+	if err := store.EnsureDir(relDir); err != nil {
+		return toolOutputResult{}, fmt.Errorf("create output dir %s failed: %w", relDir, err)
 	}
-	_ = cleanupToolOutputDir(absDir, time.Now())
+	_ = cleanupToolOutputDir(store, relDir, time.Now())
 
-	outputPath := filepath.Join(absDir, fmt.Sprintf("%d-%s.txt", time.Now().UnixMilli(), uuid.NewString()))
-	if err := os.WriteFile(outputPath, []byte(output), 0o644); err != nil {
-		return toolOutputResult{}, fmt.Errorf("write %s failed: %w", outputPath, err)
+	rel := relDir + "/" + fmt.Sprintf("%d-%s.txt", time.Now().UnixMilli(), uuid.NewString())
+	if err := store.Write(rel, []byte(output)); err != nil {
+		return toolOutputResult{}, fmt.Errorf("write %s failed: %w", rel, err)
+	}
+	outputPath, err := store.AbsPath(rel)
+	if err != nil {
+		return toolOutputResult{}, fmt.Errorf("resolve %s failed: %w", rel, err)
 	}
 
 	content := fmt.Sprintf(
@@ -105,8 +113,9 @@ func truncateToolOutput(output string, outputDir string) (toolOutputResult, erro
 	}, nil
 }
 
-func cleanupToolOutputDir(dir string, now time.Time) error {
-	entries, err := os.ReadDir(dir)
+// cleanupToolOutputDir 清理 relDir 下超过保留期（mtime 早于 7 天前）的外置输出文件。
+func cleanupToolOutputDir(store workspacefs.Store, relDir string, now time.Time) error {
+	entries, err := store.List(relDir)
 	if err != nil {
 		return err
 	}
@@ -122,7 +131,7 @@ func cleanupToolOutputDir(dir string, now time.Time) error {
 		if info.ModTime().After(cutoff) {
 			continue
 		}
-		_ = os.Remove(filepath.Join(dir, entry.Name()))
+		_ = store.Remove(relDir + "/" + entry.Name())
 	}
 	return nil
 }
