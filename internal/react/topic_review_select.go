@@ -30,6 +30,18 @@ func nextReviewableTopic(plan []*builtin_tools.PlanItem, phases []*builtin_tools
 	return "", ""
 }
 
+// scopeActivePhasesToTopic 把 active phase 集收窄为仅目标 topic（局部 review 只判该 topic 的
+// 视角 A+C）。目标不在 active 集时返回 nil（退化为 reducer 态，视角 B 全半径仍生效）。
+func scopeActivePhasesToTopic(active []*builtin_tools.PlanPhase, topicID string) []*builtin_tools.PlanPhase {
+	topicID = strings.TrimSpace(topicID)
+	for _, ph := range active {
+		if ph != nil && strings.TrimSpace(ph.ID) == topicID {
+			return []*builtin_tools.PlanPhase{ph}
+		}
+	}
+	return nil
+}
+
 // latestStepIDOfTopic 返回 plan 顺序中属于该 topic 的最后一个 step 的 id（topic 已静默时即其
 // review 边界的右端）。无该 topic 的 step 时返回空。
 func latestStepIDOfTopic(plan []*builtin_tools.PlanItem, topicID string) string {

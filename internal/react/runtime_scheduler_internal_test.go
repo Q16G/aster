@@ -65,7 +65,7 @@ func TestMergeReplannedPlan_StepTextDedup(t *testing.T) {
 		{ID: "step-new-2", Step: "输出审计报告", Status: builtin_tools.PlanStepPending},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	var ids []string
 	for _, item := range merged {
@@ -98,7 +98,7 @@ func TestMergeReplannedPlan_DanglingDepsCaughtByNormalize(t *testing.T) {
 		{ID: "captcha-script", Step: "编写验证码识别脚本", Status: builtin_tools.PlanStepPending, DependsOn: []string{"install-deps"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	for _, item := range merged {
 		if item.ID == "get-cred" {
@@ -144,7 +144,7 @@ func TestMergeReplannedPlan_RemapsDedupDroppedDep(t *testing.T) {
 		t.Fatalf("parsed.Plan 自身应闭包完整并放行，got: %v", err)
 	}
 
-	merged := mergeReplannedPlan(prev, parsed)
+	merged := mergeReplannedPlan(prev, parsed, "")
 
 	// 撞文案的 next.step-35 被去重丢弃。
 	var report *builtin_tools.PlanItem
@@ -185,7 +185,7 @@ func TestMergeReplannedPlan_NonReplanUnaffected(t *testing.T) {
 		{ID: "step-1", Step: "枚举接口", Status: builtin_tools.PlanStepPending},
 		{ID: "step-2", Step: "分析响应", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
 	}
-	merged := mergeReplannedPlan(nil, next)
+	merged := mergeReplannedPlan(nil, next, "")
 	if len(merged) != 2 || merged[0].ID != "step-1" || merged[1].ID != "step-2" {
 		t.Fatalf("prev 为空时应原样返回 next，got: %v", merged)
 	}
@@ -241,7 +241,7 @@ func TestMergeReplannedPlan_PreservesFailed(t *testing.T) {
 		{ID: "report", Step: "汇总报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"recon", "exploit"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	var failedItem *builtin_tools.PlanItem
 	for _, item := range merged {
@@ -276,7 +276,7 @@ func TestMergeReplannedPlan_PreservesSkipped(t *testing.T) {
 		{ID: "report", Step: "总结发现", Status: builtin_tools.PlanStepPending, DependsOn: []string{"auth", "perm"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	found := false
 	for _, item := range merged {
@@ -312,7 +312,7 @@ func TestMergeReplannedPlan_ValidDependencyChain(t *testing.T) {
 		{ID: "captcha-script", Step: "编写验证码识别脚本", Status: builtin_tools.PlanStepPending, DependsOn: []string{"install-deps"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 	normalized, err := builtin_tools.NormalizePlanItems(merged, true)
 	if err != nil {
 		t.Fatalf("NormalizePlanItems failed: %v", err)
@@ -336,7 +336,7 @@ func TestMergeReplannedPlan_SelfContainedNewChain(t *testing.T) {
 		{ID: "try-passwords", Step: "尝试弱密码登录", Status: builtin_tools.PlanStepPending, DependsOn: []string{"captcha-script"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 	normalized, err := builtin_tools.NormalizePlanItems(merged, true)
 	if err != nil {
 		t.Fatalf("NormalizePlanItems failed: %v", err)

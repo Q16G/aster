@@ -39,10 +39,10 @@ func TestMergeReplannedPlan_EmptyNextReturnsNext(t *testing.T) {
 	prev := []*builtin_tools.PlanItem{
 		{ID: "recon", Step: "侦察", Status: builtin_tools.PlanStepCompleted},
 	}
-	if got := mergeReplannedPlan(prev, nil); got != nil {
+	if got := mergeReplannedPlan(prev, nil, ""); got != nil {
 		t.Fatalf("empty next must return next (nil), got %v", planIDs(got))
 	}
-	if got := mergeReplannedPlan(prev, []*builtin_tools.PlanItem{}); len(got) != 0 {
+	if got := mergeReplannedPlan(prev, []*builtin_tools.PlanItem{}, ""); len(got) != 0 {
 		t.Fatalf("empty next must return empty, got %v", planIDs(got))
 	}
 }
@@ -61,7 +61,7 @@ func TestMergeReplannedPlan_MultipleDependentsRemapped(t *testing.T) {
 		{ID: "c", Step: "综合评估", Status: builtin_tools.PlanStepPending, DependsOn: []string{"dup", "a"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	if findItem(merged, "dup") != nil {
 		t.Fatalf("text-colliding 'dup' must be dropped, got %v", planIDs(merged))
@@ -94,7 +94,7 @@ func TestMergeReplannedPlan_RemapCanonicalizesTokens(t *testing.T) {
 		{ID: "report", Step: "生成报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"P1-RECON"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	if got := depsOf(merged, "report"); len(got) != 1 || got[0] != "recon-old" {
 		t.Fatalf("token-variant dep should remap to [recon-old], got %v", got)
@@ -118,7 +118,7 @@ func TestMergeReplannedPlan_DedupWhitespaceAndCase(t *testing.T) {
 		{ID: "poc", Step: "构造 PoC", Status: builtin_tools.PlanStepPending, DependsOn: []string{"sqli-again"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	if findItem(merged, "sqli-again") != nil {
 		t.Fatalf("whitespace/case variant should be deduped, got %v", planIDs(merged))
@@ -141,7 +141,7 @@ func TestMergeReplannedPlan_FirstPreservedWins(t *testing.T) {
 		{ID: "report", Step: "报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"dup"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	// both anchors preserved
 	if findItem(merged, "recon-a") == nil || findItem(merged, "recon-b") == nil {
@@ -166,7 +166,7 @@ func TestMergeReplannedPlan_NextIdCollidesWithPreserved(t *testing.T) {
 		{ID: "next-step", Step: "深入分析", Status: builtin_tools.PlanStepPending, DependsOn: []string{"recon"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	// exactly one "recon", and it's the preserved completed one
 	count := 0
@@ -206,7 +206,7 @@ func TestMergeReplannedPlan_DoesNotMutateInputs(t *testing.T) {
 		{ID: "report", Step: "报告", Status: builtin_tools.PlanStepPending, DependsOn: []string{"dup"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 
 	// prev untouched
 	if len(prev[0].KeyFacts) != 1 || prev[0].KeyFacts[0] != "fact-a" {
@@ -251,7 +251,7 @@ func TestMergeReplannedPlan_PreservesCompletedBakedFields(t *testing.T) {
 		{ID: "deep", Step: "深入分析", Status: builtin_tools.PlanStepPending, DependsOn: []string{"recon"}},
 	}
 
-	got := findItem(mergeReplannedPlan(prev, next), "recon")
+	got := findItem(mergeReplannedPlan(prev, next, ""), "recon")
 	if got == nil {
 		t.Fatal("completed recon must be preserved")
 	}
@@ -274,7 +274,7 @@ func TestMergeReplannedPlan_NilEntriesSkipped(t *testing.T) {
 		nil,
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 	if findItem(merged, "recon") == nil || findItem(merged, "deep") == nil {
 		t.Fatalf("real items must survive nil gaps, got %v", planIDs(merged))
 	}
@@ -298,7 +298,7 @@ func TestMergeReplannedPlan_AllPrevPending(t *testing.T) {
 		{ID: "new-2", Step: "新步骤二", Status: builtin_tools.PlanStepPending, DependsOn: []string{"new-1"}},
 	}
 
-	merged := mergeReplannedPlan(prev, next)
+	merged := mergeReplannedPlan(prev, next, "")
 	if ids := planIDs(merged); len(ids) != 2 || ids[0] != "new-1" || ids[1] != "new-2" {
 		t.Fatalf("all-pending prev should be fully replaced, got %v", ids)
 	}
@@ -365,7 +365,7 @@ func TestReplanValidation_MergedVsParsedBranch(t *testing.T) {
 // contract without standing up a full plan-phase run.
 func selectValidateTarget(replacePending bool, prev, parsed []*builtin_tools.PlanItem) []*builtin_tools.PlanItem {
 	if replacePending {
-		return mergeReplannedPlan(prev, parsed)
+		return mergeReplannedPlan(prev, parsed, "")
 	}
 	return parsed
 }

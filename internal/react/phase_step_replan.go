@@ -200,11 +200,30 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		"event": "phase_enter",
 	})
 
-	current := snapshot.CurrentStep()
-	if current == nil || strings.TrimSpace(current.ID) == "" {
-		return fmt.Errorf("step_replan phase missing current step")
+	// per-topic 局部 review：以该 topic 最新 step 为锚（解耦 CurrentStep）；无法定位则退化为全局。
+	reviewTopic := strings.TrimSpace(a.reviewTopicID)
+	var stepID string
+	if reviewTopic != "" {
+		stepID = latestStepIDOfTopic(snapshot.Plan, reviewTopic)
+		if stepID == "" {
+			reviewTopic = ""
+			a.reviewTopicID = ""
+		}
 	}
-	stepID := strings.TrimSpace(current.ID)
+	if stepID == "" {
+		current := snapshot.CurrentStep()
+		if current == nil || strings.TrimSpace(current.ID) == "" {
+			return fmt.Errorf("step_replan phase missing current step")
+		}
+		stepID = strings.TrimSpace(current.ID)
+	}
+	// review 边界：局部 review 用 per-topic 边界并**提前推进**（含 bypass 早退路径），防止
+	// nextReviewableTopic 对同一静默点无限重选；全局用单边界、在 LLM 路径尾部推进（见下方）。
+	priorBoundaryStepID := a.lastReplanBoundaryStepID
+	if reviewTopic != "" {
+		priorBoundaryStepID = a.topicReviewBoundary(reviewTopic)
+		a.setTopicReviewBoundary(reviewTopic, stepID)
+	}
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 	if rawOutcome == nil {
@@ -265,11 +284,13 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 	// 构造复核窗口：以上一次 LLM replan 边界为左侧开区间，含本回合 current 在内的所有
 	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
 	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
-	priorBoundaryStepID := a.lastReplanBoundaryStepID
-	// Inc2：接线前用全局边界 + 空 topicFilter（收全部 topic），行为不变；Inc3/Inc4 改 per-topic。
-	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, "", a.workspaceRuntime)
-	// 窗口构造完毕后把边界推进到本回合 stepID，供下一次升级使用。
-	a.lastReplanBoundaryStepID = stepID
+	// priorBoundaryStepID 已在入口解析（局部=per-topic 边界并已提前推进，全局=单边界）。
+	// 局部 review 用 reviewTopic 过滤只收该 topic 的 step 卡；全局 reviewTopic="" 收全部。
+	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, reviewTopic, a.workspaceRuntime)
+	// 全局边界在此推进（局部已在入口提前推进，防 bypass 无限重选）。
+	if reviewTopic == "" {
+		a.lastReplanBoundaryStepID = stepID
+	}
 
 	// Scheme A: 命中 gate 触发条件时（或开关关闭时）走完整 StepReplan LLM loop。
 	//
@@ -312,7 +333,12 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 
 	skillsCtx := a.buildSkillsPromptContext(ctx, snapshot)
 
+	// per-topic 局部 review：active 收窄为 {reviewTopic}（视角 A+C 只判该 topic）；全局/reducer
+	// 用全部 active（reviewTopic="" 时视角 B 全半径不受影响，active=∅ 兜底走 reducer 态）。
 	activePhases := builtin_tools.ActivePhases(snapshot.Phases)
+	if reviewTopic != "" {
+		activePhases = scopeActivePhasesToTopic(activePhases, reviewTopic)
+	}
 	submitTool := newSubmitReplanTool(activePhases, snapshot.Plan)
 	if err := a.registerTool(submitTool); err != nil {
 		return fmt.Errorf("register submit_replan tool: %w", err)
@@ -440,6 +466,9 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 		DepthGaps:        builtin_tools.NewAxisItems(depth),
 		NewSurfaces:      builtin_tools.NewAxisItems(surfaces),
 		ReplacePending:   true,
+		// per-topic 局部 review：把 ReplacePending 收窄到该 topic（只替换它的 pending，不 clobber 他 topic）。
+		// 全局 reducer（reviewTopicID=""）时为空 = 现有整盘替换语义。
+		ReplaceTopicID:   strings.TrimSpace(a.reviewTopicID),
 		PhaseAssessments: builtin_tools.ClonePhaseAssessments(decision.PhaseAssessments),
 	}
 	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
