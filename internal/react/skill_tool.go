@@ -136,14 +136,12 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 	}
 	childName := fmt.Sprintf("skill-%s-%s", info.Name, childAgentToken(callID))
 
+	// 无 per-fork 迭代上限（U2：单循环由 parent ctx 兜底）。
 	childDef := AgentDefinition{
 		Name:        childName,
 		Instruction: body,
 		ToolNames:   t.resolveToolNames(info.AllowedTools),
 		IsSubAgent:  true,
-		Policies: AgentPolicies{
-			MaxIterations: defaultSubAgentMaxIter,
-		},
 	}
 
 	if len(info.MCP) > 0 && t.factory != nil && t.factory.mcpManager != nil {
@@ -172,17 +170,18 @@ func (t *SkillTool) executeFork(ctx context.Context, info *SkillInfo, rawArgs st
 		return "", fmt.Errorf("build skill fork agent: %w", err)
 	}
 
-	result, err := childAgent.Execute(ctx, body,
+	// 统一到单循环内核（与 sub_agent 同机制，退休旧 Execute 完整流水线）：
+	// skill body 走 RunSubAgentLoop 的 task 参数进 user 消息——instruction 任务级分层落地后
+	// sub_agent 相位不渲染 Instruction，body 必须经 task 通道，否则丢失。
+	result, _, err := childAgent.RunSubAgentLoop(ctx, body, "", resolveSubAgentType(subAgentTypeGeneralPurpose),
 		WithWorkspaceRuntime(childRuntime),
 		WithSourceWorkingDir(t.parentAgent.sourceWorkingDir),
-		WithResultSource(ResultSourceLatestStepResult),
-		WithSkipIntentPrelude(),
 	)
 	if err != nil {
 		return "", fmt.Errorf("skill fork execution: %w", err)
 	}
 
-	return formatSubAgentResult(childName, childRootDir, result), nil
+	return buildSubAgentEnvelope(childName, childRootDir, result), nil
 }
 
 func (t *SkillTool) resolveToolNames(allowedTools []string) []string {
