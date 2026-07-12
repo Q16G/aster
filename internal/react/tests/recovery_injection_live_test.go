@@ -100,12 +100,13 @@ func TestRecoveryInjection_PlannerLive(t *testing.T) {
 	}
 
 	planner := NewDefaultTaskPlanner(client)
-	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{Input: planInput})
+	parts, err := planner.BuildPrompt(TaskPlannerPromptInput{
+		AgentProfile: AgentProfile{AgentInstruction: agentInstruction},
+		Input:        planInput,
+	})
 	if err != nil {
 		t.Fatalf("BuildPrompt failed: %v", err)
 	}
-	// 身份指令在生产路径经身份/env 块（system block2）注入，这里手工模拟。
-	parts.SystemAgent = "<AGENT_INSTRUCTION>\n" + agentInstruction + "\n</AGENT_INSTRUCTION>"
 	prompt := parts.Joined()
 
 	os.WriteFile("/tmp/recovery_planner_prompt.txt", []byte(prompt), 0o644)

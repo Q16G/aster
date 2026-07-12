@@ -140,7 +140,7 @@ func (a *Agent) BuildSubAgentPrompt(ctx context.Context, task, taskContext strin
 	}
 
 	return PromptParts{
-		SystemRules: firstNonEmpty(strings.TrimSpace(a.cfg.Instruction), "你是受托单任务执行的子 Agent，只解决被委派的这一件事，达成即调用提交结论的工具收尾。"),
+		SystemRules: "你是受托单任务执行的子 Agent，只解决被委派的这一件事，达成即调用提交结论的工具收尾。",
 		SystemAgent: a.identityEnvBlock(),
 		User:        strings.TrimSpace(task),
 	}

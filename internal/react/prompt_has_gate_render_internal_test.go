@@ -87,3 +87,76 @@ func TestTaskPlannerPrompt_CapabilityHasGates(t *testing.T) {
 		t.Error("空工具不应渲染工具段")
 	}
 }
+
+// TestAgentInstruction_PhaseGates 锁死 instruction 的任务级/执行级分层渲染契约：
+// 任务级 phase（planner/step_replan/final_answer/intent_classification）非空时渲染
+// Instruction 段、空时缺席；执行级 phase（think_act/sub_agent）任何时候不渲染；
+// block2（agent_identity_env）为纯 env 块，不再含 AGENT_INSTRUCTION。
+func TestAgentInstruction_PhaseGates(t *testing.T) {
+	manager, err := newDefaultPromptManager()
+	if err != nil {
+		t.Fatalf("newDefaultPromptManager: %v", err)
+	}
+	const sentinel = "SENTINEL_INSTRUCTION_输出简洁的分析结论"
+	profile := AgentProfile{AgentRole: "审计专家", AgentInstruction: sentinel}
+
+	taskLevel := map[string]func(AgentProfile) (PromptParts, error){
+		"planner": func(p AgentProfile) (PromptParts, error) {
+			return manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{AgentProfile: p, Input: "任务"})
+		},
+		"step_replan": func(p AgentProfile) (PromptParts, error) {
+			return manager.BuildStepReplanPrompt(StepReplanPromptInput{AgentProfile: p})
+		},
+		"final_answer": func(p AgentProfile) (PromptParts, error) {
+			return manager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{AgentProfile: p})
+		},
+		"intent_classification": func(p AgentProfile) (PromptParts, error) {
+			return manager.BuildIntentClassificationPrompt(IntentClassificationPromptInput{AgentProfile: p, LatestInput: "输入"})
+		},
+	}
+	for name, build := range taskLevel {
+		full, err := build(profile)
+		if err != nil {
+			t.Fatalf("%s build full: %v", name, err)
+		}
+		if !strings.Contains(full.SystemRules, "Instruction\n"+sentinel) {
+			t.Errorf("%s 非空 instruction 应在 system 渲染 Instruction 段", name)
+		}
+		empty, err := build(AgentProfile{AgentRole: "审计专家"})
+		if err != nil {
+			t.Fatalf("%s build empty: %v", name, err)
+		}
+		if strings.Contains(empty.SystemRules, "Instruction") {
+			t.Errorf("%s 空 instruction 不应渲染 Instruction 段", name)
+		}
+	}
+
+	execLevel := map[string]func() (PromptParts, error){
+		"think_act": func() (PromptParts, error) {
+			return manager.BuildThinkActPrompt(ThinkActPromptInput{AgentProfile: profile})
+		},
+		"sub_agent": func() (PromptParts, error) {
+			return manager.BuildSubAgentPrompt(SubAgentPromptInput{AgentProfile: profile, Task: "委派任务"})
+		},
+	}
+	for name, build := range execLevel {
+		parts, err := build()
+		if err != nil {
+			t.Fatalf("%s build: %v", name, err)
+		}
+		if strings.Contains(parts.SystemRules, sentinel) {
+			t.Errorf("%s 为执行级 phase，不应渲染 instruction", name)
+		}
+	}
+
+	env, err := manager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
+		WorkspaceRootDir:   "/tmp/ws",
+		WorkspaceSharedDir: "/tmp/ws/shared",
+	})
+	if err != nil {
+		t.Fatalf("identity env build: %v", err)
+	}
+	if strings.Contains(env, "AGENT_INSTRUCTION") {
+		t.Error("block2 应为纯 env 块，不应再含 AGENT_INSTRUCTION")
+	}
+}
