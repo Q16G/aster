@@ -132,7 +132,7 @@ func (a *Agent) BuildSubAgentPrompt(ctx context.Context, task, taskContext strin
 		RunFlags:        RunFlags{SupportsVision: supportsVision},
 		TypeExtra:       strings.TrimSpace(spec.SystemPromptExtra),
 		Task:            strings.TrimSpace(task),
-		Context:         strings.TrimSpace(taskContext),
+		Context:         a.boundedSubAgentContext(taskContext),
 	})
 	if err == nil {
 		parts.SystemAgent = a.identityEnvBlock()
@@ -144,6 +144,23 @@ func (a *Agent) BuildSubAgentPrompt(ctx context.Context, task, taskContext strin
 		SystemAgent: a.identityEnvBlock(),
 		User:        strings.TrimSpace(task),
 	}
+}
+
+// boundedSubAgentContext 对随附上下文（父传的委派 / 交接 context）加 preview 上限，避免大
+// handoff context 逐字撑爆子 Agent 首条 user 消息。复用上下文治理机制（copy→pointer 无损）：
+// 超单字段 preview 上限时先把全量 spill 到子 workspace shared/prompt_context/handoff_context.md，
+// 再截断 + 指针，子 Agent 按 read_file 回读全量；未超限原样内联；空则空（HAS_CONTEXT gate 关段）。
+func (a *Agent) boundedSubAgentContext(taskContext string) string {
+	taskContext = strings.TrimSpace(taskContext)
+	if taskContext == "" {
+		return ""
+	}
+	limit := promptPreviewTokens(a.usableInputTokens)
+	absPath := ""
+	if countTokens(taskContext) > limit {
+		absPath = a.spillPromptContextField("handoff_context", taskContext)
+	}
+	return previewForPrompt(taskContext, absPath, limit)
 }
 
 // buildSubAgentFunctionTools 是 phase-less 的工具装配：遍历子 a.tools 全量构造

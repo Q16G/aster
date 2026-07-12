@@ -135,6 +135,39 @@ func TestBuildSubAgentPromptRender(t *testing.T) {
 	assertNoEmojiSubAgent(t, "user", parts.User)
 }
 
+// TestBoundedSubAgentContext 锁 S1：大 handoff context 被 preview 截断 + 落盘指针；小 context 原样内联；空则空。
+func TestBoundedSubAgentContext(t *testing.T) {
+	rt, err := newLocalWorkspaceRuntime("", t.TempDir(), "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	agent := newSubAgentLoopTestAgent(t, &scriptedSubAgentClient{})
+	agent.workspaceRuntime = rt
+	agent.workspaceRootDir = rt.RootDir()
+	agent.usableInputTokens = 1000 // limit = 2% = 20 tokens
+
+	// 空 → 空。
+	if got := agent.boundedSubAgentContext("  "); got != "" {
+		t.Fatalf("empty context should stay empty, got %q", got)
+	}
+
+	// 小（远小于 20 tokens）→ 原样内联，无指针。
+	small := "委派上下文：仓库在 /repo"
+	if got := agent.boundedSubAgentContext(small); got != small {
+		t.Fatalf("small context should inline verbatim, got %q", got)
+	}
+
+	// 大 → 截断 + 落盘指针。
+	big := strings.Repeat("这是一段很长的交接上下文内容。", 500)
+	got := agent.boundedSubAgentContext(big)
+	if len([]rune(got)) >= len([]rune(big)) {
+		t.Fatalf("large context must be truncated, got %d runes", len([]rune(got)))
+	}
+	if !strings.Contains(got, "handoff_context.md") || !strings.Contains(got, "read_file") {
+		t.Fatalf("truncated context must carry spill-file pointer + read_file hint, got:\n%s", got)
+	}
+}
+
 func assertNoEmojiSubAgent(t *testing.T, label, s string) {
 	t.Helper()
 	for _, r := range s {
