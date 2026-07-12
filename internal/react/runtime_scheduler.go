@@ -280,6 +280,14 @@ func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin
 		if builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics) != "" {
 			return builtin_tools.AgentPhaseStep
 		}
+		// 主路径 current step 仍 in_progress（runInlineStep 每轮只跑一次 think_act，未完成则
+		// will_continue，需调度器重入 Step 跑下一轮）→ 继续 Step，不提前进全局 reducer；否则
+		// step_replan 会因该 step 尚无 outcome 报错降级。镜像 currentPhase 的 AllPlanStepsTerminal 守卫，
+		// 但只认主路径 CurrentStep：X2 下 peer 的 in_progress 由全局 reducer 的 await 屏障（本函数调用点
+		// 后 runtime_scheduler L87）兜底，故此处不误伤 peer-await 路径。
+		if cur := snapshot.CurrentStep(); cur != nil && cur.Status == builtin_tools.PlanStepInProgress {
+			return builtin_tools.AgentPhaseStep
+		}
 		if builtin_tools.AllTopicsSettled(snapshot.Topics) {
 			return builtin_tools.AgentPhaseFinalAnswer
 		}
