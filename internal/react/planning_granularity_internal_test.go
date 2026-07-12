@@ -27,46 +27,28 @@ func TestPlanningSystemPromptContainsGranularityClauses(t *testing.T) {
 	rendered := parts.SystemRules
 
 	required := []string{
-		// N0: 机械对账硬约束（最强杠杆）——事实板 N 条 → plan 文案逐条字面引用
-		// 现已收窄到本回合 active phase 范围，断言更新为新措辞。
-		"FACTS-to-step 对账（硬约束）",
-		"只对账本回合 active phase 语义范围内的事实条目",
-		"必须在至少一条 `plan[].step` 字面引用其稳定标识",
-		"逐项事实覆盖",
-		"active phase 范围内列出 N 项必须 N 项各自被 step 字面引用",
-		// N1: 拆分维度收紧到 Atomic Step Contract
-		"Atomic Step Contract（硬约束）",
-		"object × action × acceptance",
-		"一个可点名的执行对象",
-		"唯一动作维度",
-		"一个可独立验收的产出或结论",
-		"Decomposition Algorithm（硬约束）",
-		"只允许合并完全相同 object、action、acceptance 的重复项",
-		// N2: 同手段子任务集 收缩为规划层不预合并
-		"规划层不预合并同手段子任务集",
-		"plan 不预合并",
-		// N3: 清单是数据流，不允许作为批量执行对象
-		"Inventory/Dataflow Rule（硬约束）",
-		"清单是数据流，不是批处理许可",
-		"生成清单可以是一个 atomic step",
-		"消费清单时必须把清单内对象展开为多个 atomic work items",
-		"展开后的 atomic work items 进入账本完整超集",
-		"当前 plan 只释放本回合 active phase（frontier）范围内的 step",
-		// Phase shape: phase 必须是单一主导切面，不得是矩阵或 skill checklist
-		"主导切面约束",
-		"组件×多维度矩阵",
-		"skill checklist",
-		// N4: 未观测面示例改为单动作
-		"按观测对象逐条编排",
-		"每条 step 单一观测动作产出单一清单文件",
-		// P2a: 探索递进三条硬约束（session 8a247641 复盘补救）
-		"同维度未完成探索禁止跨维度推断",
-		"探索阻塞必补观测",
-		"新发现面必拆 step",
-		// P2a 正反例骨架（确保示例没被删）
-		"以偏概全",
-		"阻塞补观测",
-		"按发现拆",
+		// N0: 逐项事实对账（事实板 N 条 → plan 文案逐条字面引用）——重构后概念措辞
+		"逐项对账",
+		"都须在某条 step 字面引用",
+		// N1: 原子拆分 = 一对象一动作一验收
+		"一条 step 只做一个对象、一个动作、一个可独立验收的产出",
+		"先列对象、再列每个对象要做的动作，逐一成 step",
+		"只合并对象、动作、产出完全相同的重复项",
+		// N1b: step 命令式 + 三层可判定验收（借鉴 yaklang）
+		"命令式动词开头",
+		"如何验证",
+		"何时完成",
+		// N3: 清单是数据流
+		"清单是数据流",
+		"消费清单时须把清单内对象逐项展开成 step",
+		// 主题形状：单一主导切面，不得是矩阵
+		"单一主导切面",
+		"对象×多维度矩阵",
+		// P2a 探索递进（session 8a247641 复盘补救，回补概念句）
+		"未观测对象或维度不得由已观测的外推",
+		"某维度只部分覆盖时禁止据已观测部分推断未观测部分",
+		"新暴露的对象/维度必须新增独立观测 step",
+		"编排补观测 step 换路径重试",
 	}
 	for _, needle := range required {
 		if !strings.Contains(rendered, needle) {
@@ -115,23 +97,14 @@ func TestStepReplanPromptCardCoarseGranularityCheck(t *testing.T) {
 	rendered := parts.SystemRules
 
 	required := []string{
-		// 顶层承接句：verified 不豁免 atomic 越界，按本卡维度①缺口计
-		"Atomic Contract Audit",
-		"object × action × acceptance",
-		"自标 `verified` 不豁免",
-		"拆为 atomic work items: (object, action, acceptance)",
-		"清单文件只作为数据来源审计",
-		"与维度③ §清单产出按数据流审计 同口径",
-		"实际执行矩阵",
-		"同 object/action 内部的同口径证据",
-		// P1: pending 项实际已闭环裁定（解决断点 B 冗余规划塌缩）
-		"pending 项实际已闭环裁定",
-		"语义重叠 ≥80% 关键词覆盖",
-		// P2b: 维度① 视角 A 加探索断点承接判据
-		"以偏概全识别",
-		"探索阻塞未补",
-		"跨对象推断措辞",
-		"阻塞被静默丢弃",
+		// 证据地面 + 塌缩审计（session 65448d5d/6e50312b 复盘补救，回补概念句）：
+		// 自标已完成不豁免核验；一步覆盖多对象/动作/验收 → 按缺失登记拆回逐项核验
+		"证据地面",
+		"自标已完成不豁免核验",
+		"覆盖了多个对象/动作/验收",
+		"按缺失登记、拆回逐项核验",
+		// pending 项实际已闭环裁定（就地归档，解决冗余待办）
+		"已被证据实证闭环的待跑步骤就地裁定归档",
 	}
 	for _, needle := range required {
 		if !strings.Contains(rendered, needle) {
@@ -153,16 +126,15 @@ func TestThinkActPromptContainsAtomicExecutionBoundary(t *testing.T) {
 	rendered := parts.SystemRules
 
 	required := []string{
-		"Atomic Execution Boundary（硬约束）",
-		"object × action × acceptance",
-		"当前 step 已由规划阶段拆分",
-		"执行器不重新规划、不拆分、不因粒度问题拒绝 step",
-		"不扩展本 step 的执行范围",
-		"Inventory/Dataflow Use",
-		"Atomic 子 Agent 辅助",
-		"子 Agent 与并发分片只能辅助当前三元组内部取证",
-		"否则不得派发",
-		"所有分片归并后只产生当前 step 的单一验收产出",
+		// 双重范围边界（当前 step ∩ 注入角色与指令职责半径）+ 越界分流
+		"双重范围边界",
+		"当前 step 的对象×动作×验收",
+		"注入的角色与指令界定的职责半径",
+		"不改 plan、不判任务整体完成、不出最终答案",
+		"越界线索分流",
+		// 子 Agent 辅助边界
+		"子 Agent 与并发分片只能辅助当前对象×动作×验收内部取证",
+		"只产出当前 step 的单一验收物",
 	}
 	for _, needle := range required {
 		if !strings.Contains(rendered, needle) {
@@ -213,22 +185,14 @@ func TestBuildSubmitPlanFunctionTool_StepDescriptionUsesAtomicContract(t *testin
 //   - negative：planner 不再原样回填、step_replan 不再产出 next_phase 选择优先级 / 决策真值表 / Phase Shape Audit / 双视角 / 阶段内待跑深度
 func TestCorePromptPhaseChainContracts(t *testing.T) {
 	planningRequired := []string{
-		"最小从浅到深单元",
-		"初始 frontier 起手",
-		"同类范围识别",
-		"递进 lane 独立成 lane",
-		"lane / step 边界",
-		"lane 依赖形态",
-		"phase 动态增/改/删",
-		"lane 承接 + 自决收束",
-		"同类范围只来自事实板",
-		"Skill 索引参与深度层暗示",
-		"主导切面约束",
-		"组件×多维度矩阵",
-		"skill checklist",
-		"深度优先纪律",
-		"lane 依赖表达",
-		"默认并发释放",
+		"单一主导切面",
+		"对象×多维度矩阵",
+		"主题动态增改删",
+		"据复核自决",
+		"真依赖才连边",
+		"深度优先仅两义",
+		"就绪面并发释放",
+		"不预铺未观测面",
 	}
 	for _, needle := range planningRequired {
 		if !strings.Contains(planningSystemPrompt, needle) {
@@ -261,15 +225,14 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 	}
 
 	stepReplanRequired := []string{
-		"三视角",
-		"视角 B",
-		"视角 C",
-		"in-phase 保底",
+		"三个范围锚",
+		"证据地面",
+		"主题焦点",
+		"全职责半径",
+		"缺口的归宿",
 		"无可测未测",
 		"无可深未深",
-		"视角 A 新对象登账本",
-		"skill 仅作为职责维度候选的弹性参考",
-		"topic_assessments 提交契约",
+		"自标已完成不豁免核验",
 	}
 	for _, needle := range stepReplanRequired {
 		if !strings.Contains(stepReplanSystemPrompt, needle) {
