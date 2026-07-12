@@ -2075,6 +2075,12 @@ func (w *realFileWorkspaceRuntime) LoadWorkspaceState() (*builtin_tools.Workspac
 func (w *realFileWorkspaceRuntime) SaveWorkspaceState(_ *builtin_tools.WorkspaceState) error {
 	return nil
 }
+func (w *realFileWorkspaceRuntime) MutateWorkspaceState(mutate func(*builtin_tools.WorkspaceState) error) error {
+	if mutate == nil {
+		return nil
+	}
+	return mutate(&builtin_tools.WorkspaceState{})
+}
 func (w *realFileWorkspaceRuntime) LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {
 	return nil, nil
 }

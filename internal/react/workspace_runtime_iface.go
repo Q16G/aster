@@ -31,6 +31,9 @@ type WorkspaceRuntime interface {
 
 	LoadWorkspaceState() (*builtin_tools.WorkspaceState, error)
 	SaveWorkspaceState(state *builtin_tools.WorkspaceState) error
+	// MutateWorkspaceState 持内部 stateMu 串行执行 Load→mutate→Save，是 state.json 全部写者的
+	// 唯一 RMW 入口（消除多 goroutine 跨区丢更新）。mutate 内不得再触发 state RMW（非可重入）。
+	MutateWorkspaceState(mutate func(*builtin_tools.WorkspaceState) error) error
 
 	LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error)
 	AppendWorkspaceReferences(refs []*builtin_tools.WorkspaceReferenceRecord) error

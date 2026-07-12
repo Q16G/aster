@@ -290,7 +290,9 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 					Error:   fmt.Sprintf("sub agent panicked: %v", r),
 				}
 			}
-			t.finalizeChildAgent(setup.runtime, setup.childName, setup.childRootDir, result)
+			// D1 单写者：child goroutine 不再直写 workspace state（消除并发 finalize 的
+			// RMW 竞态）。ChildAgents 终态写移到 drain（scheduler 单写者），由 Complete 携带
+			// result 经通知落盘。此处只 Complete + 关卡片。
 			registry.Complete(setup.childName, result)
 			// Close the panel card the instant the child settles, independent of
 			// when the parent scheduler next drains. Coupling this to drain leaves
@@ -344,16 +346,17 @@ func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeIn
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
 		return
 	}
-	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || parentState == nil {
-		return
-	}
-	parentState.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
-		Status:          "running",
-		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
-		ArtifactRootDir: childRootDir,
-	}
-	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+	// 走 MutateWorkspaceState 持锁 RMW：preRegister 可在 inline peer goroutine 发生，
+	// 与 drain（scheduler）终态写、skill 写并发——统一锁串行化消除跨区丢更新。
+	err := t.parentAgent.workspaceRuntime.MutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.ChildAgents[childName] = &builtin_tools.WorkspaceChildAgentPointer{
+			Status:          "running",
+			ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
+			ArtifactRootDir: childRootDir,
+		}
+		return nil
+	})
+	if err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "pre_register_child_agent_save_failed",
 			"child": childName,
@@ -362,31 +365,31 @@ func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeIn
 	}
 }
 
+// finalizeChildAgent 只由 sync 路径调用把 ChildAgents 指针翻终态（async 路径的终态写移到
+// drain 单写者，见 async_agent_drain.go writeChildAgentTerminalState）。走 MutateWorkspaceState
+// 持锁 RMW——sync 子 Agent 可在 inline peer goroutine 执行，与其它写者并发。
 func (t *SubAgentTool) finalizeChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string, result *builtin_tools.RunResult) {
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
-		return
-	}
-	// 不再机械回流子 agent 共享区到父级账本：父 AI 在 think_act「子 Agent 委派 → 产出归并」
-	// 原则约束下，按主 Agent 视角主动消费子工作区并归类写入父级两区/事实板/归档。
-	// 这里仅更新 ChildAgents 指针，AI 通过事实板汇总表的读取路径下钻。
-	parentState, err := t.parentAgent.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || parentState == nil {
 		return
 	}
 	status := "completed"
 	if result == nil || !result.Success {
 		status = "failed"
 	}
-	ptr := &builtin_tools.WorkspaceChildAgentPointer{
-		Status:          status,
-		ParentStepKey:   strings.TrimSpace(runtime.CurrentStepID),
-		ArtifactRootDir: childRootDir,
-	}
-	if result != nil {
-		ptr.PlanSummary = result.PlanSummary
-	}
-	parentState.ChildAgents[childName] = ptr
-	if err := t.parentAgent.workspaceRuntime.SaveWorkspaceState(parentState); err != nil {
+	err := t.parentAgent.workspaceRuntime.MutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		ptr := state.ChildAgents[childName]
+		if ptr == nil {
+			ptr = &builtin_tools.WorkspaceChildAgentPointer{ParentStepKey: strings.TrimSpace(runtime.CurrentStepID)}
+		}
+		ptr.Status = status
+		ptr.ArtifactRootDir = childRootDir
+		if result != nil {
+			ptr.PlanSummary = result.PlanSummary
+		}
+		state.ChildAgents[childName] = ptr
+		return nil
+	})
+	if err != nil {
 		runtimelog.LogJSON("warning", map[string]any{
 			"event": "finalize_child_agent_save_failed",
 			"child": childName,

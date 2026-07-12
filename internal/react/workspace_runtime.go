@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"aster/internal/builtin_tools"
 	"aster/internal/workspacefs"
@@ -29,6 +30,12 @@ type localWorkspaceRuntime struct {
 	namespace string
 	layout    workspacefs.Layout
 	store     workspacefs.Store
+	// stateMu 串行化 state.json 的 read-modify-write 序列（MutateWorkspaceState）。
+	// state.json 是单文件多区（ChildAgents / ActiveSkillNames / LatestStepOutcomes...），
+	// 多 goroutine（scheduler drain、inline peer 的 skill/子 Agent 写、bootstrap）各自
+	// 「读全量→改一区→写全量」交错会跨区丢更新（WriteAtomic 只防半截读、不防丢更新）。
+	// 全部写者统一走 MutateWorkspaceState 持此锁，消除 RMW 竞态（runtime mutex 兜底）。
+	stateMu sync.Mutex
 }
 
 var _ WorkspaceRuntime = (*localWorkspaceRuntime)(nil)
@@ -191,6 +198,29 @@ func (w *localWorkspaceRuntime) SaveWorkspaceState(state *builtin_tools.Workspac
 	}
 	data = append(data, '\n')
 	return w.store.WriteAtomic(w.layout.StateJSONRel(), data)
+}
+
+// MutateWorkspaceState 持 stateMu 串行执行「Load → mutate → Save」，是 state.json 全部
+// 写者的唯一 RMW 入口（消除跨区丢更新的竞态）。mutate 内**不得**再调 MutateWorkspaceState
+// 或其它持 stateMu 的路径（非可重入）。读者（纯 LoadWorkspaceState）无需持锁——WriteAtomic
+// 保证读到的是完整快照。
+func (w *localWorkspaceRuntime) MutateWorkspaceState(mutate func(*builtin_tools.WorkspaceState) error) error {
+	if w == nil {
+		return fmt.Errorf("workspace runtime is nil")
+	}
+	if mutate == nil {
+		return nil
+	}
+	w.stateMu.Lock()
+	defer w.stateMu.Unlock()
+	state, err := w.LoadWorkspaceState()
+	if err != nil {
+		return err
+	}
+	if err := mutate(state); err != nil {
+		return err
+	}
+	return w.SaveWorkspaceState(state)
 }
 
 func (w *localWorkspaceRuntime) LoadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {

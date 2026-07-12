@@ -1021,15 +1021,13 @@ func (a *Agent) persistBootstrapWorkspaceState(snapshot builtin_tools.StateSnaps
 	if a == nil || a.workspaceRuntime == nil {
 		return nil
 	}
-	state, err := a.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || state == nil {
-		return err
-	}
-	state.SessionID = firstNonEmpty(strings.TrimSpace(state.SessionID), strings.TrimSpace(a.workspaceSessionID))
-	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
-	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
-	state.UpdatedAt = time.Now()
-	return a.workspaceRuntime.SaveWorkspaceState(state)
+	return a.workspaceRuntime.MutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.SessionID = firstNonEmpty(strings.TrimSpace(state.SessionID), strings.TrimSpace(a.workspaceSessionID))
+		state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
+		state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
+		state.UpdatedAt = time.Now()
+		return nil
+	})
 }
 
 func equalStringSets(aVals, bVals []string) bool {
