@@ -90,12 +90,8 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 		}
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
 	case 3:
-		// step-1 replan: always return a valid replan decision JSON.
-		// (StepReplan now always runs the LLM loop; see phase_step_replan.go.)
-		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`)
-		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
-	case 4:
-		// step-2: ensure no tool transcript from step-1 leaks into the model input.
+		// step-2（frontier-barrier 直接滚动到 step-2，不逐步 replan）：
+		// 校验 step-1 的 tool transcript 不泄漏进 step-2 的模型输入。
 		for _, m := range infos {
 			if m == nil {
 				continue
@@ -118,11 +114,11 @@ func (c *stepHistoryIsolationClient) ChatEx(ctx context.Context, infos []*ai.Msg
 			}),
 		}
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
-	case 5:
-		// step-2 replan: return a valid replan decision JSON.
+	case 4:
+		// step_replan（frontier 枯竭后一次复核）：返回合法 replan decision JSON。
 		msg := ai.NewAIMsgInfo(`{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`)
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
-	case 6:
+	case 5:
 		// final_answer: plain text fallback is sufficient for this isolation test.
 		msg := ai.NewAIMsgInfo("done")
 		return []*ai.ChatChoices{{Message: msg, FinishReason: "stop"}}, nil
@@ -142,7 +138,6 @@ func (c *stepHistoryIsolationClient) ChatText(ctx context.Context, text string, 
 }
 
 func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	client := &stepHistoryIsolationClient{t: t}
 	agent, err := NewReActAgent(
 		"isolation-agent",
@@ -172,8 +167,8 @@ func TestStepHistoryIsolation_DoesNotLeakToolTranscriptAcrossSteps(t *testing.T)
 	if runResult == nil || !runResult.Success || strings.TrimSpace(runResult.Result) != "done" {
 		t.Fatalf("unexpected run result: %#v", runResult)
 	}
-	if client.chatExCall != 6 {
-		t.Fatalf("expected 6 model calls (step1, step1, replan1, step2, replan2, final_answer), got %d", client.chatExCall)
+	if client.chatExCall != 5 {
+		t.Fatalf("expected 5 model calls (step1, step1, step2, replan, final_answer; frontier-barrier 不逐步 replan), got %d", client.chatExCall)
 	}
 
 	// Long-term history should only contain the skeleton; no tool or tool-call messages.

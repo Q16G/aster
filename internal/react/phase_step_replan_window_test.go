@@ -180,7 +180,6 @@ func TestBuildReviewWindow_FailedIncluded(t *testing.T) {
 // TestBuildReviewWindow_PerBatchCeilingTruncation: 默认 per-batch（K<0）下，批次 > ceiling(32)
 // 时截断保最新 ceiling 张并写 OmittedCount，更早 step 由 journal 指针回读。
 func TestBuildReviewWindow_PerBatchCeilingTruncation(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")         // 纯 per-batch 模式
 	overshoot := reviewWindowMaxCardsBatchCeiling + 4 // 36 > ceiling 32
 	a := &Agent{}
 	var plan []*builtin_tools.PlanItem
@@ -215,7 +214,6 @@ func TestBuildReviewWindow_PerBatchCeilingTruncation(t *testing.T) {
 
 // TestBuildReviewWindow_PerBatchCoversWholeBatch: 默认 per-batch 下，批次 <= ceiling 时整批入窗，不截断。
 func TestBuildReviewWindow_PerBatchCoversWholeBatch(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1") // 纯 per-batch 模式
 	const batch = 12                          // <= ceiling 32
 	a := &Agent{}
 	var plan []*builtin_tools.PlanItem
@@ -436,41 +434,22 @@ func TestBuildReviewWindow_InlineCoverageNoPath(t *testing.T) {
 //   - K<0（per-batch，默认）：clamp(total, baseline=8, ceiling=32)。
 //   - K=0（per-step）：baseline。
 //   - K>0：max(K+3, baseline)。
-func TestReviewWindowMaxCards_FollowsHeartbeatK(t *testing.T) {
-	t.Run("per_batch_covers_whole_batch", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+// TestReviewWindowMaxCards_PerBatch 校验窗口上限为纯 per-batch clamp(total, baseline=8, ceiling=32)——
+// heartbeat 已退休，窗口不再随 K 变化。
+func TestReviewWindowMaxCards_PerBatch(t *testing.T) {
+	t.Run("covers_whole_batch", func(t *testing.T) {
 		if got := reviewWindowMaxCards(12); got != 12 {
 			t.Fatalf("expected 12 (whole batch), got %d", got)
 		}
 	})
-	t.Run("per_batch_clamps_up_to_baseline", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+	t.Run("clamps_up_to_baseline", func(t *testing.T) {
 		if got := reviewWindowMaxCards(3); got != reviewWindowMaxCardsBaseline {
 			t.Fatalf("expected baseline %d, got %d", reviewWindowMaxCardsBaseline, got)
 		}
 	})
-	t.Run("per_batch_clamps_down_to_ceiling", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1")
+	t.Run("clamps_down_to_ceiling", func(t *testing.T) {
 		if got := reviewWindowMaxCards(100); got != reviewWindowMaxCardsBatchCeiling {
 			t.Fatalf("expected ceiling %d, got %d", reviewWindowMaxCardsBatchCeiling, got)
-		}
-	})
-	t.Run("K=0_per_step_baseline", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0")
-		if got := reviewWindowMaxCards(50); got != reviewWindowMaxCardsBaseline {
-			t.Fatalf("expected %d, got %d", reviewWindowMaxCardsBaseline, got)
-		}
-	})
-	t.Run("K=5_use_baseline", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "5")
-		if got := reviewWindowMaxCards(50); got != reviewWindowMaxCardsBaseline {
-			t.Fatalf("expected %d, got %d", reviewWindowMaxCardsBaseline, got)
-		}
-	})
-	t.Run("K=10_follows_K_plus_3", func(t *testing.T) {
-		t.Setenv("STEP_REPLAN_HEARTBEAT_K", "10")
-		if got := reviewWindowMaxCards(50); got != 13 {
-			t.Fatalf("expected 13, got %d", got)
 		}
 	})
 }

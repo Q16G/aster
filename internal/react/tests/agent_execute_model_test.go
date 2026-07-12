@@ -1550,7 +1550,8 @@ func TestExecute_FailedCurrentStepTerminatesTask(t *testing.T) {
 }
 
 func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 本用例验证 per-step replan 序列，pin per-step
+	// frontier-barrier 流：step-1 完成后 step-2 就绪即滚动（不逐步 replan），step_replan 只在
+	// frontier 枯竭（step-2 也完成）后跑一次，再进 final_answer。
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			{
@@ -1563,10 +1564,6 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 						"result":         "step1 ok",
 					}),
 				},
-			},
-			{
-				// step-1 replan (LLM always runs now)
-				content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`,
 			},
 			{
 				// step-2
@@ -1620,17 +1617,16 @@ func TestExecute_StepReplanContinuesToNextStepWithoutFinalAnswer(t *testing.T) {
 	if strings.TrimSpace(runResult.Result) != "two-steps-done" {
 		t.Fatalf("expected final answer result, got %q", runResult.Result)
 	}
-	if client.calls != 5 {
-		t.Fatalf("expected 5 model calls (step1+replan1+step2+replan2+final), got %d", client.calls)
+	if client.calls != 4 {
+		t.Fatalf("expected 4 model calls (step1+step2+replan+final; frontier-barrier 不逐步 replan), got %d", client.calls)
 	}
 }
 
 // TestExecute_StepSummaryReplansBeforeRunningOldPendingStep 校验 step_replan 三轴决策路径：
-// step-1 完成后 step_replan 提交 should_replan=true + 三轴缺口，agent 把 ReplanContext 回流
-// 给 planner，由 planner 产出含 step-2 的新 plan（取代 legacy-step）。planner 被调用两次
-// （初始 + 回流编排）。
-func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 验证 step-1 后 mid-batch replan，pin per-step
+// frontier-barrier 流下的 replan 回流：单步 plan 跑完 step-1 后 frontier 枯竭进 step_replan，
+// step_replan 提交 should_replan=true + 三轴缺口，agent 把 ReplanContext 回流给 planner，
+// 由 planner 产出含 step-2 的新 plan。planner 被调用两次（初始 + 回流编排）。
+func TestExecute_StepReplanReflowInvokesPlannerAgain(t *testing.T) {
 	var emittedEvents []*AgentOutputEvent
 	emitter := NewEmitter("", "", func(e *AgentOutputEvent) error {
 		if e != nil {
@@ -1645,12 +1641,11 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 				Explanation:   "初始计划",
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "完成已有步骤", Status: builtin_tools.PlanStepPending},
-					{ID: "legacy-step", Step: "过时旧待办", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
 				},
 			},
 			{
 				NeedsPlanning: false,
-				Explanation:   "回流编排：替换 legacy-step 为 step-2",
+				Explanation:   "回流编排：新增 step-2 补齐验证缺口",
 				Plan: []*builtin_tools.PlanItem{
 					{ID: "step-1", Step: "完成已有步骤", Status: builtin_tools.PlanStepCompleted},
 					{ID: "step-2", Step: "围绕新缺口补齐验证", Status: builtin_tools.PlanStepPending, DependsOn: []string{"step-1"}},
@@ -1680,7 +1675,7 @@ func TestExecute_StepSummaryReplansBeforeRunningOldPendingStep(t *testing.T) {
 							map[string]any{
 								"topic_id":         builtin_tools.SyntheticTopicID,
 								"status":           "continue",
-								"incomplete_items": []any{"legacy-step 覆盖的验证面缺失"},
+								"incomplete_items": []any{"新增验证面缺失"},
 							},
 						},
 					}),
@@ -2185,10 +2180,11 @@ func TestExecute_WritesStepContextsAfterStepReplan(t *testing.T) {
 }
 
 func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "0") // 多步 per-step replan 序列，pin per-step
 	wsRoot := t.TempDir()
 	wsRuntime := &realFileWorkspaceRuntime{rootDir: wsRoot}
 
+	// frontier-barrier 流：step-1 完成后 step-2 就绪即滚动执行（不逐步 replan），
+	// step_replan 只在 frontier 枯竭（step-2 也完成）后跑一次，再进 final_answer。
 	client := &executeModelTestClient{
 		replies: []executeModelReply{
 			// step-1 completes
@@ -2203,9 +2199,7 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 					}),
 				},
 			},
-			// step-1 replan (LLM always runs now)
-			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
-			// step-2 completes
+			// step-2 completes (frontier-barrier 直接滚动到 step-2)
 			{
 				toolCalls: []*ai.FunctionTool{
 					mustBuildToolCall(t, "call-step-2-done", builtin_tools.UpdateCurrentStepToolName, map[string]any{
@@ -2218,7 +2212,7 @@ func TestExecute_WritesStepContextsForMultiStepPlan(t *testing.T) {
 					}),
 				},
 			},
-			// step-2 replan
+			// step_replan（frontier 枯竭后一次复核）
 			{content: `{"should_replan":false,"replan_reason":"","next_goal":"","incomplete_items":[],"depth_gaps":[],"new_surfaces":[],"warnings":[]}`},
 			// final_answer
 			{
@@ -2435,9 +2429,11 @@ func TestStepReplan_MultiRoundRetainsSystemPrompt(t *testing.T) {
 			len(replanSystemMsgs[0]), len(replanSystemMsgs[1]))
 	}
 
-	// Verify critical markers are present in round 2
+	// Verify critical markers are present in round 2。
+	// 注：「落盘终态」「should_replan」已在 Inc3 零泄漏重写中从 step_replan prompt 正文移除
+	// （字段名不进 prompt，归 submit_replan schema），故不再作为 needle。
 	round2 := replanSystemMsgs[1]
-	for _, marker := range []string{"CURRENT_GOAL", "REVIEW_WINDOW_CARDS", "落盘终态", "should_replan"} {
+	for _, marker := range []string{"CURRENT_GOAL", "REVIEW_WINDOW_CARDS"} {
 		if !strings.Contains(round2, marker) {
 			t.Errorf("round-2 system prompt missing marker %q", marker)
 		}
