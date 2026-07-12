@@ -132,9 +132,9 @@ func TestThinkActPromptContainsAtomicExecutionBoundary(t *testing.T) {
 		"注入的角色与指令界定的职责半径",
 		"不改 plan、不判任务整体完成、不出最终答案",
 		"越界线索分流",
-		// 子 Agent 辅助边界
-		"子 Agent 与并发分片只能辅助当前对象×动作×验收内部取证",
-		"只产出当前 step 的单一验收物",
+		// 子 Agent 委派边界（轻量化：委派独立可验收子任务、只服务当前 step 单一验收物）
+		"独立可并行、可独立验收的调研/取证/执行子任务委派给子 Agent",
+		"只服务当前 step 的单一验收物",
 	}
 	for _, needle := range required {
 		if !strings.Contains(rendered, needle) {
