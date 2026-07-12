@@ -195,6 +195,7 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"深度优先仅两义",
 		"就绪面并发释放",
 		"不预铺未观测面",
+		"探测面不臆测",
 	}
 	for _, needle := range planningRequired {
 		if !strings.Contains(planningSystemPrompt, needle) {
