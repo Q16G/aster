@@ -182,6 +182,40 @@ func (r *AsyncAgentRegistry) MarkDelivered(agentID string) {
 	}
 }
 
+// IsDelivered 报告某 agent 的完成通知是否已投递到 stepHistory。drain 的 channel 路径据此
+// 幂等去重——补扫路径可能已投递并 MarkDelivered，channel 里若还残留同一 agent 的副本则跳过，
+// 消除二次注入（B10）。
+func (r *AsyncAgentRegistry) IsDelivered(agentID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if entry, ok := r.agents[agentID]; ok {
+		return entry.delivered
+	}
+	return false
+}
+
+// UndeliveredNotifications 返回所有 closed 但尚未 delivered 的 entry 对应通知快照，供 drain
+// 补扫被 Complete() channel 满静默丢弃的完成事件（B10）。仅快照、不改 delivered——投递由 drain
+// 复用 handle*Notification（其内部 MarkDelivered）完成，与 channel 路径同一 handle。
+func (r *AsyncAgentRegistry) UndeliveredNotifications() []*AsyncAgentNotification {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []*AsyncAgentNotification
+	for _, entry := range r.agents {
+		if entry == nil || !entry.closed || entry.delivered {
+			continue
+		}
+		out = append(out, &AsyncAgentNotification{
+			AgentID:      entry.AgentID,
+			Kind:         entry.Kind,
+			Status:       entry.Status,
+			WorkspaceDir: entry.WorkspaceDir,
+			Result:       entry.Result,
+		})
+	}
+	return out
+}
+
 // HasRunning returns true if any agents are still running.
 func (r *AsyncAgentRegistry) HasRunning() bool {
 	r.mu.RLock()

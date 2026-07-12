@@ -3,9 +3,11 @@ package react
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
+	"aster/internal/runtimelog"
 )
 
 // drainAsyncAgentNotifications reads all pending completed/failed async agent notifications
@@ -29,7 +31,9 @@ func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 	for {
 		select {
 		case notif := <-a.asyncRegistry.notifications:
-			if a.asyncRegistry.Get(notif.AgentID) == nil {
+			// 幂等去重：entry 不存在（已 purge）或已被补扫投递（closed&&delivered）则跳过——
+			// 消除「补扫先投递、channel 里残留同一 agent 副本」窗口内的二次注入（B10）。
+			if a.asyncRegistry.Get(notif.AgentID) == nil || a.asyncRegistry.IsDelivered(notif.AgentID) {
 				continue
 			}
 			switch notif.Kind {
@@ -40,6 +44,16 @@ func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 			}
 
 		default:
+			// 补扫：Complete() 在 channel 满时静默丢弃的完成事件（closed && !delivered），
+			// 复用同一 handle*（内部 MarkDelivered），与 channel 路径同一投递语义、幂等不重复。
+			for _, notif := range a.asyncRegistry.UndeliveredNotifications() {
+				switch notif.Kind {
+				case AsyncAgentKindInlineStep:
+					a.handleInlineStepNotification(notif)
+				default:
+					a.handleSubAgentNotification(notif)
+				}
+			}
 			a.asyncRegistry.PurgeDelivered()
 			return
 		}
@@ -49,6 +63,11 @@ func (a *Agent) drainAsyncAgentNotifications(ctx context.Context) {
 // handleSubAgentNotification 处理 sub_agent 完成通知：原路径，注入 stepHistory。
 // 行为与面 2 之前完全一致——为分流抽出的方法，仅作组织调整。
 func (a *Agent) handleSubAgentNotification(notif *AsyncAgentNotification) {
+	// D1 单写者：async 子 Agent 的 ChildAgents 终态由 drain（scheduler 单写者）落盘，
+	// child goroutine 不再直写（消除并发 finalize 的 RMW 竞态）。走父 workspaceRuntime 的
+	// MutateWorkspaceState 持锁 RMW，与 preRegister/skill 等写者互斥。
+	a.writeChildAgentTerminalState(notif)
+
 	resultFile := writeAsyncResultFile(notif.WorkspaceDir, notif)
 
 	summary := ""
@@ -82,6 +101,47 @@ func (a *Agent) handleSubAgentNotification(notif *AsyncAgentNotification) {
 	// (sub_agent_tool.go executeAsync) the instant it settles, so drain
 	// no longer emits EventTypeSubAgentBgEnd — it only injects the
 	// completion into stepHistory for the model.
+}
+
+// writeChildAgentTerminalState 是 D1 单写者：把 async 子 Agent 的 ChildAgents 指针从
+// preRegister 写的 running 占位翻到终态（保留 ParentStepKey，更新 status/dir/plan_summary）。
+// 只在 drain（scheduler 单写者 goroutine）调用，走父 workspaceRuntime 的 MutateWorkspaceState
+// 持锁 RMW——不用 os 直连（避 check_workspace_io.sh 红），与其它 state 写者互斥。
+// 幂等：补扫可能重复触发，同一终态覆盖写无副作用。
+func (a *Agent) writeChildAgentTerminalState(notif *AsyncAgentNotification) {
+	if a == nil || a.workspaceRuntime == nil || notif == nil {
+		return
+	}
+	// inline_step 走 UpdateInlineStep 回写 PlanItem，不写 ChildAgents 指针。
+	if notif.Kind == AsyncAgentKindInlineStep {
+		return
+	}
+	status := "completed"
+	if notif.Result == nil || !notif.Result.Success {
+		status = "failed"
+	}
+	err := a.workspaceRuntime.MutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		ptr := state.ChildAgents[notif.AgentID]
+		if ptr == nil {
+			ptr = &builtin_tools.WorkspaceChildAgentPointer{}
+		}
+		ptr.Status = status
+		if strings.TrimSpace(notif.WorkspaceDir) != "" {
+			ptr.ArtifactRootDir = notif.WorkspaceDir
+		}
+		if notif.Result != nil {
+			ptr.PlanSummary = notif.Result.PlanSummary
+		}
+		state.ChildAgents[notif.AgentID] = ptr
+		return nil
+	})
+	if err != nil {
+		runtimelog.LogJSON("warning", map[string]any{
+			"event": "drain_child_terminal_save_failed",
+			"child": notif.AgentID,
+			"error": err.Error(),
+		})
+	}
 }
 
 // handleInlineStepNotification 处理 inline step 完成通知。

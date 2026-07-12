@@ -133,13 +133,12 @@ func (a *Agent) persistActiveSkillNames(names []string) {
 		return
 	}
 
-	state, err := a.workspaceRuntime.LoadWorkspaceState()
-	if err != nil || state == nil {
-		return
-	}
-
-	state.SessionID = firstNonEmpty(strings.TrimSpace(state.SessionID), strings.TrimSpace(a.workspaceSessionID))
-	state.ActiveSkillNames = builtin_tools.CloneStringSlice(normalizeSkillNames(names))
-	state.UpdatedAt = time.Now()
-	_ = a.workspaceRuntime.SaveWorkspaceState(state)
+	// 走 MutateWorkspaceState 持锁 RMW：skill 加载/卸载可在 inline peer goroutine 发生，
+	// 与 drain / 子 Agent 写并发——统一锁串行化消除跨区丢更新。
+	_ = a.workspaceRuntime.MutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.SessionID = firstNonEmpty(strings.TrimSpace(state.SessionID), strings.TrimSpace(a.workspaceSessionID))
+		state.ActiveSkillNames = builtin_tools.CloneStringSlice(normalizeSkillNames(names))
+		state.UpdatedAt = time.Now()
+		return nil
+	})
 }

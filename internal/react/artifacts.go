@@ -148,6 +148,15 @@ func (w *artifactWriter) WriteWorkspaceState(state *builtin_tools.WorkspaceState
 	return w.runtime.SaveWorkspaceState(state)
 }
 
+// mutateWorkspaceState 委派到 runtime 的单锁 RMW 入口，是 artifactWriter 侧 state.json 写者
+// 与 sub_agent/skill/bootstrap 写者共用同一把 stateMu 的通道（消除跨区丢更新）。
+func (w *artifactWriter) mutateWorkspaceState(mutate func(*builtin_tools.WorkspaceState) error) error {
+	if w == nil || w.runtime == nil {
+		return fmt.Errorf("artifact writer is nil")
+	}
+	return w.runtime.MutateWorkspaceState(mutate)
+}
+
 func (w *artifactWriter) loadWorkspaceReferences() ([]*builtin_tools.WorkspaceReferenceRecord, error) {
 	if w == nil || w.runtime == nil {
 		return nil, fmt.Errorf("artifact writer is nil")
@@ -250,13 +259,13 @@ func (w *artifactWriter) PersistPlanArtifacts(snapshot builtin_tools.StateSnapsh
 		return fmt.Errorf("artifact writer is nil")
 	}
 
-	state, err := w.LoadWorkspaceState()
+	state0, err := w.LoadWorkspaceState()
 	if err != nil {
 		return err
 	}
 	latestFinalSeq := 0
-	if state != nil && state.LatestFinalSeq > 0 {
-		latestFinalSeq = state.LatestFinalSeq
+	if state0 != nil && state0.LatestFinalSeq > 0 {
+		latestFinalSeq = state0.LatestFinalSeq
 	}
 
 	checkpoint := buildPlanCurrentCheckpoint(snapshot, sessionID, explanation, latestFinalSeq)
@@ -268,18 +277,20 @@ func (w *artifactWriter) PersistPlanArtifacts(snapshot builtin_tools.StateSnapsh
 		return err
 	}
 
-	state.SessionID = strings.TrimSpace(sessionID)
-	state.Status = snapshot.Status
-	state.CurrentPlanVersion = snapshot.PlanVersion
-	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
-	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
-	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
-	state.IntentContext = builtin_tools.CloneIntentContext(snapshot.IntentContext)
-	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
-	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
-	state.UpdatedAt = time.Now()
-	return w.WriteWorkspaceState(state)
+	return w.mutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.SessionID = strings.TrimSpace(sessionID)
+		state.Status = snapshot.Status
+		state.CurrentPlanVersion = snapshot.PlanVersion
+		state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
+		state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
+		state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
+		state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
+		state.IntentContext = builtin_tools.CloneIntentContext(snapshot.IntentContext)
+		state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
+		state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
+		state.UpdatedAt = time.Now()
+		return nil
+	})
 }
 
 // PersistRuntimeCheckpoint writes a durable "current execution" checkpoint without creating a new plan history entry.
@@ -289,31 +300,24 @@ func (w *artifactWriter) PersistRuntimeCheckpoint(snapshot builtin_tools.StateSn
 		return fmt.Errorf("artifact writer is nil")
 	}
 
-	state, err := w.LoadWorkspaceState()
-	if err != nil {
-		return err
-	}
-	if state == nil {
-		state = &builtin_tools.WorkspaceState{}
-	}
-
-	state.SessionID = strings.TrimSpace(sessionID)
-	state.Status = snapshot.Status
-	state.CurrentPlanVersion = snapshot.PlanVersion
-	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
-	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
-	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
-	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
-	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
-	state.UpdatedAt = time.Now()
-	if err := w.WriteWorkspaceState(state); err != nil {
-		return err
-	}
-
 	latestFinalSeq := 0
-	if state.LatestFinalSeq > 0 {
-		latestFinalSeq = state.LatestFinalSeq
+	if err := w.mutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.SessionID = strings.TrimSpace(sessionID)
+		state.Status = snapshot.Status
+		state.CurrentPlanVersion = snapshot.PlanVersion
+		state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
+		state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
+		state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
+		state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
+		state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
+		state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
+		state.UpdatedAt = time.Now()
+		if state.LatestFinalSeq > 0 {
+			latestFinalSeq = state.LatestFinalSeq
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	checkpoint := buildPlanCurrentCheckpoint(snapshot, sessionID, explanation, latestFinalSeq)
@@ -421,22 +425,20 @@ func (w *artifactWriter) PersistFinalArtifacts(snapshot builtin_tools.StateSnaps
 		}
 	}
 
-	state, err := w.LoadWorkspaceState()
-	if err != nil {
-		return nil, err
-	}
-	state.SessionID = strings.TrimSpace(sessionID)
-	state.Status = snapshot.Status
-	state.CurrentPlanVersion = snapshot.PlanVersion
-	state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
-	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
-	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
-	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
-	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
-	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
-	state.LatestFinalSeq = finalSeq
-	state.UpdatedAt = time.Now()
-	if err := w.WriteWorkspaceState(state); err != nil {
+	if err := w.mutateWorkspaceState(func(state *builtin_tools.WorkspaceState) error {
+		state.SessionID = strings.TrimSpace(sessionID)
+		state.Status = snapshot.Status
+		state.CurrentPlanVersion = snapshot.PlanVersion
+		state.CurrentStepKey = strings.TrimSpace(snapshot.CurrentStepID)
+		state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
+		state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
+		state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
+		state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
+		state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
+		state.LatestFinalSeq = finalSeq
+		state.UpdatedAt = time.Now()
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
