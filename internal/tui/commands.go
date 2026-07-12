@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ var slashCommands = []tuiui.CommandEntry{
 	{Name: "/new", Description: "New session"},
 	{Name: "/clear", Description: "Clear chat history"},
 	{Name: "/mode", Description: "Switch bash permission mode (yolo/manual/ai)"},
+	{Name: "/parallel", Description: "Set AI concurrency (parallel steps), e.g. /parallel 3"},
 	{Name: "/theme", Description: "Switch theme"},
 	{Name: "/sidebar", Description: "Toggle sidebar (show/hide/auto)"},
 	{Name: "/help", Description: "Show help"},
@@ -101,6 +103,8 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "/mode":
 		return m.cmdMode(parts[1:])
+	case "/parallel":
+		return m.cmdParallel(parts[1:])
 	case "/sidebar":
 		return m.cmdSidebar(parts[1:])
 	case "/theme":
@@ -126,6 +130,33 @@ func (m *Model) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "unknown command: " + parts[0]}})
 		return m, nil
 	}
+}
+
+// cmdParallel 运行时设置 AI 并发量（X2 fan-out 上限，含主路径），下一轮任务生效。
+// 无参数时显示当前值；N≥1（1=串行）。目前作用于主路径 step 并发；子 agent 并发（F-A）待接入同一预算。
+func (m *Model) cmdParallel(args []string) (tea.Model, tea.Cmd) {
+	if m.agentCtx == nil || m.agentCtx.Factory == nil {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "当前无可配置的 agent（先开始一次会话）"}})
+		return m, nil
+	}
+	factory := m.agentCtx.Factory
+	if len(args) == 0 {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("AI 并发量 = %d（含主路径）。用 /parallel N 设置，如 /parallel 3。", factory.MaxParallelSteps())}})
+		return m, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(args[0]))
+	if err != nil || n < 1 {
+		m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: "用法：/parallel N（N≥1 的整数，如 /parallel 3）"}})
+		return m, nil
+	}
+	factory.SetMaxParallelSteps(n)
+	m.statusText = fmt.Sprintf("AI 并发量 = %d", n)
+	note := ""
+	if n == 1 {
+		note = "（串行）"
+	}
+	m.chat.AddPart(DisplayPart{Type: PartTypeSystem, Time: time.Now(), System: &SystemPart{Content: fmt.Sprintf("AI 并发量已设为 %d%s（含主路径；下一轮任务生效）", n, note)}})
+	return m, nil
 }
 
 func (m *Model) cmdAgent(args []string) (tea.Model, tea.Cmd) {

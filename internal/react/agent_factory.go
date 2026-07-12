@@ -3,6 +3,7 @@ package react
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
@@ -26,7 +27,8 @@ type AgentFactory struct {
 	// maxParallelSteps X2 滚动 fan-out 上限（含主路径）。0 或 1 = 串行（默认）。
 	// 由 cmd/aster/main.go 从 AppConfig.React.MaxParallelSteps 读取并通过
 	// WithFactoryMaxParallelSteps 注入；Build 时仅在 ≥2 时附加 react.WithMaxParallelSteps Option。
-	maxParallelSteps int
+	// atomic：TUI /parallel 命令可运行时改，与每轮 Build 的读并发，原子读写防竞态。
+	maxParallelSteps atomic.Int32
 }
 
 type FactoryOption func(*AgentFactory)
@@ -98,8 +100,25 @@ func WithFactoryPromptCacheConfig(cfg *ai.PromptCacheConfig) FactoryOption {
 // 仅对非 sub_agent 根 Agent 生效（sub_agent 不持有 agentFactory，无法 fan-out）。
 func WithFactoryMaxParallelSteps(n int) FactoryOption {
 	return func(f *AgentFactory) {
-		f.maxParallelSteps = n
+		f.maxParallelSteps.Store(int32(n))
 	}
+}
+
+// SetMaxParallelSteps 运行时调整 X2 fan-out 上限（含主路径），下一轮 Build 生效。
+// 供 TUI /parallel 命令调用；原子写，与 Build 的原子读无竞态。
+func (f *AgentFactory) SetMaxParallelSteps(n int) {
+	if n < 1 {
+		n = 1
+	}
+	f.maxParallelSteps.Store(int32(n))
+}
+
+// MaxParallelSteps 返回当前 X2 fan-out 上限（0/1 视为串行，返回 1）。
+func (f *AgentFactory) MaxParallelSteps() int {
+	if n := int(f.maxParallelSteps.Load()); n >= 1 {
+		return n
+	}
+	return 1
 }
 
 // NewAgentFactory creates a factory with the given options.
@@ -144,8 +163,8 @@ func (f *AgentFactory) Build(def AgentDefinition) (*Agent, error) {
 
 	// X2 滚动 fan-out 上限：≥2 时附加；<2 保持 AgentConfig 零值 + getter 兜底返回 1。
 	// sub_agent 自身不 spawn 远程 step（agentFactory 不注入），即使配置了也无副作用。
-	if f.maxParallelSteps >= 2 {
-		opts = append(opts, WithMaxParallelSteps(f.maxParallelSteps))
+	if mp := int(f.maxParallelSteps.Load()); mp >= 2 {
+		opts = append(opts, WithMaxParallelSteps(mp))
 	}
 
 	// Policies
