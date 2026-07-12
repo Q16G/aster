@@ -997,14 +997,16 @@ func (a *Agent) absolutizeCoverageRel(rel string) string {
 	return filepath.Join(a.workspaceRootDir, rel)
 }
 
-// taskContextSkeleton 是 planner 冷启时 task_context.md 的初始骨架——仅含两节空标题
-// （`## 输入事实` / `## 执行中补充`），为 LLM 提供入板锚点。骨架本身视作零内容快照，
-// 不写入任何具体值（包括路径、技术栈、凭据等），符合 prompt_validate.md 第 6 条；
-// 完整的"提交前须成立"终态由 planner 在提交计划前补齐。
-const taskContextSkeleton = "## 输入事实\n\n## 执行中补充\n"
+// taskContextSkeleton 是 planner 冷启时 task_context.md 的初始骨架——仅含三节空标题
+// （`## 输入事实` / `## 执行中补充` / `## 历史演进`），为 LLM 提供入板锚点。骨架本身
+// 视作零内容快照，不写入任何具体值（包括路径、技术栈、凭据等），符合 prompt_validate.md
+// 第 6 条；完整的"提交前须成立"终态由 planner 在提交计划前补齐。节结构须与
+// workspace_runtime.go 的 taskContextScaffold 一致（两个 seeding 入口谁先跑谁生效）；
+// `## 历史演进` 必须是末节，保头截尾截断先吃它。
+const taskContextSkeleton = "## 输入事实\n\n## 执行中补充\n\n## 历史演进\n"
 
 // ensureTaskContextSkeleton 在顶层 planner 首次进入时确保 task_context.md 存在。
-// 文件已存在则不动；不存在则写入两节空标题骨架，避免冷启时 LLM 收到完全空白的
+// 文件已存在则不动；不存在则写入三节空标题骨架，避免冷启时 LLM 收到完全空白的
 // 事实板上下文、无现成结构可参照。任何 IO 错误仅记录 warn，不阻塞规划流程。
 func (a *Agent) ensureTaskContextSkeleton() {
 	if a == nil || a.workspaceRuntime == nil {

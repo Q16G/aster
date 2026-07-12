@@ -91,6 +91,28 @@ func TestPreviewForPromptTruncates(t *testing.T) {
 	}
 }
 
+// TestPreviewForPromptTaskContextKeepsCurrentSections 验证事实板节序契约：
+// `## 历史演进` 为末节时，保头截尾截断先吃历史区，现值区（输入事实/执行中补充）完整保留。
+func TestPreviewForPromptTaskContextKeepsCurrentSections(t *testing.T) {
+	const absPath = "/ws/shared/task_context.md"
+	current := "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: 10.0.0.1:8080\n\n## 执行中补充\n- 版本: v1.2.3\n\n"
+	history := "## 历史演进\n" + strings.Repeat("- 旧值: 已被取代的历史事实条目。\n", 500)
+	limit := countTokens(current) + 50
+	got := previewForPrompt(current+history, absPath, limit)
+
+	if !isTruncatedForPrompt(got) {
+		t.Fatalf("历史区超限应命中截断判定")
+	}
+	for _, want := range []string{"## 输入事实", "- 目标: 10.0.0.1:8080", "## 执行中补充", "- 版本: v1.2.3"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("现值区内容 %q 应完整保留，got:\n%s", want, got)
+		}
+	}
+	if i := strings.Index(got, "## 历史演进"); i >= 0 && i < strings.Index(got, "## 执行中补充") {
+		t.Errorf("历史演进必须位于现值区之后，got:\n%s", got)
+	}
+}
+
 func TestPointerOnlyForPrompt(t *testing.T) {
 	const absPath = "/ws/shared/task_context.md"
 	got := pointerOnlyForPrompt(absPath)

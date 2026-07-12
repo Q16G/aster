@@ -232,6 +232,18 @@ func TestMarkdownSectionLines(t *testing.T) {
 	if lines := markdownSectionLines("", "## 输入事实"); lines != nil {
 		t.Fatalf("empty raw must return nil, got %#v", lines)
 	}
+
+	// 末节含历史演进时，现值区两节的解析不被历史区内容污染。
+	withHistory := "# 标题\n\n## 输入事实\n- 目标: xx\n\n## 执行中补充\n内容行\n\n## 历史演进\n- 旧值: zz（已被取代）\n"
+	if lines := markdownSectionLines(withHistory, "## 输入事实"); len(lines) != 1 || lines[0] != "- 目标: xx" {
+		t.Fatalf("input facts polluted by history section: %#v", lines)
+	}
+	if lines := markdownSectionLines(withHistory, "## 执行中补充"); len(lines) != 1 || lines[0] != "内容行" {
+		t.Fatalf("supplement polluted by history section: %#v", lines)
+	}
+	if lines := markdownSectionLines(withHistory, "## 历史演进"); len(lines) != 1 || lines[0] != "- 旧值: zz（已被取代）" {
+		t.Fatalf("unexpected history section lines: %#v", lines)
+	}
 }
 
 func TestTaskContextInputFactsPresent(t *testing.T) {
@@ -241,6 +253,8 @@ func TestTaskContextInputFactsPresent(t *testing.T) {
 		want bool
 	}{
 		{"骨架空节", "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n", false},
+		{"三节骨架空节", "## 输入事实\n\n## 执行中补充\n\n## 历史演进\n", false},
+		{"历史区有条目但输入事实为空", "## 输入事实\n\n## 执行中补充\n\n## 历史演进\n- 旧值: a\n", false},
 		{"有条目", "# 贯穿全程关键事实\n\n## 输入事实\n- 目标: xx\n\n## 执行中补充\n", true},
 		{"非条目文本不算", "## 输入事实\n随便一句叙述\n## 执行中补充\n", false},
 		{"空条目不算", "## 输入事实\n- \n## 执行中补充\n", false},
