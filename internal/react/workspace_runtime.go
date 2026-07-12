@@ -104,7 +104,10 @@ func (w *localWorkspaceRuntime) SharedDir() string {
 // think_act.prompt 5.1e（task_context.md）；open_items.md 由 think_act.prompt 5.1f（step 入口）
 // 与 step_replan.prompt 原则 7.1（消费/补合成）双写者共同维护。
 // 标题不一致会让模型新建重复标题。
-const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n"
+// `## 历史演进` 为末节：被新值取代的旧值由 step_replan（唯一串行写者）原文迁入，
+// 供前提变化判定回溯；注入按 promptPreviewTokens 保头截尾，历史区最先被截、现值区
+// （`## 输入事实` / `## 执行中补充`）始终保留——与 open_items 的节序截断契约同构。
+const taskContextScaffold = "# 贯穿全程关键事实\n\n## 输入事实\n\n## 执行中补充\n\n## 历史演进\n"
 
 // 未闭环账本单文件三区（未解决 / 不可解局限 / 已闭环），与 main 同构：闭环项就地迁入
 // `## 已闭环`，闭环状态与未解决项同处可见。账本由 AI（think_act / planning）直接维护——

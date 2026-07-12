@@ -315,7 +315,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 
 	snapshot = a.state.Snapshot()
-	// 顶层 planner 冷启时若共享区事实板尚未落盘，预创建仅含两节空标题的骨架——
+	// 顶层 planner 冷启时若共享区事实板尚未落盘，预创建仅含三节空标题的骨架——
 	// 须在 PromptContext 组装前完成，让 pc.TaskContextBoard 读到现成结构；存在则不覆盖。
 	if !a.cfg.IsSubAgent && a.workspaceRuntime != nil {
 		a.ensureTaskContextSkeleton()
@@ -384,7 +384,8 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	plannerInput.CanSpawnSubAgent = !a.cfg.IsSubAgent
 	if injectsTaskBoard {
 		// TaskContextBoard 走 PromptContext 统一 preview：task_context.md 是精简事实板，
-		// 正常不会过大，但无约束时 ## 执行中补充 会无限膨胀；超限时尾部截断并提示文件路径。
+		// 现值区（## 输入事实 / ## 执行中补充）受「同一事实一条」纪律控制，被取代旧值由
+		// step_replan 迁入末节 ## 历史演进；超限时保头截尾，历史区最先被截、现值区始终保留。
 		// 骨架预创建已提前到 buildPromptContext 之前（骨架本身视作零内容快照）。
 		plannerInput.TaskContextBoard = pc.TaskContextBoard.Text
 	}
