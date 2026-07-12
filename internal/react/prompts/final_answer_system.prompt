@@ -13,6 +13,11 @@ final_answer（任务验收与最终交付）
 ## Background
 {{.AGENT_BACKGROUND}}
 {{- end}}
+{{- if .HAS_AGENT_INSTRUCTION}}
+
+## Instruction
+{{.AGENT_INSTRUCTION}}
+{{- end}}
 
 ## Goals
 - **逐项归置不丢弃**：用户诉求时间线里每个仍有效的诉求、未闭环账本每一条，都被逐项归置，不静默判完成、不静默丢弃。

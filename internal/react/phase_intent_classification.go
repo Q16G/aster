@@ -29,6 +29,7 @@ func (a *Agent) runIntentClassificationPhase(ctx context.Context, iter int, runC
 	input := buildIntentClassificationInput(snapshot)
 	input.AgentRole = strings.TrimSpace(a.cfg.Role)
 	input.AgentBackground = strings.TrimSpace(a.cfg.Background)
+	input.AgentInstruction = strings.TrimSpace(a.cfg.Instruction)
 	// 高频阶段（每次用户新输入都跑）注入块经统一动态 preview 上限投影（方案审查#4）：
 	// RECENT_OUTCOMES / PENDING_STEPS 指针指既有真相源（step_contexts.jsonl / planner.jsonl）
 	// 不 spill；INPUT_TIMELINE 无单义真相源，超限 spill 到 shared/prompt_context/。

@@ -2,7 +2,7 @@ package react
 
 import "testing"
 
-// TestAgentProfile_HasMethods 验证 role/background gate 方法与旧内联 `TrimSpace(x) != ""` 等价。
+// TestAgentProfile_HasMethods 验证 role/background/instruction gate 方法与旧内联 `TrimSpace(x) != ""` 等价。
 func TestAgentProfile_HasMethods(t *testing.T) {
 	if (AgentProfile{}).HasRole() {
 		t.Error("空 AgentRole 应 HasRole()=false")
@@ -18,6 +18,15 @@ func TestAgentProfile_HasMethods(t *testing.T) {
 	}
 	if !(AgentProfile{AgentBackground: "10 年经验"}).HasBackground() {
 		t.Error("非空 AgentBackground 应 HasBackground()=true")
+	}
+	if (AgentProfile{}).HasInstruction() {
+		t.Error("空 AgentInstruction 应 HasInstruction()=false")
+	}
+	if (AgentProfile{AgentInstruction: "   "}).HasInstruction() {
+		t.Error("空白 AgentInstruction 应视为空")
+	}
+	if !(AgentProfile{AgentInstruction: "输出简洁的分析结论"}).HasInstruction() {
+		t.Error("非空 AgentInstruction 应 HasInstruction()=true")
 	}
 }
 

@@ -12,8 +12,8 @@ import (
 
 type ThinkActPromptInput struct {
 	AgentProfile
-	CapabilityIndex // Skills + MCP（AvailableTools 本 phase 不用）
-	RunFlags        // SupportsVision + CanSpawnSubAgent
+	CapabilityIndex   // Skills + MCP（AvailableTools 本 phase 不用）
+	RunFlags          // SupportsVision + CanSpawnSubAgent
 	GoalUnderstanding string
 	CurrentStep       any
 	// DependencyPlanItems 是前置依赖步骤的 plan_item 产出卡片（内联小字段 + 文件指针），
@@ -382,13 +382,15 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       input.HasRole(),
-		"HAS_AGENT_BACKGROUND": input.HasBackground(),
-		"IS_SUB_AGENT":         input.IsSubAgent,
-		"CAN_SPAWN_SUBAGENT":   false,
-		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":        input.HasRole(),
+		"HAS_AGENT_BACKGROUND":  input.HasBackground(),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": input.HasInstruction(),
+		"IS_SUB_AGENT":          input.IsSubAgent,
+		"CAN_SPAWN_SUBAGENT":    false,
+		"DEPTH_SMELLS":          builtin_tools.DepthSmellsEnumeration,
 		// 共享区直接维护文件的绝对路径下沉到 system 模板，承担"哪个文件由本相位
 		// 直接落盘"的稳定契约——user 模板里的同名条目已删除（见 step_replan_user.prompt）。
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsPath),
@@ -472,10 +474,12 @@ func (m *defaultPromptManager) BuildFinalAnswerPrompt(input FinalAnswerPromptInp
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       input.HasRole(),
-		"HAS_AGENT_BACKGROUND": input.HasBackground(),
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":        input.HasRole(),
+		"HAS_AGENT_BACKGROUND":  input.HasBackground(),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": input.HasInstruction(),
 	}
 	userData := map[string]any{
 		"STATUS":                 fmt.Sprint(input.Status),
@@ -498,15 +502,17 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       input.HasRole(),
-		"HAS_AGENT_BACKGROUND": input.HasBackground(),
-		"IS_SUB_AGENT":         input.IsSubAgent,
-		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
-		"USER_INPUT_TURN":      input.UserInputTurn,
-		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
-		"HAS_INTENT_CONTEXT":   input.HasIntentContext,
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":        input.HasRole(),
+		"HAS_AGENT_BACKGROUND":  input.HasBackground(),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": input.HasInstruction(),
+		"IS_SUB_AGENT":          input.IsSubAgent,
+		"CAN_SPAWN_SUBAGENT":    input.CanSpawnSubAgent,
+		"USER_INPUT_TURN":       input.UserInputTurn,
+		"HAS_REPLAN_CONTEXT":    input.HasReplanContext,
+		"HAS_INTENT_CONTEXT":    input.HasIntentContext,
 		// 共享区直接维护文件的绝对路径下沉到 system 模板（与 step_replan 相位共享同一段）。
 		// plan 相位主要维护 task_context.md 的 `## 输入事实` 和（regen 期间）账本三区。
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),
@@ -537,10 +543,12 @@ func (m *defaultPromptManager) BuildIntentClassificationPrompt(input IntentClass
 		return PromptParts{}, fmt.Errorf("prompt manager is nil")
 	}
 	systemData := map[string]any{
-		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
-		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
-		"HAS_AGENT_ROLE":       input.HasRole(),
-		"HAS_AGENT_BACKGROUND": input.HasBackground(),
+		"AGENT_ROLE":            strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":      strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":        input.HasRole(),
+		"HAS_AGENT_BACKGROUND":  input.HasBackground(),
+		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
+		"HAS_AGENT_INSTRUCTION": input.HasInstruction(),
 	}
 	userData := map[string]any{
 		"GOAL_UNDERSTANDING":     strings.TrimSpace(input.GoalUnderstanding),

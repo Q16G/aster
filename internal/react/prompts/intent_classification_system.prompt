@@ -10,6 +10,11 @@ intent_classification（执行意图分析）：判定「本回合最新用户�
 # Background
 {{.AGENT_BACKGROUND}}
 {{- end}}
+{{- if .HAS_AGENT_INSTRUCTION}}
+
+# Instruction
+{{.AGENT_INSTRUCTION}}
+{{- end}}
 
 ## 判定口径（三选一）
 - **carry**：最新输入在既有目标的延长线上继续 / 深入 / 追问 / 补充。用户补充的执行手段（能力 / 环境 / 资源 / 具体值）是手段而非新目标，不得僭越为意图、不得据此收窄原始范围 → 一律判 carry。

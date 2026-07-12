@@ -60,7 +60,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot 
 	}
 
 	parts, err := a.promptManager.BuildThinkActPrompt(ThinkActPromptInput{
-		AgentProfile:           AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		AgentProfile:           AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background), AgentInstruction: strings.TrimSpace(a.cfg.Instruction)},
 		CapabilityIndex:        CapabilityIndex{SkillsContext: skillsContext, MCPContext: mcpContext},
 		RunFlags:               RunFlags{SupportsVision: supportsVision, CanSpawnSubAgent: canSpawnSubAgent},
 		GoalUnderstanding:      strings.TrimSpace(snap.GoalUnderstanding),
