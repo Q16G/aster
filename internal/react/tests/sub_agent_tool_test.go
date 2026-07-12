@@ -306,7 +306,11 @@ func TestSubAgentTool_RegisteredViaFactory(t *testing.T) {
 	}
 }
 
-func TestSubAgentTool_ContextReachesPrompt(t *testing.T) {
+// TestAgentDefinition_BuildTaskContext_VisibleEntries 验证通用 AgentDefinition.Context →
+// BuildTaskContext().VisibleEntries() 原语（非 sub_agent 路径）。
+// 注意：sub_agent 的委派上下文 B8 后不再走 TaskContextEntry，改经 mergeSubAgentContext 拼进子 loop
+// 首条 user 消息，端到端覆盖见 react 包内 TestRunSubAgentLoop_ContextReachesUserMessage。
+func TestAgentDefinition_BuildTaskContext_VisibleEntries(t *testing.T) {
 	factory := NewAgentFactory(
 		WithFactoryDefaultAIClient(&stubChatClient{}),
 		WithFactoryEmitter(NewDummyEmitter()),
