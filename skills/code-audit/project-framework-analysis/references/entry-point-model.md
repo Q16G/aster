@@ -24,7 +24,23 @@
 
 ## 产物落库
 
-写入机器读 `project-framework-analysis.jsonl`（`kind: route` / `kind: middleware`，schema 见 `SKILL.md` §9）与人读 `shared/models/entry-point-model.md`。route 类 `id` 带 `ep-` 前缀全局唯一，`scan_status` 初始 `pending`。
+写入 `shared/models/entry-point-model.md`，两张 markdown 表——入口点骨架表 + 中间件信任边界表：
+
+```markdown
+## 入口点骨架
+| ID | controller#handler | 方法 | 路径 | 参数(来源) | 鉴权 | 业务语义 | 覆盖态 | file_location |
+|----|-------------------|------|------|-----------|------|---------|--------|---------------|
+| ep-1 | UserController#search | POST | /api/user/search | name(body),page(query) | user | 用户搜索 | pending | UserController.java:42 |
+
+## 中间件信任边界
+| 中间件 | 拦截路径 | 排除 | 类型 | 注入字段(server-derived) | 信任边界 | file_location |
+|--------|---------|------|------|------------------------|---------|---------------|
+| AuthFilter | /api/** | /api/login | auth | userId,roles | server-derived | AuthFilter.java:23 |
+```
+
+入口点 `id` 带 `ep-` 前缀全局唯一，覆盖态初始 `pending`；就地更新不删旧行。
+
+> 注意：本文件 `references/entry-point-model.md` 是**建模方法论细则**（怎么建）；运行时产物落 `shared/models/entry-point-model.md`（建出来的模型）。二者同名不同物。
 
 ## 反例义务
 

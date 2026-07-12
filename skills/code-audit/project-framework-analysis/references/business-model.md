@@ -44,13 +44,24 @@
 
 ## 产物落库
 
-写入机器读 `project-framework-analysis.jsonl`（`kind: business`，`subkind ∈ entity | flow | state_machine | invariant`）与人读 `shared/models/business-model.md`。示例行：
+写入 `shared/models/business-model.md`：实体表 / 流程与状态机 / 不变量表。
 
-```json
-{"kind":"business","subkind":"entity","name":"Order","detail":"归属 user_id；引用 payment_id / 多个 order_item","file_location":"Order.java:12"}
-{"kind":"business","subkind":"flow","name":"下单支付发货","detail":"POST /order/create → POST /pay/callback → POST /order/{id}/ship","file_location":"OrderController.java:40; PayController.java:88"}
-{"kind":"business","subkind":"state_machine","name":"Order.status","detail":"created→paid→shipped→done；不允许 created→shipped","file_location":"OrderService.java:120"}
-{"kind":"business","subkind":"invariant","name":"提现金额<=余额且>0","detail":"WithdrawService.apply 未校验上界，仅校验>0","file_location":"WithdrawService.java:55"}
+```markdown
+## 业务实体
+| 实体 | 归属 / 引用 | file_location |
+|------|-----------|---------------|
+| Order | 归属 user_id；引用 payment_id / 多个 order_item | Order.java:12 |
+
+## 流程与状态机
+- 下单支付发货：POST /order/create → POST /pay/callback → POST /order/{id}/ship (OrderController.java:40; PayController.java:88)
+- Order.status 状态机：created→paid→shipped→done；不允许 created→shipped (OrderService.java:120)
+
+## 业务不变量
+| 不变量 | 校验状态 | file_location |
+|--------|---------|---------------|
+| 提现金额<=余额且>0 | 未见上界校验，仅校验>0 | WithdrawService.java:55 |
 ```
 
-字段 `detail` 落事实、`file_location` 落证据位置；不确定的不变量校验状态写明"未见校验"而非省略。
+`file_location` 落证据位置；不确定的不变量校验状态写明"未见校验"而非省略。就地更新不删旧行。
+
+> 注意：本文件 `references/business-model.md` 是**建模方法论细则**（怎么建）；运行时产物落 `shared/models/business-model.md`（建出来的模型）。二者同名不同物。

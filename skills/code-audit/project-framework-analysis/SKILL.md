@@ -26,7 +26,7 @@ arguments:
 - 至少存在 controller 层目录（`controllers/` / `handlers/` / 含 `@RequestMapping` 注解的 Java 文件 / `routes/` / `views/`），项目体量大于单文件
 
 **已有产物维度**：
-- `shared/models/` 五张模型 markdown 或 `shared/coverage-ledger/inventory/project-framework-analysis.jsonl` **尚不存在**
+- `shared/models/` 五张模型 markdown **尚不存在**
 - 已有产物但目标项目栈 / 入口点近期发生重大变更（新增模块 / 新增框架 / 切换 ORM）
 
 **信息完备度维度**：
@@ -264,42 +264,31 @@ arguments:
 
 > **为什么这里是「必须」**：产物结构是下游审计能力按入口点对账的接口。下游 [dataflow-analysis](../dataflow-analysis/SKILL.md) / [sast-scan](../sast-scan/SKILL.md) / 各单漏洞维度 skill 都按本产物的入口点清单展开攻击面覆盖；**省略一个入口点 = 一类漏洞维度在该端点失去 source 锚点**，整条链路失真。产物落库规范见 [common/result-with-file](../../common/result-with-file/SKILL.md)。
 
-**产物形态**：
+**产物形态**：五张模型各落一个 markdown，无 JSONL 并存：
 
-- 人读（**五张模型各一个 markdown**，不再全塞单文件）：`shared/models/architecture-model.md` / `entry-point-model.md` / `auth-model.md` / `business-model.md` / `threat-model.md`。（`shared/project-framework.md` 可保留为可选索引，或直接由五张分文件取代。）
-- 结构化清单（机器读，单文件）：`shared/coverage-ledger/inventory/project-framework-analysis.jsonl`，append-only
+- `shared/models/architecture-model.md` — 技术栈 / 分层 / 框架封装（source/sink/分发/过滤/认证 wrapper）/ 依赖与闭源识别
+- `shared/models/entry-point-model.md` — 入口点骨架表 + 中间件信任边界表
+- `shared/models/auth-model.md` — 认证机制 + 归属字段对照表（owner/resource/tenant）
+- `shared/models/business-model.md` — 业务实体 / 流程状态机 / 业务不变量表
+- `shared/models/threat-model.md` — 攻击面 × 漏洞维度全量适用性映射表（`attack_surface / vuln_class / rationale`，不含 priority / in_scope）
+
+各模型内的信息用 markdown 表承载（每张表的列见对应 `references/<model>.md` 的「产物落库」段）；入口点 `id` 带 `ep-` 前缀全局唯一、覆盖态初始 `pending`。
 
 > 注意：`shared/models/*.md` 是**本次审计的运行时产物**；skill 目录下 `references/*.md` 是**静态方法论细则**，二者同名不同物。
 
-**JSONL 字段示例**（每行一个对象，按 `kind` 区分）：
+**落盘硬约束**：五张模型必须各自落 `shared/models/` 对应文件，**禁止只写在 task_context.md 或仅口头描述**；任一模型文件缺失 = 该模型未完成，结论降级 `partial-coverage`。
 
-```json
-{"kind": "route", "id": "ep-001", "controller": "UserController", "handler": "search", "http_method": "POST", "url": "/api/user/search", "params": [{"name": "name", "source": "body"}, {"name": "page", "source": "query"}], "has_resource_id": false, "hit_middleware": ["AuthFilter", "RateLimitFilter"], "risk_priority": "medium", "scan_status": "pending", "file_location": "UserController.java:42"}
-{"kind": "middleware", "name": "AuthFilter", "intercept_paths": ["/api/**"], "exclude": ["/api/login"], "type": "auth", "inject_fields": ["userId", "roles"], "trust_boundary": "server-derived", "file_location": "AuthFilter.java:23"}
-{"kind": "framework_wrap", "category": "sink", "subtype": "sql", "class": "BaseDao", "method": "executeQuery", "file_location": "BaseDao.java:88", "concat_position": "StringBuffer.append before prepareStatement"}
-{"kind": "framework_wrap", "category": "auth", "subtype": "validation_stub", "class": "TokenValidator", "method": "validateToken", "file_location": "TokenValidator.java:15", "note": "method body returns true unconditionally"}
-{"kind": "dependency", "coordinate": "com.example:closed-auth-sdk:1.2.0", "classification": "no_source_decompilable", "ownership": "third_party_commercial", "decision_point": "in_dependency", "critical_path": true, "file_location": "pom.xml:88", "recommendation": "decompile_candidate_with_legal_review"}
-{"kind": "entity_field", "entity": "Order", "field": "userId", "role": "owner", "file_location": "Order.java:12"}
-{"kind": "entity_field", "entity": "Order", "field": "orderId", "role": "resource", "file_location": "Order.java:8"}
-{"kind": "business", "subkind": "invariant", "name": "提现金额<=余额且>0", "detail": "WithdrawService.apply 仅校验>0，未校验上界", "file_location": "WithdrawService.java:55"}
-{"kind": "business", "subkind": "state_machine", "name": "Order.status", "detail": "created→paid→shipped→done；不允许 created→shipped", "file_location": "OrderService.java:120"}
-{"kind": "threat", "attack_surface": "GET /api/user/{id}/profile", "vuln_class": "IDOR-水平越权", "rationale": "id 用户可控，未见 owner 归属校验（entity_field owner=userId）——供下游按此接口逐一测试该维度"}
-{"kind": "coverage_gap", "reason": "动态注册路由：app.dispatch 通过反射按 action 名分发，未能静态枚举", "file_location": "Dispatcher.java:55"}
-```
+表约束：
 
-字段约束：
-
-- `id`：route 类带 `ep-` 前缀全局唯一，便于下游能力引用
-- `scan_status`：route 类初始统一写 `pending`
-- `kind ∈ route | middleware | framework_wrap | dependency | entity_field | business | threat | coverage_gap`（`business` 带 `subkind ∈ entity | flow | state_machine | invariant`；`threat` 只含 `attack_surface / vuln_class / rationale`，**不含** `priority` / `in_scope`——本能力不排优先级、不做取舍）
-- 每条记录独占一行——**禁止**用"等" / "..." / "（其余 N 条略）"省略
+- 一入口 / 一实体 / 一不变量 / 一攻击面映射独占**一行**——**禁止**用"等" / "..." / "（其余 N 条略）"省略
 - 入口点穷举不省略——why：下游各漏洞维度按入口点对账，省略一个入口点会让该入口点对应的整类漏洞维度失去 source 锚点
+- 威胁映射表只含 `attack_surface / vuln_class / rationale`，**不含** priority / in_scope——本能力不排优先级、不做取舍
 
-**幂等写入（必须遵守）**：
+**就地更新（必须遵守）**：
 
-> why：重跑侦察不应重置已有的扫描进度——下游能力可能已将部分端点更新为 `in_progress` 或 `completed`，覆盖写会破坏跨批次状态追踪。
+> why：重跑建模不应重置已有的扫描进度——下游能力可能已将部分入口点覆盖态更新为 `in_progress` / `completed`，整文件覆盖写会破坏跨批次状态追踪。
 
-文件已存在时，以 `id` 字段去重，仅追加文件中尚不存在的记录；已存在的 id 原样保留，不重置已有 `scan_status`。
+模型文件已存在时，按表行主键（入口点 `id` / 实体字段 / 攻击面单元）就地更新或追加新行；已有行的覆盖态原样保留、不重置，不删旧行。
 
 **反例义务**（必须遵守）：
 
@@ -312,7 +301,7 @@ arguments:
 - 所有依赖已分类（公共库 / 无源码 / 混淆 / `unknown` 数量分布）
 - 业务模型：核心流程 / 状态机 / 业务不变量已枚举，每条不变量标注"在哪校验 / 是否校验"
 - 威胁模型：攻击面 × 漏洞类别的全量适用性映射已产出，每个接口 × 每个可能维度都登记，不省略、不排除、不排优先级
-- 任一未覆盖的范围（动态注册路由 / 反射加载 / 闭源依赖内部）在 `coverage_gap` 记录中显式列出原因
+- 任一未覆盖的范围（动态注册路由 / 反射加载 / 闭源依赖内部）在对应模型的「缺口」段显式列出原因
 
 清单不完整 → 结论降级为 `partial-coverage`，且必须在对应模型的 `shared/models/<model>.md` "缺口"段显式列出未覆盖范围。
 
