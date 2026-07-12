@@ -96,6 +96,27 @@ func (a *Agent) runSchedulerLoop(ctx context.Context, runClient ai.ChatClient, e
 			}
 		}
 
+		// 委派归队屏障（L3）：全 topic settled、无 ready step，但仍有未归队的后台 sub_agent →
+		// block-await 它们归队 + drain 整合，再重算 phase（真终态或被 drain 解锁的新活）。
+		// 与上面的 inline-peer 屏障同构；用 block-await 而非 StepReplan 空转，避免反复空跑 LLM。
+		if phase == builtin_tools.AgentPhaseStepReplan && a.reviewTopicID == "" &&
+			a.asyncRegistry != nil && a.asyncRegistry.HasRunningSubAgent() &&
+			builtin_tools.AllTopicsSettled(snapshot.Topics) {
+			a.emitRuntimeLog("info", "awaiting delegated sub-agents before terminal", snapshot, map[string]any{
+				"event": "await_delegated_subagents_before_terminal",
+			})
+			a.emitter.EmitIteration(iter, maxIterations, "awaiting_background")
+			a.awaitAllBackgroundSubAgents(ctx)
+			a.drainAsyncAgentNotifications(ctx)
+			a.finalizeUnjournaledTerminalSteps(a.state.Snapshot())
+			snapshot = a.state.Snapshot()
+			phase = a.nextSchedulerPhase(snapshot)
+			if phase != snapshot.Phase {
+				_ = a.state.SetPhase(phase)
+				snapshot = a.state.Snapshot()
+			}
+		}
+
 		a.syncStepHistoryLayer(snapshot)
 		a.emitRuntimeLog("info", "scheduler iteration started", snapshot, map[string]any{
 			"event":                "scheduler_iteration_start",
@@ -291,6 +312,14 @@ func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin
 			return builtin_tools.AgentPhaseStep
 		}
 		if builtin_tools.AllTopicsSettled(snapshot.Topics) {
+			// 终态不变量（L3）：run_in_background 的后台 sub_agent 仍在跑时不判 FinalAnswer——
+			// 主 agent 常把整片维度派给后台 sub_agent，spawning step 完成 → 其 topic 被标 terminal →
+			// AllTopicsSettled=true，但被委派的活仍在后台跑、结果尚未 drain 回 topics。此时收尾会造成
+			// 假成功 + 结果丢弃。改判 StepReplan，由调度循环的委派归队屏障 block-await 它们归队后再重算。
+			// （inline peer step 走 HasRunningInlineSteps 的 L87 屏障；故此处用 HasRunningSubAgent。）
+			if a.asyncRegistry != nil && a.asyncRegistry.HasRunningSubAgent() {
+				return builtin_tools.AgentPhaseStepReplan
+			}
 			return builtin_tools.AgentPhaseFinalAnswer
 		}
 		return builtin_tools.AgentPhaseStepReplan // 全局 reducer 态（reviewTopicID=""）
