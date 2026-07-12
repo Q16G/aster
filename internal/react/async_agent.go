@@ -252,18 +252,31 @@ const maxAsyncNotificationRunes = 1024
 // 仅持有裸 workspace root（通知携带的 WorkspaceDir，无 runtime 可用），
 // 故以 NewLocalStore(workspaceDir) 直构 Store；任何失败静默返回 ""（通知内联兜底）。
 func writeAsyncResultFile(workspaceDir string, notif *AsyncAgentNotification) string {
-	if workspaceDir == "" || notif == nil {
+	if notif == nil {
+		return ""
+	}
+	return writeSubAgentResultFile(workspaceDir, notif.AgentID, notif.Status, notif.Result)
+}
+
+// writeSubAgentResultFile 把子 Agent 的完整结果落进其工作区文件，返回文件绝对路径（供父 Agent
+// 按指针自取，避免长 result 内联撑爆父上下文）。sync/async 两路共用（信封统一）。
+// 仅持有裸 workspace root，故以 NewLocalStore 直构 Store；任何失败静默返回 ""（调用方内联兜底）。
+func writeSubAgentResultFile(workspaceDir, agentID, status string, result *builtin_tools.RunResult) string {
+	if workspaceDir == "" {
 		return ""
 	}
 	l := workspacefs.New(workspaceDir, "")
 	data := map[string]any{
-		"agent_id": notif.AgentID,
-		"status":   notif.Status,
+		"agent_id": agentID,
+		"status":   status,
 	}
-	if notif.Result != nil {
-		data["ok"] = notif.Result.Success
-		data["result"] = notif.Result.Result
-		data["error"] = notif.Result.Error
+	if result != nil {
+		data["ok"] = result.Success
+		data["result"] = result.Result
+		data["error"] = result.Error
+		if result.Usage != nil {
+			data["usage"] = result.Usage
+		}
 	}
 	raw, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {

@@ -11,13 +11,6 @@ import (
 	"aster/internal/jsonextractor"
 )
 
-// SubAgentUsage 是子 Agent 单循环的用量遥测，随信封回传父 Agent。
-type SubAgentUsage struct {
-	ToolUses   int   `json:"tool_uses"`
-	Tokens     int   `json:"tokens,omitempty"` // 经 aiCallProxyResult.Usage 逐轮累加（B4），不可用则 0
-	DurationMs int64 `json:"duration_ms"`
-}
-
 // RunSubAgentLoop 是子 Agent 的单循环内核：一个 system prompt + 委派任务 + 工具调用循环，
 // 由子 Agent 显式调用 submit_result 收尾（U3），或在既无工具调用又有文本时兜底当结果（B3）。
 //
@@ -33,9 +26,16 @@ type SubAgentUsage struct {
 // opts 携带子工作区运行时等环境（WithWorkspaceRuntime/WithParentWorkspace/WithSourceWorkingDir）；
 // 环境装配走 Execute 同一段 prepareRunEnvironment（D3：workspace 解析 + client 绑定 + budget），
 // 但**有意不建 v2Store、不做 state.Reset / resume**——子 loop 是无状态机的单循环（见 doc 10 D3）。
-func (a *Agent) RunSubAgentLoop(ctx context.Context, task, taskContext string, spec SubAgentType, opts ...ExecuteOption) (*builtin_tools.RunResult, *SubAgentUsage, error) {
+func (a *Agent) RunSubAgentLoop(ctx context.Context, task, taskContext string, spec SubAgentType, opts ...ExecuteOption) (result *builtin_tools.RunResult, usage *builtin_tools.SubAgentUsage, err error) {
 	start := time.Now()
-	usage := &SubAgentUsage{}
+	usage = &builtin_tools.SubAgentUsage{}
+	// usage 是 async 路径 goroutine→registry.Complete→drain 的唯一携带通道：每个返回点都把
+	// usage 贴到 result.Usage，drain 才能读到 tool_uses/tokens/duration_ms。
+	defer func() {
+		if result != nil {
+			result.Usage = usage
+		}
+	}()
 	if a == nil || a.cfg == nil {
 		return failedWith(usage, start, "sub_agent not initialized"), usage, nil
 	}
@@ -236,14 +236,14 @@ func parseSubmitResult(tc *ai.FunctionTool) (status, result string) {
 }
 
 // failedWith / cancelledWith 构造失败 / 取消态信封（DurationMs 就地补齐）。
-func failedWith(usage *SubAgentUsage, start time.Time, reason string) *builtin_tools.RunResult {
+func failedWith(usage *builtin_tools.SubAgentUsage, start time.Time, reason string) *builtin_tools.RunResult {
 	if usage != nil {
 		usage.DurationMs = time.Since(start).Milliseconds()
 	}
 	return &builtin_tools.RunResult{Success: false, Error: strings.TrimSpace(reason), TurnStatus: "failed"}
 }
 
-func cancelledWith(usage *SubAgentUsage, start time.Time) *builtin_tools.RunResult {
+func cancelledWith(usage *builtin_tools.SubAgentUsage, start time.Time) *builtin_tools.RunResult {
 	if usage != nil {
 		usage.DurationMs = time.Since(start).Milliseconds()
 	}

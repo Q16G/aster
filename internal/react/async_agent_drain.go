@@ -67,6 +67,10 @@ func (a *Agent) handleSubAgentNotification(notif *AsyncAgentNotification) {
 	if resultFile != "" {
 		text += fmt.Sprintf("\nresult_file: %s", resultFile)
 	}
+	if notif.Result != nil && notif.Result.Usage != nil {
+		u := notif.Result.Usage
+		text += fmt.Sprintf("\nusage: tool_uses=%d tokens=%d duration_ms=%d", u.ToolUses, u.Tokens, u.DurationMs)
+	}
 	if summary != "" {
 		text += fmt.Sprintf("\nresult_summary:\n%s", summary)
 	}

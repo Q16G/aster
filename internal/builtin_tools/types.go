@@ -38,6 +38,18 @@ type RunResult struct {
 	// 返回 sha256:xxx ref 通过本字段传到 drain 路径，drain 把 ref 写入
 	// PlanItem 关联的 StepOutcome.TranscriptBlobRef 供 step_replan 指针化按需读。
 	TranscriptBlobRef string `json:"transcript_blob_ref,omitempty"`
+
+	// Usage 是子 Agent 单循环（sub_agent）的用量遥测，随信封回传父 Agent。异步路径下它是
+	// goroutine → registry.Complete → drain 的唯一携带通道（drain 据此把 usage 落进通知/指针）。
+	Usage *SubAgentUsage `json:"usage,omitempty"`
+}
+
+// SubAgentUsage 是子 Agent 单循环的用量遥测。定义在 builtin_tools 以便 RunResult 携带
+//（react 包引用 builtin_tools，反向不可）。
+type SubAgentUsage struct {
+	ToolUses   int   `json:"tool_uses"`
+	Tokens     int   `json:"tokens,omitempty"` // 经 aiCallProxyResult.Usage 逐轮累加，不可用则 0
+	DurationMs int64 `json:"duration_ms"`
 }
 
 type PlanCompletionSummary struct {
