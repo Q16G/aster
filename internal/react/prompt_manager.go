@@ -36,6 +36,25 @@ type ThinkActPromptInput struct {
 	ExtraContext           string
 }
 
+// SubAgentPromptInput 是子 Agent 单循环（sub_agent 相位无关的独立 loop）的 prompt 输入。
+// 与 ThinkActPromptInput 相比刻意收窄：无 CURRENT_STEP / 账本 / 事实板 / step 过程文件等 step
+// 机制字段（子 Agent 无状态机）；只保留身份三要素、能力索引（Skills/MCP）、视觉标志、类型描述、
+// 委派任务与随附上下文。block2（身份 + env）由 identityEnvBlock() 复用注入，不在本 Input。
+type SubAgentPromptInput struct {
+	AgentProfile
+	CapabilityIndex // Skills + MCP（AvailableTools 本相位不用）
+	RunFlags        // 仅用 SupportsVision
+	// TypeExtra 是子 Agent 类型（explore / general-purpose）的描述文本，注入 system 的
+	// `## 本次委派类型`。类型只差在描述（见 sub_agent_types.go）。
+	TypeExtra string
+	// Task 是父 Agent 委派的单任务原文；Context 是随附上下文（原 __handoff_context__）。
+	Task    string
+	Context string
+}
+
+func (i SubAgentPromptInput) HasTypeExtra() bool { return strings.TrimSpace(i.TypeExtra) != "" }
+func (i SubAgentPromptInput) HasContext() bool   { return strings.TrimSpace(i.Context) != "" }
+
 // AvailableToolInfo is a render-friendly view of a tool that is actually
 // available to the agent in a given phase, used to render the prompt's tool
 // list dynamically instead of hard-coding it (so the advertised set always
@@ -176,6 +195,7 @@ type IntentClassificationPromptInput struct {
 
 type PromptManager interface {
 	BuildThinkActPrompt(input ThinkActPromptInput) (PromptParts, error)
+	BuildSubAgentPrompt(input SubAgentPromptInput) (PromptParts, error)
 	BuildStepReplanPrompt(input StepReplanPromptInput) (PromptParts, error)
 	BuildFinalAnswerPrompt(input FinalAnswerPromptInput) (PromptParts, error)
 	BuildTaskPlannerPrompt(input TaskPlannerPromptInput) (PromptParts, error)
@@ -189,6 +209,8 @@ type PromptManager interface {
 type defaultPromptManager struct {
 	thinkActSystemTmpl             *template.Template
 	thinkActUserTmpl               *template.Template
+	subAgentSystemTmpl             *template.Template
+	subAgentUserTmpl               *template.Template
 	planningSystemTmpl             *template.Template
 	stepReplanSystemTmpl           *template.Template
 	stepReplanUserTmpl             *template.Template
@@ -217,6 +239,12 @@ func newDefaultPromptManager() (PromptManager, error) {
 		return nil, err
 	}
 	if m.thinkActUserTmpl, err = parse("think_act_user", thinkActUserPrompt); err != nil {
+		return nil, err
+	}
+	if m.subAgentSystemTmpl, err = parse("sub_agent_system", subAgentSystemPrompt); err != nil {
+		return nil, err
+	}
+	if m.subAgentUserTmpl, err = parse("sub_agent_user", subAgentUserPrompt); err != nil {
 		return nil, err
 	}
 	if m.planningSystemTmpl, err = parse("planning_system", planningSystemPrompt); err != nil {
@@ -318,6 +346,35 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"EXTRA_CONTEXT":             strings.TrimSpace(input.ExtraContext),
 	}
 	return renderPromptParts("think_act", m.thinkActSystemTmpl, m.thinkActUserTmpl, systemData, userData)
+}
+
+func (m *defaultPromptManager) BuildSubAgentPrompt(input SubAgentPromptInput) (PromptParts, error) {
+	if m == nil {
+		return PromptParts{}, fmt.Errorf("prompt manager is nil")
+	}
+	systemData := map[string]any{
+		"AGENT_ROLE":           strings.TrimSpace(input.AgentRole),
+		"AGENT_BACKGROUND":     strings.TrimSpace(input.AgentBackground),
+		"HAS_AGENT_ROLE":       input.HasRole(),
+		"HAS_AGENT_BACKGROUND": input.HasBackground(),
+		"TYPE_EXTRA":           strings.TrimSpace(input.TypeExtra),
+		"HAS_TYPE_EXTRA":       input.HasTypeExtra(),
+		"SUPPORTS_VISION":      input.SupportsVision,
+		// Skills 索引表 / MCP 表下沉 system（删 status 后跨轮静态，system 缓存前缀稳定）；
+		// 已注入 skill 指令（.Injected）留 user。
+		"SKILLS_CONTEXT":   input.SkillsContext,
+		"HAS_SKILLS_TABLE": input.HasSkillsTable(),
+		"MCP_CONTEXT":      input.MCPContext,
+		"HAS_MCP_TABLE":    input.HasMCPTable(),
+	}
+	userData := map[string]any{
+		"TASK":                strings.TrimSpace(input.Task),
+		"CONTEXT":             strings.TrimSpace(input.Context),
+		"HAS_CONTEXT":         input.HasContext(),
+		"SKILLS_CONTEXT":      input.SkillsContext,
+		"HAS_INJECTED_SKILLS": input.HasInjectedSkills(),
+	}
+	return renderPromptParts("sub_agent", m.subAgentSystemTmpl, m.subAgentUserTmpl, systemData, userData)
 }
 
 func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput) (PromptParts, error) {

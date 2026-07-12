@@ -1,0 +1,18 @@
+## 委派任务
+<TASK>
+{{.TASK}}
+</TASK>
+{{- if .HAS_CONTEXT}}
+
+## 随附上下文
+---
+{{.CONTEXT}}
+---
+{{- end}}
+{{- if .HAS_INJECTED_SKILLS}}
+
+## Injected Skills（已注入指令，用不上的调用 eject_skill 卸载）
+---
+{{.SKILLS_CONTEXT.Injected}}
+---
+{{- end}}
