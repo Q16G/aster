@@ -73,8 +73,8 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 			t.Fatalf("expected user part to contain %q, got:\n%s", expected, parts.User)
 		}
 	}
-	if !strings.Contains(parts.SystemRules, "卸载") {
-		t.Fatalf("expected system rules to contain skill-eject discipline (卸载), got:\n%s", parts.SystemRules)
+	if !strings.Contains(parts.SystemRules, "收尾前卸载") {
+		t.Fatalf("expected system rules to contain skill-eject discipline (收尾前卸载), got:\n%s", parts.SystemRules)
 	}
 }
 
