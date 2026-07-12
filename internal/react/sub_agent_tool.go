@@ -210,7 +210,49 @@ func (t *SubAgentTool) executeSync(ctx context.Context, setup *childAgentSetup) 
 	if err != nil {
 		return "", fmt.Errorf("sub agent execution: %w", err)
 	}
-	return formatSubAgentResult(setup.childName, setup.childRootDir, result), nil
+	return buildSubAgentEnvelope(setup.childName, setup.childRootDir, result), nil
+}
+
+// buildSubAgentEnvelope 是子 Agent 同步返回的统一信封：{status, summary, result|result_file,
+// error, usage, workspace}。长 result 落 result_file 只回指针（与 async 通知同口径，避免撑爆父
+// 上下文）；短 result 内联。删旧字段 ok/agent_name/plan_summary（P6）。
+func buildSubAgentEnvelope(agentName, workspaceRoot string, result *builtin_tools.RunResult) string {
+	status := "completed"
+	fullResult := ""
+	errText := ""
+	if result != nil {
+		fullResult = result.Result
+		errText = result.Error
+		if !result.Success {
+			status = "failed"
+		}
+	} else {
+		status = "failed"
+		errText = "no result"
+	}
+
+	payload := map[string]any{
+		"status":    status,
+		"workspace": workspaceRoot,
+		"summary":   truncateRuneString(fullResult, maxAsyncNotificationRunes),
+	}
+	if len([]rune(fullResult)) > maxAsyncNotificationRunes {
+		if rf := writeSubAgentResultFile(workspaceRoot, agentName, status, result); rf != "" {
+			payload["result_file"] = rf
+		} else {
+			payload["result"] = fullResult // 落盘失败兜底内联全文
+		}
+	} else if fullResult != "" {
+		payload["result"] = fullResult
+	}
+	if errText != "" {
+		payload["error"] = errText
+	}
+	if result != nil && result.Usage != nil {
+		payload["usage"] = result.Usage
+	}
+	out, _ := json.Marshal(payload)
+	return string(out)
 }
 
 func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup) (string, error) {
