@@ -60,6 +60,11 @@ func (t *SubAgentTool) Parameters() any {
 				"type":        "string",
 				"description": "可选：传递给子 Agent 的显式上下文信息，优先于系统自动注入的交接上下文。",
 			},
+			"subagent_type": map[string]any{
+				"type":        "string",
+				"enum":        []string{subAgentTypeExplore, subAgentTypeGeneralPurpose},
+				"description": "可选：子 Agent 类型。explore=只读检索取证（查找/定位/取证，不改被审对象）；general-purpose=通用执行（可动手改动型动作）。缺省 general-purpose。类型只影响职责描述，不改变可用工具。",
+			},
 			"run_in_background": map[string]any{
 				"type":        "boolean",
 				"description": "可选：异步执行子 Agent，立即返回 agent_id。完成后结果会自动推送到上下文。",
@@ -76,7 +81,11 @@ type childAgentSetup struct {
 	childRootDir string
 	execOpts     []ExecuteOption
 	instruction  string
-	runtime      builtin_tools.ToolRuntimeInfo
+	// taskContext 是拼给子 Agent 首条 user 消息的随附上下文（B8：不再走 TaskContextEntry）。
+	taskContext string
+	// spec 是本次委派的子 Agent 类型（描述注入 prompt `## 本次委派类型`，U1 类型只差描述）。
+	spec    SubAgentType
+	runtime builtin_tools.ToolRuntimeInfo
 }
 
 func (t *SubAgentTool) Execute(ctx context.Context, args map[string]any) (string, error) {
@@ -111,6 +120,10 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	toolNames := argx.StringSlice(args["tools"])
 	explicitContext := argx.OptionalText(args, "context")
 	handoffContext := argx.OptionalText(args, "__handoff_context__")
+	// 类型只影响 prompt 职责描述（U1）；工具集统一走 resolveChildToolNames，不按类型裁剪。
+	spec := resolveSubAgentType(argx.OptionalText(args, "subagent_type"))
+	// B8：委派上下文拼成单串进子 Agent 首条 user 消息（不再走 TaskContextEntry / identity env）。
+	taskContext := mergeSubAgentContext(explicitContext, handoffContext)
 
 	callID := runtime.CallID
 	if callID == "" {
@@ -118,6 +131,8 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 	}
 	childName := fmt.Sprintf("sub-%s", childAgentToken(callID))
 
+	// 无 childDef.Policies.MaxIterations（U2：子 loop 无 MaxTurns，由 parent ctx 兜底）；
+	// AgentPolicies.MaxIterations 字段本身保留（主 Execute 仍用，B9）。
 	childDef := AgentDefinition{
 		Name:        childName,
 		Role:        role,
@@ -125,13 +140,6 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 		Instruction: instruction,
 		ToolNames:   t.resolveChildToolNames(toolNames),
 		IsSubAgent:  true,
-		Policies: AgentPolicies{
-			MaxIterations: t.childMaxIterations(),
-		},
-	}
-
-	if contextEntries := buildSubAgentContextEntries(explicitContext, handoffContext); len(contextEntries) > 0 {
-		childDef.Context = contextEntries
 	}
 
 	if t.parentAgent.cfg != nil && t.parentAgent.cfg.BashTool != nil {
@@ -162,10 +170,6 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 		WithWorkspaceRuntime(childRuntime),
 		WithParentWorkspace(t.parentAgent.workspaceRootDir),
 		WithSourceWorkingDir(t.parentAgent.sourceWorkingDir),
-		WithSkipIntentPrelude(),
-	}
-	if tc := childDef.BuildTaskContext(); tc != nil {
-		execOpts = append(execOpts, WithTaskContext(tc))
 	}
 
 	return &childAgentSetup{
@@ -174,12 +178,34 @@ func (t *SubAgentTool) buildChild(ctx context.Context, args map[string]any, runt
 		childRootDir: childRootDir,
 		execOpts:     execOpts,
 		instruction:  instruction,
+		taskContext:  taskContext,
+		spec:         spec,
 		runtime:      runtime,
 	}, nil
 }
 
+// mergeSubAgentContext 把显式上下文与自动交接上下文拼成子 Agent 首条 user 消息的随附上下文串。
+// 显式优先；两者都在且不同则并列（显式在前）。
+func mergeSubAgentContext(explicitContext, handoffContext string) string {
+	explicitContext = strings.TrimSpace(explicitContext)
+	handoffContext = strings.TrimSpace(handoffContext)
+	var b strings.Builder
+	if explicitContext != "" {
+		b.WriteString("委派上下文：\n")
+		b.WriteString(explicitContext)
+	}
+	if handoffContext != "" && handoffContext != explicitContext {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString("交接上下文（补充，若与委派上下文冲突以委派上下文为准）：\n")
+		b.WriteString(handoffContext)
+	}
+	return b.String()
+}
+
 func (t *SubAgentTool) executeSync(ctx context.Context, setup *childAgentSetup) (string, error) {
-	result, err := setup.childAgent.Execute(ctx, setup.instruction, setup.execOpts...)
+	result, _, err := setup.childAgent.RunSubAgentLoop(ctx, setup.instruction, setup.taskContext, setup.spec, setup.execOpts...)
 	t.finalizeChildAgent(setup.runtime, setup.childName, setup.childRootDir, result)
 	if err != nil {
 		return "", fmt.Errorf("sub agent execution: %w", err)
@@ -233,7 +259,7 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 		}()
 
 		var err error
-		result, err = setup.childAgent.Execute(ctx, setup.instruction, setup.execOpts...)
+		result, _, err = setup.childAgent.RunSubAgentLoop(ctx, setup.instruction, setup.taskContext, setup.spec, setup.execOpts...)
 		if err != nil && result == nil {
 			result = &builtin_tools.RunResult{
 				Success: false,
@@ -270,10 +296,6 @@ func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskC
 		})
 	}
 	return entries
-}
-
-func (t *SubAgentTool) childMaxIterations() int {
-	return defaultSubAgentMaxIter
 }
 
 func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string) {

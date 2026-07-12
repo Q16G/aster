@@ -29,18 +29,28 @@ type SubAgentUsage struct {
 //     submit_result 仿 submit_final_answer 每轮 append schema + 循环拦截，不进 childDef、不 dispatch。
 //
 // B8：taskContext 由 buildChild 透传，拼进首条 user 消息（不再走 TaskContextEntry）。
-func (a *Agent) RunSubAgentLoop(ctx context.Context, task, taskContext string, spec SubAgentType) (*builtin_tools.RunResult, *SubAgentUsage, error) {
+//
+// opts 携带子工作区运行时等环境（WithWorkspaceRuntime/WithParentWorkspace/WithSourceWorkingDir）；
+// 环境装配走 Execute 同一段 prepareRunEnvironment（D3：workspace 解析 + client 绑定 + budget），
+// 但**有意不建 v2Store、不做 state.Reset / resume**——子 loop 是无状态机的单循环（见 doc 10 D3）。
+func (a *Agent) RunSubAgentLoop(ctx context.Context, task, taskContext string, spec SubAgentType, opts ...ExecuteOption) (*builtin_tools.RunResult, *SubAgentUsage, error) {
 	start := time.Now()
 	usage := &SubAgentUsage{}
 	if a == nil || a.cfg == nil {
 		return failedWith(usage, start, "sub_agent not initialized"), usage, nil
 	}
 
-	runClient, err := a.resolveAIClient(ctx) // 继承父模型（无 per-type ModelID）
-	if err != nil {
-		return failedWith(usage, start, "resolve ai client failed: "+err.Error()), usage, nil
+	cfg := &ExecuteConfig{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(cfg)
+		}
 	}
-	a.setCurrentRunClient(runClient)
+	preparedCtx, runClient, prepErr := a.prepareRunEnvironment(ctx, cfg) // 继承父模型 + 绑定 client + 预算（D3）
+	if prepErr != nil {
+		return failedWith(usage, start, "prepare run environment failed: "+prepErr.Error()), usage, nil
+	}
+	ctx = preparedCtx
 
 	parts := a.BuildSubAgentPrompt(ctx, task, taskContext, spec)
 
