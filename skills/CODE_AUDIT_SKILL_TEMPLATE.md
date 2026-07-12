@@ -503,7 +503,7 @@ db.Order(sortCol).Find(&items)
 4. **删示范段**：把所有"**白盒 SQLi 示范**："开头的段落替换为本能力 / 漏洞内容
 5. **共享段（§2 / §4 / §7 / §10 / §12）**：直接写本漏洞 / 能力语义
 6. **自检**：按 `SKILL_SPEC.md` §10「code-audit/（白盒）特有项」过一遍
-7. **解析验证**：`cd /Users/qinchenkai/go/sastx && go test ./skills/... -run SkillExtractor`
+7. **解析验证**：在仓库根执行 `go test ./skills/... -run SkillExtractor`
 8. **触发验证**：在 aster 里 `list_skills` 看 description 是否独立描述清晰
 
 ---
