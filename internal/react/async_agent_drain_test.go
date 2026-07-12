@@ -9,6 +9,69 @@ import (
 	"aster/internal/builtin_tools"
 )
 
+// TestDrain_WritesChildAgentTerminalState 锁 D1（单写者）：async child 完成后，ChildAgents 指针由
+// drain 翻成终态、保留 preRegister 写的 ParentStepKey、更新 ArtifactRootDir。
+// 补此测因既有 drainAgent 不带 workspaceRuntime → writeChildAgentTerminalState 一直早退（假覆盖）。
+func TestDrain_WritesChildAgentTerminalState(t *testing.T) {
+	rt, err := newLocalWorkspaceRuntime("", t.TempDir(), "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	childWs := t.TempDir()
+	agent := &Agent{asyncRegistry: NewAsyncAgentRegistry(), state: NewStateTracker(), workspaceRuntime: rt}
+
+	// preRegister 写 running 占位 + ParentStepKey（模拟 spawn 期）。
+	if err := rt.MutateWorkspaceState(func(s *builtin_tools.WorkspaceState) error {
+		s.ChildAgents["bg-1"] = &builtin_tools.WorkspaceChildAgentPointer{Status: "running", ParentStepKey: "step-7"}
+		return nil
+	}); err != nil {
+		t.Fatalf("preRegister: %v", err)
+	}
+	agent.asyncRegistry.Register("bg-1", "task", childWs)
+	agent.asyncRegistry.Complete("bg-1", &builtin_tools.RunResult{Success: true, Result: "done"})
+
+	agent.drainAsyncAgentNotifications(context.Background())
+
+	st, err := rt.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	ptr := st.ChildAgents["bg-1"]
+	if ptr == nil {
+		t.Fatal("child ptr missing after drain")
+	}
+	if ptr.Status != "completed" {
+		t.Fatalf("status=%q, want completed (drain 未翻终态)", ptr.Status)
+	}
+	if ptr.ParentStepKey != "step-7" {
+		t.Fatalf("ParentStepKey lost: %q", ptr.ParentStepKey)
+	}
+	if ptr.ArtifactRootDir != childWs {
+		t.Fatalf("ArtifactRootDir=%q, want %q", ptr.ArtifactRootDir, childWs)
+	}
+	// 恰注入一条 stepHistory。
+	if len(agent.stepHistory) != 1 {
+		t.Fatalf("expected 1 stepHistory injection, got %d", len(agent.stepHistory))
+	}
+}
+
+// TestDrain_ChannelPathSkipsAlreadyDelivered 锁 B10 幂等：补扫已投递（MarkDelivered）后，channel 里
+// 残留的同一 agent 副本被 drain 的 IsDelivered 守卫跳过，不二次注入 stepHistory。
+func TestDrain_ChannelPathSkipsAlreadyDelivered(t *testing.T) {
+	agent := drainAgent(t)
+	agent.asyncRegistry.Register("bg-x", "task", "")
+	// Complete 已把一条 notif 送进 channel。
+	agent.asyncRegistry.Complete("bg-x", &builtin_tools.RunResult{Success: true, Result: "r"})
+	// 模拟补扫已先投递：直接 MarkDelivered。channel 里仍残留该 agent 的副本。
+	agent.asyncRegistry.MarkDelivered("bg-x")
+
+	before := len(agent.stepHistory)
+	agent.drainAsyncAgentNotifications(context.Background())
+	if len(agent.stepHistory) != before {
+		t.Fatalf("already-delivered agent 不应二次注入；before=%d after=%d", before, len(agent.stepHistory))
+	}
+}
+
 // drainAgent 构造最小 Agent 实例供 drain 单测使用：注册表 + state tracker（含 fan-out plan）。
 func drainAgent(t *testing.T) *Agent {
 	t.Helper()

@@ -3,6 +3,7 @@ package react
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -16,7 +17,10 @@ import (
 // 里的下一条 choice；用尽后默认回空 assistant（走 B3 空文本路径）。
 type scriptedSubAgentClient struct {
 	turns []*ai.ChatChoices
+	errs  []error // 可选：errs[i] 非空则第 i 次 ChatEx 返回该 error（测错误收尾分支）
 	calls int
+	// lastMsgs 捕获最近一次 ChatEx 收到的出站消息，供断言「任务/上下文进了 user 消息」。
+	lastMsgs []*ai.MsgInfo
 }
 
 func (c *scriptedSubAgentClient) ModelContextInfo() ai.ModelContextInfo {
@@ -31,13 +35,27 @@ func (c *scriptedSubAgentClient) ChatText(_ context.Context, _ string, _ ...*ai.
 	return "", nil
 }
 
-func (c *scriptedSubAgentClient) ChatEx(_ context.Context, _ []*ai.MsgInfo, _ ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+func (c *scriptedSubAgentClient) ChatEx(_ context.Context, msgs []*ai.MsgInfo, _ ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
 	i := c.calls
 	c.calls++
+	c.lastMsgs = msgs
+	if i < len(c.errs) && c.errs[i] != nil {
+		return nil, c.errs[i]
+	}
 	if i >= len(c.turns) {
 		return []*ai.ChatChoices{{Message: ai.NewAIMsgInfo(""), FinishReason: "stop"}}, nil
 	}
 	return []*ai.ChatChoices{c.turns[i]}, nil
+}
+
+// outboundContains 报告捕获的出站消息里是否有任一条 content 含 substr。
+func (c *scriptedSubAgentClient) outboundContains(substr string) bool {
+	for _, m := range c.lastMsgs {
+		if m != nil && strings.Contains(FormatMsgContent(m.Content), substr) {
+			return true
+		}
+	}
+	return false
 }
 
 func submitResultTurn(status, result string, usage *ai.TokenUsage) *ai.ChatChoices {
@@ -191,6 +209,134 @@ func TestRunSubAgentLoop_ToolThenSubmit_DispatchAndUsage(t *testing.T) {
 	}
 	if client.calls != 2 {
 		t.Fatalf("expected 2 model calls (dispatch turn + submit turn), got %d", client.calls)
+	}
+}
+
+// TestRunSubAgentLoop_FatalErrorCollapses 锁 F3：AICallProxy 返回 fatal/overflow error → 体面
+// 收尾为 failed，Error 带 "recoverable:" 前缀（fatal 与 overflow 共用同一 if 分支）。
+func TestRunSubAgentLoop_FatalErrorCollapses(t *testing.T) {
+	client := &scriptedSubAgentClient{errs: []error{context.Canceled}}
+	agent := newSubAgentLoopTestAgent(t, client)
+
+	result, _, err := agent.RunSubAgentLoop(context.Background(), "任务", "", resolveSubAgentType("explore"))
+	if err != nil {
+		t.Fatalf("loop err: %v", err)
+	}
+	if result == nil || result.Success {
+		t.Fatalf("expected failed, got %#v", result)
+	}
+	if result.TurnStatus != "failed" {
+		t.Fatalf("turn_status=%q, want failed", result.TurnStatus)
+	}
+	if !strings.Contains(result.Error, "recoverable:") {
+		t.Fatalf("fatal/overflow 分支 Error 应带 recoverable: 前缀, got %q", result.Error)
+	}
+}
+
+// TestRunSubAgentLoop_GenericErrorCollapses 锁 F3：普通（非 fatal/overflow）error → failed 但
+// 不带 recoverable: 前缀，Error 保留原因。
+func TestRunSubAgentLoop_GenericErrorCollapses(t *testing.T) {
+	client := &scriptedSubAgentClient{errs: []error{errors.New("provider boom")}}
+	agent := newSubAgentLoopTestAgent(t, client)
+
+	result, _, err := agent.RunSubAgentLoop(context.Background(), "任务", "", resolveSubAgentType("explore"))
+	if err != nil {
+		t.Fatalf("loop err: %v", err)
+	}
+	if result == nil || result.Success {
+		t.Fatalf("expected failed, got %#v", result)
+	}
+	if strings.Contains(result.Error, "recoverable:") {
+		t.Fatalf("普通错误不应带 recoverable: 前缀, got %q", result.Error)
+	}
+	if !strings.Contains(result.Error, "provider boom") {
+		t.Fatalf("Error 应保留原因, got %q", result.Error)
+	}
+}
+
+// TestParseSubmitResult_Forms 锁 F4：submit_result 参数各形态解析——含修复的 map 形态（不再静默失败）。
+func TestParseSubmitResult_Forms(t *testing.T) {
+	mk := func(args any) *ai.FunctionTool {
+		return &ai.FunctionTool{Function: &ai.FunctionDetail{Name: builtin_tools.SubmitResultToolName, Arguments: args}}
+	}
+	cases := []struct {
+		name       string
+		args       any
+		wantStatus string
+		wantResult string
+	}{
+		{"string", `{"status":"completed","result":"ok"}`, "completed", "ok"},
+		{"bytes", []byte(`{"status":"failed","result":"bad"}`), "failed", "bad"},
+		{"map", map[string]any{"status": "COMPLETED", "result": "mres"}, "completed", "mres"}, // F4 修复点
+		{"missing-result", `{"status":"completed"}`, "completed", ""},
+		{"invalid-json", `not json`, "", ""},
+		{"default-status", `{"result":"x"}`, "", "x"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, r := parseSubmitResult(mk(tc.args))
+			if s != tc.wantStatus || r != tc.wantResult {
+				t.Fatalf("parseSubmitResult(%v) = (%q,%q), want (%q,%q)", tc.args, s, r, tc.wantStatus, tc.wantResult)
+			}
+		})
+	}
+}
+
+// TestFindToolCall_FirstMatch 锁 F4：返回首个匹配、无匹配返回 nil。
+func TestFindToolCall_FirstMatch(t *testing.T) {
+	mk := func(name string) *ai.FunctionTool { return &ai.FunctionTool{Function: &ai.FunctionDetail{Name: name}} }
+	tcs := []*ai.FunctionTool{mk("a"), mk("submit_result"), mk("submit_result")}
+	if got := findToolCall(tcs, "submit_result"); got != tcs[1] {
+		t.Fatalf("expected first matching submit_result")
+	}
+	if findToolCall(tcs, "nope") != nil {
+		t.Fatalf("no match should be nil")
+	}
+	if findToolCall(nil, "x") != nil {
+		t.Fatalf("nil slice should be nil")
+	}
+}
+
+// TestRunSubAgentLoop_SubmitWithWorkTool_OnlySubmits 锁 F4 语义：submit_result 与干活工具同轮并现时
+// 只取 submit 收尾、不 dispatch 其余（安全保证：不误跑收尾轮里夹带的干活工具）。
+func TestRunSubAgentLoop_SubmitWithWorkTool_OnlySubmits(t *testing.T) {
+	tool := &countingTool{}
+	turn := submitResultTurn("completed", "done", nil)
+	// 干活工具排在 submit_result 前面，验证仍以 submit 为终止、不 dispatch 干活工具。
+	turn.Message.ToolCalls = append(
+		[]*ai.FunctionTool{{Id: "c1", Type: "function", Function: &ai.FunctionDetail{Name: tool.Name(), Arguments: "{}"}}},
+		turn.Message.ToolCalls...,
+	)
+	client := &scriptedSubAgentClient{turns: []*ai.ChatChoices{turn}}
+	agent := newSubAgentLoopTestAgent(t, client, tool)
+
+	result, _, err := agent.RunSubAgentLoop(context.Background(), "干活", "", resolveSubAgentType("general-purpose"))
+	if err != nil {
+		t.Fatalf("loop err: %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("expected success, got %#v", result)
+	}
+	if atomic.LoadInt32(&tool.calls) != 0 {
+		t.Fatalf("同轮 submit 时干活工具不应被 dispatch, got %d", tool.calls)
+	}
+}
+
+// TestRunSubAgentLoop_ContextReachesUserMessage 锁 F7：委派任务 + 随附上下文真的进了子 loop 首条
+// user 消息（替代测已废弃 TaskContextEntry 路径的旧测）。
+func TestRunSubAgentLoop_ContextReachesUserMessage(t *testing.T) {
+	client := &scriptedSubAgentClient{turns: []*ai.ChatChoices{submitResultTurn("completed", "done", nil)}}
+	agent := newSubAgentLoopTestAgent(t, client)
+
+	_, _, err := agent.RunSubAgentLoop(context.Background(), "查找入口函数", "委派上下文：仓库在 /myrepo", resolveSubAgentType("explore"))
+	if err != nil {
+		t.Fatalf("loop err: %v", err)
+	}
+	if !client.outboundContains("查找入口函数") {
+		t.Fatalf("委派任务应进出站 user 消息")
+	}
+	if !client.outboundContains("/myrepo") {
+		t.Fatalf("随附上下文应进出站 user 消息")
 	}
 }
 

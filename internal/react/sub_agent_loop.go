@@ -232,7 +232,11 @@ func parseSubmitResult(tc *ai.FunctionTool) (status, result string) {
 	case []byte:
 		raw = string(v)
 	default:
-		raw = ""
+		// 结构化 Arguments（部分 provider 归一为 map）也要解析——否则 submit_result 会静默
+		// 失败（返回空 → Success=false）。与姊妹函数 parseSubmitFinalAnswerArgs 同口径。
+		if data, err := json.Marshal(v); err == nil {
+			raw = string(data)
+		}
 	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

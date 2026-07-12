@@ -4,14 +4,50 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
+	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 	. "aster/internal/react"
 )
 
 type mockSkillLookup struct {
 	skills map[string]*SkillInfo
+}
+
+// forkScriptClient 让 skill-fork 子 loop 首轮即调 submit_result 收尾（避免 stub 空返回触发
+// AICallProxy 15s 空响应退避），并记录收到的出站消息供断言「skill body 进了 task/user 消息」。
+type forkScriptClient struct {
+	recorded [][]*ai.MsgInfo
+}
+
+func (c *forkScriptClient) ModelContextInfo() ai.ModelContextInfo {
+	return ai.ModelContextInfo{ModelName: "test-model", InputTokenLimit: 128000, OutputTokenLimit: 8000}.Normalize()
+}
+func (c *forkScriptClient) Chat(_ context.Context, _ *ai.MsgInfo, _ ...*ai.FunctionTool) (string, error) {
+	return "", nil
+}
+func (c *forkScriptClient) ChatText(_ context.Context, _ string, _ ...*ai.FunctionTool) (string, error) {
+	return "", nil
+}
+func (c *forkScriptClient) ChatEx(_ context.Context, msgs []*ai.MsgInfo, _ ...*ai.FunctionTool) ([]*ai.ChatChoices, error) {
+	c.recorded = append(c.recorded, msgs)
+	args, _ := json.Marshal(map[string]any{"status": "completed", "result": "skill done"})
+	tc := &ai.FunctionTool{Id: "sr", Type: "function", Function: &ai.FunctionDetail{Name: builtin_tools.SubmitResultToolName, Arguments: string(args)}}
+	msg := ai.NewAIMsgInfo("")
+	msg.ToolCalls = []*ai.FunctionTool{tc}
+	return []*ai.ChatChoices{{Message: msg, FinishReason: "tool_calls"}}, nil
+}
+func (c *forkScriptClient) sawInOutbound(substr string) bool {
+	for _, msgs := range c.recorded {
+		for _, m := range msgs {
+			if m != nil && strings.Contains(fmt.Sprintf("%v", m.Content), substr) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (m *mockSkillLookup) LookupSkill(_ context.Context, name string) (*SkillInfo, error) {
@@ -273,18 +309,19 @@ func TestSkillTool_ForkMode_AllowedInsideSubAgent(t *testing.T) {
 		skills: map[string]*SkillInfo{
 			"fork-skill": {
 				Name:         "fork-skill",
-				Instructions: "Do stuff",
+				Instructions: "Do stuff UNIQUE_BODY_MARKER",
 				Context:      "fork",
 			},
 		},
 	}
 
-	agent, err := NewReActAgent("test", &stubChatClient{}, WithEmitter(NewDummyEmitter()))
+	agent, err := NewReActAgent("test", &forkScriptClient{}, WithEmitter(NewDummyEmitter()))
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
+	client := &forkScriptClient{}
 	factory := NewAgentFactory(
-		WithFactoryDefaultAIClient(&stubChatClient{}),
+		WithFactoryDefaultAIClient(client),
 		WithFactoryEmitter(NewDummyEmitter()),
 	)
 	tool := NewSkillTool(agent, factory, lookup)
@@ -293,8 +330,27 @@ func TestSkillTool_ForkMode_AllowedInsideSubAgent(t *testing.T) {
 		Emitter:    NewDummyEmitter(),
 		StackDepth: 1,
 	})
-	_, err = tool.Execute(ctx, map[string]any{"skill": "fork-skill"})
+	out, err := tool.Execute(ctx, map[string]any{"skill": "fork-skill"})
 	if err != nil {
 		t.Fatalf("skill fork should be allowed inside sub-agent, got: %v", err)
+	}
+
+	// S2：fork 走单循环内核 → 统一信封（有 status/workspace，无旧字段 ok/agent_name/plan_summary）。
+	var env map[string]any
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("fork result must be JSON envelope: %v (%s)", err, out)
+	}
+	if env["status"] == nil || env["workspace"] == nil {
+		t.Fatalf("expected unified envelope with status/workspace, got: %s", out)
+	}
+	for _, banned := range []string{"ok", "agent_name", "plan_summary"} {
+		if _, ok := env[banned]; ok {
+			t.Fatalf("banned legacy field %q in fork envelope: %s", banned, out)
+		}
+	}
+	// 关键契约：skill body 必须经 task 通道进子 loop user 消息（sub_agent 相位不渲染 Instruction，
+	// body 塞 Instruction 会静默丢失）。
+	if !client.sawInOutbound("UNIQUE_BODY_MARKER") {
+		t.Fatalf("skill body 未进子 loop 出站消息——task 通道契约被破坏")
 	}
 }

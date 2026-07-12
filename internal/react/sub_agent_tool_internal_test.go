@@ -2,13 +2,53 @@ package react
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"aster/internal/ai"
 	"aster/internal/builtin_tools"
 )
+
+// TestMutateWorkspaceState_ConcurrentNoLostUpdate 锁 P6b 全局 state RMW 锁的**逻辑正确性**：
+// N goroutine 并发各写一条 ChildAgents，收尾后全部都在——`-race` 抓不到「读全量-改一区-写全量」
+// 的丢更新，只有这种确定性断言能守住锁失效导致的跨区丢失。
+func TestMutateWorkspaceState_ConcurrentNoLostUpdate(t *testing.T) {
+	rt, err := newLocalWorkspaceRuntime("", t.TempDir(), "root")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	const n = 50
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			id := fmt.Sprintf("c-%d", i)
+			_ = rt.MutateWorkspaceState(func(s *builtin_tools.WorkspaceState) error {
+				s.ChildAgents[id] = &builtin_tools.WorkspaceChildAgentPointer{Status: "running", ParentStepKey: id}
+				return nil
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	st, err := rt.LoadWorkspaceState()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(st.ChildAgents) != n {
+		t.Fatalf("lost update: expected %d ChildAgents, got %d", n, len(st.ChildAgents))
+	}
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("c-%d", i)
+		if st.ChildAgents[id] == nil {
+			t.Fatalf("missing %s — RMW lost update", id)
+		}
+	}
+}
 
 func TestPreRegisterChildAgent_CreatesRunningEntry(t *testing.T) {
 	parentRoot := t.TempDir()
