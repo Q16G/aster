@@ -320,28 +320,6 @@ func (t *SubAgentTool) executeAsync(ctx context.Context, setup *childAgentSetup)
 	return string(out), nil
 }
 
-func buildSubAgentContextEntries(explicitContext, handoffContext string) []TaskContextEntry {
-	explicitContext = strings.TrimSpace(explicitContext)
-	handoffContext = strings.TrimSpace(handoffContext)
-
-	entries := make([]TaskContextEntry, 0, 2)
-	if explicitContext != "" {
-		entries = append(entries, TaskContextEntry{
-			Label:       "委派上下文",
-			Value:       explicitContext,
-			Description: "父 Agent 传递的显式上下文；若与交接上下文冲突，以此为准",
-		})
-	}
-	if handoffContext != "" && handoffContext != explicitContext {
-		entries = append(entries, TaskContextEntry{
-			Label:       "交接上下文",
-			Value:       handoffContext,
-			Description: "父 Agent 自动注入的已完成步骤与摘要上下文，仅作补充；若与显式上下文冲突，以显式上下文为准",
-		})
-	}
-	return entries
-}
-
 func (t *SubAgentTool) preRegisterChildAgent(runtime builtin_tools.ToolRuntimeInfo, childName, childRootDir string) {
 	if t.parentAgent == nil || t.parentAgent.workspaceRuntime == nil {
 		return
