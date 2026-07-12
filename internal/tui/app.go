@@ -376,7 +376,9 @@ func (m Model) updateBody(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, cmd)
 				}
 				val := m.input.Value()
-				if val == "" || !strings.HasPrefix(val, "/") {
+				// 输入含空格 = 命令名已打完、正在输入参数 → 关掉命令选择器，让 Enter 正常提交原文执行。
+				// 否则带参数命令（/parallel 5、/mode yolo、/theme dark 等）会「No matching commands」且 Enter 被 picker 吞掉、命令不执行。
+				if val == "" || !strings.HasPrefix(val, "/") || strings.Contains(val, " ") {
 					m.commandPicker = nil
 					m.updateLayout()
 				} else {

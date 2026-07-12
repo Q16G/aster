@@ -25,8 +25,8 @@ import (
 	"aster/internal/service"
 	"aster/internal/tui"
 	tuicontext "aster/internal/tui/context"
-	skillspkg "aster/skills"
 	semgrep_rules "aster/semgrep-rules"
+	skillspkg "aster/skills"
 )
 
 var (
