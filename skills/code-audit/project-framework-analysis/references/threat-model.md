@@ -38,12 +38,17 @@
 
 ## 产物落库
 
-写入机器读 `project-framework-analysis.jsonl`（`kind: threat`，字段仅 `attack_surface / vuln_class / rationale`）与人读 `shared/models/threat-model.md`（按攻击面单元组织的全量适用性映射）。示例行：
+写入 `shared/models/threat-model.md`：按攻击面单元组织的全量适用性映射表。
 
-```json
-{"kind":"threat","attack_surface":"POST /api/order/refund（用户可达）","vuln_class":"业务逻辑-重复退款","rationale":"退款金额来自请求且未见幂等校验（business invariant 唯一性缺口），触达资金——下游按此接口测试该维度"}
-{"kind":"threat","attack_surface":"GET /api/user/{id}/profile","vuln_class":"IDOR-水平越权","rationale":"id 用户可控，未见 owner 归属校验（entity_field owner=userId）"}
-{"kind":"threat","attack_surface":"GET /api/health","vuln_class":"SQLi","rationale":"结构上不可能成立：无参数、无 DB sink 可达（事实记录，非取舍，不影响该接口其他维度的测试）"}
+```markdown
+## 攻击面 × 漏洞维度适用性映射
+| 攻击面(入口/资产) | 可达身份 | 漏洞维度 | rationale(事实依据) |
+|------------------|---------|---------|---------------------|
+| POST /api/order/refund | user | 业务逻辑-重复退款 | 退款金额来自请求且未见幂等校验(business invariant 唯一性缺口)，触达资金——下游按此接口测该维度 |
+| GET /api/user/{id}/profile | user | IDOR-水平越权 | id 用户可控，未见 owner 归属校验(entity_field owner=userId) |
+| GET /api/health | anon | SQLi | 结构上不可能成立：无参数、无 DB sink 可达(事实记录，非取舍，不影响该接口其他维度) |
 ```
 
 `rationale` 必须引用前四张模型的具体事实（entity_field / middleware / invariant / framework_wrap），不写泛化推断，不写优先级、不写取舍。
+
+> 注意：本文件 `references/threat-model.md` 是**建模方法论细则**（怎么建）；运行时产物落 `shared/models/threat-model.md`（建出来的模型）。二者同名不同物。

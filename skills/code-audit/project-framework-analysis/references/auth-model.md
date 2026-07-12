@@ -26,10 +26,20 @@ IDOR / ownership / 越权类审计依赖 owner ↔ resource 字段对照。
 
 ## 产物落库
 
-写入机器读 `project-framework-analysis.jsonl`（`kind: entity_field`，`role ∈ owner | resource | tenant`；认证机制走 `kind: framework_wrap` 的 `category: auth`）与人读 `shared/models/auth-model.md`。示例：
+写入 `shared/models/auth-model.md`：认证机制描述 + 归属字段对照表。
 
-```json
-{"kind":"entity_field","entity":"Order","field":"userId","role":"owner","file_location":"Order.java:12"}
-{"kind":"entity_field","entity":"Order","field":"orderId","role":"resource","file_location":"Order.java:8"}
-{"kind":"framework_wrap","category":"auth","subtype":"validation_stub","class":"TokenValidator","method":"validateToken","file_location":"TokenValidator.java:15","note":"method body returns true unconditionally"}
+```markdown
+## 认证机制
+- 会话：JWT（TokenValidator.validateToken 方法体恒真 → 失效校验，TokenValidator.java:15）
+- 角色分级：RBAC（user / admin）；多租户 tenant_id 隔离
+
+## 归属字段对照表
+| 实体 | 字段 | 角色(owner/resource/tenant) | file_location |
+|------|------|----------------------------|---------------|
+| Order | userId | owner | Order.java:12 |
+| Order | orderId | resource | Order.java:8 |
 ```
+
+就地更新不删旧行。
+
+> 注意：本文件 `references/auth-model.md` 是**建模方法论细则**（怎么建）；运行时产物落 `shared/models/auth-model.md`（建出来的模型）。二者同名不同物。
