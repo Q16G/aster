@@ -53,10 +53,10 @@ func TestCapabilityIndex_HasMethods(t *testing.T) {
 	// 与旧内联逻辑逐一等价（锁死方法体不漂移）。
 	cases := []CapabilityIndex{
 		empty, full,
-		{SkillsContext: &SkillsPromptContext{Table: "  "}},                 // 空白表 → false
-		{SkillsContext: &SkillsPromptContext{Injected: "x"}},               // 有注入无表
-		{MCPContext: &MCPPromptContext{Table: ""}},                        // 空 MCP 表
-		{AvailableTools: []AvailableToolInfo{}},                            // 空工具切片
+		{SkillsContext: &SkillsPromptContext{Table: "  "}},   // 空白表 → false
+		{SkillsContext: &SkillsPromptContext{Injected: "x"}}, // 有注入无表
+		{MCPContext: &MCPPromptContext{Table: ""}},           // 空 MCP 表
+		{AvailableTools: []AvailableToolInfo{}},              // 空工具切片
 	}
 	for i, c := range cases {
 		if c.HasSkillsTable() != (c.SkillsContext != nil && c.SkillsContext.HasTable()) {
