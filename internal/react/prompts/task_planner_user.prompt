@@ -20,23 +20,3 @@
 {{.TASK_CONTEXT_BOARD}}
 </TASK_CONTEXT_BOARD>
 {{- end}}
-{{- if .HAS_SKILLS_TABLE}}
-
-<SKILLS_INDEX>
-{{- if .SKILLS_OVERFLOW_PATH}}
-> 可用能力索引较多，完整列表已保存至 `{{.SKILLS_OVERFLOW_PATH}}`，按需查看完整列表。
-{{- else}}
-{{.SKILLS_CONTEXT.Table}}
-{{- end}}
-</SKILLS_INDEX>
-{{- end}}
-{{- if .HAS_MCP_TABLE}}
-
-<MCP_SERVERS>
-{{- if .MCP_OVERFLOW_PATH}}
-> 可用 MCP Server 较多，完整列表已保存至 `{{.MCP_OVERFLOW_PATH}}`，按需查看完整列表。
-{{- else}}
-{{.MCP_CONTEXT.Table}}
-{{- end}}
-</MCP_SERVERS>
-{{- end}}

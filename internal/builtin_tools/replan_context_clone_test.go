@@ -8,7 +8,6 @@ import (
 // TestCloneReplanContext_DepthGaps 校验轴②深度字段被深拷贝，且改动副本不影响原对象。
 func TestCloneReplanContext_DepthGaps(t *testing.T) {
 	in := &ReplanContext{
-		SourceStepID:    "step-2",
 		IncompleteItems: NewAxisItems([]string{"i1"}),
 		DepthGaps:       NewAxisItems([]string{"d1", "d2"}),
 		NewSurfaces:     NewAxisItems([]string{"s1"}),
@@ -30,7 +29,6 @@ func TestCloneReplanContext_DepthGaps(t *testing.T) {
 // TestCloneReplanContext_TopicAssessments 校验 phase 评估被深拷贝。
 func TestCloneReplanContext_TopicAssessments(t *testing.T) {
 	in := &ReplanContext{
-		SourceStepID: "step-3",
 		TopicAssessments: []*TopicAssessment{
 			{TopicID: "phase-a", Status: TopicAssessContinue, DepthGaps: []string{"g1"}},
 		},

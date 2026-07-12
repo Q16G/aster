@@ -12,11 +12,13 @@ type SkillIndexRow struct {
 	Description string
 	WhenToUse   string
 	Context     string
-	Status      string
 	SkillDir    string
 }
 
-func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName string, allowedSkillNames []string, activeSkillNames []string) (string, error) {
+// BuildSkillsTable 生成 skill 索引表。表内容只依赖 agent + 允许集 + catalog（全部 per-run 静态），
+// 不含随 step 变化的 status 列——表注入 system prompt 后跨 step 恒定，system 缓存前缀稳定命中。
+// 「哪些 skill 已加载」由 Injected 段（BuildInjectedSkillsSection）在 user message 承载，不进表。
+func (s *SkillService) BuildSkillsTable(ctx context.Context, agentName string, allowedSkillNames []string) (string, error) {
 	if s == nil {
 		return "", fmt.Errorf("skill service is nil")
 	}
@@ -25,14 +27,6 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 		return "", fmt.Errorf("agent name is required")
 	}
 	allowedSet := toStringSet(allowedSkillNames)
-	activeSet := make(map[string]struct{}, len(activeSkillNames))
-	for _, raw := range activeSkillNames {
-		name := strings.TrimSpace(raw)
-		if name == "" {
-			continue
-		}
-		activeSet[name] = struct{}{}
-	}
 
 	enabled := true
 	skills, err := s.ListSkills(ctx, &SkillFilter{Enabled: &enabled})
@@ -65,7 +59,6 @@ func (s *SkillService) BuildSkillsTableWithStatus(ctx context.Context, agentName
 			Description: strings.TrimSpace(item.Description),
 			WhenToUse:   strings.TrimSpace(item.WhenToUse),
 			Context:     firstNonEmpty(strings.TrimSpace(item.Context), "inline"),
-			Status:      skillStatus(name, activeSet),
 			SkillDir:    strings.TrimSpace(item.SkillDir),
 		})
 	}
@@ -171,8 +164,8 @@ func formatSkillsTable(rows []SkillIndexRow) string {
 		lines = append(lines, "> 可用技能较多，请通过 read_file 读取对应 SKILL.md 获取完整指令，不要一次性加载所有技能。")
 		lines = append(lines, "")
 	}
-	lines = append(lines, "| name | description | when-to-use | path | context | status |")
-	lines = append(lines, "| --- | --- | --- | --- | --- | --- |")
+	lines = append(lines, "| name | description | when-to-use | path | context |")
+	lines = append(lines, "| --- | --- | --- | --- | --- |")
 
 	for _, row := range rows {
 		name := sanitizeTableCell(row.Name)
@@ -188,24 +181,13 @@ func formatSkillsTable(rows []SkillIndexRow) string {
 		if ctx == "" {
 			ctx = "inline"
 		}
-		status := sanitizeTableCell(row.Status)
-		if status == "" {
-			status = "available"
-		}
 		skillPath := "-"
 		if row.SkillDir != "" {
 			skillPath = sanitizeTableCell(row.SkillDir + "/SKILL.md")
 		}
-		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s | %s |", name, desc, whenToUse, skillPath, ctx, status))
+		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s |", name, desc, whenToUse, skillPath, ctx))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func skillStatus(name string, activeSet map[string]struct{}) string {
-	if _, exists := activeSet[name]; exists {
-		return "loaded"
-	}
-	return "available"
 }
 
 func normalizeSkillNamesForTable(names []string) []string {

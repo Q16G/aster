@@ -133,26 +133,25 @@ func TestPlannerInputFromSnapshot_IncludesReplanContext(t *testing.T) {
 			{ID: "step-2", Step: "旧步骤", Status: builtin_tools.PlanStepPending},
 		},
 		ReplanContext: &builtin_tools.ReplanContext{
-			SourceStepID:    "step-1",
 			Reason:          "旧计划未覆盖新增缺口",
-			NextGoal:        "围绕新缺口重排计划",
 			IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
-			Warnings:        []string{"warn-1"},
-			ReplacePending:  true,
 		},
 	}
 
 	got := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{})
 	for _, marker := range []string{
 		"<REPLAN_CONTEXT>",
-		"\"source_step_id\":\"step-1\"",
 		"\"reason\":\"旧计划未覆盖新增缺口\"",
-		"\"next_goal\":\"围绕新缺口重排计划\"",
-		"\"replace_pending\":true",
 		"</REPLAN_CONTEXT>",
 	} {
 		if !strings.Contains(got, marker) {
 			t.Fatalf("expected marker %q in planner input, got %s", marker, got)
+		}
+	}
+	// ReplanContext 已移除的字段不得再出现在注入 JSON（代码侧 scope / 意图字段拆走）。
+	for _, banned := range []string{"source_step_id", "next_goal", "replace_pending", "replace_topic_id", "user_initiated", "regenerate_goal"} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("REPLAN_CONTEXT must not contain removed field %q, got %s", banned, got)
 		}
 	}
 }

@@ -33,24 +33,10 @@
 {{.EXTRA_CONTEXT}}
 ---
 {{- end}}
-{{- if .HAS_SKILLS_TABLE}}
-
-## Skills 索引
----
-{{.SKILLS_CONTEXT.Table}}
----
-{{- end}}
 {{- if .HAS_INJECTED_SKILLS}}
 
 ## Injected Skills（已注入指令，收尾前对用不上的调用 eject_skill 卸载）
 ---
 {{.SKILLS_CONTEXT.Injected}}
----
-{{- end}}
-{{- if .HAS_MCP_TABLE}}
-
-## MCP Servers
----
-{{.MCP_CONTEXT.Table}}
 ---
 {{- end}}

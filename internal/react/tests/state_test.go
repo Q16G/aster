@@ -100,11 +100,8 @@ func TestStateTracker_UpdatePlan_ClearsReplanContext(t *testing.T) {
 		Status:      builtin_tools.TaskStatusRunning,
 		CurrentGoal: "新目标",
 		ReplanContext: &builtin_tools.ReplanContext{
-			SourceStepID:    "step-1",
-			NextGoal:        "新目标",
+			Reason:          "旧计划未覆盖新增缺口",
 			IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
-			Warnings:        []string{"warn-1"},
-			ReplacePending:  true,
 		},
 	})
 
@@ -185,22 +182,38 @@ func TestStateTracker_SoftReset_ClearsExecutionState(t *testing.T) {
 func TestStateTracker_SetReplanContext(t *testing.T) {
 	tracker := NewStateTracker()
 	tracker.SetReplanContext(&builtin_tools.ReplanContext{
-		Reason:         "user wants different approach",
-		NextGoal:       "new goal",
-		ReplacePending: true,
+		Reason:          "internal replan gap",
+		IncompleteItems: builtin_tools.NewAxisItems([]string{"missing-1"}),
 	})
 
 	snap := tracker.Snapshot()
 	if snap.ReplanContext == nil {
 		t.Fatal("ReplanContext should not be nil")
 	}
-	if snap.ReplanContext.Reason != "user wants different approach" {
+	if snap.ReplanContext.Reason != "internal replan gap" {
 		t.Errorf("Reason = %q", snap.ReplanContext.Reason)
 	}
-	if snap.ReplanContext.NextGoal != "new goal" {
-		t.Errorf("NextGoal = %q", snap.ReplanContext.NextGoal)
+	if len(snap.ReplanContext.IncompleteItems) != 1 {
+		t.Errorf("IncompleteItems not set: %+v", snap.ReplanContext.IncompleteItems)
 	}
-	if !snap.ReplanContext.ReplacePending {
-		t.Error("ReplacePending should be true")
+}
+
+func TestStateTracker_SetIntentContext(t *testing.T) {
+	tracker := NewStateTracker()
+	tracker.SetIntentContext(&builtin_tools.IntentContext{
+		Action:      "replan",
+		LatestInput: "换个方向",
+		Reason:      "user wants different approach",
+	})
+
+	snap := tracker.Snapshot()
+	if snap.IntentContext == nil {
+		t.Fatal("IntentContext should not be nil")
+	}
+	if snap.IntentContext.Action != "replan" {
+		t.Errorf("Action = %q, want replan", snap.IntentContext.Action)
+	}
+	if snap.IntentContext.LatestInput != "换个方向" {
+		t.Errorf("LatestInput = %q", snap.IntentContext.LatestInput)
 	}
 }

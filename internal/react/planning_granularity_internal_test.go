@@ -187,7 +187,9 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 	planningRequired := []string{
 		"单一主导切面",
 		"对象×多维度矩阵",
-		"主题动态增改删",
+		"主题级承接",
+		"全局收束承接",
+		"意图恢复承接",
 		"据复核自决",
 		"真依赖才连边",
 		"深度优先仅两义",

@@ -68,14 +68,11 @@ func TestRunIntentClassificationPhase_SubmitReplan(t *testing.T) {
 	if snap.Phase != builtin_tools.AgentPhasePlan {
 		t.Fatalf("expected phase plan, got %q", snap.Phase)
 	}
-	if snap.ReplanContext == nil {
-		t.Fatal("expected ReplanContext to be set for replan")
+	if snap.IntentContext == nil {
+		t.Fatal("expected IntentContext to be set for replan")
 	}
-	if !snap.ReplanContext.RegenerateGoal {
-		t.Error("expected RegenerateGoal=true for replan")
-	}
-	if !snap.ReplanContext.ReplacePending {
-		t.Error("expected ReplacePending=true for replan")
+	if snap.IntentContext.Action != "replan" {
+		t.Errorf("expected IntentContext.Action=replan, got %q", snap.IntentContext.Action)
 	}
 }
 
@@ -107,8 +104,8 @@ func TestRunIntentClassificationPhase_ReadThenCarry(t *testing.T) {
 	if snap.Phase != builtin_tools.AgentPhasePlan {
 		t.Fatalf("expected phase plan, got %q", snap.Phase)
 	}
-	if snap.ReplanContext == nil || snap.ReplanContext.ReplacePending {
-		t.Fatalf("expected carry ReplanContext with ReplacePending=false, got %+v", snap.ReplanContext)
+	if snap.IntentContext == nil || snap.IntentContext.Action != "carry" {
+		t.Fatalf("expected carry IntentContext{Action:carry}, got %+v", snap.IntentContext)
 	}
 }
 

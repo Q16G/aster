@@ -23,5 +23,6 @@ type plannerInputData struct {
 	// 文件存在才注入，供卡片不足时按需回读。
 	PlannerJournalPath  string
 	ReplanContextJSON   string
+	IntentContextJSON   string
 	RecoveryContextJSON string
 }

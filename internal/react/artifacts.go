@@ -275,6 +275,7 @@ func (w *artifactWriter) PersistPlanArtifacts(snapshot builtin_tools.StateSnapsh
 	state.Warnings = builtin_tools.CloneStringSlice(snapshot.Warnings)
 	state.UnresolvedAxes = builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes)
 	state.ReplanContext = builtin_tools.CloneReplanContext(snapshot.ReplanContext)
+	state.IntentContext = builtin_tools.CloneIntentContext(snapshot.IntentContext)
 	state.ActiveSkillNames = builtin_tools.CloneStringSlice(snapshot.ActiveSkillNames)
 	state.ActiveMCPServers = builtin_tools.CloneStringSlice(snapshot.ActiveMCPServers)
 	state.UpdatedAt = time.Now()
@@ -346,6 +347,7 @@ func buildPlanCurrentCheckpoint(snapshot builtin_tools.StateSnapshot, sessionID 
 		Warnings:          snapshot.Warnings,
 		UnresolvedAxes:    builtin_tools.CloneReplanAxes(snapshot.UnresolvedAxes),
 		ReplanContext:     builtin_tools.CloneReplanContext(snapshot.ReplanContext),
+		IntentContext:     builtin_tools.CloneIntentContext(snapshot.IntentContext),
 		StatusSummary:     strings.TrimSpace(snapshot.StatusSummary),
 		CurrentGoal:       strings.TrimSpace(snapshot.CurrentGoal),
 		GoalUnderstanding: strings.TrimSpace(snapshot.GoalUnderstanding),

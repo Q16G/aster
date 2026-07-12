@@ -25,7 +25,7 @@ func (t *SubmitFinalAnswerTool) Description() string {
 func (t *SubmitFinalAnswerTool) Parameters() any {
 	return map[string]any{
 		"type":     "object",
-		"required": []string{"is_complete", "status", "reason", "should_replan", "next_goal", "incomplete_items", "depth_gaps", "new_surfaces", "warnings", "user_message", "references"},
+		"required": []string{"is_complete", "status", "reason", "should_replan", "warnings", "user_message", "references"},
 		"properties": map[string]any{
 			"is_complete": map[string]any{
 				"type":        "boolean",
@@ -42,26 +42,7 @@ func (t *SubmitFinalAnswerTool) Parameters() any {
 			},
 			"should_replan": map[string]any{
 				"type":        "boolean",
-				"description": "是否应回流 plan。仅当 agent 还能继续执行补齐缺口时为 true。",
-			},
-			"next_goal": map[string]any{
-				"type":        "string",
-				"description": "下一轮明确目标。仅在确实需要 agent 继续执行时填写；不要写「等待用户输入」。",
-			},
-			"incomplete_items": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "轴①存在性/完成度：当前用户诉求范围内、根本没做的要点。默认受意图半径约束，意图外维度不计入；显式聚焦时仅列聚焦方向内的未完成项。不含'做了但不扎实'（属 depth_gaps）。",
-			},
-			"depth_gaps": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "轴②深度/质量：跨 step 来看做了但不扎实的项 —— " + DepthSmellsEnumeration + "。即使轴①为空也须独立判定。",
-			},
-			"new_surfaces": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "轴③泛化：对照意图半径内的诉求全集、尚未被任何已完成工作覆盖的面（任务覆盖完整性视角；范围是整个任务而非某个 step）。意图外/明确不做项及聚焦方向外的面填此字段但不单独驱动 should_replan。",
+				"description": "是否应回流 plan。仅当 agent 还能继续执行补齐缺口时为 true。三轴缺口的盘点与承接归复核阶段（step_replan）与账本，本阶段只做终态裁决，不产缺口清单。",
 			},
 			"warnings": map[string]any{
 				"type":        "array",

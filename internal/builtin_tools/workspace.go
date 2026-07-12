@@ -38,6 +38,7 @@ type WorkspaceState struct {
 	Warnings              []string                                `json:"warnings,omitempty"`
 	UnresolvedAxes        *ReplanAxes                             `json:"unresolved_axes,omitempty"`
 	ReplanContext         *ReplanContext                          `json:"replan_context,omitempty"`
+	IntentContext         *IntentContext                          `json:"intent_context,omitempty"`
 	ActiveSkillNames      []string                                `json:"active_skill_names,omitempty"`
 	ActiveMCPServers      []string                                `json:"active_mcp_servers,omitempty"`
 	ActiveReferenceIDs    []string                                `json:"active_reference_ids,omitempty"`

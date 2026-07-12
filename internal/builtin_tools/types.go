@@ -386,21 +386,25 @@ type CurrentStepUpdate struct {
 	TranscriptBlobRef string `json:"transcript_blob_ref,omitempty"`
 }
 
+// IntentContext 是意图恢复上下文：回合起点由 intent_classification 产出，注入 planner
+// 让其据「用户输入 + 推荐动作」产 goal_understanding（猜测意图归 planner，submit_intent
+// 不产 goal）。与内部回流的 ReplanContext 语义正交、注入时二选一互斥。
+// RegenerateGoal/UserInitiated 语义由 Action 派生（Action=="replan"→重产 goal；
+// IntentContext!=nil→用户驱动回合），不再落独立字段。
+type IntentContext struct {
+	LatestInput string `json:"latest_input"`         // 用户最新输入原文
+	Action      string `json:"action"`               // 推荐后续动作：carry / replan / cold_start
+	Reason      string `json:"reason,omitempty"`      // 一句判定依据（意图分类给出）
+}
+
+// ReplanContext 是内部回流上下文：step_replan 复核后把三轴缺口 + 各 topic 评估回流给
+// planner 重编排。纯 gap 载荷，不含用户意图、不含流程控制标志、不含代码侧 topic scope
+// （per-topic 局部替换/释放的 topic scope 由 Agent.replanScopeTopicID 代码承载，不进此 JSON）。
 type ReplanContext struct {
-	SourceStepID    string      `json:"source_step_id,omitempty"`
 	Reason          string      `json:"reason,omitempty"`
-	NextGoal        string      `json:"next_goal,omitempty"`
-	IncompleteItems []*AxisItem `json:"incomplete_items,omitempty"` // 轴①存在性：源 step 自身声明范围内、根本没做的项
-	DepthGaps       []*AxisItem `json:"depth_gaps,omitempty"`       // 轴②深度：源 step 做了但不扎实的项（判据见 DepthSmellsEnumeration）
+	IncompleteItems []*AxisItem `json:"incomplete_items,omitempty"` // 轴①存在性：声明范围内、根本没做的项
+	DepthGaps       []*AxisItem `json:"depth_gaps,omitempty"`       // 轴②深度：做了但不扎实的项（判据见复核阶段 prompt）
 	NewSurfaces     []*AxisItem `json:"new_surfaces,omitempty"`     // 轴③泛化：对照整体任务全集、尚未被任何已完成工作覆盖的面
-	Warnings        []string    `json:"warnings,omitempty"`
-	ReplacePending  bool        `json:"replace_pending,omitempty"`
-	// ReplaceTopicID 非空时把 ReplacePending 收窄到该 topic（第四阶段 per-topic 局部 review）：
-	// 只替换该 topic 的 pending step，其他 topic 的 pending/in_progress 原样保留（不 clobber 在跑
-	// 的他 topic）。空 = 全局整盘替换（现有行为）。
-	ReplaceTopicID  string      `json:"replace_topic_id,omitempty"`
-	RegenerateGoal  bool        `json:"regenerate_goal,omitempty"` // 用户改向：planner 须重产 GOAL_UNDERSTANDING，不沿用旧理解
-	UserInitiated   bool        `json:"user_initiated,omitempty"`  // 本回合由用户新输入经意图分类触发（carry/replan），区别于 step_replan 内部重规划与子 Agent 等待
 	// TopicAssessments 是 step_replan 对本轮 frontier 内各 active phase 的全量评估，
 	// 回流给下一轮 planner 决定各 lane 继续释放 step 还是收束。
 	TopicAssessments []*TopicAssessment `json:"topic_assessments,omitempty"`
@@ -475,6 +479,9 @@ type StateSnapshot struct {
 	StepOutcomes  []*StepOutcome `json:"step_outcomes,omitempty"`
 	FinalAnswer   *FinalAnswer   `json:"final_answer,omitempty"`
 	ReplanContext *ReplanContext `json:"replan_context,omitempty"`
+	// IntentContext 是意图恢复上下文（回合起点由 intent_classification 写、planner 读后清）。
+	// 与 ReplanContext 语义正交、注入 planner 时二选一互斥。
+	IntentContext *IntentContext `json:"intent_context,omitempty"`
 	// ExternalInterrupt 记录导致当前 run 提前收尾的外部依赖中断（如 provider quota/auth/rate limit）。
 	ExternalInterrupt *ExternalInterrupt `json:"external_interrupt,omitempty"`
 	// ActiveSkillNames 表示当前 runtime 已注入到 prompt 的 skill 名称集合。

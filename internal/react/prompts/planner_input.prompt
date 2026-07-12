@@ -27,6 +27,13 @@
 {{- if .PlannerJournalPath}}
 计划全量历史 journal（plan 真相源，按需回读；jsonl 逐行 append，最新状态 = 同 id 最后一条）：`{{.PlannerJournalPath}}`
 {{- end}}
+{{- if .IntentContextJSON}}
+
+<INTENT_CONTEXT>
+说明：意图恢复上下文。latest_input=用户最新输入，action=推荐后续动作（carry 沿用既有意图理解并承接新输入 / replan 基于新输入重建意图理解 / cold_start 重开）。据此产出 goal_understanding（猜测意图）。
+{{.IntentContextJSON}}
+</INTENT_CONTEXT>
+{{- end}}
 {{- if .ReplanContextJSON}}
 
 <REPLAN_CONTEXT>
@@ -40,7 +47,7 @@
 {{.RecoveryContextJSON}}
 </RECOVERY_CHILD_AGENTS>
 {{- end}}
-{{- if not (or .TaskItemsJSON .ReplanContextJSON .RecoveryContextJSON)}}
+{{- if not (or .TaskItemsJSON .ReplanContextJSON .IntentContextJSON .RecoveryContextJSON)}}
 
 <PLANNING_HINT>
 这是一个全新任务：无已有执行状态可承接，计划须基于对任务相关上下文的实际了解，而非凭空假设。

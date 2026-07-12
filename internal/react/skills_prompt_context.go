@@ -38,7 +38,7 @@ func (fn SkillsPromptProviderFunc) BuildSkillsPrompt(ctx context.Context, agentN
 }
 
 type SkillsCatalog interface {
-	BuildSkillsTableWithStatus(ctx context.Context, agentName string, allowedSkillNames []string, activeSkillNames []string) (string, error)
+	BuildSkillsTable(ctx context.Context, agentName string, allowedSkillNames []string) (string, error)
 	BuildInjectedSkillsSection(ctx context.Context, allowedSkillNames []string, names []string) (string, error)
 }
 
@@ -47,7 +47,7 @@ func NewSkillsPromptProviderFromCatalog(catalog SkillsCatalog, allowedSkillNames
 		return nil
 	}
 	return SkillsPromptProviderFunc(func(ctx context.Context, agentName string, snapshot builtin_tools.StateSnapshot) (*SkillsPromptContext, error) {
-		table, err := catalog.BuildSkillsTableWithStatus(ctx, agentName, allowedSkillNames, snapshot.ActiveSkillNames)
+		table, err := catalog.BuildSkillsTable(ctx, agentName, allowedSkillNames)
 		if err != nil {
 			return nil, err
 		}

@@ -28,6 +28,9 @@ type planCurrentCheckpoint struct {
 	Warnings          []string                       `json:"warnings,omitempty"`
 	UnresolvedAxes    *builtin_tools.ReplanAxes      `json:"unresolved_axes,omitempty"`
 	ReplanContext     *builtin_tools.ReplanContext   `json:"replan_context,omitempty"`
+	// IntentContext 意图恢复上下文：仅 plan 时刻在场（intent→plan 一次性瞬态，UpdatePlan 后清），
+	// 随 plan/current.json 落盘供 intent→plan 之间崩溃的 resume 兜底。
+	IntentContext     *builtin_tools.IntentContext   `json:"intent_context,omitempty"`
 	StatusSummary     string                         `json:"status_summary,omitempty"`
 	CurrentGoal       string                         `json:"current_goal,omitempty"`
 	GoalUnderstanding string                         `json:"goal_understanding,omitempty"`
