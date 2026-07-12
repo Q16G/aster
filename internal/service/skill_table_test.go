@@ -20,14 +20,14 @@ func TestBuildSkillsTableWithStatus(t *testing.T) {
 		t.Fatalf("import skill failed: %v", err)
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", nil, []string{"data-flow"})
+	table, err := svc.BuildSkillsTable(context.Background(), "SASTAgent", nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
 
 	for _, expected := range []string{
-		"| name | description | when-to-use | path | context | status |",
-		"| data-flow | 数据流分析 | flow, sink | - | inline | loaded |",
+		"| name | description | when-to-use | path | context |",
+		"| data-flow | 数据流分析 | flow, sink | - | inline |",
 	} {
 		if !strings.Contains(table, expected) {
 			t.Fatalf("expected table to contain %q, got:\n%s", expected, table)
@@ -59,13 +59,13 @@ func TestBuildSkillsTableWithStatus_AllAgentWildcard(t *testing.T) {
 		}
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "all", nil, nil)
+	table, err := svc.BuildSkillsTable(context.Background(), "all", nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
 	for _, expected := range []string{
-		"| data-flow | 数据流分析 | - | - | inline | available |",
-		"| project-analysis | 项目分析 | - | - | inline | available |",
+		"| data-flow | 数据流分析 | - | - | inline |",
+		"| project-analysis | 项目分析 | - | - | inline |",
 	} {
 		if !strings.Contains(table, expected) {
 			t.Fatalf("expected wildcard table to contain %q, got:\n%s", expected, table)
@@ -120,7 +120,7 @@ func TestImportEmbeddedSkills(t *testing.T) {
 		t.Fatalf("expected embedded skills to be imported")
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "SASTAgent", nil, nil)
+	table, err := svc.BuildSkillsTable(context.Background(), "SASTAgent", nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
@@ -144,12 +144,12 @@ func TestBuildSkillsTableWithStatus_V2Fields(t *testing.T) {
 		t.Fatalf("import failed: %v", err)
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "TestAgent", nil, nil)
+	table, err := svc.BuildSkillsTable(context.Background(), "TestAgent", nil)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)
 	}
 
-	expected := "| v2-skill | New format skill | 需要测试时使用 | - | fork | available |"
+	expected := "| v2-skill | New format skill | 需要测试时使用 | - | fork |"
 	if !strings.Contains(table, expected) {
 		t.Fatalf("expected table to contain %q, got:\n%s", expected, table)
 	}
@@ -187,7 +187,7 @@ func TestBuildSkillsTableWithStatus_AgentFilterWithV2Field(t *testing.T) {
 		}
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(context.Background(), "AgentA", nil, nil)
+	table, err := svc.BuildSkillsTable(context.Background(), "AgentA", nil)
 	if err != nil {
 		t.Fatalf("failed: %v", err)
 	}
@@ -235,11 +235,10 @@ func TestBuildSkillsTableWithStatus_AllowedSkillNamesOverrideAgentVisibility(t *
 		}
 	}
 
-	table, err := svc.BuildSkillsTableWithStatus(
+	table, err := svc.BuildSkillsTable(
 		context.Background(),
 		"graybox-test",
 		[]string{"sql-injection-comprehensive", "sast-scan", "result-with-file"},
-		nil,
 	)
 	if err != nil {
 		t.Fatalf("BuildSkillsTableWithStatus failed: %v", err)

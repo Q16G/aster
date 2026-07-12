@@ -269,6 +269,14 @@ func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin
 			return builtin_tools.AgentPhaseStepReplan
 		}
 		a.reviewTopicID = ""
+		// Part C：per-topic 局部 replan 紧接的当回释放只放本 topic 的就绪 step（scope 由代码载体承载）。
+		// 该 topic 有就绪 → 收窄进 Step；无就绪 → 弃 scope，透明回落全局释放/reducer。
+		if a.replanScopeTopicID != "" {
+			if builtin_tools.NextFrontierPlanStepIDScoped(snapshot.Plan, snapshot.Topics, a.replanScopeTopicID) != "" {
+				return builtin_tools.AgentPhaseStep
+			}
+			a.replanScopeTopicID = ""
+		}
 		if builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics) != "" {
 			return builtin_tools.AgentPhaseStep
 		}
@@ -306,7 +314,8 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	pc := a.buildPromptContext(snapshot, "")
 	// regenGoal：用户改向（intent=replan）回流时强制重产意图半径——不注入旧 GU，让 planner
 	// 基于当前输入重新生成；其余回流（step_replan 内部重规划、intent=carry）沿用旧 GU。
-	regenGoal := snapshot.ReplanContext != nil && snapshot.ReplanContext.RegenerateGoal
+	// RegenerateGoal 语义由 IntentContext.Action 派生（不再落 ReplanContext 字段）。
+	regenGoal := snapshot.IntentContext != nil && snapshot.IntentContext.Action == "replan"
 	// TaskContextBoard 仅顶层且有 workspace 时注入（与下方 plannerInput.TaskContextBoard 守卫一致）。
 	injectsTaskBoard := !a.cfg.IsSubAgent && a.workspaceRuntime != nil
 	// Layer A 聚合封顶：只对本回合确实会注入的字段记账，避免高估总量过度降级必需字段。
@@ -315,6 +324,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 均为 plan 阶段瞬态，剥离为显式构建，保 buildPromptContext 纯函数化。
 	recoveryCtx := a.buildRecoveryContext(snapshot)
 	replanCtx := a.buildReplanContext(snapshot)
+	intentCtx := a.buildIntentContext(snapshot)
 	inputStr := PlannerInputFromSnapshot(snapshot, PlannerInputOptions{
 		HandoffContext:      strings.TrimSpace(extraText),
 		WorkspaceRootDir:    strings.TrimSpace(a.workspaceRootDir),
@@ -324,6 +334,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		TaskItemsJSON:       pc.Plan.Text,
 		TopicsJSON:          pc.Topics.Text,
 		ReplanContextJSON:   replanCtx.Text,
+		IntentContextJSON:   intentCtx.Text,
 	})
 	if inputStr == "" {
 		a.emitRuntimeLog("error", "plan phase rejected empty input timeline", snapshot, map[string]any{
@@ -347,13 +358,15 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 			plannerInput.OpenItemsLedgerPath = l.OpenItems()
 		}
 	}
-	// userInputTurn：本回合由顶层用户新输入触发（cold_start 首次规划，或意图分类置 UserInitiated 的
-	// carry/replan），区别于 step_replan 内部重规划与子 Agent 等待这类「运行过程中」回合。仅用户回合
+	// userInputTurn：本回合由顶层用户新输入触发（cold_start 首次规划，或意图分类产 IntentContext 的
+	// carry/replan），区别于 step_replan / final_answer 的内部重规划回流这类「运行过程中」回合。仅用户回合
 	// 才让 planner 校正 task_context.md 的 `## 输入事实`（见 task_planner 意图理解段的"事实板同步"）。
-	// 子 Agent 首次规划的 ReplanContext 同样为 nil，但子 Agent 工作区不承担顶层事实板维护契约——
-	// 经 IsSubAgent 守卫排除，避免子 Agent 被强制注入用户回合段。
-	plannerInput.UserInputTurn = !a.cfg.IsSubAgent && (snapshot.ReplanContext == nil || snapshot.ReplanContext.UserInitiated)
+	// 判据：内部回流是唯一携带 ReplanContext 的回合（step_replan 三轴 / final_answer 未完成原因），
+	// 故 ReplanContext==nil 即用户回合——覆盖 cold_start 首次规划（两 context 皆 nil）与意图恢复
+	// （IntentContext 非 nil、ReplanContext nil）。子 Agent 工作区不承担顶层事实板维护契约——经 IsSubAgent 排除。
+	plannerInput.UserInputTurn = !a.cfg.IsSubAgent && snapshot.ReplanContext == nil
 	plannerInput.HasReplanContext = snapshot.ReplanContext != nil
+	plannerInput.HasIntentContext = snapshot.IntentContext != nil
 	// IsSubAgent 单独承担"顶层事实板维护契约"段的守卫——即便兜底回流（UserInitiated=false）
 	// 也保留契约，避免事实板因守卫过窄被静默跳过。CanSpawnSubAgent 仅顶层 planner 开放：
 	// 子 Agent 内 sub_agent 工具本身被运行时关闭，prompt 同步关闭委派条款，避免无意义引导。
@@ -409,11 +422,13 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 		explanation = firstNonEmpty(snapshot.ReplanContext.Reason, plannerExplanation)
 	}
 
-	replacePending := snapshot.ReplanContext != nil && snapshot.ReplanContext.ReplacePending
+	// merge 门：ReplanContext 存在即真 gap 回流、恒触发 merge（ReplacePending 字段已删；child-wait
+	// 因 replanContext 保持 nil 自然不进此门，等价原 ReplacePending:false）。
+	replacePending := snapshot.ReplanContext != nil
 	if res != nil && len(res.Plan) > 0 {
 		if replacePending {
 			// C1: merge 延到写回点 MergeReplanIntoPlan，在持锁内以【活盘】为 prev 原子完成，
-			// 不再用陈旧 snapshot.Plan 锁外 merge。ReplacePending 蕴含 res.Plan 非空 → 合并结果
+			// 不再用陈旧 snapshot.Plan 锁外 merge。replacePending 蕴含 res.Plan 非空 → 合并结果
 			// 必非空，不会落入下方 len(items)==0 直答分支；此处 items 仅占位（后续按 replacePending 分流）。
 			items = res.Plan
 		} else {
@@ -472,7 +487,8 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	}
 	if replacePending {
 		// C1: 持锁原子 merge（活盘为 prev）+ 归一校验 + 写回；成功后补跑与 ApplyPlanAndEmit 一致的副作用。
-		merged, err := a.state.MergeReplanIntoPlan(res.Plan, snapshot.ReplanContext.ReplaceTopicID, explanation, needsPlanning)
+		// topic scope 由代码载体 a.replanScopeTopicID 承载（per-topic 局部替换收窄；空=整盘替换）。
+		merged, err := a.state.MergeReplanIntoPlan(res.Plan, a.replanScopeTopicID, explanation, needsPlanning)
 		if err != nil {
 			return fmt.Errorf("planner returned invalid plan: %w", err)
 		}
@@ -594,8 +610,8 @@ func (a *Agent) runPlanPhaseWithTools(ctx context.Context, iter int, runClient a
 					// 注意：此处用 priorSnap.Plan 仅做【乐观合法性校验】，非权威合并——权威 merge
 					// 以活盘为 prev 在 MergeReplanIntoPlan 锁内重做（C1），故此处 priorSnap 精度足够。
 					validateTarget := parsed.Plan
-					if priorSnap.ReplanContext != nil && priorSnap.ReplanContext.ReplacePending {
-						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan, priorSnap.ReplanContext.ReplaceTopicID)
+					if priorSnap.ReplanContext != nil {
+						validateTarget = mergeReplannedPlan(priorSnap.Plan, parsed.Plan, a.replanScopeTopicID)
 					}
 					if _, normErr := builtin_tools.NormalizePlanItems(validateTarget, true); normErr != nil {
 						submitRetries++
@@ -1180,6 +1196,7 @@ type PlannerInputOptions struct {
 	TaskItemsJSON     string
 	TopicsJSON        string
 	ReplanContextJSON string
+	IntentContextJSON string
 }
 
 type plannerStepOutcomeView struct {
@@ -1262,6 +1279,13 @@ func PlannerInputFromSnapshot(snapshot builtin_tools.StateSnapshot, opts Planner
 		data.ReplanContextJSON = opts.ReplanContextJSON
 	} else if snapshot.ReplanContext != nil {
 		data.ReplanContextJSON = prettyJSON(snapshot.ReplanContext)
+	}
+
+	// INTENT_CONTEXT（意图恢复；与 REPLAN_CONTEXT 二选一互斥）
+	if opts.IntentContextJSON != "" {
+		data.IntentContextJSON = opts.IntentContextJSON
+	} else if snapshot.IntentContext != nil {
+		data.IntentContextJSON = prettyJSON(snapshot.IntentContext)
 	}
 
 	var buf strings.Builder
@@ -1584,7 +1608,12 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	// 参见 plan §fallback 不变质 + [[feedback_no_atomic_ledger_tools]]）。
 	_ = a.state.ResetCurrentStepIfTerminal()
 
-	_ = a.state.EnsureCurrentStep()
+	// Part C：per-topic 局部 replan 的当回释放把 current 收窄到该 topic（scope 非空时）；否则全局。
+	if a.replanScopeTopicID != "" {
+		_ = a.state.EnsureCurrentStepScoped(a.replanScopeTopicID)
+	} else {
+		_ = a.state.EnsureCurrentStep()
+	}
 	// 主路径翻 Pending→InProgress：observer 自动 emit task_item + ensureStepFileScaffold。
 	// 删掉旧 prevSnapshot/prevPlan/emitTaskItemDiffs 手抓 diff 与
 	// 显式 ensureStepFileScaffold 调用——参见 state_observer_emitter.go /
@@ -1612,7 +1641,11 @@ func (a *Agent) runStepPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	//   3. 主路径同步跑 current 的 runInlineStep（runCtx=nil，行为同抽出前）
 	// MaxParallel=1 时 peers 列表为空，仅主路径——纯串行 fallback 走相同代码路径，
 	// 无 if maxParallel<2 分叉特殊化（degenerate case）。
-	return a.runStepsConcurrently(ctx, runClient, iter, snapshot, extraText)
+	err := a.runStepsConcurrently(ctx, runClient, iter, snapshot, extraText)
+	// Part C：当回 scoped 释放已完成（current + peers 已在 collectInlineStepIDs 按 scope 选定并派发），
+	// 清 scope，后续回合恢复全局调度（可能再触发下一次 per-topic review）。
+	a.replanScopeTopicID = ""
+	return err
 }
 
 // executeToolCall 单条 tool_call 分发执行；runCtx 用于桶路由（同 dispatchToolCalls 注释）。

@@ -73,3 +73,18 @@ think_act（单步执行）
 {{- if .SUPPORTS_VISION}}
 - 当前模型支持视觉输入：工具返回的截图/图片可直接理解分析。
 {{- end}}
+{{- if .HAS_SKILLS_TABLE}}
+
+## Skills 索引
+开工前查此索引，与本 step 目标语义匹配且可用的按需加载（一次一个）；已加载 skill 的详细指令见首条 user message 的 Injected Skills 段。
+---
+{{.SKILLS_CONTEXT.Table}}
+---
+{{- end}}
+{{- if .HAS_MCP_TABLE}}
+
+## MCP Servers
+---
+{{.MCP_CONTEXT.Table}}
+---
+{{- end}}

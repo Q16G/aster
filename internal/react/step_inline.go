@@ -509,11 +509,14 @@ func (a *Agent) collectInlineStepIDs(snap builtin_tools.StateSnapshot) []string 
 	if maxParallel < 2 {
 		return out
 	}
+	// Part C：per-topic 局部 replan 的当回释放把 peers 也收窄到该 topic（scope 非空时）；否则全局 frontier。
+	// 他 topic 已 spawn 的 inline peer 不受影响、继续跑（不违背 X2 两维并发）。
+	frontier := builtin_tools.ReadyFrontierPlanStepIDsScoped(snap.Plan, snap.Topics, a.replanScopeTopicID)
 	peers := selectInlineStepPeers(
 		maxParallel,
 		a.asyncRegistry.RunningInlineSteps(),
 		currentID,
-		builtin_tools.ReadyFrontierPlanStepIDs(snap.Plan, snap.Topics),
+		frontier,
 		func(id string) bool { return a.asyncRegistry.Get(id) != nil },
 	)
 	out = append(out, peers...)

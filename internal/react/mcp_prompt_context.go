@@ -25,8 +25,8 @@ func BuildMCPPromptTable(entries []*mcp.MCPServerEntry) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("| name | description | type | tool_count | status |\n")
-	sb.WriteString("| --- | --- | --- | --- | --- |\n")
+	sb.WriteString("| name | description | type | tool_count |\n")
+	sb.WriteString("| --- | --- | --- | --- |\n")
 	for _, e := range entries {
 		toolCount := "-"
 		if e.Status == mcp.MCPStatusConnected {
@@ -36,8 +36,8 @@ func BuildMCPPromptTable(entries []*mcp.MCPServerEntry) string {
 		if desc == "" {
 			desc = "-"
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			e.Name, desc, e.Config.Type, toolCount, string(e.Status)))
+		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
+			e.Name, desc, e.Config.Type, toolCount))
 	}
 	return strings.TrimSpace(sb.String())
 }

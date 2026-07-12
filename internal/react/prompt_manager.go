@@ -151,6 +151,9 @@ type TaskPlannerPromptInput struct {
 	// HasReplanContext 标记本回合为重规划回合（输入含 <REPLAN_CONTEXT>），模板据此渲染重规划
 	// 编排段；由调用方按 snapshot.ReplanContext != nil 显式置位，保留为字段。
 	HasReplanContext bool
+	// HasIntentContext 标记本回合为意图恢复回合（输入含 <INTENT_CONTEXT>），模板据此渲染意图理解
+	// 分支；由调用方按 snapshot.IntentContext != nil 显式置位。与 HasReplanContext 语义正交、二选一。
+	HasIntentContext bool
 }
 
 // IntentClassificationPromptInput 的 RecentOutcomes / PendingSteps / InputTimeline
@@ -294,6 +297,12 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"HAS_AGENT_BACKGROUND": input.HasBackground(),
 		"SUPPORTS_VISION":      input.SupportsVision,
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
+		// Skills 索引表 / MCP 表下沉 system（删 status 后跨 step 静态，system 缓存前缀稳定）；
+		// 已注入 skill 指令（.Injected，每步变）留 user。
+		"SKILLS_CONTEXT":   input.SkillsContext,
+		"HAS_SKILLS_TABLE": input.HasSkillsTable(),
+		"MCP_CONTEXT":      input.MCPContext,
+		"HAS_MCP_TABLE":    input.HasMCPTable(),
 	}
 	userData := map[string]any{
 		"GOAL_UNDERSTANDING":        strings.TrimSpace(input.GoalUnderstanding),
@@ -305,10 +314,7 @@ func (m *defaultPromptManager) BuildThinkActPrompt(input ThinkActPromptInput) (P
 		"DEPENDENCY_PLAN_ITEMS":     prettyJSON(input.DependencyPlanItems),
 		"HAS_CURRENT_STEP":          input.HasCurrentStep,
 		"HAS_DEPENDENCY_PLAN_ITEMS": input.HasDependencyPlanItems,
-		"HAS_SKILLS_TABLE":          input.HasSkillsTable(),
 		"HAS_INJECTED_SKILLS":       input.HasInjectedSkills(),
-		"MCP_CONTEXT":               input.MCPContext,
-		"HAS_MCP_TABLE":             input.HasMCPTable(),
 		"EXTRA_CONTEXT":             strings.TrimSpace(input.ExtraContext),
 	}
 	return renderPromptParts("think_act", m.thinkActSystemTmpl, m.thinkActUserTmpl, systemData, userData)
@@ -331,6 +337,9 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsPath),
 		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
 		"STEP_FILE_PATH":    strings.TrimSpace(input.StepFilePath),
+		// Skills 索引表下沉 system（删 status 后静态）；step_replan 无 injected/MCP。
+		"SKILLS_CONTEXT":   input.SkillsContext,
+		"HAS_SKILLS_TABLE": input.HasSkillsTable(),
 	}
 	cardsJSON, reviewTotal, reviewShown, reviewTruncated := serializeReviewWindow(input.ReviewWindow)
 	userData := map[string]any{
@@ -356,8 +365,6 @@ func (m *defaultPromptManager) BuildStepReplanPrompt(input StepReplanPromptInput
 		"HAS_PLANNER_JOURNAL_PATH": strings.TrimSpace(input.PlannerJournalPath) != "",
 		"PLANNER_JOURNAL":          strings.TrimSpace(input.PlannerJournal),
 		"HAS_PLANNER_JOURNAL":      strings.TrimSpace(input.PlannerJournal) != "",
-		"SKILLS_CONTEXT":           input.SkillsContext,
-		"HAS_SKILLS_TABLE":         input.HasSkillsTable(),
 		"AVAILABLE_TOOLS":          input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":      input.HasAvailableTools(),
 	}
@@ -442,12 +449,19 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"CAN_SPAWN_SUBAGENT":   input.CanSpawnSubAgent,
 		"USER_INPUT_TURN":      input.UserInputTurn,
 		"HAS_REPLAN_CONTEXT":   input.HasReplanContext,
-		"DEPTH_SMELLS":         builtin_tools.DepthSmellsEnumeration,
+		"HAS_INTENT_CONTEXT":   input.HasIntentContext,
 		// 共享区直接维护文件的绝对路径下沉到 system 模板（与 step_replan 相位共享同一段）。
 		// plan 相位主要维护 task_context.md 的 `## 输入事实` 和（regen 期间）账本三区。
 		"OPEN_ITEMS_PATH":   strings.TrimSpace(input.OpenItemsLedgerPath),
 		"TASK_CONTEXT_PATH": strings.TrimSpace(input.TaskContextPath),
 		"STEP_FILE_PATH":    "",
+		// Skills 索引表 / MCP 表（含 overflow 指针）下沉 system（删 status 后静态）；planner 无 injected。
+		"SKILLS_CONTEXT":       input.SkillsContext,
+		"MCP_CONTEXT":          input.MCPContext,
+		"HAS_SKILLS_TABLE":     input.HasSkillsTable(),
+		"HAS_MCP_TABLE":        input.HasMCPTable(),
+		"SKILLS_OVERFLOW_PATH": strings.TrimSpace(input.SkillsOverflowPath),
+		"MCP_OVERFLOW_PATH":    strings.TrimSpace(input.MCPOverflowPath),
 	}
 	userData := map[string]any{
 		"INPUT":                  strings.TrimSpace(input.Input),
@@ -455,12 +469,6 @@ func (m *defaultPromptManager) BuildTaskPlannerPrompt(input TaskPlannerPromptInp
 		"HAS_GOAL_UNDERSTANDING": strings.TrimSpace(input.GoalUnderstanding) != "",
 		"TASK_CONTEXT_BOARD":     strings.TrimSpace(input.TaskContextBoard),
 		"HAS_TASK_CONTEXT_BOARD": strings.TrimSpace(input.TaskContextBoard) != "",
-		"SKILLS_CONTEXT":         input.SkillsContext,
-		"MCP_CONTEXT":            input.MCPContext,
-		"HAS_SKILLS_TABLE":       input.HasSkillsTable(),
-		"HAS_MCP_TABLE":          input.HasMCPTable(),
-		"SKILLS_OVERFLOW_PATH":   strings.TrimSpace(input.SkillsOverflowPath),
-		"MCP_OVERFLOW_PATH":      strings.TrimSpace(input.MCPOverflowPath),
 		"AVAILABLE_TOOLS":        input.AvailableTools,
 		"HAS_AVAILABLE_TOOLS":    input.HasAvailableTools(),
 	}

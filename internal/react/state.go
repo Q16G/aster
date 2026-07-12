@@ -85,6 +85,7 @@ func isolateSnapshot(src *builtin_tools.StateSnapshot) builtin_tools.StateSnapsh
 		out.FinalAnswer = &clone
 	}
 	out.ReplanContext = builtin_tools.CloneReplanContext(src.ReplanContext)
+	out.IntentContext = builtin_tools.CloneIntentContext(src.IntentContext)
 	out.ExternalInterrupt = builtin_tools.CloneExternalInterrupt(src.ExternalInterrupt)
 	out.ActiveSkillNames = normalizeSkillNames(src.ActiveSkillNames)
 
@@ -495,6 +496,7 @@ func (t *StateTracker) applyPlanLocked(plan []*builtin_tools.PlanItem, explanati
 	t.state.Status = builtin_tools.TaskStatusRunning
 	t.state.Progress = builtin_tools.PlanProgress(plan)
 	t.state.ReplanContext = nil
+	t.state.IntentContext = nil
 	t.state.ExternalInterrupt = nil
 	t.recomputeCurrentStepLocked()
 	t.syncGoalToCurrentStepLocked()
@@ -762,6 +764,7 @@ func (t *StateTracker) UpdateTaskStatus(update builtin_tools.TaskStatusUpdate) b
 	}
 	if update.Status == builtin_tools.TaskStatusCompleted || update.Status == builtin_tools.TaskStatusFailed || update.Status == builtin_tools.TaskStatusCanceled {
 		t.state.ReplanContext = nil
+		t.state.IntentContext = nil
 	}
 
 	t.touchLocked()
@@ -1076,6 +1079,7 @@ func (t *StateTracker) ApplyFinalAnswerPhaseUpdate(update finalAnswerPhaseUpdate
 		t.state.CurrentStepID = ""
 	} else if t.state.Phase == builtin_tools.AgentPhaseFinalAnswer {
 		t.state.ReplanContext = nil
+		t.state.IntentContext = nil
 	}
 
 	switch t.state.Status {
@@ -1121,6 +1125,7 @@ func (t *StateTracker) Finalize(status builtin_tools.TaskStatus, content string,
 	}
 	if status == builtin_tools.TaskStatusCompleted || status == builtin_tools.TaskStatusFailed || status == builtin_tools.TaskStatusCanceled {
 		t.state.ReplanContext = nil
+		t.state.IntentContext = nil
 	}
 
 	t.touchLocked()
@@ -1139,6 +1144,7 @@ func (t *StateTracker) EnterFinalAnswer(status builtin_tools.TaskStatus, errText
 		t.state.Progress = 100
 	}
 	t.state.ReplanContext = nil
+	t.state.IntentContext = nil
 	t.touchLocked()
 	return *t.state
 }
@@ -1224,17 +1230,42 @@ func (t *StateTracker) SetReplanContext(ctx *builtin_tools.ReplanContext) {
 	t.touchLocked()
 }
 
+// SetIntentContext 原子设置 IntentContext（意图恢复上下文，回合起点写、planner 读后清）。
+func (t *StateTracker) SetIntentContext(ctx *builtin_tools.IntentContext) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.IntentContext = builtin_tools.CloneIntentContext(ctx)
+	t.touchLocked()
+}
+
 func (t *StateTracker) ensureCurrentStepLocked() {
+	t.ensureCurrentStepScopedLocked("")
+}
+
+// ensureCurrentStepScopedLocked 是 ensureCurrentStepLocked 的 topic 收窄变体：topicID 非空时
+// current 只从该 topic 的就绪 frontier 里选（per-topic 局部 replan 当回只释放本 topic）。
+// topicID=="" 时等价全局，行为不变。
+func (t *StateTracker) ensureCurrentStepScopedLocked(topicID string) {
 	if strings.TrimSpace(t.state.CurrentStepID) != "" {
 		if (builtin_tools.StateSnapshot{Plan: t.state.Plan, CurrentStepID: t.state.CurrentStepID}).CurrentStep() != nil {
 			return
 		}
 		t.state.CurrentStepID = ""
 	}
-	nextID := builtin_tools.NextFrontierPlanStepID(t.state.Plan, t.state.Topics)
+	nextID := builtin_tools.NextFrontierPlanStepIDScoped(t.state.Plan, t.state.Topics, topicID)
 	if nextID != "" {
 		t.state.CurrentStepID = nextID
 	}
+}
+
+// EnsureCurrentStepScoped 是 EnsureCurrentStep 的 topic 收窄变体（Part C：局部 replan 当回只释放本 topic）。
+func (t *StateTracker) EnsureCurrentStepScoped(topicID string) builtin_tools.StateSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ensureCurrentStepScopedLocked(topicID)
+	t.syncGoalToCurrentStepLocked()
+	t.touchLocked()
+	return *t.state
 }
 
 func (t *StateTracker) touchLocked() {

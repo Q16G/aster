@@ -60,10 +60,16 @@ func TestBuildThinkActPrompt_UsesDynamicSkillsTableAndInjectedSkills(t *testing.
 	})
 
 	parts := agent.BuildThinkActPrompt(context.Background(), "", agent.state.Snapshot())
-	// Skills 索引与 Injected Skills 落首条 user message；eject_skill 纪律在 system 规则。
+	// Skills 索引表（无 status，静态）下沉 system；Injected Skills（每步变）留首条 user message。
 	for _, expected := range []string{
 		"## Skills 索引",
 		"| data-flow | 数据流分析 | flow | loaded |",
+	} {
+		if !strings.Contains(parts.SystemRules, expected) {
+			t.Fatalf("expected system rules to contain %q, got:\n%s", expected, parts.SystemRules)
+		}
+	}
+	for _, expected := range []string{
 		"## Injected Skills",
 		"eject_skill",
 		"#### data-flow",
@@ -169,7 +175,7 @@ func TestNewSkillsPromptProviderFromCatalog_BuildsTableAndInjectedSection(t *tes
 	if ctx == nil {
 		t.Fatalf("expected prompt context")
 	}
-	if !strings.Contains(ctx.Table, "| data-flow | 数据流分析 | flow | - | inline | loaded |") {
+	if !strings.Contains(ctx.Table, "| data-flow | 数据流分析 | flow | - | inline |") {
 		t.Fatalf("unexpected skills table: %s", ctx.Table)
 	}
 	if !strings.Contains(ctx.Injected, "follow flows") {

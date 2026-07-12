@@ -245,6 +245,42 @@ func NextFrontierPlanStepID(plan []*PlanItem, phases []*AnalysisTopic) string {
 	return ""
 }
 
+// ReadyFrontierPlanStepIDsScoped 在全局 frontier 基础上再按 topicID 过滤（Part C：per-topic
+// 局部 replan 当回只释放本 topic 的就绪 step）。topicID=="" 时等价全局 ReadyFrontierPlanStepIDs。
+// topic→steps 的推导全部由代码完成（按 PlanItem.TopicID 过滤），不经 AI。
+func ReadyFrontierPlanStepIDsScoped(plan []*PlanItem, phases []*AnalysisTopic, topicID string) []string {
+	ids := ReadyFrontierPlanStepIDs(plan, phases)
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" || len(ids) == 0 {
+		return ids
+	}
+	topicByStep := make(map[string]string, len(plan))
+	for _, item := range plan {
+		if item == nil {
+			continue
+		}
+		topicByStep[strings.TrimSpace(item.ID)] = strings.TrimSpace(item.TopicID)
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if topicByStep[id] == topicID {
+			out = append(out, id)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// NextFrontierPlanStepIDScoped 返回 topic 收窄 frontier 中的首个 step ID，无则空串。
+func NextFrontierPlanStepIDScoped(plan []*PlanItem, phases []*AnalysisTopic, topicID string) string {
+	if ids := ReadyFrontierPlanStepIDsScoped(plan, phases, topicID); len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
+}
+
 // ActiveTopics 返回本轮处于活跃态的 phase：未 terminal 且已解锁（depends_on 全 terminal）。
 // step_replan 对这批 phase 逐个输出 phase_assessments。
 func ActiveTopics(phases []*AnalysisTopic) []*AnalysisTopic {

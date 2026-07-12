@@ -178,17 +178,20 @@ func TestApplyIntentClassification_Carry(t *testing.T) {
 	if len(state.InputTimeline) != 1 {
 		t.Errorf("InputTimeline should be preserved, got %d", len(state.InputTimeline))
 	}
-	if state.ReplanContext == nil {
-		t.Fatal("carry should set ReplanContext with reason")
+	if state.ReplanContext != nil {
+		t.Error("carry should not set internal ReplanContext (intent recovery uses IntentContext)")
 	}
-	if state.ReplanContext.Reason != "user continuing previous analysis" {
-		t.Errorf("ReplanContext.Reason = %q, want 'user continuing previous analysis'", state.ReplanContext.Reason)
+	if state.IntentContext == nil {
+		t.Fatal("carry should set IntentContext")
 	}
-	if state.ReplanContext.ReplacePending {
-		t.Error("carry ReplanContext.ReplacePending should be false")
+	if state.IntentContext.Action != "carry" {
+		t.Errorf("IntentContext.Action = %q, want 'carry'", state.IntentContext.Action)
 	}
-	if state.ReplanContext.NextGoal != "input1" {
-		t.Errorf("ReplanContext.NextGoal = %q, want 'input1'", state.ReplanContext.NextGoal)
+	if state.IntentContext.Reason != "user continuing previous analysis" {
+		t.Errorf("IntentContext.Reason = %q, want 'user continuing previous analysis'", state.IntentContext.Reason)
+	}
+	if state.IntentContext.LatestInput != "input1" {
+		t.Errorf("IntentContext.LatestInput = %q, want 'input1'", state.IntentContext.LatestInput)
 	}
 }
 
@@ -210,7 +213,14 @@ func TestApplyIntentClassification_Carry_EmptyReason(t *testing.T) {
 		t.Errorf("Phase = %q, want plan", state.Phase)
 	}
 	if state.ReplanContext != nil {
-		t.Error("carry with empty reason should NOT set ReplanContext")
+		t.Error("carry should never set internal ReplanContext")
+	}
+	// carry 恒设 IntentContext（承接用户输入），即便 reason 为空。
+	if state.IntentContext == nil || state.IntentContext.Action != "carry" {
+		t.Fatalf("carry should set IntentContext{Action:carry}, got %+v", state.IntentContext)
+	}
+	if state.IntentContext.LatestInput != "go on" {
+		t.Errorf("IntentContext.LatestInput = %q, want 'go on'", state.IntentContext.LatestInput)
 	}
 }
 
@@ -231,14 +241,17 @@ func TestApplyIntentClassification_Replan(t *testing.T) {
 	if state.Phase != builtin_tools.AgentPhasePlan {
 		t.Errorf("Phase = %q, want plan", state.Phase)
 	}
-	if state.ReplanContext == nil {
-		t.Fatal("ReplanContext should be set for replan")
+	if state.ReplanContext != nil {
+		t.Error("replan intent should not set internal ReplanContext (uses IntentContext)")
 	}
-	if state.ReplanContext.Reason != "user wants different direction" {
-		t.Errorf("ReplanContext.Reason = %q", state.ReplanContext.Reason)
+	if state.IntentContext == nil {
+		t.Fatal("IntentContext should be set for replan")
 	}
-	if !state.ReplanContext.ReplacePending {
-		t.Error("ReplanContext.ReplacePending should be true")
+	if state.IntentContext.Action != "replan" {
+		t.Errorf("IntentContext.Action = %q, want 'replan'", state.IntentContext.Action)
+	}
+	if state.IntentContext.Reason != "user wants different direction" {
+		t.Errorf("IntentContext.Reason = %q", state.IntentContext.Reason)
 	}
 	if len(state.StepOutcomes) != 1 {
 		t.Errorf("StepOutcomes should be preserved, got %d", len(state.StepOutcomes))

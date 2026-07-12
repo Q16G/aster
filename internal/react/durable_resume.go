@@ -237,6 +237,9 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if snapshot.ReplanContext == nil && workspaceState.ReplanContext != nil {
 			snapshot.ReplanContext = builtin_tools.CloneReplanContext(workspaceState.ReplanContext)
 		}
+		if snapshot.IntentContext == nil && workspaceState.IntentContext != nil {
+			snapshot.IntentContext = builtin_tools.CloneIntentContext(workspaceState.IntentContext)
+		}
 		if len(snapshot.ActiveSkillNames) == 0 && len(workspaceState.ActiveSkillNames) > 0 {
 			snapshot.ActiveSkillNames = builtin_tools.CloneStringSlice(workspaceState.ActiveSkillNames)
 		}
@@ -282,15 +285,17 @@ func synthesizeResumeSnapshot(writer *artifactWriter, planCurrent *planCurrentCh
 		if snapshot.ReplanContext == nil && planCurrent.ReplanContext != nil {
 			snapshot.ReplanContext = builtin_tools.CloneReplanContext(planCurrent.ReplanContext)
 		}
+		if snapshot.IntentContext == nil && planCurrent.IntentContext != nil {
+			snapshot.IntentContext = builtin_tools.CloneIntentContext(planCurrent.IntentContext)
+		}
 		if len(snapshot.ActiveSkillNames) == 0 && len(planCurrent.ActiveSkillNames) > 0 {
 			snapshot.ActiveSkillNames = builtin_tools.CloneStringSlice(planCurrent.ActiveSkillNames)
 		}
 	}
 
 	// Fill goal from timeline if still missing.
-	if strings.TrimSpace(snapshot.CurrentGoal) == "" && snapshot.ReplanContext != nil {
-		snapshot.CurrentGoal = strings.TrimSpace(snapshot.ReplanContext.NextGoal)
-	}
+	// 注：原 ReplanContext.NextGoal 回退已删（NextGoal 拆走）——意图恢复路径的用户输入
+	// 与 InputTimeline 末条同源，由下方 timeline 回退覆盖；CurrentGoal 本身亦独立持久化/恢复。
 	if strings.TrimSpace(snapshot.CurrentGoal) == "" && len(snapshot.InputTimeline) > 0 {
 		last := snapshot.InputTimeline[len(snapshot.InputTimeline)-1]
 		if last != nil {

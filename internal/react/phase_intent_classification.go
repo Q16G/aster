@@ -302,24 +302,22 @@ func (a *Agent) applyIntentClassification(snapshot builtin_tools.StateSnapshot, 
 	switch action {
 	case "carry":
 		latest := latestInputContent(snapshot)
-		if reason := strings.TrimSpace(result.Reason); reason != "" {
-			a.state.SetReplanContext(&builtin_tools.ReplanContext{
-				Reason:         reason,
-				NextGoal:       latest,
-				ReplacePending: false,
-				UserInitiated:  true,
-			})
-		}
+		// 意图恢复上下文：carry 沿用既有意图理解 + 承接新输入。RegenerateGoal/UserInitiated
+		// 语义由 Action 派生，不再落 ReplanContext（见 IntentContext 注释）。
+		a.state.SetIntentContext(&builtin_tools.IntentContext{
+			Action:      "carry",
+			LatestInput: latest,
+			Reason:      strings.TrimSpace(result.Reason),
+		})
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 
 	case "replan":
 		latest := latestInputContent(snapshot)
-		a.state.SetReplanContext(&builtin_tools.ReplanContext{
-			Reason:         strings.TrimSpace(result.Reason),
-			NextGoal:       latest,
-			ReplacePending: true,
-			RegenerateGoal: true,
-			UserInitiated:  true,
+		// 意图恢复上下文：replan 让 planner 基于新输入重建 goal_understanding（Action 派生重产）。
+		a.state.SetIntentContext(&builtin_tools.IntentContext{
+			Action:      "replan",
+			LatestInput: latest,
+			Reason:      strings.TrimSpace(result.Reason),
 		})
 		_ = a.state.SetPhase(builtin_tools.AgentPhasePlan)
 

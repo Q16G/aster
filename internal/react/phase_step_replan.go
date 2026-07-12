@@ -93,7 +93,7 @@ func (t *submitReplanTool) Parameters() any {
 						},
 						"depth_gaps": map[string]any{
 							"type":        "array",
-							"description": "轴②深度/质量（限本 phase 范围内）：该 lane 内做了但不扎实的项（" + builtin_tools.DepthSmellsEnumeration + "），驱动深挖。即使轴①为空也须独立判定。",
+							"description": "轴②深度/质量（限本 phase 范围内）：该 lane 内做了但不扎实的项，驱动深挖；判据见本阶段 system prompt 的深度气味。即使轴①为空也须独立判定。",
 							"items":       map[string]any{"type": "string"},
 						},
 						"new_surfaces": map[string]any{
@@ -461,24 +461,23 @@ func (a *Agent) applyReplanDecision(stepID string, decision stepReplanModelOutpu
 		surfaces = append(surfaces, assess.NewSurfaces...)
 	}
 	rc := &builtin_tools.ReplanContext{
-		SourceStepID:     stepID,
 		Reason:           decision.ReplanReason,
 		IncompleteItems:  builtin_tools.NewAxisItems(incomplete),
 		DepthGaps:        builtin_tools.NewAxisItems(depth),
 		NewSurfaces:      builtin_tools.NewAxisItems(surfaces),
-		ReplacePending:   true,
-		// per-topic 局部 review：把 ReplacePending 收窄到该 topic（只替换它的 pending，不 clobber 他 topic）。
-		// 全局 reducer（reviewTopicID=""）时为空 = 现有整盘替换语义。
-		ReplaceTopicID:   strings.TrimSpace(a.reviewTopicID),
 		TopicAssessments: builtin_tools.CloneTopicAssessments(decision.TopicAssessments),
 	}
+	// per-topic 局部 review 的 topic scope 由代码承载（不进 AI-facing ReplanContext）：贯穿 merge
+	// 收窄与当回 step 释放收窄。全局 reducer（reviewTopicID=""）时为空 = 整盘替换 / 全局释放。
+	a.replanScopeTopicID = strings.TrimSpace(a.reviewTopicID)
 	return a.applyReplanResult(stepID, &decision, nil, rc, snapshot, "")
 }
 
 // applyReplanResult 收尾 step_replan 阶段。三类入参互斥地决定下一步流转：
 //   - newPlan != nil：本 step 内直接重编排（StepReplan → Step 直达），不再回流 Plan
-//   - replanContext != nil：仅由 checkChildAgentsCompletion 构造，子 Agent 仍在跑时回流 Plan
-//   - 二者皆 nil：无重编排，按 plan 中下一个可跑 step 继续，否则收尾走 final_answer
+//   - replanContext != nil：真 gap 回流（applyReplanDecision 产三轴+评估）→ 回 Plan 并触发 merge
+//   - 二者皆 nil：无重编排，按 plan 中下一个可跑 step 继续，否则收尾走 final_answer；
+//     若此时子 Agent 仍在跑（waitingChildAgents），转回 Plan 循环等待但不 merge（replanContext 仍 nil）
 //
 // step_replan 不再写 sticky `UnresolvedAxes`（三轴输出已删）；该字段仅由 final_answer
 // 自身评估写入并由 planner 兜底消费，与本路径无关。
@@ -502,9 +501,13 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 		nextPhase = builtin_tools.AgentPhaseStep
 	}
 
+	// child-wait 异步屏障（D1 案A 专用信号）：子 Agent 仍在跑 → 回 Plan 循环等待，但不 merge。
+	// replanContext 保持 nil，merge 门（snapshot.ReplanContext != nil）自然不触发；子 Agent 名走
+	// 顶层 Warnings 对用户可观测，不再借用 ReplanContext 字段。
+	var waitingChildren []string
 	if nextPhase == builtin_tools.AgentPhaseFinalAnswer {
-		if rc := a.checkChildAgentsCompletion(); rc != nil {
-			replanContext = rc
+		if names := a.waitingChildAgents(); len(names) > 0 {
+			waitingChildren = names
 			nextPhase = builtin_tools.AgentPhasePlan
 		}
 	}
@@ -513,13 +516,10 @@ func (a *Agent) applyReplanResult(stepID string, modelOut *stepReplanModelOutput
 	if newPlan != nil && modelOut != nil {
 		summaryGoal = strings.TrimSpace(modelOut.ReplanReason)
 	} else if replanContext != nil {
-		summaryGoal = strings.TrimSpace(replanContext.NextGoal)
+		summaryGoal = strings.TrimSpace(snapshot.CurrentGoal)
 	}
 
-	var replanWarnings []string
-	if replanContext != nil {
-		replanWarnings = replanContext.Warnings
-	}
+	replanWarnings := waitingChildren
 
 	rawOutcome := findOutcome(snapshot.StepOutcomes, stepID)
 
@@ -684,16 +684,10 @@ func stepReplanHeartbeatK() int {
 	return n
 }
 
-func (a *Agent) checkChildAgentsCompletion() *builtin_tools.ReplanContext {
-	running := a.runningChildAgentNames()
-	if len(running) == 0 {
-		return nil
-	}
-	return &builtin_tools.ReplanContext{
-		Reason:         "child agents still running",
-		Warnings:       running,
-		ReplacePending: false,
-	}
+// waitingChildAgents 返回仍在跑的子 Agent 名字列表（D1 案A 专用信号）；无在跑子 Agent 返回 nil。
+// 调用方据此决定是否回 Plan 循环等待（不 merge），名字走顶层 Warnings 通道。
+func (a *Agent) waitingChildAgents() []string {
+	return a.runningChildAgentNames()
 }
 
 func (a *Agent) runningChildAgentNames() []string {

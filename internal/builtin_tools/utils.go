@@ -72,14 +72,23 @@ func CloneReplanContext(in *ReplanContext) *ReplanContext {
 		return nil
 	}
 	out := *in
-	out.SourceStepID = strings.TrimSpace(in.SourceStepID)
 	out.Reason = strings.TrimSpace(in.Reason)
-	out.NextGoal = strings.TrimSpace(in.NextGoal)
 	out.IncompleteItems = CloneAxisItems(in.IncompleteItems)
 	out.DepthGaps = CloneAxisItems(in.DepthGaps)
 	out.NewSurfaces = CloneAxisItems(in.NewSurfaces)
-	out.Warnings = CloneStringSlice(in.Warnings)
 	out.TopicAssessments = CloneTopicAssessments(in.TopicAssessments)
+	return &out
+}
+
+// CloneIntentContext 深拷贝意图恢复上下文（三字段均为 string，值拷贝即可）。
+func CloneIntentContext(in *IntentContext) *IntentContext {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.LatestInput = strings.TrimSpace(in.LatestInput)
+	out.Action = strings.TrimSpace(in.Action)
+	out.Reason = strings.TrimSpace(in.Reason)
 	return &out
 }
 

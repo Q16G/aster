@@ -152,6 +152,12 @@ type Agent struct {
 	// ActiveTopics 与 mutation；仅调度 goroutine 读写。
 	reviewTopicID string
 
+	// replanScopeTopicID 是 per-topic 局部 replan 的 topic scope 代码载体（不进 AI-facing JSON）：
+	// 由 applyReplanDecision 从 reviewTopicID 置位，贯穿「merge 收窄（MergeReplanIntoPlan）→ 当回
+	// step 释放收窄（scoped frontier / EnsureCurrentStepScoped / collectInlineStepIDs）」，在紧接的
+	// Step barrier 派发后清空；不持久化，resume 回落全局（安全降级）。仅调度 goroutine 读写、单写者。
+	replanScopeTopicID string
+
 	// journaledStepIDs 记录已固化（烘焙 + 写 planner.jsonl 的 kind=step 记录）的 step，
 	// 按 step_id 单维去重（不带 plan_version——每个 step 的 kind=step 记录只在它完成那刻落盘
 	// 一次、归属完成时的 plan_version；重规划把已完成 step 并入新 plan 时不应在新版本下重复落盘）。

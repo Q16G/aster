@@ -277,6 +277,15 @@ func (a *Agent) buildReplanContext(snapshot builtin_tools.StateSnapshot) Preview
 	return a.previewMemoryField("replan_context", prettyJSON(snapshot.ReplanContext), promptPreviewTokens(a.usableInputTokens))
 }
 
+// buildIntentContext 构建 plan 阶段的意图恢复上下文投影（回合起点 intent_classification 写入）。
+// snapshot 无 IntentContext 时返回空。与 buildReplanContext 二选一互斥。
+func (a *Agent) buildIntentContext(snapshot builtin_tools.StateSnapshot) PreviewField {
+	if snapshot.IntentContext == nil {
+		return PreviewField{}
+	}
+	return a.previewMemoryField("intent_context", prettyJSON(snapshot.IntentContext), promptPreviewTokens(a.usableInputTokens))
+}
+
 // buildRecoveryContext 构建 plan 恢复回合的现场投影。maybeBuildRecoveryChildContextJSON 含
 // 「用后即清」副作用，故显式构建、不进 buildPromptContext（避免投影层携带隐藏副作用）。
 func (a *Agent) buildRecoveryContext(snapshot builtin_tools.StateSnapshot) PreviewField {

@@ -13,21 +13,16 @@ import (
 	"aster/internal/structuredoutput"
 )
 
+// FinalAnswerModelOutput 是 final_answer 的纯裁决输出：只判是否完成 + 未完成原因，不产三轴缺口
+// （三轴的盘点与承接归复核阶段 step_replan 与账本，final_answer 退回纯终态闸门）。
 type FinalAnswerModelOutput struct {
-	IsComplete   bool   `json:"is_complete"`
-	Status       string `json:"status"`
-	Reason       string `json:"reason"`
-	ShouldReplan bool   `json:"should_replan"`
-	NextGoal     string `json:"next_goal"`
-	// IncompleteItems 轴①存在性/完成度：当前诉求范围内、根本没做的项。
-	IncompleteItems []string `json:"incomplete_items"`
-	// DepthGaps 轴②深度/质量：跨 step 来看做了但不扎实的项（判据枚举见 builtin_tools.DepthSmellsEnumeration）。
-	DepthGaps []string `json:"depth_gaps"`
-	// NewSurfaces 轴③泛化：对照整体诉求全集、尚未被任何已完成工作覆盖的面（聚焦约束下方向外的新面填此字段但不单独驱动 replan）。
-	NewSurfaces []string `json:"new_surfaces"`
-	Warnings    []string `json:"warnings"`
-	UserMessage string   `json:"user_message"`
-	References  []string `json:"references"`
+	IsComplete   bool     `json:"is_complete"`
+	Status       string   `json:"status"`
+	Reason       string   `json:"reason"`
+	ShouldReplan bool     `json:"should_replan"`
+	Warnings     []string `json:"warnings"`
+	UserMessage  string   `json:"user_message"`
+	References   []string `json:"references"`
 }
 
 // axisLen 取 sticky 三轴某一轴的条目数；nil 安全（仅日志计数用）。
@@ -141,7 +136,6 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 				Status:       string(builtin_tools.TaskStatusCanceled),
 				Reason:       strings.TrimSpace(ctx.Err().Error()),
 				ShouldReplan: false,
-				NextGoal:     "",
 				Warnings:     nil,
 				UserMessage:  firstNonEmpty(strings.TrimSpace(errText), "任务已取消。"),
 			}
@@ -282,32 +276,18 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 	}
 
 	if !decision.isTerminal {
-		nextGoal := strings.TrimSpace(decision.model.NextGoal)
-		if nextGoal == "" {
-			nextGoal = strings.TrimSpace(snapshot.CurrentGoal)
-		}
-		incompleteItems := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.IncompleteItems))
-		depthGaps := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.DepthGaps))
-		newSurfaces := builtin_tools.NewAxisItems(normalizeStringSlice(decision.model.NewSurfaces))
+		nextGoal := strings.TrimSpace(snapshot.CurrentGoal)
+		// final_answer 退回纯裁决闸门：只判是否完成、未完成给原因，不产三轴。三轴缺口的唯一
+		// 权威来源是 step_replan（账本=完整超集）；回流 planner 只带 Reason，planner 从账本消费缺口重规划。
 		snapshot = a.state.ApplyFinalAnswerPhaseUpdate(finalAnswerPhaseUpdate{
-			NextPhase:     builtin_tools.AgentPhasePlan,
-			Status:        builtin_tools.TaskStatusRunning,
-			StatusSummary: firstNonEmpty(strings.TrimSpace(decision.model.Reason), "任务未完成，回流 plan 继续规划。"),
-			NextGoal:      nextGoal,
-			Warnings:      decision.model.Warnings,
-			UnresolvedAxes: &builtin_tools.ReplanAxes{
-				IncompleteItems: incompleteItems,
-				DepthGaps:       depthGaps,
-				NewSurfaces:     newSurfaces,
-			},
+			NextPhase:      builtin_tools.AgentPhasePlan,
+			Status:         builtin_tools.TaskStatusRunning,
+			StatusSummary:  firstNonEmpty(strings.TrimSpace(decision.model.Reason), "任务未完成，回流 plan 继续规划。"),
+			NextGoal:       nextGoal,
+			Warnings:       decision.model.Warnings,
+			UnresolvedAxes: &builtin_tools.ReplanAxes{},
 			ReplanContext: &builtin_tools.ReplanContext{
-				Reason:          strings.TrimSpace(decision.model.Reason),
-				NextGoal:        nextGoal,
-				IncompleteItems: incompleteItems,
-				DepthGaps:       depthGaps,
-				NewSurfaces:     newSurfaces,
-				Warnings:        builtin_tools.CloneStringSlice(decision.model.Warnings),
-				ReplacePending:  true,
+				Reason: strings.TrimSpace(decision.model.Reason),
 			},
 		})
 		a.emitter.EmitStateChange(snapshot)
@@ -322,11 +302,8 @@ func (a *Agent) runFinalAnswerPhase(ctx context.Context, iter int, runClient ai.
 		})
 
 		a.emitRuntimeLog("info", "final assessment decided to replan", snapshot, map[string]any{
-			"event":                  "final_assessment_replan",
-			"next_goal":              nextGoal,
-			"incomplete_items_count": len(incompleteItems),
-			"depth_gaps_count":       len(depthGaps),
-			"new_surfaces_count":     len(newSurfaces),
+			"event":     "final_assessment_replan",
+			"next_goal": nextGoal,
 		})
 		return snapshot, nil
 	}
@@ -407,7 +384,6 @@ func finalAnswerPlaintextFallback(text string) FinalAnswerModelOutput {
 		Status:       string(builtin_tools.TaskStatusCompleted),
 		Reason:       "模型未通过 submit_final_answer 提交结构化决策，已回退为直接交付文本。",
 		ShouldReplan: false,
-		NextGoal:     "",
 		UserMessage:  msg,
 		References:   []string{},
 	}
@@ -465,10 +441,6 @@ func parseFinalAnswerOutput(raw string) (FinalAnswerModelOutput, error) {
 		"status",
 		"reason",
 		"should_replan",
-		"next_goal",
-		"incomplete_items",
-		"depth_gaps",
-		"new_surfaces",
 		"warnings",
 		"user_message",
 		"references",
@@ -496,11 +468,7 @@ type finalAnswerDecision struct {
 func normalizeFinalAnswerDecision(modelOut FinalAnswerModelOutput) finalAnswerDecision {
 	modelOut.Status = strings.ToLower(strings.TrimSpace(modelOut.Status))
 	modelOut.Reason = strings.TrimSpace(modelOut.Reason)
-	modelOut.NextGoal = strings.TrimSpace(modelOut.NextGoal)
 	modelOut.UserMessage = strings.TrimSpace(modelOut.UserMessage)
-	modelOut.IncompleteItems = normalizeReferences(modelOut.IncompleteItems)
-	modelOut.DepthGaps = normalizeReferences(modelOut.DepthGaps)
-	modelOut.NewSurfaces = normalizeReferences(modelOut.NewSurfaces)
 	modelOut.Warnings = normalizeReferences(modelOut.Warnings)
 	modelOut.References = normalizeReferences(modelOut.References)
 

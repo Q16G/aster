@@ -57,12 +57,6 @@
 {{.PLANNER_JOURNAL}}
 </PLANNER_JOURNAL>
 {{- end}}
-{{- if .HAS_SKILLS_TABLE}}
-
-<SKILLS_INDEX>
-{{.SKILLS_CONTEXT.Table}}
-</SKILLS_INDEX>
-{{- end}}
 {{- if or .STEP_CONTEXTS_PATH .STEP_TRANSCRIPT_PATH .HAS_PLANNER_JOURNAL_PATH}}
 
 ## 可按需回读的文件（受核验依据与回读预算约束）

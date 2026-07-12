@@ -24,8 +24,9 @@ func TestStepReplanPrompt_CapabilityHasGates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build full: %v", err)
 	}
-	if !strings.Contains(full.User, "<SKILLS_INDEX>") || !strings.Contains(full.User, "SENTINEL_SKILL_ROW_replan") {
-		t.Error("HAS_SKILLS_TABLE 应渲染 <SKILLS_INDEX> 与表内容")
+	// Skills 表已下沉 system（SystemRules）；可用工具仍在 user。
+	if !strings.Contains(full.SystemRules, "<SKILLS_INDEX>") || !strings.Contains(full.SystemRules, "SENTINEL_SKILL_ROW_replan") {
+		t.Error("HAS_SKILLS_TABLE 应在 system 渲染 <SKILLS_INDEX> 与表内容")
 	}
 	if !strings.Contains(full.User, "sentinel_tool_replan") {
 		t.Error("HAS_AVAILABLE_TOOLS 应渲染可用工具段")
@@ -36,7 +37,7 @@ func TestStepReplanPrompt_CapabilityHasGates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build empty: %v", err)
 	}
-	if strings.Contains(empty.User, "<SKILLS_INDEX>") {
+	if strings.Contains(empty.SystemRules, "<SKILLS_INDEX>") {
 		t.Error("空 Skills 不应渲染 <SKILLS_INDEX>（HAS gate 应为 false，非永真）")
 	}
 	if strings.Contains(empty.User, "sentinel_tool_replan") {
@@ -63,19 +64,26 @@ func TestTaskPlannerPrompt_CapabilityHasGates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build full: %v", err)
 	}
-	for _, want := range []string{"<SKILLS_INDEX>", "SENTINEL_SKILL_ROW_planner", "<MCP_SERVERS>", "SENTINEL_MCP_ROW_planner", "sentinel_tool_planner"} {
-		if !strings.Contains(full.User, want) {
-			t.Errorf("填充能力应渲染 %q", want)
+	// Skills 表 / MCP 表已下沉 system（SystemRules）；可用工具仍在 user。
+	for _, want := range []string{"<SKILLS_INDEX>", "SENTINEL_SKILL_ROW_planner", "<MCP_SERVERS>", "SENTINEL_MCP_ROW_planner"} {
+		if !strings.Contains(full.SystemRules, want) {
+			t.Errorf("填充能力应在 system 渲染 %q", want)
 		}
+	}
+	if !strings.Contains(full.User, "sentinel_tool_planner") {
+		t.Error("填充能力应在 user 渲染可用工具段 sentinel_tool_planner")
 	}
 
 	empty, err := manager.BuildTaskPlannerPrompt(TaskPlannerPromptInput{Input: "任务"})
 	if err != nil {
 		t.Fatalf("build empty: %v", err)
 	}
-	for _, notWant := range []string{"<SKILLS_INDEX>", "<MCP_SERVERS>", "sentinel_tool_planner"} {
-		if strings.Contains(empty.User, notWant) {
-			t.Errorf("空能力不应渲染 %q（HAS gate 应为 false，非永真）", notWant)
+	for _, notWant := range []string{"<SKILLS_INDEX>", "<MCP_SERVERS>"} {
+		if strings.Contains(empty.SystemRules, notWant) {
+			t.Errorf("空能力不应在 system 渲染 %q（HAS gate 应为 false，非永真）", notWant)
 		}
+	}
+	if strings.Contains(empty.User, "sentinel_tool_planner") {
+		t.Error("空工具不应渲染工具段")
 	}
 }
