@@ -17,6 +17,7 @@ const (
 	promptFamilySimpleReply       = "simple_reply"
 	promptFamilyHistoryCompaction = "history_compaction"
 	promptFamilyAgentHandoff      = "agent_handoff"
+	promptFamilySubAgent          = "sub_agent"
 )
 
 func (a *Agent) buildPromptRequestOptions(promptFamily string, parts PromptParts, enableCache bool, tools ...*ai.FunctionTool) *ai.RequestOptions {
