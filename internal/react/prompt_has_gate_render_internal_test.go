@@ -119,14 +119,16 @@ func TestAgentInstruction_PhaseGates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s build full: %v", name, err)
 		}
-		if !strings.Contains(full.SystemRules, "Instruction\n"+sentinel) {
+		if !strings.Contains(full.SystemRules, "# Instruction\n"+sentinel) {
 			t.Errorf("%s 非空 instruction 应在 system 渲染 Instruction 段", name)
 		}
 		empty, err := build(AgentProfile{AgentRole: "审计专家"})
 		if err != nil {
 			t.Fatalf("%s build empty: %v", name, err)
 		}
-		if strings.Contains(empty.SystemRules, "Instruction") {
+		// 断言锚定标题段（"# Instruction" 同时命中 "## Instruction"），避免正文出现
+		// 英文单词 Instruction 时误报。
+		if strings.Contains(empty.SystemRules, "# Instruction") {
 			t.Errorf("%s 空 instruction 不应渲染 Instruction 段", name)
 		}
 	}
