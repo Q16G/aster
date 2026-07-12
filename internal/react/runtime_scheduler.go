@@ -257,9 +257,11 @@ func (a *Agent) setTopicReviewBoundary(topicID, stepID string) {
 }
 
 // nextSchedulerPhase 在 currentPhase 之上叠加第四阶段 per-topic 双触发路由（Step/StepReplan 阶段）：
-//  ① 有可局部 review 的 topic（静默且自其边界后有新 terminal）→ StepReplan(local，置 reviewTopicID)；
-//  否则清 reviewTopicID：② 有 ready step → Step（继续派发/滚动）；
-//  ③ 未全终态 → StepReplan(全局 reducer，active=∅)；④ 全终态 → FinalAnswer。
+//
+//	① 有可局部 review 的 topic（静默且自其边界后有新 terminal）→ StepReplan(local，置 reviewTopicID)；
+//	否则清 reviewTopicID：② 有 ready step → Step（继续派发/滚动）；
+//	③ 未全终态 → StepReplan(全局 reducer，active=∅)；④ 全终态 → FinalAnswer。
+//
 // Plan/Intent/FinalAnswer 阶段不介入 topic 路由，走 currentPhase 兜底。
 func (a *Agent) nextSchedulerPhase(snapshot builtin_tools.StateSnapshot) builtin_tools.AgentPhase {
 	switch snapshot.Phase {
@@ -356,7 +358,7 @@ func (a *Agent) runPlanPhase(ctx context.Context, iter int, runClient ai.ChatCli
 	mcpCtx := a.buildMCPPromptContext()
 
 	plannerInput := TaskPlannerPromptInput{
-		AgentProfile:    AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		AgentProfile:    AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background), AgentInstruction: strings.TrimSpace(a.cfg.Instruction)},
 		CapabilityIndex: CapabilityIndex{SkillsContext: skillsCtx, MCPContext: mcpCtx},
 		Input:           inputStr,
 	}
@@ -1077,7 +1079,7 @@ func parseSubmitPlanArgs(args any, requireGoalUnderstanding bool, priorTopics []
 }
 
 // validateStepDepsSameTopic 强制 v1 二层硬边界：plan[].depends_on 只允许引用同一 topic
-//（phase_id）内的 step；跨 topic 的先后关系必须走 phases[].depends_on。仅在两端 phase_id
+// （phase_id）内的 step；跨 topic 的先后关系必须走 phases[].depends_on。仅在两端 phase_id
 // 均已知且不同时判违例（缺 phase_id / 未知依赖由上游校验处理，本条不重复报）。违例合并为
 // 单条反馈，供 submit_plan 单次 retry 一次性整改。
 func validateStepDepsSameTopic(plan []*builtin_tools.PlanItem) error {

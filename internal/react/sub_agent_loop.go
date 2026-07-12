@@ -127,7 +127,7 @@ func (a *Agent) BuildSubAgentPrompt(ctx context.Context, task, taskContext strin
 	supportsVision := ModelSupportsVision(a.getCurrentRunClient())
 
 	parts, err := a.promptManager.BuildSubAgentPrompt(SubAgentPromptInput{
-		AgentProfile:    AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		AgentProfile:    AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background), AgentInstruction: strings.TrimSpace(a.cfg.Instruction)},
 		CapabilityIndex: CapabilityIndex{SkillsContext: skillsContext, MCPContext: mcpContext},
 		RunFlags:        RunFlags{SupportsVision: supportsVision},
 		TypeExtra:       strings.TrimSpace(spec.SystemPromptExtra),

@@ -21,7 +21,7 @@ func (a *Agent) BuildStepReplanPrompt(payload map[string]any) (PromptParts, erro
 		availableTools = at
 	}
 	parts, err := a.promptManager.BuildStepReplanPrompt(StepReplanPromptInput{
-		AgentProfile:        AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		AgentProfile:        AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background), AgentInstruction: strings.TrimSpace(a.cfg.Instruction)},
 		RunFlags:            RunFlags{IsSubAgent: a.cfg.IsSubAgent},
 		CapabilityIndex:     CapabilityIndex{SkillsContext: skillsCtx, AvailableTools: availableTools},
 		CurrentGoal:         payload["current_goal"],
@@ -61,7 +61,7 @@ func (a *Agent) BuildFinalAnswerPrompt(payload map[string]any) (PromptParts, err
 		return PromptParts{}, fmt.Errorf("final answer prompt manager is nil")
 	}
 	parts, err := a.promptManager.BuildFinalAnswerPrompt(FinalAnswerPromptInput{
-		AgentProfile:       AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background)},
+		AgentProfile:       AgentProfile{AgentRole: strings.TrimSpace(a.cfg.Role), AgentBackground: strings.TrimSpace(a.cfg.Background), AgentInstruction: strings.TrimSpace(a.cfg.Instruction)},
 		Status:             payload["status"],
 		StateError:         payload["state_error"],
 		InputTimeline:      payload["input_timeline"],

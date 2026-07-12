@@ -13,6 +13,11 @@ step_replan（交付复核与账本维护）
 ## Background
 {{.AGENT_BACKGROUND}}
 {{- end}}
+{{- if .HAS_AGENT_INSTRUCTION}}
+
+## Instruction
+{{.AGENT_INSTRUCTION}}
+{{- end}}
 
 ## Goals
 - **账本是完整超集**：角色职责半径内每一处真实缺口都在账本有据可查，带证据锚点与具体值，供下游直接消费、不必重新发现。
