@@ -155,26 +155,21 @@ func TestDefaultOnHandoff_UsesCompletedStepContext(t *testing.T) {
 	}
 }
 
-func TestBuildSubAgentContextEntries_MergesExplicitAndHandoff(t *testing.T) {
-	entries := buildSubAgentContextEntries("显式上下文", "交接上下文")
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 context entries, got %d", len(entries))
+func TestMergeSubAgentContext(t *testing.T) {
+	// 显式 + 交接：两段都在，委派在前、交接作补充并注明以委派为准。
+	merged := mergeSubAgentContext("显式上下文", "交接上下文")
+	for _, want := range []string{"委派上下文", "显式上下文", "交接上下文（补充", "交接上下文", "以委派上下文为准"} {
+		if !strings.Contains(merged, want) {
+			t.Fatalf("merged context missing %q, got:\n%s", want, merged)
+		}
 	}
-	if entries[0].Label != "委派上下文" || entries[1].Label != "交接上下文" {
-		t.Fatalf("unexpected entry order: %#v", entries)
-	}
-	if !strings.Contains(entries[0].Description, "若与交接上下文冲突，以此为准") {
-		t.Fatalf("expected explicit context precedence note, got %#v", entries[0])
-	}
-	if !strings.Contains(entries[1].Description, "仅作补充") || !strings.Contains(entries[1].Description, "以显式上下文为准") {
-		t.Fatalf("expected handoff context precedence note, got %#v", entries[1])
+	if strings.Index(merged, "委派上下文") > strings.Index(merged, "交接上下文（补充") {
+		t.Fatalf("委派上下文 should precede 交接上下文, got:\n%s", merged)
 	}
 
-	entries = buildSubAgentContextEntries("显式上下文", "显式上下文")
-	if len(entries) != 1 {
-		t.Fatalf("expected deduplicated context entries, got %d", len(entries))
-	}
-	if entries[0].Label != "委派上下文" {
-		t.Fatalf("expected explicit context to remain first, got %#v", entries)
+	// 显式与交接相同：去重，只保留委派段，不追加交接补充段。
+	deduped := mergeSubAgentContext("显式上下文", "显式上下文")
+	if !strings.Contains(deduped, "委派上下文") || strings.Contains(deduped, "交接上下文（补充") {
+		t.Fatalf("expected deduplicated context (only 委派上下文), got:\n%s", deduped)
 	}
 }
