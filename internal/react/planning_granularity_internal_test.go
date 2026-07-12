@@ -233,6 +233,12 @@ func TestCorePromptPhaseChainContracts(t *testing.T) {
 		"无可测未测",
 		"无可深未深",
 		"自标已完成不豁免核验",
+		// 两态 hoist（本 commit 新增核心逻辑，与 runtime 局部/全局 review 路由强耦合）守卫
+		"有活跃主题",
+		"无活跃主题",
+		"全职责半径这一遍每轮收束都要做",
+		// 深度气味注入块守卫（{{.DEPTH_SMELLS}} 承载 7 类深度判据）
+		"深度气味",
 	}
 	for _, needle := range stepReplanRequired {
 		if !strings.Contains(stepReplanSystemPrompt, needle) {
