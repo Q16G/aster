@@ -125,18 +125,12 @@ type Agent struct {
 	// prompt 注入块的动态上限 promptPreviewTokens 以它为基准（而非整窗口）。
 	usableInputTokens int
 
-	// consecutiveStepsSinceReplan 是 step_replan 心跳计数器：每跳过一次完整 LLM replan +1，
-	// 真正进入 LLM replan 后归 0。配合 STEP_REPLAN_HEARTBEAT_K 兜底，防止"plan 跑很久无 replan"
-	// 导致的累积漂移。仅在调度 goroutine 上读写，无并发问题。
-	consecutiveStepsSinceReplan int
-
 	// lastReplanBoundaryStepID 是上一次 LLM replan 升级时的 current stepID（即"复核窗口"的右边界）。
 	// runStepReplanPhase 命中升级、构造完本次窗口后写入；下一回合构造 review_window 时，
 	// 窗口取 plan 中所有索引位于该边界之后且 status ∈ {completed, failed} 的 step。
 	// 空串表示尚未发生过 LLM replan，等价于"边界 = -1"，窗口含全部 completed/failed step。
-	// 与 consecutiveStepsSinceReplan 一致仅为运行时态、不经 durable_resume 持久化；
-	// resume 后字段重置为空串 → 首次升级窗口含全部历史 completed/failed step（偏保守、可接受）。
-	// 仅在调度 goroutine 上读写，无并发问题。
+	// 仅为运行时态、不经 durable_resume 持久化；resume 后字段重置为空串 → 首次升级窗口含全部
+	// 历史 completed/failed step（偏保守、可接受）。仅在调度 goroutine 上读写，无并发问题。
 	lastReplanBoundaryStepID string
 
 	// lastReplanBoundaryByTopic 是 per-topic review 边界（topicID→上次 review 该 topic 时的右边界

@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -253,37 +251,12 @@ func (a *Agent) runStepReplanPhase(ctx context.Context, iter int, runClient ai.C
 		return a.applyReplanResult(stepID, nil, nil, nil, snapshot, "")
 	}
 
-	// Plan-once-execute-many gate（纯客观信号，零 LLM）：
-	// 未命中任一触发条件时直接走 applyReplanResult 的 no-op 分支转入下一 step，
-	// 命中则保留下方完整 step_replan LLM 路径。bypass 不渲染 prompt、不发 LLM。
-	// 触发条件：
-	//   1) plan 耗尽（无下一可跑 task_item）—— 默认主触发：当前 phase 释放的批次跑完即复核
-	//   2) 当前 step status == failed —— 硬失败即时升级
-	//   3) 心跳：连续跳过 K 步后强制升级（默认 K=-1 禁用；K=0 每步；K>0 折中）
-	// 环境变量 STEP_REPLAN_BYPASS_DISABLED=true 时整段失效（紧急回滚开关）。
-	if !stepReplanBypassDisabled() {
-		escalate, reason := a.shouldEscalateStepReplan(snapshot, rawOutcome)
-		if !escalate {
-			a.consecutiveStepsSinceReplan++
-			a.emitRuntimeLog("info", "step_replan bypassed by gate", snapshot, map[string]any{
-				"event":                          "step_replan_bypassed",
-				"step_id":                        stepID,
-				"reason":                         "no_escalation_signal",
-				"consecutive_steps_since_replan": a.consecutiveStepsSinceReplan,
-			})
-			return a.applyReplanResult(stepID, nil, nil, nil, snapshot, "")
-		}
-		a.emitRuntimeLog("info", "step_replan escalated to LLM", snapshot, map[string]any{
-			"event":                          "step_replan_escalated",
-			"step_id":                        stepID,
-			"reason":                         reason,
-			"consecutive_steps_since_replan": a.consecutiveStepsSinceReplan,
-		})
-		a.consecutiveStepsSinceReplan = 0
-	}
+	// step_replan 进入即走完整 LLM 复核路径。「有就绪 step 就滚动、只在 frontier 枯竭/topic 静默点
+	// 才进 step_replan」的批处理优化已由调度器路由层（nextSchedulerPhase）承担——本相位一旦被进入，
+	// 就是一个真正的复核点（全局 reducer 或 per-topic review），恒做 LLM 评估。
+	//
 	// 构造复核窗口：以上一次 LLM replan 边界为左侧开区间，含本回合 current 在内的所有
-	// completed/failed step 进入窗口（最右为本回合，Latest=true）。
-	// 窗口为自上次复核以来的全部 step；默认 K<0（纯 per-batch）时为整批，K=0（per-step）时稳定为 1 张卡。
+	// completed/failed step 进入窗口（最右为本回合，Latest=true）。窗口为自上次复核以来的全部 step。
 	// priorBoundaryStepID 已在入口解析（局部=per-topic 边界并已提前推进，全局=单边界）。
 	// 局部 review 用 reviewTopic 过滤只收该 topic 的 step 卡；全局 reviewTopic="" 收全部。
 	reviewWin := a.buildReviewWindow(snapshot, priorBoundaryStepID, reviewTopic, a.workspaceRuntime)
@@ -629,61 +602,6 @@ func replanViaLabel(newPlan []*builtin_tools.PlanItem, rc *builtin_tools.ReplanC
 	}
 }
 
-// shouldEscalateStepReplan 用纯客观信号判定本次 step_replan 是否需要升级为完整 LLM 调用。
-// 三条触发条件按检查代价从低到高排列：
-//   - step_error：当前 step 失败，必须 replan 调整路线
-//   - heartbeat：连续跳过 K 步后强制升级，防止 plan 越走越偏
-//   - plan_exhausted：plan 中无下一可跑 step，必须 replan 补充
-//
-// 返回 (false, "") 表示可以跳过 LLM 调用直接进入下一 step。
-func (a *Agent) shouldEscalateStepReplan(snapshot builtin_tools.StateSnapshot, rawOutcome *builtin_tools.StepOutcome) (bool, string) {
-	if rawOutcome != nil && rawOutcome.Status == builtin_tools.StepOutcomeFailed {
-		return true, "step_error"
-	}
-	if k := stepReplanHeartbeatK(); k >= 0 && a.consecutiveStepsSinceReplan >= k {
-		return true, "heartbeat"
-	}
-	if strings.TrimSpace(builtin_tools.NextFrontierPlanStepID(snapshot.Plan, snapshot.Topics)) == "" {
-		// 防御：frontier 枯竭（无可派发 ready）只代表“这批 frontier 跑完”，不代表“这批全落定”。
-		// 仍有 in_progress inline peer 在跑时不升级——否则会基于不完整状态做 LLM 重规划。
-		// 调度器的 frontier barrier 已先 await peer，正常流程下此处 HasRunningInlineSteps 必为 false；
-		// 此条为纵深防御，屏障被绕过时退化为“跳过本轮、下一轮 peer 落定再升级”。
-		if a.asyncRegistry != nil && a.asyncRegistry.HasRunningInlineSteps() {
-			return false, ""
-		}
-		return true, "plan_exhausted"
-	}
-	return false, ""
-}
-
-// stepReplanBypassDisabled 是 plan-once-execute-many gate 的紧急回滚开关。
-// 置位时所有 step 都走完整 LLM replan（等价于旧行为）。
-func stepReplanBypassDisabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("STEP_REPLAN_BYPASS_DISABLED"))) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
-}
-
-// stepReplanHeartbeatK 返回心跳兜底阈值：连续跳过 K 步后强制升级一次完整 replan。
-// 默认 -1（禁用心跳，纯 per-batch：只在没有可跑 task_item 时即 plan_exhausted、或 step_error 升级），
-// 可通过环境变量 STEP_REPLAN_HEARTBEAT_K 调整。触发语义：k>=0 且 consecutiveStepsSinceReplan >= K
-// 时升级——K<0（默认）禁用心跳；K=0 退回每步复核（per-step）；K>0（如 3）为每 K 步的折中节流。
-// 无论 K 取值，plan_exhausted（当前批次跑完、无可跑 task_item）与 step_error 恒触发。
-func stepReplanHeartbeatK() int {
-	const defaultK = -1
-	v := strings.TrimSpace(os.Getenv("STEP_REPLAN_HEARTBEAT_K"))
-	if v == "" {
-		return defaultK
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return defaultK
-	}
-	return n
-}
-
 // waitingChildAgents 返回仍在跑的子 Agent 名字列表（D1 案A 专用信号）；无在跑子 Agent 返回 nil。
 // 调用方据此决定是否回 Plan 循环等待（不 merge），名字走顶层 Warnings 通道。
 func (a *Agent) waitingChildAgents() []string {
@@ -910,39 +828,25 @@ type replanStepCard struct {
 	Latest            bool                                  `json:"latest,omitempty"`
 }
 
-// reviewWindowMaxCardsBaseline 是区间多卡软上限的下界。窗口可能远超 heartbeat K，
+// reviewWindowMaxCardsBaseline 是区间多卡软上限的下界。窗口可能远超批次规模（resume 跨大 plan），
 // 须截断保最新 N 张并在模板提示更早 step 从 PLANNER_JOURNAL / PLAN_OVERVIEW 回读。
-// 实际上限由 reviewWindowMaxCards() 动态计算，避免反直觉的频繁截断。
 const reviewWindowMaxCardsBaseline = 8
 
-// reviewWindowMaxCardsBatchCeiling 是 per-batch（K<0）模式下窗口的硬上限：正常批次应被整批
-// 覆盖（窗口=批次规模），但 resume 跨越大 plan 时窗口可能爆量，须截断到此上限并由 journal
-// 指针兜底，防止 token 爆炸。（后续可改为按 contextWindow 缩放。）
+// reviewWindowMaxCardsBatchCeiling 是窗口的硬上限：正常批次应被整批覆盖（窗口=批次规模），但
+// resume 跨越大 plan 时窗口可能爆量，须截断到此上限并由 journal 指针兜底，防止 token 爆炸。
 const reviewWindowMaxCardsBatchCeiling = 32
 
 // reviewWindowMaxCards 计算复核窗口的卡片软上限，total 为本次窗口实际收集到的卡片数：
-//   - K<0（per-batch，默认）：clamp(total, baseline=8, ceiling=32)——覆盖整批，超大批截断到 ceiling。
-//   - K==0（per-step）：baseline（窗口本就 1 张）。
-//   - K>0（折中心跳）：max(K+3, baseline)，"+3" 为 plan_exhausted 多带尾部 step 的安全余量。
+// per-batch（唯一模式）：clamp(total, baseline=8, ceiling=32)——覆盖整批，超大批截断到 ceiling。
 func reviewWindowMaxCards(total int) int {
-	k := stepReplanHeartbeatK()
-	if k < 0 {
-		cap := total
-		if cap < reviewWindowMaxCardsBaseline {
-			cap = reviewWindowMaxCardsBaseline
-		}
-		if cap > reviewWindowMaxCardsBatchCeiling {
-			cap = reviewWindowMaxCardsBatchCeiling
-		}
-		return cap
+	cap := total
+	if cap < reviewWindowMaxCardsBaseline {
+		cap = reviewWindowMaxCardsBaseline
 	}
-	if k == 0 {
-		return reviewWindowMaxCardsBaseline
+	if cap > reviewWindowMaxCardsBatchCeiling {
+		cap = reviewWindowMaxCardsBatchCeiling
 	}
-	if dyn := k + 3; dyn > reviewWindowMaxCardsBaseline {
-		return dyn
-	}
-	return reviewWindowMaxCardsBaseline
+	return cap
 }
 
 // reviewWindow 是 review_window_cards 的渲染容器：携带截断元信息（共多少张/展示多少张）

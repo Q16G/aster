@@ -114,33 +114,6 @@ func TestFinalizeTerminalStep_Idempotent(t *testing.T) {
 	}
 }
 
-// TestShouldEscalateStepReplan_InProgressPeerBlocksPlanExhausted 验证缺陷二防御：
-// ready 枯竭（plan_exhausted）但仍有 in_progress inline peer 在跑时不升级，
-// 等 peer 落定后才允许升级（与无 peer 时的 plan_exhausted 升级对比）。
-func TestShouldEscalateStepReplan_InProgressPeerBlocksPlanExhausted(t *testing.T) {
-	t.Setenv("STEP_REPLAN_HEARTBEAT_K", "-1") // 禁用心跳，仅测 plan_exhausted 维度
-	snapshot := builtin_tools.StateSnapshot{
-		Plan: []*builtin_tools.PlanItem{
-			{ID: "s1", Step: "a", Status: builtin_tools.PlanStepCompleted},
-			{ID: "s2", Step: "b", Status: builtin_tools.PlanStepInProgress}, // peer 仍在跑，无 ready
-		},
-	}
-	outcome := &builtin_tools.StepOutcome{StepID: "s1", Status: builtin_tools.StepOutcomeCompleted}
-
-	// 有 in_progress peer → 不升级（纵深防御）。
-	withPeer := &Agent{asyncRegistry: NewAsyncAgentRegistry()}
-	withPeer.asyncRegistry.RegisterInlineStep("s2", "")
-	if escalate, reason := withPeer.shouldEscalateStepReplan(snapshot, outcome); escalate {
-		t.Fatalf("expected no escalation while inline peer running, got escalate=true reason=%q", reason)
-	}
-
-	// 无 in_progress peer（registry 空）→ plan_exhausted 正常升级。
-	noPeer := &Agent{asyncRegistry: NewAsyncAgentRegistry()}
-	if escalate, reason := noPeer.shouldEscalateStepReplan(snapshot, outcome); !escalate || reason != "plan_exhausted" {
-		t.Fatalf("expected plan_exhausted escalation with no peer, got (%v, %q)", escalate, reason)
-	}
-}
-
 // TestFinalizeUnjournaledTerminalSteps_SkipsPeerUntilDrained 验证修复 A(竞态):
 // peer auto-complete 翻终态后、其 registry entry 被 drain/purge 之前,sweep 必须跳过它——
 // 否则会把缺 TranscriptBlobRef 的半成品永久落盘。entry purge 后才允许固化。
