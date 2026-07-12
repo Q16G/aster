@@ -11,13 +11,6 @@ func TestDefaultAgentConfig_UnlimitedIterations(t *testing.T) {
 	}
 }
 
-// TestDefaultSubAgentMaxIter_Unlimited 子 Agent 默认同样无限制。
-func TestDefaultSubAgentMaxIter_Unlimited(t *testing.T) {
-	if defaultSubAgentMaxIter != 0 {
-		t.Fatalf("expected defaultSubAgentMaxIter=0 (unlimited), got %d", defaultSubAgentMaxIter)
-	}
-}
-
 // TestWithMaxIterations_OptIn 保留 opt-in：正值生效，非正值忽略（不会把
 // 默认的无限制覆盖成有限/异常值）。
 func TestWithMaxIterations_OptIn(t *testing.T) {

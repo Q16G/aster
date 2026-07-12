@@ -13,10 +13,6 @@ import (
 	"aster/internal/workspacefs"
 )
 
-const (
-	defaultSubAgentMaxIter = 0 // <=0 表示子 Agent 默认不限制迭代次数
-)
-
 type SubAgentTool struct {
 	parentAgent *Agent
 	factory     *AgentFactory
@@ -526,35 +522,3 @@ func childAgentToken(callID string) string {
 	return b.String()
 }
 
-func formatSubAgentResult(agentName, workspaceRoot string, result *builtin_tools.RunResult) string {
-	status := "completed"
-	summary := ""
-	errText := ""
-	ok := false
-	if result != nil {
-		ok = result.Success
-		if result.Success {
-			summary = result.Result
-		} else {
-			status = "failed"
-			errText = result.Error
-			summary = result.Result
-		}
-	} else {
-		status = "failed"
-		errText = "no result"
-	}
-	payload := map[string]any{
-		"ok":             ok,
-		"agent_name":     agentName,
-		"workspace_root": workspaceRoot,
-		"status":         status,
-		"summary":        summary,
-		"error":          errText,
-	}
-	if result != nil && result.PlanSummary != nil {
-		payload["plan_summary"] = result.PlanSummary
-	}
-	out, _ := json.Marshal(payload)
-	return string(out)
-}
