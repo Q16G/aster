@@ -73,7 +73,17 @@ func main() {
 func runTUI(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	runtimelog.SetOutput(io.Discard)
+	if logPath := strings.TrimSpace(os.Getenv("ASTER_RUNTIME_LOG")); logPath != "" {
+		if lf, lerr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); lerr == nil {
+			runtimelog.SetOutput(lf)
+			defer lf.Close()
+		} else {
+			fmt.Fprintf(os.Stderr, "[aster] ASTER_RUNTIME_LOG open failed: %v\n", lerr)
+			runtimelog.SetOutput(io.Discard)
+		}
+	} else {
+		runtimelog.SetOutput(io.Discard)
+	}
 
 	if err := tui.EnsureAppDefaults(); err != nil {
 		return fmt.Errorf("init defaults: %w", err)
