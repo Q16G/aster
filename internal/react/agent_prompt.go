@@ -18,6 +18,12 @@ var thinkActSystemPrompt string
 //go:embed prompts/think_act_user.prompt
 var thinkActUserPrompt string
 
+//go:embed prompts/sub_agent_system.prompt
+var subAgentSystemPrompt string
+
+//go:embed prompts/sub_agent_user.prompt
+var subAgentUserPrompt string
+
 // BuildThinkActPrompt 构造 think_act phase 的 prompt。
 //
 // **snapshot 参数必传**（commit 修复 peer-prompt 注入 bug）：

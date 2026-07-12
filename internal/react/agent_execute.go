@@ -218,30 +218,11 @@ func WithSourceWorkingDir(dir string) ExecuteOption {
 	}
 }
 
-// Execute 执行 Agent
-func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
-	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
-		return nil, fmt.Errorf("agent not initialized")
-	}
-	if ctx == nil {
-		return nil, fmt.Errorf("ctx must not be nil")
-	}
-
-	defer a.runFinishHooks()
-	var runResult *builtin_tools.RunResult
-
-	cfg := &ExecuteConfig{}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(cfg)
-		}
-	}
-	input = strings.TrimSpace(input)
-	if input == "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil && !cfg.resumeOnly {
-		return nil, fmt.Errorf("input is required")
-	}
-	extraText := cfg.extraText
-	taskContext := cfg.taskContext
+// prepareRunEnvironment 装配一次 Agent 运行所需的环境：工作区运行时（缺省则自建临时本地工作区）、
+// 源工作目录 / 仓库上下文探测、structuredoutput ctx 注入、AI 客户端解析与当前 run client 绑定、
+// 上下文预算与历史压缩器重建。返回注入过 structuredoutput 配置的 ctx 与解析出的 runClient。
+// Execute 与子 Agent 单循环内核（RunSubAgentLoop）共用同一段装配，避免子循环重跑完整多阶段流水线。
+func (a *Agent) prepareRunEnvironment(ctx context.Context, cfg *ExecuteConfig) (context.Context, ai.ChatClient, error) {
 	workspaceRuntime := cfg.workspaceRuntime
 	if workspaceRuntime == nil {
 		workspaceRootDir := ""
@@ -251,11 +232,11 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			workspaceRootDir = normalizeWorkspaceRootDir(wd)
 		}
 		if strings.TrimSpace(workspaceRootDir) == "" {
-			return nil, fmt.Errorf("workspace root dir is empty")
+			return ctx, nil, fmt.Errorf("workspace root dir is empty")
 		}
 		localRuntime, err := newLocalWorkspaceRuntime("", workspaceRootDir, "")
 		if err != nil {
-			return nil, err
+			return ctx, nil, err
 		}
 		workspaceRuntime = localRuntime
 	}
@@ -282,7 +263,7 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 
 	runClient, resolveErr := a.resolveAIClient(ctx)
 	if resolveErr != nil {
-		return nil, fmt.Errorf("resolve ai client failed: %w", resolveErr)
+		return ctx, nil, fmt.Errorf("resolve ai client failed: %w", resolveErr)
 	}
 	a.setCurrentRunClient(runClient)
 
@@ -302,6 +283,38 @@ func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption
 			recreated.promptManager = a.promptManager
 		}
 	}
+	return ctx, runClient, nil
+}
+
+// Execute 执行 Agent
+func (a *Agent) Execute(ctx context.Context, input string, opts ...ExecuteOption) (*builtin_tools.RunResult, error) {
+	if a == nil || a.cfg == nil || a.cfg.AIClient == nil {
+		return nil, fmt.Errorf("agent not initialized")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("ctx must not be nil")
+	}
+
+	defer a.runFinishHooks()
+	var runResult *builtin_tools.RunResult
+
+	cfg := &ExecuteConfig{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+	input = strings.TrimSpace(input)
+	if input == "" && cfg.interruptResolution == nil && cfg.interruptCancel == nil && !cfg.resumeOnly {
+		return nil, fmt.Errorf("input is required")
+	}
+	extraText := cfg.extraText
+	taskContext := cfg.taskContext
+	preparedCtx, runClient, prepErr := a.prepareRunEnvironment(ctx, cfg)
+	if prepErr != nil {
+		return nil, prepErr
+	}
+	ctx = preparedCtx
 
 	maxIterations := a.cfg.MaxIterations // <=0 表示不限制迭代次数
 
@@ -1295,6 +1308,9 @@ type aiCallProxyResult struct {
 	AssistantText string
 	FinishReason  string
 	Compaction    *HistoryCompactionResult
+	// Usage 是本轮 AI 调用的 token 用量（已由 choice.Usage 规整）。子 Agent 单循环内核
+	// 据此逐轮累加 usage（B4：不再读 runClient.LastTokenUsage() 这类可变的「最后一次调用」状态）。
+	Usage *ai.TokenUsage
 }
 
 // AICallProxy 单轮 think_act 入口。
@@ -1598,6 +1614,7 @@ func (a *Agent) finalizeAIChoice(ctx context.Context, runCtx *InlineStepCtx, ite
 		AssistantText: content,
 		FinishReason:  choice.FinishReason,
 		Compaction:    compactionResult,
+		Usage:         msg.Usage,
 	}, nil
 }
 
