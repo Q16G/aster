@@ -80,7 +80,7 @@ func (a *Agent) BuildThinkActPrompt(ctx context.Context, extra string, snapshot 
 
 	fallbackState := FormatRuntimeStateJSON(snap, a.workspaceSessionID)
 	return PromptParts{
-		SystemRules: firstNonEmpty(strings.TrimSpace(a.cfg.Instruction), "你是 step 执行代理，基于运行时状态推进当前 step。"),
+		SystemRules: "你是 step 执行代理，基于运行时状态推进当前 step。",
 		SystemAgent: a.identityEnvBlock(),
 		User:        fmt.Sprintf("运行时状态：\n%s", fallbackState),
 	}
@@ -110,9 +110,9 @@ func (a *Agent) thinkActPartsForStep(ctx context.Context, extra string, snapshot
 	return parts
 }
 
-// identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。输入全部为 run 内
-// 稳定值，各阶段复用同一渲染结果以保证字节一致（同一缓存条目）。
-// identityEnvBlock 渲染并缓存公共 system block2（身份 + env）。
+// identityEnvBlock 渲染并缓存公共 system block2（纯 env 块）。输入全部为 run 内
+// 稳定值，各阶段复用同一渲染结果以保证字节一致（同一缓存条目）。身份三要素均已
+// 下沉至各 phase prompt：role/background 全 phase 渲染，instruction 仅任务级 phase 渲染。
 //
 // **并发安全**：旧版用 `identityEnvBuilt bool` + `identityEnvPrompt string` 双字段
 // 无锁——多 peer 同时调 BuildThinkActPrompt 会 race（peer A 写 prompt 时 peer B 读
@@ -142,7 +142,6 @@ func (a *Agent) identityEnvBlock() string {
 		workspaceSharedDir = a.workspaceRuntime.SharedDir()
 	}
 	out, err := a.promptManager.BuildAgentIdentityEnvPrompt(AgentIdentityEnvPromptInput{
-		AgentInstruction:   strings.TrimSpace(a.cfg.Instruction),
 		WorkspaceRootDir:   a.workspaceRootDir,
 		WorkspaceNamespace: a.workspaceNamespace,
 		WorkspaceSharedDir: workspaceSharedDir,

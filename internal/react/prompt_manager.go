@@ -120,12 +120,11 @@ type FinalAnswerPromptInput struct {
 	PlannerJournalPath string
 }
 
-// AgentIdentityEnvPromptInput 渲染公共 system block2：AGENT_INSTRUCTION + <env> 块。
+// AgentIdentityEnvPromptInput 渲染公共 system block2（纯 <env> 块）。
 // 全部输入为 run 内稳定值，渲染结果在 Agent 上缓存一次、各阶段复用（字节一致）。
-// 注：AgentRole / AgentBackground 已下沉至各 phase prompt 顶部（# Role / # Background
-// 段），不再由本块渲染——见 internal/react/prompts/README.md。
+// 注：身份三要素均已下沉至各 phase prompt 顶部——role/background 全 phase 渲染，
+// instruction 仅任务级 phase 渲染，见 internal/react/prompts/README.md。
 type AgentIdentityEnvPromptInput struct {
-	AgentInstruction   string
 	WorkspaceRootDir   string
 	WorkspaceNamespace string
 	WorkspaceSharedDir string
@@ -581,18 +580,16 @@ func (m *defaultPromptManager) BuildAgentIdentityEnvPrompt(input AgentIdentityEn
 	}
 
 	return renderTemplate(m.agentIdentityEnvTmpl, map[string]any{
-		"AGENT_INSTRUCTION":     strings.TrimSpace(input.AgentInstruction),
-		"HAS_AGENT_INSTRUCTION": strings.TrimSpace(input.AgentInstruction) != "",
-		"WORKSPACE_ROOT_DIR":    strings.TrimSpace(input.WorkspaceRootDir),
-		"WORKSPACE_NAMESPACE":   strings.TrimSpace(input.WorkspaceNamespace),
-		"WORKSPACE_SHARED_DIR":  strings.TrimSpace(input.WorkspaceSharedDir),
-		"HAS_REPO_CONTEXT":      hasRepoContext,
-		"SOURCE_WORKING_DIR":    strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
-		"REPO_ROOT_DIR":         strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
-		"IS_GIT_REPO":           input.RuntimeRepoContext.IsGitRepo,
-		"CURRENT_BRANCH":        strings.TrimSpace(input.RuntimeRepoContext.Branch),
-		"HAS_TASK_CONTEXT":      len(taskContextEntries) > 0,
-		"TASK_CONTEXT_ENTRIES":  taskContextEntries,
+		"WORKSPACE_ROOT_DIR":   strings.TrimSpace(input.WorkspaceRootDir),
+		"WORKSPACE_NAMESPACE":  strings.TrimSpace(input.WorkspaceNamespace),
+		"WORKSPACE_SHARED_DIR": strings.TrimSpace(input.WorkspaceSharedDir),
+		"HAS_REPO_CONTEXT":     hasRepoContext,
+		"SOURCE_WORKING_DIR":   strings.TrimSpace(input.RuntimeRepoContext.SourceWorkingDir),
+		"REPO_ROOT_DIR":        strings.TrimSpace(input.RuntimeRepoContext.RepoRootDir),
+		"IS_GIT_REPO":          input.RuntimeRepoContext.IsGitRepo,
+		"CURRENT_BRANCH":       strings.TrimSpace(input.RuntimeRepoContext.Branch),
+		"HAS_TASK_CONTEXT":     len(taskContextEntries) > 0,
+		"TASK_CONTEXT_ENTRIES": taskContextEntries,
 	})
 }
 

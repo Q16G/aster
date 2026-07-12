@@ -126,10 +126,10 @@ func TestThinkActPromptContainsAtomicExecutionBoundary(t *testing.T) {
 	rendered := parts.SystemRules
 
 	required := []string{
-		// 双重范围边界（当前 step ∩ 注入角色与指令职责半径）+ 越界分流
+		// 双重范围边界（当前 step ∩ 注入角色与背景职责半径）+ 越界分流
 		"双重范围边界",
 		"当前 step 的对象×动作×验收",
-		"注入的角色与指令界定的职责半径",
+		"注入的角色与背景界定的职责半径",
 		"不改 plan、不判任务整体完成、不出最终答案",
 		"越界线索分流",
 		// 子 Agent 委派边界（轻量化：委派独立可验收子任务、只服务当前 step 单一验收物）
